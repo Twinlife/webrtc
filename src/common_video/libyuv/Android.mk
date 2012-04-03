@@ -27,9 +27,8 @@ LOCAL_CFLAGS := \
 # Include paths placed before CFLAGS/CPPFLAGS
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../.. \
-    $(LOCAL_PATH)/../../../.. \
-    $(LOCAL_PATH)/../../../../libyuv/files/include
-
+    external \
+    external/libyuv/files/include \
 
 LOCAL_SHARED_LIBRARIES := \
     libcutils \
