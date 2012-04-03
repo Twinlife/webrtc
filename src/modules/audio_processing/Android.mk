@@ -97,7 +97,7 @@ LOCAL_SHARED_LIBRARIES := \
 LOCAL_MODULE:= webrtc_audioproc
 
 ifdef NDK_ROOT
-include $(BUILD_EXECUTABLE)
+#include $(BUILD_EXECUTABLE)
 else
 include external/stlport/libstlport.mk
 include $(BUILD_NATIVE_TEST)
@@ -142,7 +142,7 @@ LOCAL_SHARED_LIBRARIES := \
 LOCAL_MODULE:= webrtc_audioproc_unittest
 
 ifdef NDK_ROOT
-include $(BUILD_EXECUTABLE)
+#include $(BUILD_EXECUTABLE)
 else
 include external/stlport/libstlport.mk
 include $(BUILD_NATIVE_TEST)

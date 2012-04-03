@@ -15,7 +15,7 @@
 #elif defined(WEBRTC_MAC)
     #include "cpu_mac.h"
 #elif defined(WEBRTC_ANDROID)
-    // Not implemented yet, might be possible to use Linux implementation
+    #include "cpu_linux.h"
 #else // defined(WEBRTC_LINUX)
     #include "cpu_linux.h"
 #endif
@@ -28,7 +28,7 @@ CpuWrapper* CpuWrapper::CreateCpu()
 #elif defined(WEBRTC_MAC)
     return new CpuWrapperMac();
 #elif defined(WEBRTC_ANDROID)
-    return 0;
+    return new CpuLinux();
 #else
     return new CpuLinux();
 #endif

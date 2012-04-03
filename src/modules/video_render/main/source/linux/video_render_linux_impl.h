@@ -12,6 +12,13 @@
 #define WEBRTC_MODULES_VIDEO_RENDER_MAIN_SOURCE_LINUX_VIDEO_RENDER_LINUX_IMPL_H_
 
 #include "i_video_render.h"
+#include "map_wrapper.h"
+
+//
+// -CJ- 03042012
+//
+// Add global variables g_javaRenderGLClass and g_javaRenderClass
+//
 
 namespace webrtc {
 class CriticalSectionWrapper;
@@ -122,7 +129,9 @@ private:
     WebRtc_Word32 _id;
     CriticalSectionWrapper& _renderLinuxCritsect;
 
-    void* _ptrWindow;
+    static JavaVM* g_jvm;
+    static jclass g_javaRenderGLClass;
+    static jclass g_javaRenderClass;
 
     // X11 Render
     VideoX11Render* _ptrX11Render;

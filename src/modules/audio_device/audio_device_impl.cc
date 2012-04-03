@@ -188,6 +188,15 @@ WebRtc_Word32 AudioDeviceModuleImpl::CheckPlatform()
 //  CreatePlatformSpecificObjects
 // ----------------------------------------------------------------------------
 
+//
+// -CJ- 03042012
+//  Use a global variable to allow multiple calls to
+//  CreatePlatformSpecificObjects()
+//
+#if defined(WEBRTC_ANDROID_OPENSLES)
+static AudioDeviceGeneric* ptrAudioDeviceOpenSLES = NULL;
+#endif
+
 WebRtc_Word32 AudioDeviceModuleImpl::CreatePlatformSpecificObjects()
 {
     WEBRTC_TRACE(kTraceInfo, kTraceAudioDevice, _id, "%s", __FUNCTION__);
@@ -261,10 +270,17 @@ WebRtc_Word32 AudioDeviceModuleImpl::CreatePlatformSpecificObjects()
 #if defined(WEBRTC_ANDROID_OPENSLES)
     if (audioLayer == kPlatformDefaultAudio)
     {
-        // Create *Android OpenELSE Audio* implementation
-        ptrAudioDevice = new AudioDeviceAndroidOpenSLES(Id());
-        WEBRTC_TRACE(kTraceInfo, kTraceAudioDevice, _id,
-                     "Android OpenSLES Audio APIs will be utilized");
+        if (ptrAudioDeviceOpenSLES != NULL)
+	{
+	    ptrAudioDevice = ptrAudioDeviceOpenSLES;
+	} else
+	{
+	    // Create *Android OpenELSE Audio* implementation
+	    ptrAudioDevice = new AudioDeviceAndroidOpenSLES(Id());
+	    ptrAudioDeviceOpenSLES = ptrAudioDevice;
+	    WEBRTC_TRACE(kTraceInfo, kTraceAudioDevice, _id,
+			 "Android OpenSLES Audio APIs will be utilized");
+	}
     }
 
     if (ptrAudioDevice != NULL)
@@ -668,7 +684,7 @@ WebRtc_Word32 AudioDeviceModuleImpl::SpeakerIsAvailable(bool* available)
 
     *available = isAvailable;
 
-    WEBRTC_TRACE(kTraceStateInfo, kTraceAudioDevice, _id, "output: available=%d", available);
+    WEBRTC_TRACE(kTraceStateInfo, kTraceAudioDevice, _id, "output: available=%d", *available);
     return (0);
 }
 

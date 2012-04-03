@@ -57,7 +57,8 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/include \
     $(LOCAL_PATH)/../.. 
 
-ifeq ($(ARCH_ARM_HAVE_ARMV7A),true)
+ifeq ($(ARCH_ARM_HAVE_NEON),true)
+LOCAL_ARM_NEON := true
 LOCAL_SRC_FILES += \
     filter_ar_fast_q12_armv7.s
 else

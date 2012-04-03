@@ -16,7 +16,7 @@
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #elif defined(WEBRTC_ANDROID)
-// Not implemented yet, might be possible to use Linux implementation
+#include <sys/sysconf.h>
 #else // defined(WEBRTC_LINUX)
 #include <sys/sysinfo.h>
 #endif
@@ -43,7 +43,12 @@ WebRtc_UWord32 CpuInfo::DetectNumberOfCores()
         WEBRTC_TRACE(kTraceStateInfo, kTraceUtility, -1,
                      "Available number of cores:%d", _numberOfCores);
 
-#elif defined(WEBRTC_MAC)
+#elif defined(WEBRTC_ANDROID)
+        _numberOfCores = sysconf(_SC_NPROCESSORS_CONF);
+        WEBRTC_TRACE(kTraceStateInfo, kTraceUtility, -1,
+                     "Available number of cores:%d", _numberOfCores);
+
+#elif (defined(WEBRTC_MAC) || defined(WEBRTC_MAC_INTEL))
         int name[] = {CTL_HW, HW_AVAILCPU};
         int ncpu;
         size_t size = sizeof(ncpu);

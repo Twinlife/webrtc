@@ -515,12 +515,84 @@ int OutputMixer::StopRecordingPlayout()
     return 0;
 }
 
+<<<<<<< HEAD:src/voice_engine/output_mixer.cc
 int OutputMixer::GetMixedAudio(int sample_rate_hz,
                                int num_channels,
                                AudioFrame* frame) {
   WEBRTC_TRACE(kTraceStream, kTraceVoice, VoEId(_instanceId,-1),
                "OutputMixer::GetMixedAudio(sample_rate_hz=%d, num_channels=%d)",
                sample_rate_hz, num_channels);
+=======
+WebRtc_Word32 
+OutputMixer::GetMixedAudio(const WebRtc_Word32 desiredFreqHz,
+                           const WebRtc_UWord8 channels,
+                           AudioFrame& audioFrame)
+{
+    WEBRTC_TRACE(kTraceStream, kTraceVoice, VoEId(_instanceId,-1),
+                 "OutputMixer::GetMixedAudio(desiredFreqHz=%d, channels=%d)",
+                 desiredFreqHz, channels);
+
+    audioFrame = _audioFrame;
+
+    // --- Record playout if enabled
+    {
+        CriticalSectionScoped cs(_fileCritSect);
+        if (_outputFileRecording)
+        {
+            assert(audioFrame._audioChannel == 1);
+        
+            if (_outputFileRecorderPtr)
+            {
+                _outputFileRecorderPtr->RecordAudioToFile(audioFrame);
+            }
+        }
+    }
+
+    int outLen(0);
+
+    if (audioFrame._audioChannel == 1)
+    {
+        if (_resampler.ResetIfNeeded(audioFrame._frequencyInHz,
+                                     desiredFreqHz,
+                                     kResamplerSynchronous) != 0)
+        {
+            WEBRTC_TRACE(kTraceError, kTraceVoice, VoEId(_instanceId,-1),
+                         "OutputMixer::GetMixedAudio() unable to resample - 1");
+            return -1;
+        }
+    }
+    else
+    {
+        if (_resampler.ResetIfNeeded(audioFrame._frequencyInHz,
+                                     desiredFreqHz,
+                                     kResamplerSynchronousStereo) != 0)
+        {
+            WEBRTC_TRACE(kTraceError, kTraceVoice, VoEId(_instanceId,-1),
+                         "OutputMixer::GetMixedAudio() unable to resample - 2");
+            return -1;
+        }
+    }
+    if (_resampler.Push(
+        _audioFrame._payloadData,
+        _audioFrame._payloadDataLengthInSamples*_audioFrame._audioChannel,
+        audioFrame._payloadData,
+        AudioFrame::kMaxAudioFrameSizeSamples,
+        outLen) == 0)
+    {
+        // Ensure that output from resampler matches the audio-frame format.
+        // Example: 10ms stereo output at 48kHz => outLen = 960 =>
+        // convert _payloadDataLengthInSamples to 480
+        audioFrame._payloadDataLengthInSamples =
+            (outLen / _audioFrame._audioChannel);
+        audioFrame._frequencyInHz = desiredFreqHz;
+    }
+    else
+    {
+        WEBRTC_TRACE(kTraceError, kTraceVoice, VoEId(_instanceId,-1),
+                     "OutputMixer::GetMixedAudio() resampling failed");
+        return -1;
+    }
+>>>>>>> Port WebRTC extension to Android:src/voice_engine/main/source/output_mixer.cc
 
   // --- Record playout if enabled
   {
