@@ -15,6 +15,11 @@
 #include "i_video_render.h"
 #include "map_wrapper.h"
 
+//
+// -CJ- 03042012
+//
+// Add global variables g_javaRenderGLClass and g_javaRenderClass
+//
 
 namespace webrtc {
 
@@ -143,6 +148,8 @@ protected:
     jobject _ptrWindow;
 
     static JavaVM* g_jvm;
+    static jclass g_javaRenderGLClass;
+    static jclass g_javaRenderClass;
 
 private:
     static bool JavaRenderThreadFun(void* obj);

@@ -18,6 +18,13 @@
 #include "video_render_android_impl.h"
 #include "video_render_opengles20.h"
 
+//
+// -CJ- 03042012
+//
+// Add member _javaRenderGLClass in AndroidNativeOpenGl2Channel
+// Remove member _javaRenderClass from AndroidNativeOpenGl2Renderer
+//
+
 namespace webrtc {
 class CriticalSectionWrapper;
 
@@ -25,7 +32,7 @@ class AndroidNativeOpenGl2Channel: public AndroidStream
 {
 
 public:
-    AndroidNativeOpenGl2Channel(WebRtc_UWord32 streamId,JavaVM* jvm,VideoRenderAndroid& renderer,jobject javaRenderObj);
+    AndroidNativeOpenGl2Channel(WebRtc_UWord32 streamId,JavaVM* jvm,jclass javaRenderGLClass,VideoRenderAndroid& renderer,jobject javaRenderObj);
     ~AndroidNativeOpenGl2Channel();
 
     WebRtc_Word32 Init(WebRtc_Word32 zOrder,
@@ -52,6 +59,7 @@ private:
     VideoFrame _bufferToRender;
     VideoRenderAndroid& _renderer;
     JavaVM*     _jvm;
+    jclass      _javaRenderGLClass;
     jobject     _javaRenderObj;
 
     jmethodID      _redrawCid;
@@ -84,8 +92,6 @@ public:
 
 private:
     jobject 	_javaRenderObj;
-    jclass		_javaRenderClass;
-        
 };
 
 } //namespace webrtc

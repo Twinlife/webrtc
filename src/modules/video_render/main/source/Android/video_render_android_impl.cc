@@ -25,8 +25,16 @@
 #include "trace.h"
 #endif
 
+//
+// -CJ- 03042012
+//
+// Add global variables g_javaRenderGLClass and g_javaRenderClass
+//
+
 namespace webrtc {
 JavaVM* VideoRenderAndroid::g_jvm = NULL;
+jclass VideoRenderAndroid::g_javaRenderGLClass = NULL;
+jclass VideoRenderAndroid::g_javaRenderClass = NULL;
 
 WebRtc_Word32 VideoRenderAndroid::SetAndroidEnvVariables(void* javaVM)
 {
@@ -34,8 +42,55 @@ WebRtc_Word32 VideoRenderAndroid::SetAndroidEnvVariables(void* javaVM)
 
     g_jvm = (JavaVM*) javaVM;
 
-    return 0;
+    JNIEnv* env = NULL;
+    if (g_jvm->GetEnv((void**) &env, JNI_VERSION_1_4) != JNI_OK)
+    {
+        WEBRTC_TRACE(kTraceInfo, kTraceVideoRenderer, -1,
+		     "%s: could not get Java environment", __FUNCTION__);
+	return -1;
+    }
 
+    jclass javaRenderGLClass = env->FindClass("org/webrtc/videoengine/ViEAndroidGLES20");
+    if (!javaRenderGLClass)
+    {
+        WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, -1,
+                     "%s: could not find ViEAndroidGLES20", __FUNCTION__);
+        return -1;
+    }
+
+    g_javaRenderGLClass = static_cast<jclass>(env->NewGlobalRef(javaRenderGLClass));
+    if (!g_javaRenderGLClass)
+    {
+	WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceVideoRenderer, -1,
+		     "%s: InitVideoEngineJava(): could not create"
+		     " Java Render class reference",
+		     __FUNCTION__);
+	return -1;
+    }
+
+    env->DeleteLocalRef(javaRenderGLClass);
+
+    jclass javaRenderClass = env->FindClass("org/webrtc/videoengine/ViESurfaceRenderer");
+    if (!javaRenderClass)
+    {
+        WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, -1,
+                     "%s: could not find ViESurfaceRenderer", __FUNCTION__);
+        return -1;
+    }
+
+    g_javaRenderClass = static_cast<jclass>(env->NewGlobalRef(javaRenderClass));
+    if (!g_javaRenderClass)
+    {
+	WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceVideoRenderer, -1,
+		     "%s: InitVideoEngineJava(): could not create"
+		     " Java Render class reference",
+		     __FUNCTION__);
+	return -1;
+    }
+
+    env->DeleteLocalRef(javaRenderClass);
+
+    return 0;
 }
 
 VideoRenderAndroid::VideoRenderAndroid(

@@ -27,6 +27,12 @@
 #include "trace.h"
 #endif
 
+//
+// -CJ- 03042012
+//
+// Use _javaRenderClass member in AndroidSurfaceViewChannel class 
+// 
+
 namespace webrtc {
 
 AndroidSurfaceViewRenderer::AndroidSurfaceViewRenderer(const WebRtc_Word32 id,
@@ -35,8 +41,7 @@ AndroidSurfaceViewRenderer::AndroidSurfaceViewRenderer(const WebRtc_Word32 id,
                                 const bool fullscreen)
 :
     VideoRenderAndroid(id,videoRenderType,window,fullscreen),
-	_javaRenderObj(NULL),
-	_javaRenderClass(NULL)
+	_javaRenderObj(NULL)
 {
 }
 
@@ -66,7 +71,6 @@ AndroidSurfaceViewRenderer::~AndroidSurfaceViewRenderer()
             }
         }
         env->DeleteGlobalRef(_javaRenderObj);
-        env->DeleteGlobalRef(_javaRenderClass);
 
         if (isAttached)
         {
@@ -93,7 +97,6 @@ AndroidSurfaceViewRenderer::Init()
         WEBRTC_TRACE(kTraceWarning, kTraceVideoRenderer, _id,  "(%s): No window have been provided.", __FUNCTION__);
         return -1;
     }
-    
     // get the JNI env for this thread
     bool isAttached = false;
     JNIEnv* env = NULL;
@@ -111,28 +114,8 @@ AndroidSurfaceViewRenderer::Init()
         }
         isAttached = true;
     }
-
-    // get the ViESurfaceRender class
-	jclass javaRenderClassLocal = env->FindClass("org/webrtc/videoengine/ViESurfaceRenderer");
-	if (!javaRenderClassLocal)
-	{
-		WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, _id,  "%s: could not find ViESurfaceRenderer", __FUNCTION__);
-		return -1;
-	}
-
-	// create a global reference to the class (to tell JNI that we are referencing it after this function has returned)
-	_javaRenderClass = reinterpret_cast<jclass>(env->NewGlobalRef(javaRenderClassLocal));
-	if (!_javaRenderClass)
-	{
-		WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, _id,  "%s: could not create Java ViESurfaceRenderer class reference", __FUNCTION__);
-		return -1;
-	}
-
-        // Delete local class ref, we only use the global ref
-	env->DeleteLocalRef(javaRenderClassLocal);
-
 	// get the method ID for the constructor
-	jmethodID cid = env->GetMethodID(_javaRenderClass, "<init>", "(Landroid/view/SurfaceView;)V");
+	jmethodID cid = env->GetMethodID(g_javaRenderClass, "<init>", "(Landroid/view/SurfaceView;)V");
 	if (cid == NULL)
 	{
 		WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, _id,  "%s: could not get constructor ID", __FUNCTION__);
@@ -140,7 +123,7 @@ AndroidSurfaceViewRenderer::Init()
 	}
 
     // construct the object
-    jobject javaRenderObjLocal = env->NewObject(_javaRenderClass, cid, _ptrWindow);
+    jobject javaRenderObjLocal = env->NewObject(g_javaRenderClass, cid, _ptrWindow);
     if (!javaRenderObjLocal)
     {
         WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, _id,  "%s: could not create Java Render", __FUNCTION__);
@@ -155,7 +138,6 @@ AndroidSurfaceViewRenderer::Init()
         WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, _id,  "%s: could not create Java SurfaceRender object reference", __FUNCTION__);
         return -1;
     }
-
     // Detach this thread if it was attached
     if (isAttached)
     {
@@ -179,7 +161,7 @@ AndroidSurfaceViewRenderer::CreateAndroidRenderChannel(WebRtc_Word32 streamId,
                 VideoRenderAndroid& renderer)
 {
     WEBRTC_TRACE(kTraceDebug, kTraceVideoRenderer, _id, "%s: Id %d", __FUNCTION__,streamId);
-    AndroidSurfaceViewChannel* stream=new AndroidSurfaceViewChannel(streamId,g_jvm,renderer,_javaRenderObj);
+    AndroidSurfaceViewChannel* stream=new AndroidSurfaceViewChannel(streamId,g_jvm,g_javaRenderClass,renderer,_javaRenderObj);
     if(stream && stream->Init(zOrder,left,top,right,bottom)==0)
         return stream;
     else
@@ -192,12 +174,13 @@ AndroidSurfaceViewRenderer::CreateAndroidRenderChannel(WebRtc_Word32 streamId,
 
 
 
-AndroidSurfaceViewChannel::AndroidSurfaceViewChannel(WebRtc_UWord32 streamId,JavaVM* jvm,VideoRenderAndroid& renderer,jobject javaRenderObj)
+AndroidSurfaceViewChannel::AndroidSurfaceViewChannel(WebRtc_UWord32 streamId,JavaVM* jvm,jclass javaRenderClass,VideoRenderAndroid& renderer,jobject javaRenderObj)
 :
 _id(streamId),
 _renderCritSect(*CriticalSectionWrapper::CreateCriticalSection()),
 _renderer(renderer),
 _jvm(jvm),
+_javaRenderClass(javaRenderClass),
 _javaRenderObj(javaRenderObj),
 _bitmapWidth(0),
 _bitmapHeight(0)
@@ -253,14 +236,12 @@ AndroidSurfaceViewChannel::Init(WebRtc_Word32 /*zOrder*/,
         const float right,
         const float bottom)
 {
-
     WEBRTC_TRACE(kTraceDebug, kTraceVideoRenderer, _id, "%s: AndroidSurfaceViewChannel", __FUNCTION__);
     if (!_jvm)
     {
         WEBRTC_TRACE(kTraceError, kTraceVideoRenderer,_id,  "%s: Not a valid Java VM pointer", __FUNCTION__);
         return -1;
     }
-
     if((top>1 || top<0) || (right>1 || right<0) || (bottom>1 || bottom<0) || (left>1 || left<0))
     {
         WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, _id, "%s: Wrong coordinates",
@@ -286,13 +267,6 @@ AndroidSurfaceViewChannel::Init(WebRtc_Word32 /*zOrder*/,
         }
         isAttached = true;
     }
-
-    jclass javaRenderClass = env->FindClass("org/webrtc/videoengine/ViESurfaceRenderer");
-    if (!javaRenderClass)
-    {
-        WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, _id,  "%s: could not find ViESurfaceRenderer", __FUNCTION__);
-        return -1;
-    }
 #ifdef ANDROID_NDK_8_OR_ABOVE
     // get the method ID for the CreateBitmap
     _createBitmapCid = env->GetMethodID(_javaRenderClass, "CreateBitmap", "(II)Landroid/graphics/Bitmap;");
@@ -310,32 +284,28 @@ AndroidSurfaceViewChannel::Init(WebRtc_Word32 /*zOrder*/,
     }
 #else
     // get the method ID for the CreateIntArray
-    _createByteBufferCid = env->GetMethodID(javaRenderClass, "CreateByteBuffer", "(II)Ljava/nio/ByteBuffer;");
+    _createByteBufferCid = env->GetMethodID(_javaRenderClass, "CreateByteBuffer", "(II)Ljava/nio/ByteBuffer;");
     if (_createByteBufferCid == NULL)
     {
         WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, _id,  "%s: could not get CreateByteBuffer ID", __FUNCTION__);
         return -1; /* exception thrown */
     }
-
     // get the method ID for the DrawByteBuffer function
-    _drawByteBufferCid = env->GetMethodID(javaRenderClass, "DrawByteBuffer", "()V");
+    _drawByteBufferCid = env->GetMethodID(_javaRenderClass, "DrawByteBuffer", "()V");
     if (_drawByteBufferCid == NULL)
     {
         WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, _id,  "%s: could not get DrawByteBuffer ID", __FUNCTION__);
         return -1; /* exception thrown */
     }
 #endif
-
     // get the method ID for the SetCoordinates function
-    _setCoordinatesCid = env->GetMethodID(javaRenderClass, "SetCoordinates", "(FFFF)V");
+    _setCoordinatesCid = env->GetMethodID(_javaRenderClass, "SetCoordinates", "(FFFF)V");
     if (_setCoordinatesCid == NULL)
     {
         WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, _id,  "%s: could not get SetCoordinates ID", __FUNCTION__);
         return -1; /* exception thrown */
     }
-
     env->CallVoidMethod(_javaRenderObj,_setCoordinatesCid,left,top,right,bottom);
-
     // Detach this thread if it was attached
     if (isAttached)
     {
@@ -344,7 +314,6 @@ AndroidSurfaceViewChannel::Init(WebRtc_Word32 /*zOrder*/,
             WEBRTC_TRACE(kTraceWarning, kTraceVideoRenderer, _id, "%s: Could not detach thread from JVM", __FUNCTION__);
         }
     }
-
 
     WEBRTC_TRACE(kTraceDebug, kTraceVideoRenderer, _id, "%s: AndroidSurfaceViewChannel done", __FUNCTION__);
     return 0;
@@ -381,8 +350,8 @@ void AndroidSurfaceViewChannel::DeliverFrame(JNIEnv* jniEnv) {
     }
     jobject javaBitmap = jniEnv->CallObjectMethod(_javaRenderObj,
                                                   _createBitmapCid,
-                                                  videoFrame.Width(),
-                                                  videoFrame.Height());
+                                                  _bufferToRender.Width(),
+                                                  _bufferToRender.Height());
     _javaBitmapObj = jniEnv->NewGlobalRef(javaBitmap);
      if (!_javaBitmapObj) {
        WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, _id, "%s: could not "
@@ -410,7 +379,7 @@ void AndroidSurfaceViewChannel::DeliverFrame(JNIEnv* jniEnv) {
 
     AndroidBitmap_unlockPixels(jniEnv, _javaBitmapObj);
     // Draw the Surface.
-    jniEnv->CallVoidMethod(_javaRenderObj,_drawCid);
+    jniEnv->CallVoidMethod(_javaRenderObj,_drawBitmapCid);
 
   } else {
     WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, _id, "%s: Could not lock "

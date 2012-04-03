@@ -16,6 +16,13 @@
 #include "trace.h"
 #include "video_capture_android.h"
 
+//
+// -CJ- 03042012
+//
+// Use global variables initialized by VideoCaptureAndroid::SetAndroidObjects()
+// to access Java classes and objects
+//
+
 namespace webrtc
 {
 namespace videocapturemodule
@@ -55,13 +62,9 @@ WebRtc_UWord32 DeviceInfoAndroid::NumberOfDevices()
                  "%s", __FUNCTION__);
 
     JNIEnv *env;
-    jclass javaCmDevInfoClass;
-    jobject javaCmDevInfoObject;
     bool attached = false;
     if (VideoCaptureAndroid::AttachAndUseAndroidDeviceInfoObjects(
                                                                   env,
-                                                                  javaCmDevInfoClass,
-                                                                  javaCmDevInfoObject,
                                                                   attached) != 0)
     {
         return 0;
@@ -70,7 +73,7 @@ WebRtc_UWord32 DeviceInfoAndroid::NumberOfDevices()
     WEBRTC_TRACE(webrtc::kTraceDebug, webrtc::kTraceVideoCapture, _id,
                  "%s GetMethodId", __FUNCTION__);
     // get the method ID for the Android Java GetDeviceUniqueName name.
-    jmethodID cid = env->GetMethodID(javaCmDevInfoClass,
+    jmethodID cid = env->GetMethodID(VideoCaptureAndroid::g_javaVideoCaptureDeviceInfoClass,
                                      "NumberOfDevices",
                                      "()I");
 
@@ -79,7 +82,7 @@ WebRtc_UWord32 DeviceInfoAndroid::NumberOfDevices()
     {
         WEBRTC_TRACE(webrtc::kTraceDebug, webrtc::kTraceVideoCapture, _id,
                      "%s Calling Number of devices", __FUNCTION__);
-        numberOfDevices = env->CallIntMethod(javaCmDevInfoObject, cid);
+        numberOfDevices = env->CallIntMethod(VideoCaptureAndroid::g_javaCmDevInfoObject, cid);
     }
     VideoCaptureAndroid::ReleaseAndroidDeviceInfoObjects(attached);
 
@@ -101,26 +104,23 @@ WebRtc_Word32 DeviceInfoAndroid::GetDeviceName(
                  "%s", __FUNCTION__);
 
     JNIEnv *env;
-    jclass javaCmDevInfoClass;
-    jobject javaCmDevInfoObject;
     WebRtc_Word32 result = 0;
     bool attached = false;
     if (VideoCaptureAndroid::AttachAndUseAndroidDeviceInfoObjects(
                                                               env,
-                                                              javaCmDevInfoClass,
-                                                              javaCmDevInfoObject,
                                                               attached)!= 0)
     {
         return -1;
     }
 
     // get the method ID for the Android Java GetDeviceUniqueName name.
-    jmethodID cid = env->GetMethodID(javaCmDevInfoClass, "GetDeviceUniqueName",
+    jmethodID cid = env->GetMethodID(VideoCaptureAndroid::g_javaVideoCaptureDeviceInfoClass, 
+				     "GetDeviceUniqueName",
                                      "(I)Ljava/lang/String;");
     if (cid != NULL)
     {
 
-        jobject javaDeviceNameObj = env->CallObjectMethod(javaCmDevInfoObject,
+        jobject javaDeviceNameObj = env->CallObjectMethod(VideoCaptureAndroid::g_javaCmDevInfoObject,
                                                           cid, deviceNumber);
         if (javaDeviceNameObj == NULL)
         {
@@ -191,26 +191,11 @@ WebRtc_Word32 DeviceInfoAndroid::CreateCapabilityMap(
     }
 
     JNIEnv *env;
-    jclass javaCmDevInfoClass;
-    jobject javaCmDevInfoObject;
     bool attached = false;
     if (VideoCaptureAndroid::AttachAndUseAndroidDeviceInfoObjects(
                                                               env,
-                                                              javaCmDevInfoClass,
-                                                              javaCmDevInfoObject,
                                                               attached) != 0)
     {
-        return -1;
-    }
-
-    // Find the capability class
-    jclass javaCapClassLocal = env->FindClass(AndroidJavaCaptureCapabilityClass);
-    if (javaCapClassLocal == NULL)
-    {
-        VideoCaptureAndroid::ReleaseAndroidDeviceInfoObjects(attached);
-        WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceVideoCapture, _id,
-                     "%s: Can't find java class VideoCaptureCapabilityAndroid.",
-                     __FUNCTION__);
         return -1;
     }
 
@@ -218,8 +203,8 @@ WebRtc_Word32 DeviceInfoAndroid::CreateCapabilityMap(
     char signature[256];
     sprintf(signature,
             "(Ljava/lang/String;)[L%s;",
-            AndroidJavaCaptureCapabilityClass);
-    jmethodID cid = env->GetMethodID(javaCmDevInfoClass,
+            "org/webrtc/videoengine/CaptureCapabilityAndroid");
+    jmethodID cid = env->GetMethodID(VideoCaptureAndroid::g_javaVideoCaptureDeviceInfoClass,
                                      "GetCapabilityArray",
                                      signature);
     if (cid == NULL)
@@ -241,7 +226,7 @@ WebRtc_Word32 DeviceInfoAndroid::CreateCapabilityMap(
         return -1;
     }
     // Call the java class and get an array with capabilities back.
-    jobject javaCapabilitiesObj = env->CallObjectMethod(javaCmDevInfoObject,
+    jobject javaCapabilitiesObj = env->CallObjectMethod(VideoCaptureAndroid::g_javaCmDevInfoObject,
                                                         cid, capureIdString);
     if (!javaCapabilitiesObj)
     {
@@ -252,9 +237,9 @@ WebRtc_Word32 DeviceInfoAndroid::CreateCapabilityMap(
         return -1;
     }
 
-    jfieldID widthField = env->GetFieldID(javaCapClassLocal, "width", "I");
-    jfieldID heigtField = env->GetFieldID(javaCapClassLocal, "height", "I");
-    jfieldID maxFpsField = env->GetFieldID(javaCapClassLocal, "maxFPS", "I");
+    jfieldID widthField = env->GetFieldID(VideoCaptureAndroid::g_javaCaptureCapabilityClass, "width", "I");
+    jfieldID heigtField = env->GetFieldID(VideoCaptureAndroid::g_javaCaptureCapabilityClass, "height", "I");
+    jfieldID maxFpsField = env->GetFieldID(VideoCaptureAndroid::g_javaCaptureCapabilityClass, "maxFPS", "I");
     if (widthField == NULL || heigtField == NULL || maxFpsField == NULL)
     {
         VideoCaptureAndroid::ReleaseAndroidDeviceInfoObjects(attached);
@@ -278,7 +263,7 @@ WebRtc_Word32 DeviceInfoAndroid::CreateCapabilityMap(
         cap->expectedCaptureDelay = _expectedCaptureDelay;
         cap->rawType = kVideoNV21;
         cap->maxFPS = env->GetIntField(capabilityElement, maxFpsField);
-        WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceVideoCapture, _id,
+        WEBRTC_TRACE(webrtc::kTraceInfo, webrtc::kTraceVideoCapture, _id,
                      "%s: Cap width %d, height %d, fps %d", __FUNCTION__,
                      cap->width, cap->height, cap->maxFPS);
         _captureCapabilities.Insert(i, cap);
@@ -306,21 +291,18 @@ WebRtc_Word32 DeviceInfoAndroid::GetOrientation(
                  "%s", __FUNCTION__);
 
     JNIEnv *env;
-    jclass javaCmDevInfoClass;
-    jobject javaCmDevInfoObject;
     WebRtc_Word32 result = 0;
     bool attached = false;
     if (VideoCaptureAndroid::AttachAndUseAndroidDeviceInfoObjects(
                                                               env,
-                                                              javaCmDevInfoClass,
-                                                              javaCmDevInfoObject,
                                                               attached) != 0)
     {
         return -1;
     }
 
     // get the method ID for the Android Java GetOrientation .
-    jmethodID cid = env->GetMethodID(javaCmDevInfoClass, "GetOrientation",
+    jmethodID cid = env->GetMethodID(VideoCaptureAndroid::g_javaVideoCaptureDeviceInfoClass, 
+				     "GetOrientation",
                                      "(Ljava/lang/String;)I");
     if (cid == NULL)
     {
@@ -340,7 +322,7 @@ WebRtc_Word32 DeviceInfoAndroid::GetOrientation(
         return -1;
     }
     // Call the java class and get the orientation.
-    jint jorientation = env->CallIntMethod(javaCmDevInfoObject, cid,
+    jint jorientation = env->CallIntMethod(VideoCaptureAndroid::g_javaCmDevInfoObject, cid,
                                            capureIdString);
     VideoCaptureAndroid::ReleaseAndroidDeviceInfoObjects(attached);
 

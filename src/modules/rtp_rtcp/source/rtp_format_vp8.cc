@@ -418,8 +418,21 @@ int RtpFormatVp8::WriteTIDAndKeyIdxFields(WebRtc_UWord8* x_field,
   *data_field = 0;
   if (TIDFieldPresent()) {
     *x_field |= kTBit;
-    assert(hdr_info_.temporalIdx >= 0 && hdr_info_.temporalIdx <= 3);
-    *data_field |= hdr_info_.temporalIdx << 6;
+    //
+    // -CJ- 03/01/2012
+    //
+    // This should be cleanup
+    // assert is triggered with video encoding
+    // The initialization is done in the method ViEEncoder::DeliverFrame()
+    // [src/video_engine/vie_encoder.cc]
+    //
+    int temporalIdx = hdr_info_.temporalIdx;
+    if (temporalIdx < 0)
+      temporalIdx = 0;
+    if (temporalIdx > 3)
+      temporalIdx = 3;
+    // assert(hdr_info_.temporalIdx >= 0 && hdr_info_.temporalIdx <= 3);
+    *data_field |= temporalIdx << 6;
     *data_field |= hdr_info_.layerSync ? kYBit : 0;
   }
   if (KeyIdxFieldPresent()) {

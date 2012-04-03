@@ -21,6 +21,36 @@
 #include <linux/unistd.h>
 #include <sys/prctl.h>
 #endif
+#ifdef WEBRTC_ANDROID
+/*
+  Imported from bionic/libc/include/sched.h
+*/
+#define CPU_SETSIZE   32
+
+#define __CPU_BITTYPE    unsigned long int  /* mandated by the kernel  */
+#define __CPU_BITSHIFT   5                  /* should be log2(BITTYPE) */
+#define __CPU_BITS       (1 << __CPU_BITSHIFT)
+#define __CPU_ELT(x)     ((x) >> __CPU_BITSHIFT)
+#define __CPU_MASK(x)    ((__CPU_BITTYPE)1 << ((x) & (__CPU_BITS-1)))
+
+typedef struct {
+    __CPU_BITTYPE  __bits[ CPU_SETSIZE / __CPU_BITS ];
+} cpu_set_t;
+
+#  if CPU_SETSIZE == __CPU_BITS
+#    define CPU_ZERO(set_)   \
+      do { \
+          (set_)->__bits[0] = 0; \
+      } while(0)
+
+#    define CPU_SET(cpu_,set_) \
+      do {\
+        size_t __cpu = (cpu_); \
+        if (__cpu < CPU_SETSIZE) \
+            (set_)->__bits[0] |= __CPU_MASK(__cpu); \
+      } while (0)
+#  endif
+#endif
 
 #if defined(WEBRTC_MAC)
 #include <mach/mach.h>
@@ -193,7 +223,7 @@ bool ThreadPosix::Start(unsigned int& /*threadID*/)
     return true;
 }
 
-#if (defined(WEBRTC_LINUX) || defined(WEBRTC_ANDROID))
+#if (defined(WEBRTC_LINUX) && defined(WEBRTC_ANDROID))
 bool ThreadPosix::SetAffinity(const int* processorNumbers,
                               const unsigned int amountOfProcessors) {
   if (!processorNumbers || (amountOfProcessors == 0)) {

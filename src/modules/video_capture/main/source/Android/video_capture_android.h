@@ -15,7 +15,12 @@
 #include "device_info_android.h"
 #include "video_capture_impl.h"
 
-#define AndroidJavaCaptureClass "org/webrtc/videoengine/VideoCaptureAndroid"
+//
+// -CJ- 03042012
+//
+// Use global variables initialized by VideoCaptureAndroid::SetAndroidObjects()
+// to access Java classes and objects
+//
 
 namespace webrtc
 {
@@ -26,8 +31,6 @@ class VideoCaptureAndroid: public VideoCaptureImpl
 public:
     static WebRtc_Word32 SetAndroidObjects(void* javaVM, void* javaContext);
     static WebRtc_Word32 AttachAndUseAndroidDeviceInfoObjects(JNIEnv*& env,
-                                                 jclass& javaCmDevInfoClass,
-                                                 jobject& javaCmDevInfoObject,
                                                  bool& attached);
     static WebRtc_Word32 ReleaseAndroidDeviceInfoObjects(bool attached);
 
@@ -54,8 +57,10 @@ protected:
     bool _captureStarted;
 
     static JavaVM* g_jvm;
-    static jclass g_javaCmClass;
-    static jclass g_javaCmDevInfoClass;
+ public:
+    static jclass g_javaVideoCaptureClass;
+    static jclass g_javaVideoCaptureDeviceInfoClass;
+    static jclass g_javaCaptureCapabilityClass;
     static jobject g_javaCmDevInfoObject; //Static java object implementing the needed device info functions;
     static jobject g_javaContext; // Java Application context
 };

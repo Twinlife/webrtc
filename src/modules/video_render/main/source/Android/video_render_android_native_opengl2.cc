@@ -22,6 +22,13 @@
 #include "trace.h"
 #endif
 
+//
+// -CJ- 03042012
+//
+// Add member _javaRenderGLClass in AndroidNativeOpenGl2Channel
+// Remove member _javaRenderClass from AndroidNativeOpenGl2Renderer
+//
+
 namespace webrtc {
 
 AndroidNativeOpenGl2Renderer::AndroidNativeOpenGl2Renderer(
@@ -30,8 +37,7 @@ AndroidNativeOpenGl2Renderer::AndroidNativeOpenGl2Renderer(
                                                                    void* window,
                                                                    const bool fullscreen) :
     VideoRenderAndroid(id, videoRenderType, window, fullscreen),
-    _javaRenderObj(NULL),
-    _javaRenderClass(NULL)
+    _javaRenderObj(NULL)
 {
 }
 
@@ -65,19 +71,8 @@ bool AndroidNativeOpenGl2Renderer::UseOpenGL2(void* window)
         isAttached = true;
     }
 
-    // get the renderer class
-    jclass javaRenderClassLocal =
-            env->FindClass("org/webrtc/videoengine/ViEAndroidGLES20");
-    if (!javaRenderClassLocal)
-    {
-        WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, -1,
-                     "%s: could not find ViEAndroidRenderer class",
-                     __FUNCTION__);
-        return false;
-    }
-
     // get the method ID for UseOpenGL
-    jmethodID cidUseOpenGL = env->GetStaticMethodID(javaRenderClassLocal,
+    jmethodID cidUseOpenGL = env->GetStaticMethodID(g_javaRenderGLClass,
                                                     "UseOpenGL2",
                                                     "(Ljava/lang/Object;)Z");
     if (cidUseOpenGL == NULL)
@@ -86,7 +81,7 @@ bool AndroidNativeOpenGl2Renderer::UseOpenGL2(void* window)
                      "%s: could not get UseOpenGL ID", __FUNCTION__);
         return false;
     }
-    jboolean res = env->CallStaticBooleanMethod(javaRenderClassLocal,
+    jboolean res = env->CallStaticBooleanMethod(g_javaRenderGLClass,
                                                 cidUseOpenGL, (jobject) window);
 
     // Detach this thread if it was attached
@@ -131,7 +126,6 @@ AndroidNativeOpenGl2Renderer::~AndroidNativeOpenGl2Renderer()
         }
 
         env->DeleteGlobalRef(_javaRenderObj);
-        env->DeleteGlobalRef(_javaRenderClass);
 
         if (isAttached)
         {
@@ -181,30 +175,6 @@ WebRtc_Word32 AndroidNativeOpenGl2Renderer::Init()
         isAttached = true;
     }
 
-    // get the ViEAndroidGLES20 class
-    jclass javaRenderClassLocal =
-            env->FindClass("org/webrtc/videoengine/ViEAndroidGLES20");
-    if (!javaRenderClassLocal)
-    {
-        WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, _id,
-                     "%s: could not find ViEAndroidGLES20", __FUNCTION__);
-        return -1;
-    }
-
-    // create a global reference to the class (to tell JNI that we are referencing it after this function has returned)
-    _javaRenderClass
-            = reinterpret_cast<jclass> (env->NewGlobalRef(javaRenderClassLocal));
-    if (!_javaRenderClass)
-    {
-        WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, _id,
-                     "%s: could not create Java SurfaceHolder class reference",
-                     __FUNCTION__);
-        return -1;
-    }
-
-    // Delete local class ref, we only use the global ref
-    env->DeleteLocalRef(javaRenderClassLocal);
-
     // create a reference to the object (to tell JNI that we are referencing it
     // after this function has returned)
     _javaRenderObj = env->NewGlobalRef(_ptrWindow);
@@ -247,7 +217,7 @@ AndroidNativeOpenGl2Renderer::CreateAndroidRenderChannel(
     WEBRTC_TRACE(kTraceDebug, kTraceVideoRenderer, _id, "%s: Id %d",
                  __FUNCTION__, streamId);
     AndroidNativeOpenGl2Channel* stream =
-            new AndroidNativeOpenGl2Channel(streamId, g_jvm, renderer,
+      new AndroidNativeOpenGl2Channel(streamId, g_jvm, g_javaRenderGLClass, renderer,
                                                 _javaRenderObj);
     if (stream && stream->Init(zOrder, left, top, right, bottom) == 0)
         return stream;
@@ -259,11 +229,12 @@ AndroidNativeOpenGl2Renderer::CreateAndroidRenderChannel(
 }
 
 AndroidNativeOpenGl2Channel::AndroidNativeOpenGl2Channel(WebRtc_UWord32 streamId,
-                                                                 JavaVM* jvm,
-                                                                 VideoRenderAndroid& renderer,jobject javaRenderObj):
+                                                         JavaVM* jvm,
+							 jclass javaRenderGLClass,
+                                                         VideoRenderAndroid& renderer,jobject javaRenderObj):
     _id(streamId),
     _renderCritSect(*CriticalSectionWrapper::CreateCriticalSection()),
-    _renderer(renderer), _jvm(jvm), _javaRenderObj(javaRenderObj),
+    _renderer(renderer), _jvm(jvm), _javaRenderGLClass(javaRenderGLClass), _javaRenderObj(javaRenderObj),
     _registerNativeCID(NULL), _deRegisterNativeCID(NULL),
     _openGLRenderer(streamId)
 {
@@ -350,17 +321,8 @@ WebRtc_Word32 AndroidNativeOpenGl2Channel::Init(WebRtc_Word32 zOrder,
         isAttached = true;
     }
 
-    jclass javaRenderClass =
-            env->FindClass("org/webrtc/videoengine/ViEAndroidGLES20");
-    if (!javaRenderClass)
-    {
-        WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, _id,
-                     "%s: could not find ViESurfaceRenderer", __FUNCTION__);
-        return -1;
-    }
-
     // get the method ID for the ReDraw function
-    _redrawCid = env->GetMethodID(javaRenderClass, "ReDraw", "()V");
+    _redrawCid = env->GetMethodID(_javaRenderGLClass, "ReDraw", "()V");
     if (_redrawCid == NULL)
     {
         WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, _id,
@@ -368,7 +330,7 @@ WebRtc_Word32 AndroidNativeOpenGl2Channel::Init(WebRtc_Word32 zOrder,
         return -1;
     }
 
-    _registerNativeCID = env->GetMethodID(javaRenderClass,
+    _registerNativeCID = env->GetMethodID(_javaRenderGLClass,
                                           "RegisterNativeObject", "(J)V");
     if (_registerNativeCID == NULL)
     {
@@ -377,7 +339,7 @@ WebRtc_Word32 AndroidNativeOpenGl2Channel::Init(WebRtc_Word32 zOrder,
         return -1;
     }
 
-    _deRegisterNativeCID = env->GetMethodID(javaRenderClass,
+    _deRegisterNativeCID = env->GetMethodID(_javaRenderGLClass,
                                             "DeRegisterNativeObject", "()V");
     if (_deRegisterNativeCID == NULL)
     {
@@ -395,7 +357,7 @@ WebRtc_Word32 AndroidNativeOpenGl2Channel::Init(WebRtc_Word32 zOrder,
                     "CreateOpenGLNative",
                     "(JII)I",
                     (void*) &AndroidNativeOpenGl2Channel::CreateOpenGLNativeStatic };
-    if (env->RegisterNatives(javaRenderClass, nativeFunctions, 2) == 0)
+    if (env->RegisterNatives(_javaRenderGLClass, nativeFunctions, 2) == 0)
     {
         WEBRTC_TRACE(kTraceDebug, kTraceVideoRenderer, -1,
                      "%s: Registered native functions", __FUNCTION__);

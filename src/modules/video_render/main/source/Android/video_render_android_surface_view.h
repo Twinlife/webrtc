@@ -17,6 +17,12 @@
 
 #include "video_render_android_impl.h"
 
+//
+// -CJ- 03042012
+//
+// Add _javaRenderClass member to AndroidSurfaceViewChannel class
+//
+
 namespace webrtc {
 class CriticalSectionWrapper;
 
@@ -26,9 +32,10 @@ class AndroidSurfaceViewChannel: public AndroidStream
 
 public:
     AndroidSurfaceViewChannel(WebRtc_UWord32 streamId,
-                                  JavaVM* jvm,
-                                  VideoRenderAndroid& renderer,
-                                  jobject javaRenderObj);
+                              JavaVM* jvm,
+			      jclass javaRenderClass,
+			      VideoRenderAndroid& renderer,
+			      jobject javaRenderObj);
     ~AndroidSurfaceViewChannel();
 
     WebRtc_Word32 Init(WebRtc_Word32 zOrder,
@@ -51,6 +58,7 @@ private:
     VideoFrame _bufferToRender;
     VideoRenderAndroid& _renderer;
     JavaVM* _jvm;
+    jclass  _javaRenderClass;
     jobject _javaRenderObj;
 
 #ifdef ANDROID_NDK_8_OR_ABOVE
@@ -87,8 +95,6 @@ public:
                                                  VideoRenderAndroid& renderer);
 private:
     jobject _javaRenderObj;
-    jclass _javaRenderClass;
-
 };
 
 } //namespace webrtc

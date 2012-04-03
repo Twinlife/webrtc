@@ -18,7 +18,7 @@
 #elif defined(WEBRTC_MAC_INTEL)
 // Intentionally empty
 #elif defined(WEBRTC_ANDROID)
-// Not implemented yet, might be possible to use Linux implementation
+#include <sys/sysconf.h>
 #else // defined(WEBRTC_LINUX)
 #include <sys/sysinfo.h>
 #endif
@@ -42,6 +42,11 @@ WebRtc_UWord32 CpuInfo::DetectNumberOfCores()
 
 #elif defined(WEBRTC_LINUX) && !defined(WEBRTC_ANDROID)
         _numberOfCores = get_nprocs();
+        WEBRTC_TRACE(kTraceStateInfo, kTraceUtility, -1,
+                     "Available number of cores:%d", _numberOfCores);
+
+#elif defined(WEBRTC_ANDROID)
+        _numberOfCores = sysconf(_SC_NPROCESSORS_CONF);
         WEBRTC_TRACE(kTraceStateInfo, kTraceUtility, -1,
                      "Available number of cores:%d", _numberOfCores);
 
