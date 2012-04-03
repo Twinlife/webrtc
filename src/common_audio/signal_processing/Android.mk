@@ -60,6 +60,20 @@ LOCAL_C_INCLUDES := \
 ifeq ($(ARCH_ARM_HAVE_NEON),true)
 LOCAL_ARM_NEON := true
 LOCAL_SRC_FILES += \
+    cross_correlation_neon.s \
+    downsample_fast_neon.s \
+    min_max_operations_neon.s \
+    vector_scaling_operations_neon.s
+LOCAL_CFLAGS += \
+    $(MY_ARM_CFLAGS_NEON)
+else
+LOCAL_SRC_FILES += \
+    cross_correlation.c \
+    downsample_fast.c
+endif
+
+ifeq ($(ARCH_ARM_HAVE_ARMV7A),true)
+LOCAL_SRC_FILES += \
     filter_ar_fast_q12_armv7.s
 else
 LOCAL_SRC_FILES += \
