@@ -520,7 +520,7 @@ OutputMixer::GetMixedAudio(const WebRtc_Word32 desiredFreqHz,
                            AudioFrame& audioFrame)
 {
     WEBRTC_TRACE(kTraceStream, kTraceVoice, VoEId(_instanceId,-1),
-                 "OutputMixer::GetMixedAudio(desiredFreqHz=%d, channels=&d)",
+                 "OutputMixer::GetMixedAudio(desiredFreqHz=%d, channels=%d)",
                  desiredFreqHz, channels);
 
     audioFrame = _audioFrame;
