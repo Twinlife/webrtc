@@ -58,8 +58,7 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../.. \
     external/webrtc
 
-ifeq ($(ARCH_ARM_HAVE_NEON),true)
-LOCAL_ARM_NEON := true
+ifeq ($(ARCH_ARM_HAVE_ARMV7A),true)
 LOCAL_SRC_FILES += \
     filter_ar_fast_q12_armv7.S
 else

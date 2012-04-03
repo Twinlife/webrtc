@@ -15,6 +15,19 @@
 #include "voice_engine_impl.h"
 #include "trace.h"
 
+#ifdef WEBRTC_ANDROID
+extern "C"
+{
+extern WebRtc_Word32 SetAndroidAudioDeviceObjects(
+    void* javaVM, void* env, void* context);
+} // extern "C"
+#endif
+
+//
+// -CJ- 11012012
+// Add global variable gVoiceEngine to allocate only one VoiceEngine object
+//
+
 namespace webrtc
 {
 
@@ -24,12 +37,18 @@ namespace webrtc
 // improvement here.
 static WebRtc_Word32 gVoiceEngineInstanceCounter = 0;
 
+static VoiceEngine* gVoiceEngine = NULL;
+
 extern "C"
 {
 WEBRTC_DLLEXPORT VoiceEngine* GetVoiceEngine();
 
 VoiceEngine* GetVoiceEngine()
 {
+    if (gVoiceEngine != NULL)
+    {
+	return gVoiceEngine;
+    }
     VoiceEngineImpl* self = new VoiceEngineImpl();
     VoiceEngine* ve = reinterpret_cast<VoiceEngine*>(self);
     if (ve != NULL)
@@ -37,6 +56,7 @@ VoiceEngine* GetVoiceEngine()
         self->AddRef();  // First reference.  Released in VoiceEngine::Delete.
         gVoiceEngineInstanceCounter++;
     }
+    gVoiceEngine = ve;
     return ve;
 }
 } // extern "C"
