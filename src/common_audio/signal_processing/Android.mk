@@ -54,6 +54,7 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../.. 
 
 ifeq ($(ARCH_ARM_HAVE_NEON),true)
+LOCAL_ARM_NEON := true
 LOCAL_SRC_FILES += \
     cross_correlation_neon.s \
     downsample_fast_neon.s \
