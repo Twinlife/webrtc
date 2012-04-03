@@ -12,19 +12,33 @@ MY_WEBRTC_ROOT_PATH := $(call my-dir)
 include $(MY_WEBRTC_ROOT_PATH)/src/common_audio/resampler/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/common_audio/signal_processing/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/common_audio/vad/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/neteq/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/codecs/cng/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/codecs/g711/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/codecs/g722/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/codecs/pcm16b/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/codecs/ilbc/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/codecs/iSAC/fix/source/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/codecs/iSAC/main/source/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_coding/main/source/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_conference_mixer/source/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_device/main/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/aec/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/aecm/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/agc/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/ns/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/utility/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/bitrate_controller/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/media_file/source/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/rtp_rtcp/source/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/udp_transport/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/utility/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/system_wrappers/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/voice_engine/main/source/Android.mk
 
 # video
-include $(MY_WEBRTC_ROOT_PATH)/src/common_video/jpeg/main/source/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/common_video/jpeg/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/common_video/libyuv/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/video_capture/main/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/video_coding/codecs/i420/main/source/Android.mk
@@ -33,7 +47,6 @@ include $(MY_WEBRTC_ROOT_PATH)/src/modules/video_coding/main/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/video_processing/main/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/video_render/main/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/video_engine/Android.mk
->>>>>>> Port WebRTC extension to Android
 
 # build .so
 LOCAL_PATH := $(call my-dir)
@@ -79,8 +92,6 @@ ifndef NDK_ROOT
 include external/stlport/libstlport.mk
 endif
 include $(BUILD_SHARED_LIBRARY)
-<<<<<<< HEAD
-=======
 
 ###
 
@@ -104,6 +115,7 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
     libwebrtc_utility \
     libwebrtc_neteq \
     libwebrtc_audio_conference_mixer \
+    libwebrtc_bitrate_controller \
     libwebrtc_isac \
     libwebrtc_ilbc \
     libwebrtc_isacfix \
@@ -151,6 +163,3 @@ include $(BUILD_SHARED_LIBRARY)
 # video engine test apps
 #include $(MY_WEBRTC_ROOT_PATH)/src/video_engine/main/test/android_test/Android.mk
 #include $(MY_WEBRTC_ROOT_PATH)/src/video_engine/test/auto_test/android/Android.mk
-
-
->>>>>>> Port WebRTC extension to Android
