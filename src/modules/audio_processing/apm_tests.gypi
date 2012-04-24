@@ -30,8 +30,9 @@
         '<(webrtc_root)/../testing/gtest.gyp:gtest',
       ],
       'sources': [
-        'aec/system_delay_test.cc',
+        'aec/system_delay_unittest.cc',
         'test/unit_test.cc',
+        'utility/delay_estimator_unittest.cc',
       ],
     },
     {

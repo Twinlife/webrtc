@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+ *  Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -19,7 +19,7 @@
 #include <Ntddndis.h>
 #include <traffic.h>
 
-#include "atomic32_wrapper.h"
+#include "atomic32.h"
 #include "condition_variable_wrapper.h"
 #include "critical_section_wrapper.h"
 #include "event_wrapper.h"
@@ -129,8 +129,8 @@ private:
     UdpSocket2ManagerWindows* _mgr;
 
     CriticalSectionWrapper* _pCrit;
-    Atomic32Wrapper _outstandingCalls;
-    Atomic32Wrapper _outstandingCallComplete;
+    Atomic32 _outstandingCalls;
+    Atomic32 _outstandingCallComplete;
     volatile bool _terminate;
     volatile bool _addedToMgr;
 
@@ -139,7 +139,7 @@ private:
     bool _safeTodelete;
 
     RWLockWrapper* _ptrDestRWLock;
-    Atomic32Wrapper _outstandingCallsDisabled; // 0 = false, 1 = true
+    bool _outstandingCallsDisabled;
     bool NewOutstandingCall();
     void OutstandingCallCompleted();
     void DisableNewOutstandingCalls();
@@ -165,7 +165,7 @@ private:
     // Holds the current pcp value. Can be -2 or 0 - 7.
     int _pcp;
 
-    Atomic32Wrapper _receiveBuffers;
+    Atomic32 _receiveBuffers;
 };
 } // namespace webrtc
 #endif // WEBRTC_MODULES_UDP_TRANSPORT_SOURCE_UDP_SOCKET2_WINDOWS_H_

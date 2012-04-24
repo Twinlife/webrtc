@@ -82,7 +82,7 @@
         }],
         ['OS=="mac"', {
           'xcode_settings': {
-            'OTHER_CPLUSPLUSFLAGS': '-fno-strict-aliasing',
+            'OTHER_CPLUSPLUSFLAGS': [ '-fno-strict-aliasing' ],
           },
         }],
         ['OS=="win"', {
@@ -102,6 +102,7 @@
           'dependencies': [
             'udp_transport',
             '<(webrtc_root)/../testing/gtest.gyp:gtest',
+            '<(webrtc_root)/../testing/gmock.gyp:gmock',
             '<(webrtc_root)/../test/test.gyp:test_support_main',
           ],
           'sources': [
