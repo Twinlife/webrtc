@@ -59,10 +59,12 @@ void CreateRtpPacket(const bool marker_bit, const WebRtc_UWord8 payload,
 class TestTransport : public Transport,
                       public RtpData {
  public:
-  TestTransport(RTCPReceiver* rtcp_receiver) :
-    rtcp_receiver_(rtcp_receiver) {
+  TestTransport()
+      : rtcp_receiver_(NULL) {
   }
-
+  void SetRTCPReceiver(RTCPReceiver* rtcp_receiver) {
+    rtcp_receiver_ = rtcp_receiver;
+  }
   virtual int SendPacket(int /*ch*/, const void* /*data*/, int /*len*/) {
     return -1;
   }
@@ -83,8 +85,9 @@ class TestTransport : public Transport,
 
   virtual int OnReceivedPayloadData(const WebRtc_UWord8* payloadData,
                                     const WebRtc_UWord16 payloadSize,
-                                    const WebRtcRTPHeader* rtpHeader)
-                                    {return 0;}
+                                    const WebRtcRTPHeader* rtpHeader) {
+    return 0;
+  }
   RTCPReceiver* rtcp_receiver_;
   RTCPHelp::RTCPPacketInformation rtcp_packet_info_;
 };
@@ -93,14 +96,22 @@ class RtcpSenderTest : public ::testing::Test {
  protected:
   RtcpSenderTest() {
     system_clock_ = ModuleRTPUtility::GetSystemClock();
-    rtp_rtcp_impl_ = new ModuleRtpRtcpImpl(0, false, system_clock_);
+    test_transport_ = new TestTransport();
+
+    RtpRtcp::Configuration configuration;
+    configuration.id = 0;
+    configuration.audio = false;
+    configuration.clock = system_clock_;
+    configuration.incoming_data = test_transport_;
+    configuration.outgoing_transport = test_transport_;
+
+    rtp_rtcp_impl_ = new ModuleRtpRtcpImpl(configuration);
     rtcp_sender_ = new RTCPSender(0, false, system_clock_, rtp_rtcp_impl_);
     rtcp_receiver_ = new RTCPReceiver(0, system_clock_, rtp_rtcp_impl_);
-    test_transport_ = new TestTransport(rtcp_receiver_);
+    test_transport_->SetRTCPReceiver(rtcp_receiver_);
     // Initialize
     EXPECT_EQ(0, rtcp_sender_->Init());
     EXPECT_EQ(0, rtcp_sender_->RegisterSendTransport(test_transport_));
-    EXPECT_EQ(0, rtp_rtcp_impl_->RegisterIncomingDataCallback(test_transport_));
   }
   ~RtcpSenderTest() {
     delete rtcp_sender_;
@@ -108,6 +119,12 @@ class RtcpSenderTest : public ::testing::Test {
     delete rtp_rtcp_impl_;
     delete test_transport_;
     delete system_clock_;
+  }
+
+  // Helper function: Incoming RTCP has a specific packet type.
+  bool gotPacketType(RTCPPacketType packet_type) {
+    return ((test_transport_->rtcp_packet_info_.rtcpPacketTypeFlags) &
+            packet_type) != 0U;
   }
 
   RtpRtcpClock* system_clock_;
@@ -170,9 +187,49 @@ TEST_F(RtcpSenderTest, TestCompound_NoRtpReceived) {
       kRtcpTransmissionTimeOffset);
 }
 
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
+// This test is written to verify actual behaviour. It does not seem
+// to make much sense to send an empty TMMBN, since there is no place
+// to put an actual limit here. It's just information that no limit
+// is set, which is kind of the starting assumption.
+// See http://code.google.com/p/webrtc/issues/detail?id=468 for one
+// situation where this caused confusion.
+TEST_F(RtcpSenderTest, SendsTmmbnIfSetAndEmpty) {
+  EXPECT_EQ(0, rtcp_sender_->SetRTCPStatus(kRtcpCompound));
+  TMMBRSet bounding_set;
+  EXPECT_EQ(0, rtcp_sender_->SetTMMBN(&bounding_set, 3));
+  ASSERT_EQ(0U, test_transport_->rtcp_packet_info_.rtcpPacketTypeFlags);
+  EXPECT_EQ(0, rtcp_sender_->SendRTCP(kRtcpSr));
+  // We now expect the packet to show up in the rtcp_packet_info_ of
+  // test_transport_.
+  ASSERT_NE(0U, test_transport_->rtcp_packet_info_.rtcpPacketTypeFlags);
+  EXPECT_TRUE(gotPacketType(kRtcpTmmbn));
+  TMMBRSet* incoming_set = NULL;
+  bool owner = false;
+  // The BoundingSet function returns the number of members of the
+  // bounding set, and touches the incoming set only if there's > 1.
+  EXPECT_EQ(0, test_transport_->rtcp_receiver_->BoundingSet(owner,
+      incoming_set));
+}
 
-  return RUN_ALL_TESTS();
+TEST_F(RtcpSenderTest, SendsTmmbnIfSetAndValid) {
+  EXPECT_EQ(0, rtcp_sender_->SetRTCPStatus(kRtcpCompound));
+  TMMBRSet bounding_set;
+  bounding_set.VerifyAndAllocateSet(1);
+  const WebRtc_UWord32 kSourceSsrc = 12345;
+  bounding_set.AddEntry(32768, 0, kSourceSsrc);
+
+  EXPECT_EQ(0, rtcp_sender_->SetTMMBN(&bounding_set, 3));
+  ASSERT_EQ(0U, test_transport_->rtcp_packet_info_.rtcpPacketTypeFlags);
+  EXPECT_EQ(0, rtcp_sender_->SendRTCP(kRtcpSr));
+  // We now expect the packet to show up in the rtcp_packet_info_ of
+  // test_transport_.
+  ASSERT_NE(0U, test_transport_->rtcp_packet_info_.rtcpPacketTypeFlags);
+  EXPECT_TRUE(gotPacketType(kRtcpTmmbn));
+  TMMBRSet incoming_set;
+  bool owner = false;
+  // We expect 1 member of the incoming set.
+  EXPECT_EQ(1, test_transport_->rtcp_receiver_->BoundingSet(owner,
+      &incoming_set));
+  EXPECT_EQ(kSourceSsrc, incoming_set.Ssrc(0));
 }
 }  // namespace webrtc

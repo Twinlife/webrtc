@@ -18,6 +18,13 @@
 #include "voe_errors.h"
 #include "voice_engine_impl.h"
 
+// TODO(andrew): move to a common place.
+#define WEBRTC_TRACE_VOICE_API()                                   \
+  do {                                                             \
+    WEBRTC_TRACE(kTraceApiCall, kTraceVoice,                       \
+                 VoEId(_shared->instance_id(), -1), __FUNCTION__); \
+  } while (0)
+
 namespace webrtc {
 
 #if defined(WEBRTC_ANDROID) || defined(MAC_IPHONE) || defined(MAC_IPHONE_SIM)
@@ -34,9 +41,8 @@ VoEAudioProcessing* VoEAudioProcessing::GetInterface(VoiceEngine* voiceEngine) {
     return NULL;
   }
   VoiceEngineImpl* s = reinterpret_cast<VoiceEngineImpl*>(voiceEngine);
-  VoEAudioProcessingImpl* d = s;
-  (*d)++;
-  return (d);
+  s->AddRef();
+  return s;
 #endif
 }
 
@@ -50,21 +56,6 @@ VoEAudioProcessingImpl::VoEAudioProcessingImpl(voe::SharedData* shared)
 VoEAudioProcessingImpl::~VoEAudioProcessingImpl() {
   WEBRTC_TRACE(kTraceMemory, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "VoEAudioProcessingImpl::~VoEAudioProcessingImpl() - dtor");
-}
-
-int VoEAudioProcessingImpl::Release() {
-  WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
-               "VoEAudioProcessing::Release()");
-  (*this)--;
-  int refCount = GetCount();
-  if (refCount < 0) {
-    Reset();  // reset reference counter to zero => OK to delete VE
-    _shared->SetLastError(VE_INTERFACE_NOT_FOUND, kTraceWarning);
-    return (-1);
-  }
-  WEBRTC_TRACE(kTraceStateInfo, kTraceVoice, VoEId(_shared->instance_id(), -1),
-               "VoEAudioProcessing reference counter = %d", refCount);
-  return (refCount);
 }
 
 int VoEAudioProcessingImpl::SetNsStatus(bool enable, NsModes mode) {
@@ -734,6 +725,25 @@ int VoEAudioProcessingImpl::GetAecmMode(AecmModes& mode, bool& enabledCNG) {
 #endif
 }
 
+int VoEAudioProcessingImpl::EnableHighPassFilter(bool enable) {
+  WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
+               "EnableHighPassFilter(%d)", enable);
+  if (_shared->audio_processing()->high_pass_filter()->Enable(enable) !=
+      AudioProcessing::kNoError) {
+    _shared->SetLastError(VE_APM_ERROR, kTraceError,
+        "HighPassFilter::Enable() failed.");
+    return -1;
+  }
+
+  return 0;
+}
+
+bool VoEAudioProcessingImpl::IsHighPassFilterEnabled() {
+  WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
+               "IsHighPassFilterEnabled()");
+  return _shared->audio_processing()->high_pass_filter()->is_enabled();
+}
+
 int VoEAudioProcessingImpl::RegisterRxVadObserver(
   int channel,
   VoERxVadCallback& observer) {
@@ -1067,7 +1077,8 @@ int VoEAudioProcessingImpl::TimeSinceLastTyping(int &seconds) {
 int VoEAudioProcessingImpl::SetTypingDetectionParameters(int timeWindow,
                                                          int costPerTyping,
                                                          int reportingThreshold,
-                                                         int penaltyDecay) {
+                                                         int penaltyDecay,
+                                                         int typeEventDelay) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "SetTypingDetectionParameters()");
   ANDROID_NOT_SUPPORTED(_shared->statistics());
@@ -1079,7 +1090,7 @@ int VoEAudioProcessingImpl::SetTypingDetectionParameters(int timeWindow,
     return -1;
   }
   return (_shared->transmit_mixer()->SetTypingDetectionParameters(timeWindow,
-      costPerTyping, reportingThreshold, penaltyDecay));
+      costPerTyping, reportingThreshold, penaltyDecay, typeEventDelay));
 
 #else
   _shared->statistics().SetLastError(VE_FUNC_NOT_SUPPORTED, kTraceError,
@@ -1087,6 +1098,17 @@ int VoEAudioProcessingImpl::SetTypingDetectionParameters(int timeWindow,
   return -1;
 #endif
 
+}
+
+void VoEAudioProcessingImpl::EnableStereoChannelSwapping(bool enable) {
+  WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
+               "EnableStereoChannelSwapping(enable=%d)", enable);
+  _shared->transmit_mixer()->EnableStereoChannelSwapping(enable);
+}
+
+bool VoEAudioProcessingImpl::IsStereoChannelSwappingEnabled() {
+  WEBRTC_TRACE_VOICE_API();
+  return _shared->transmit_mixer()->IsStereoChannelSwappingEnabled();
 }
 
 

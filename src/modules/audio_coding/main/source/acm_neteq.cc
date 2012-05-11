@@ -59,48 +59,23 @@ _callbackCritSect(CriticalSectionWrapper::CreateCriticalSection())
     }
 }
 
-ACMNetEQ::~ACMNetEQ()
-{
-    {
-        CriticalSectionScoped lock(*_netEqCritSect);
-        for(WebRtc_Word16 idx = 0; idx < _numSlaves + 1; idx++)
-        {
-            if (_instMem[idx] != NULL)
-            {
-                free(_instMem[idx]);
-                _instMem[idx] = NULL;
-            }
-            if (_netEqPacketBuffer[idx] != NULL)
-            {
-                free(_netEqPacketBuffer[idx]);
-                _netEqPacketBuffer[idx] = NULL;
-            }
-            if(_ptrVADInst[idx] != NULL)
-            {
-                WebRtcVad_Free(_ptrVADInst[idx]);
-                _ptrVADInst[idx] = NULL;
-            }
-        }
-        if(_masterSlaveInfo != NULL)
-        {
-            free(_masterSlaveInfo);
-            _masterSlaveInfo = NULL;
-        }
-    }
-    if(_netEqCritSect != NULL)
-    {
-        delete _netEqCritSect;
-    }
+ACMNetEQ::~ACMNetEQ() {
+  {
+    CriticalSectionScoped lock(*_netEqCritSect);
+    RemoveNetEQSafe(0);  // Master.
+    RemoveSlavesSafe();
+  }
+  if (_netEqCritSect != NULL) {
+    delete _netEqCritSect;
+  }
 
-    if(_decodeLock != NULL)
-    {
-        delete _decodeLock;
-    }
+  if (_decodeLock != NULL) {
+    delete _decodeLock;
+  }
 
-    if(_callbackCritSect != NULL)
-    {
-        delete _callbackCritSect;
-    }
+  if (_callbackCritSect != NULL) {
+    delete _callbackCritSect;
+  }
 }
 
 WebRtc_Word32
@@ -611,7 +586,7 @@ ACMNetEQ::RecOut(
         }
         {
             WriteLockScoped lockCodec(*_decodeLock);
-            if(WebRtcNetEQ_RecOut(_inst[0], &(audioFrame._payloadData[0]),
+            if(WebRtcNetEQ_RecOut(_inst[0], &(audioFrame.data_[0]),
                 &payloadLenSample) != 0)
             {
                 LogError("RecOut", 0);
@@ -629,7 +604,7 @@ ACMNetEQ::RecOut(
             }
         }
         WebRtcNetEQ_GetSpeechOutputType(_inst[0], &type);
-        audioFrame._audioChannel = 1;
+        audioFrame.num_channels_ = 1;
     }
     else
     {
@@ -692,10 +667,10 @@ audio by Master (%d samples) and Slave (%d samples).",
 
         for(WebRtc_Word16 n = 0; n < payloadLenSample; n++)
         {
-            audioFrame._payloadData[n<<1]     = payloadMaster[n];
-            audioFrame._payloadData[(n<<1)+1] = payloadSlave[n];
+            audioFrame.data_[n<<1]     = payloadMaster[n];
+            audioFrame.data_[(n<<1)+1] = payloadSlave[n];
         }
-        audioFrame._audioChannel = 2;
+        audioFrame.num_channels_ = 2;
 
         WebRtcNetEQ_GetSpeechOutputType(_inst[0], &typeMaster);
         WebRtcNetEQ_GetSpeechOutputType(_inst[1], &typeSlave);
@@ -710,58 +685,58 @@ audio by Master (%d samples) and Slave (%d samples).",
         }
     }
 
-    audioFrame._payloadDataLengthInSamples = static_cast<WebRtc_UWord16>(payloadLenSample);
+    audioFrame.samples_per_channel_ = static_cast<WebRtc_UWord16>(payloadLenSample);
     // NetEq always returns 10 ms of audio.
-    _currentSampFreqKHz = static_cast<float>(audioFrame._payloadDataLengthInSamples) / 10.0f;
-    audioFrame._frequencyInHz = audioFrame._payloadDataLengthInSamples * 100;
+    _currentSampFreqKHz = static_cast<float>(audioFrame.samples_per_channel_) / 10.0f;
+    audioFrame.sample_rate_hz_ = audioFrame.samples_per_channel_ * 100;
     if(_vadStatus)
     {
         if(type == kOutputVADPassive)
         {
-            audioFrame._vadActivity = AudioFrame::kVadPassive;
-            audioFrame._speechType = AudioFrame::kNormalSpeech;
+            audioFrame.vad_activity_ = AudioFrame::kVadPassive;
+            audioFrame.speech_type_ = AudioFrame::kNormalSpeech;
         }
         else if(type == kOutputNormal)
         {
-            audioFrame._vadActivity = AudioFrame::kVadActive;
-            audioFrame._speechType = AudioFrame::kNormalSpeech;
+            audioFrame.vad_activity_ = AudioFrame::kVadActive;
+            audioFrame.speech_type_ = AudioFrame::kNormalSpeech;
         }
         else if(type == kOutputPLC)
         {
-            audioFrame._vadActivity = _previousAudioActivity;
-            audioFrame._speechType  = AudioFrame::kPLC;
+            audioFrame.vad_activity_ = _previousAudioActivity;
+            audioFrame.speech_type_  = AudioFrame::kPLC;
         }
         else if(type == kOutputCNG)
         {
-            audioFrame._vadActivity = AudioFrame::kVadPassive;
-            audioFrame._speechType  = AudioFrame::kCNG;
+            audioFrame.vad_activity_ = AudioFrame::kVadPassive;
+            audioFrame.speech_type_  = AudioFrame::kCNG;
         }
         else
         {
-            audioFrame._vadActivity = AudioFrame::kVadPassive;
-            audioFrame._speechType  = AudioFrame::kPLCCNG;
+            audioFrame.vad_activity_ = AudioFrame::kVadPassive;
+            audioFrame.speech_type_  = AudioFrame::kPLCCNG;
         }
     }
     else
     {
         // Always return kVadUnknown when receive VAD is inactive
-        audioFrame._vadActivity = AudioFrame::kVadUnknown;
+        audioFrame.vad_activity_ = AudioFrame::kVadUnknown;
 
         if(type == kOutputNormal)
         {
-            audioFrame._speechType  = AudioFrame::kNormalSpeech;
+            audioFrame.speech_type_  = AudioFrame::kNormalSpeech;
         }
         else if(type == kOutputPLC)
         {
-            audioFrame._speechType  = AudioFrame::kPLC;
+            audioFrame.speech_type_  = AudioFrame::kPLC;
         }
         else if(type == kOutputPLCtoCNG)
         {
-            audioFrame._speechType  = AudioFrame::kPLCCNG;
+            audioFrame.speech_type_  = AudioFrame::kPLCCNG;
         }
         else if(type == kOutputCNG)
         {
-            audioFrame._speechType  = AudioFrame::kCNG;
+            audioFrame.speech_type_  = AudioFrame::kCNG;
         }
         else
         {
@@ -769,11 +744,11 @@ audio by Master (%d samples) and Slave (%d samples).",
             // we don't expect to get if _vadStatus is false
             WEBRTC_TRACE(webrtc::kTraceWarning, webrtc::kTraceAudioCoding, _id,
                 "RecOut: NetEq returned kVadPassive while _vadStatus is false.");
-            audioFrame._vadActivity = AudioFrame::kVadUnknown;
-            audioFrame._speechType  = AudioFrame::kNormalSpeech;
+            audioFrame.vad_activity_ = AudioFrame::kVadUnknown;
+            audioFrame.speech_type_  = AudioFrame::kNormalSpeech;
         }
     }
-    _previousAudioActivity = audioFrame._vadActivity;
+    _previousAudioActivity = audioFrame.vad_activity_;
 
     return 0;
 }
@@ -1144,6 +1119,38 @@ ACMNetEQ::PlayoutTimestamp(
     {
         return 0;
     }
+}
+
+void ACMNetEQ::RemoveSlaves() {
+  CriticalSectionScoped lock(*_netEqCritSect);
+  RemoveSlavesSafe();
+}
+
+void ACMNetEQ::RemoveSlavesSafe() {
+  for (int i = 1; i < _numSlaves + 1; i++) {
+    RemoveNetEQSafe(i);
+  }
+
+  if (_masterSlaveInfo != NULL) {
+    free(_masterSlaveInfo);
+    _masterSlaveInfo = NULL;
+  }
+  _numSlaves = 0;
+}
+
+void ACMNetEQ::RemoveNetEQSafe(int index) {
+  if (_instMem[index] != NULL) {
+    free(_instMem[index]);
+    _instMem[index] = NULL;
+  }
+  if (_netEqPacketBuffer[index] != NULL) {
+    free(_netEqPacketBuffer[index]);
+    _netEqPacketBuffer[index] = NULL;
+  }
+  if (_ptrVADInst[index] != NULL) {
+    WebRtcVad_Free(_ptrVADInst[index]);
+    _ptrVADInst[index] = NULL;
+  }
 }
 
 WebRtc_Word16

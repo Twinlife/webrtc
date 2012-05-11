@@ -3,11 +3,11 @@ vars = {
   # If you do not know, use the full path while defining your new deps entry.
   "googlecode_url": "http://%s.googlecode.com/svn",
   "chromium_trunk" : "http://src.chromium.org/svn/trunk",
-  "chromium_revision": "122775",
+  "chromium_revision": "134666",
 
   # External resources like video and audio files used for testing purposes.
   # Downloaded on demand when needed.
-  "webrtc_resources_revision": "8",
+  "webrtc_resources_revision": "9",
 }
 
 # NOTE: Prefer revision numbers to tags for svn deps. Use http rather than
@@ -34,10 +34,6 @@ deps = {
   "trunk/third_party/google-gflags/src":
     (Var("googlecode_url") % "google-gflags") + "/trunk/src@45",
 
-  # Used by tools/quality_tracking/dashboard and tools/python_charts.
-  "trunk/third_party/google-visualization-python":
-    (Var("googlecode_url") % "google-visualization-python") + "/trunk@15",
-
   "trunk/third_party/libjpeg":
     Var("chromium_trunk") + "/src/third_party/libjpeg@" + Var("chromium_revision"),
 
@@ -45,10 +41,10 @@ deps = {
     From("trunk/chromium_deps", "src/third_party/libjpeg_turbo"),
 
   "trunk/third_party/libvpx/source/libvpx":
-    "http://git.chromium.org/webm/libvpx.git@6b66c01c",
+    "http://git.chromium.org/webm/libvpx.git@dba05389",
 
   "trunk/third_party/libyuv":
-    (Var("googlecode_url") % "libyuv") + "/trunk@216",
+    (Var("googlecode_url") % "libyuv") + "/trunk@255",
 
   "trunk/third_party/protobuf":
     Var("chromium_trunk") + "/src/third_party/protobuf@" + Var("chromium_revision"),
@@ -79,7 +75,7 @@ deps = {
 deps_os = {
   "win": {
     "trunk/third_party/cygwin":
-      Var("chromium_trunk") + "/deps/third_party/cygwin@66844",
+      From("trunk/chromium_deps", "src/third_party/cygwin"),
 
     # Used by libjpeg-turbo.
     "trunk/third_party/yasm/binaries":
@@ -93,9 +89,8 @@ deps_os = {
 
 hooks = [
   {
-    # Create a supplement.gypi file under trunk/.  This file will be picked up
-    # by gyp and we use it to set Chromium related variables (inside_chromium_build)
-    # to 0 and enable the standalone build.
+    # Create a supplement.gypi file under trunk/src.  This file will be picked
+    # up by gyp and used to enable the standalone build.
     "pattern": ".",
     "action": ["python", "trunk/tools/create_supplement_gypi.py", "trunk/src/supplement.gypi"],
   },

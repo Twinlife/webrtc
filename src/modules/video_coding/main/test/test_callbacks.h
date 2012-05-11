@@ -155,9 +155,11 @@ class RTPSendCompleteCallback: public Transport
 {
 public:
     // Constructor input: (receive side) rtp module to send encoded data to
-    RTPSendCompleteCallback(RtpRtcp* rtp, TickTimeBase* clock,
+    RTPSendCompleteCallback(TickTimeBase* clock,
                             const char* filename = NULL);
     virtual ~RTPSendCompleteCallback();
+
+    void SetRtpModule(RtpRtcp* rtp_module) { _rtp = rtp_module; }
     // Send Packet to receive side RTP module
     virtual int SendPacket(int channel, const void *data, int len);
     // Send RTCP Packet to receive side RTP module
@@ -248,24 +250,5 @@ private:
     FecProtectionParams delta_fec_params_;
     FecProtectionParams key_fec_params_;
 };
-
-// Feed back from the RTP Module callback
-class RTPFeedbackCallback : public RtpVideoFeedback {
- public:
-  RTPFeedbackCallback(VideoCodingModule* vcm) {_vcm = vcm;};
-  void OnReceivedIntraFrameRequest(const WebRtc_Word32 id,
-                                   const FrameType type,
-                                   const WebRtc_UWord8 streamIdx) {};
-
-   void OnNetworkChanged(const WebRtc_Word32 id,
-                         const WebRtc_UWord32 bitrateBps,
-                         const WebRtc_UWord8 fractionLost,
-                         const WebRtc_UWord16 roundTripTimeMs);
-
- private:
-  VideoCodingModule* _vcm;
-};
-
 }  // namespace webrtc
-
 #endif

@@ -1,4 +1,4 @@
-# Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+# Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
 #
 # Use of this source code is governed by a BSD-style license
 # that can be found in the LICENSE file in the root of the source
@@ -23,7 +23,7 @@
       },
       'sources': [
         '../interface/aligned_malloc.h',
-        '../interface/atomic32_wrapper.h',
+        '../interface/atomic32.h',
         '../interface/compile_assert.h',
         '../interface/condition_variable_wrapper.h',
         '../interface/cpu_info.h',
@@ -48,10 +48,9 @@
         '../interface/tick_util.h',
         '../interface/trace.h',
         'aligned_malloc.cc',
-        'atomic32.cc',
-        'atomic32_linux.h',
-        'atomic32_mac.h',
-        'atomic32_win.h',
+        'atomic32_mac.cc',
+        'atomic32_posix.cc',
+        'atomic32_win.cc',
         'condition_variable.cc',
         'condition_variable_posix.cc',
         'condition_variable_posix.h',
@@ -110,6 +109,9 @@
         },{
           'sources!': [ 'data_log.cc', ],
         },],
+        ['OS=="android"', {
+          'dependencies': [ 'cpu_features_android', ],
+        }],
         ['OS=="linux"', {
           'link_settings': {
             'libraries': [ '-lrt', ],
@@ -119,6 +121,9 @@
           'link_settings': {
             'libraries': [ '$(SDKROOT)/System/Library/Frameworks/ApplicationServices.framework', ],
           },
+          'sources!': [
+            'atomic32_posix.cc',
+          ],
         }],
         ['OS=="win"', {
           'link_settings': {
@@ -148,6 +153,25 @@
     },
   ], # targets
   'conditions': [
+    ['OS=="android"', {
+      'targets': [
+        {
+          'variables': {
+            # Treat this as third-party code.
+            'chromium_code': 0,
+          },
+          'target_name': 'cpu_features_android',
+          'type': '<(library)',
+          'sources': [
+            'android/cpu-features.c',
+            'android/cpu-features.h',
+            # TODO(leozwang): Ideally we want to audomatically exclude .c files
+            # as with .cc files, gyp currently only excludes .cc files.
+            'cpu_features_android.c',
+          ],
+        },
+      ],
+    }],
     ['build_with_chromium==0', {
       'targets': [
         {

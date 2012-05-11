@@ -195,12 +195,11 @@ VCMDecodeCompleteCallback::DecodedBytes()
     return _decodedBytes;
 }
 
-RTPSendCompleteCallback::RTPSendCompleteCallback(RtpRtcp* rtp,
-                                                 TickTimeBase* clock,
+RTPSendCompleteCallback::RTPSendCompleteCallback(TickTimeBase* clock,
                                                  const char* filename):
     _clock(clock),
     _sendCount(0),
-    _rtp(rtp),
+    _rtp(NULL),
     _lossPct(0),
     _burstLength(0),
     _networkDelayMs(0),
@@ -282,6 +281,7 @@ RTPSendCompleteCallback::SendPacket(int channel, const void *data, int len)
         }
 
         _rtpPackets.pop_front();
+        assert(_rtp);  // We must have a configured RTP module for this test.
         // Send to receive side
         if (_rtp->IncomingPacket((const WebRtc_UWord8*)packet->data,
                                  packet->length) < 0)
@@ -456,16 +456,4 @@ FecProtectionParams VideoProtectionCallback::KeyFecParameters() const
 {
     return key_fec_params_;
 }
-
-void
-RTPFeedbackCallback::OnNetworkChanged(const WebRtc_Word32 id,
-                                      const WebRtc_UWord32 bitrateBps,
-                                      const WebRtc_UWord8 fractionLost,
-                                      const WebRtc_UWord16 roundTripTimeMs)
-{
-
-    _vcm->SetChannelParameters(bitrateBps / 1000, fractionLost,
-                               (WebRtc_UWord8)roundTripTimeMs);
-}
-
 }  // namespace webrtc

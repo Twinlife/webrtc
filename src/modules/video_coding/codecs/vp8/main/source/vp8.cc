@@ -268,6 +268,11 @@ int VP8Encoder::InitEncode(const VideoCodec* inst,
       cpu_speed_ = -6;
       break;
   }
+#ifdef WEBRTC_ANDROID
+  // On mobile platform, always set to -12 to leverage between cpu usage
+  // and video quality
+  cpu_speed_ = -12;
+#endif
   rps_->Init();
   return InitAndSetControlSettings(inst);
 }
@@ -613,6 +618,8 @@ int VP8Decoder::InitDecode(const VideoCodec* inst, int number_of_cores) {
   vpx_codec_flags_t flags = 0;
 #if WEBRTC_LIBVPX_VERSION >= 971
   flags = VPX_CODEC_USE_ERROR_CONCEALMENT | VPX_CODEC_USE_POSTPROC;
+  // TODO(pwestin) enable deblock with the next VP8 drop.
+  // | VP8_DEMACROBLOCK | VP8_DEBLOCK;
 #ifdef INDEPENDENT_PARTITIONS
   flags |= VPX_CODEC_USE_INPUT_PARTITION;
 #endif
