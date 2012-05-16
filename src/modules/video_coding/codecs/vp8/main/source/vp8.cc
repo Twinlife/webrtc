@@ -178,7 +178,7 @@ int VP8Encoder::InitEncode(const VideoCodec* inst,
   encoded_image_._buffer = new uint8_t[encoded_image_._size];
   encoded_image_._completeFrame = true;
 
-  vpx_img_alloc(raw_, IMG_FMT_I420, codec_.width, codec_.height, 1);
+  vpx_img_alloc(raw_, IMG_FMT_I420, codec_.width, codec_.height, 32);
   // populate encoder configuration with default values
   if (vpx_codec_enc_config_default(vpx_codec_vp8_cx(), config_, 0)) {
     return WEBRTC_VIDEO_CODEC_ERROR;
@@ -618,8 +618,6 @@ int VP8Decoder::InitDecode(const VideoCodec* inst, int number_of_cores) {
   vpx_codec_flags_t flags = 0;
 #if WEBRTC_LIBVPX_VERSION >= 971
   flags = VPX_CODEC_USE_ERROR_CONCEALMENT | VPX_CODEC_USE_POSTPROC;
-  // TODO(pwestin) enable deblock with the next VP8 drop.
-  // | VP8_DEMACROBLOCK | VP8_DEBLOCK;
 #ifdef INDEPENDENT_PARTITIONS
   flags |= VPX_CODEC_USE_INPUT_PARTITION;
 #endif
@@ -631,10 +629,9 @@ int VP8Decoder::InitDecode(const VideoCodec* inst, int number_of_cores) {
 
 #if WEBRTC_LIBVPX_VERSION >= 971
   vp8_postproc_cfg_t  ppcfg;
-  // Disable deblocking for now due to uninitialized memory being returned.
-  ppcfg.post_proc_flag = 0;
+  ppcfg.post_proc_flag = VP8_DEMACROBLOCK | VP8_DEBLOCK;
   // Strength of deblocking filter. Valid range:[0,16]
-  //ppcfg.deblocking_level = 3;
+  ppcfg.deblocking_level = 3;
   vpx_codec_control(decoder_, VP8_SET_POSTPROC, &ppcfg);
 #endif
 
@@ -679,7 +676,8 @@ int VP8Decoder::Decode(const EncodedImage& input_image,
     // header says.
     mfqe_enabled_ = true;
     vp8_postproc_cfg_t  ppcfg;
-    ppcfg.post_proc_flag = VP8_MFQE;
+    ppcfg.post_proc_flag = VP8_MFQE | VP8_DEMACROBLOCK | VP8_DEBLOCK;
+    ppcfg.deblocking_level = 3;
     vpx_codec_control(decoder_, VP8_SET_POSTPROC, &ppcfg);
   }
 #endif
@@ -972,7 +970,7 @@ VideoDecoder* VP8Decoder::Copy() {
 
     if (!vpx_img_alloc(&ref_frame_->img,
                        static_cast<vpx_img_fmt_t>(image_format_),
-                       decoded_image_._width, decoded_image_._height, 1)) {
+                       decoded_image_._width, decoded_image_._height, 32)) {
       assert(false);
       delete copy;
       return NULL;
