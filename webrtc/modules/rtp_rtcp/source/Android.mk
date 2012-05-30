@@ -19,23 +19,25 @@ LOCAL_CPP_EXTENSION := .cc
 LOCAL_GENERATED_SOURCES :=
 LOCAL_SRC_FILES := \
     bitrate.cc \
-    dtmf_queue.cc \
+    rtp_rtcp_impl.cc \
     rtcp_receiver.cc \
     rtcp_receiver_help.cc \
     rtcp_sender.cc \
     rtcp_utility.cc \
-    rtp_rtcp_impl.cc \
     rtp_receiver.cc \
     rtp_sender.cc \
     rtp_utility.cc \
     rtp_header_extension.cc \
     ssrc_database.cc \
     tmmbr_help.cc \
+    dtmf_queue.cc \
     rtp_receiver_audio.cc \
     rtp_sender_audio.cc \
+    bandwidth_management.cc \
     forward_error_correction.cc \
     forward_error_correction_internal.cc \
-    producer_fec.cc \
+    overuse_detector.cc \
+    remote_rate_control.cc \
     rtp_packet_history.cc \
     receiver_fec.cc \
     rtp_receiver_video.cc \
