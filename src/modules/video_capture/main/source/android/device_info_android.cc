@@ -66,7 +66,7 @@ WebRtc_UWord32 DeviceInfoAndroid::NumberOfDevices() {
   jint numberOfDevices = 0;
   if (cid != NULL) {
     WEBRTC_TRACE(webrtc::kTraceDebug, webrtc::kTraceVideoCapture, _id,
-                 "%s Calling Number of devices", __FUNCTION__);
+                 "%s Calling Number of devices env=%p javaCmDevInfoObject=%p cid=%p", __FUNCTION__, env, javaCmDevInfoObject, cid);
     numberOfDevices = env->CallIntMethod(javaCmDevInfoObject, cid);
   }
   VideoCaptureAndroid::ReleaseAndroidDeviceInfoObjects(attached);
@@ -171,16 +171,6 @@ WebRtc_Word32 DeviceInfoAndroid::CreateCapabilityMap(
           attached) != 0)
     return -1;
 
-  // Find the capability class
-  jclass javaCapClassLocal = env->FindClass(AndroidJavaCaptureCapabilityClass);
-  if (javaCapClassLocal == NULL) {
-    VideoCaptureAndroid::ReleaseAndroidDeviceInfoObjects(attached);
-    WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceVideoCapture, _id,
-                 "%s: Can't find java class VideoCaptureCapabilityAndroid.",
-                 __FUNCTION__);
-    return -1;
-  }
-
   // get the method ID for the Android Java GetCapabilityArray .
   char signature[256];
   sprintf(signature,
@@ -216,9 +206,10 @@ WebRtc_Word32 DeviceInfoAndroid::CreateCapabilityMap(
     return -1;
   }
 
-  jfieldID widthField = env->GetFieldID(javaCapClassLocal, "width", "I");
-  jfieldID heigtField = env->GetFieldID(javaCapClassLocal, "height", "I");
-  jfieldID maxFpsField = env->GetFieldID(javaCapClassLocal, "maxFPS", "I");
+  // -CJ- 30052012
+  jfieldID widthField = env->GetFieldID(VideoCaptureAndroid::g_javaCmCapabilityClass, "width", "I");
+  jfieldID heigtField = env->GetFieldID(VideoCaptureAndroid::g_javaCmCapabilityClass, "height", "I");
+  jfieldID maxFpsField = env->GetFieldID(VideoCaptureAndroid::g_javaCmCapabilityClass, "maxFPS", "I");
   if (widthField == NULL || heigtField == NULL || maxFpsField == NULL) {
     VideoCaptureAndroid::ReleaseAndroidDeviceInfoObjects(attached);
     WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceVideoCapture, _id,
@@ -240,7 +231,8 @@ WebRtc_Word32 DeviceInfoAndroid::CreateCapabilityMap(
     cap->expectedCaptureDelay = _expectedCaptureDelay;
     cap->rawType = kVideoNV21;
     cap->maxFPS = env->GetIntField(capabilityElement, maxFpsField);
-    WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceVideoCapture, _id,
+    // -CJ- 30052012
+    WEBRTC_TRACE(webrtc::kTraceInfo, webrtc::kTraceVideoCapture, _id,
                  "%s: Cap width %d, height %d, fps %d", __FUNCTION__,
                  cap->width, cap->height, cap->maxFPS);
     _captureCapabilities.Insert(i, cap);
