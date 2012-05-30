@@ -56,6 +56,10 @@ class VideoCaptureAndroid : public VideoCaptureImpl {
   static JavaVM* g_jvm;
   static jclass g_javaCmClass;
   static jclass g_javaCmDevInfoClass;
+  // -CJ- 30052012
+ public:
+  static jclass g_javaCmCapabilityClass;
+ protected:
   //Static java object implementing the needed device info functions;
   static jobject g_javaCmDevInfoObject;
   static jobject g_javaContext; // Java Application context
