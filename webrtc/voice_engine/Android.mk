@@ -26,7 +26,6 @@ LOCAL_SRC_FILES := \
     level_indicator.cc \
     monitor_module.cc \
     output_mixer.cc \
-    ref_count.cc \
     shared_data.cc \
     statistics.cc \
     transmit_mixer.cc \
@@ -48,9 +47,11 @@ LOCAL_SRC_FILES := \
     voice_engine_impl.cc
 
 # Flags passed to both C and C++ files.
+# -CJ- -Issue 0004- 30052012 
 LOCAL_CFLAGS := \
     $(MY_WEBRTC_COMMON_DEFS) \
-   '-DWEBRTC_ANDROID_OPENSLES'
+   '-DWEBRTC_ANDROID_OPENSLES' \
+   '-DWEBRTC_SVNREVISION="r2247"'
 
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../interface \
