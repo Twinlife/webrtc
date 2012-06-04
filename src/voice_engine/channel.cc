@@ -2340,7 +2340,7 @@ Channel::SetRecPayloadType(const CodecInst& codec)
 {
     WEBRTC_TRACE(kTraceInfo, kTraceVoice, VoEId(_instanceId,_channelId),
                  "Channel::SetRecPayloadType()");
-    /* -CJ- -Issue 0005- 30052012
+
     if (_playing)
     {
         _engineStatisticsPtr->SetLastError(
@@ -2354,8 +2354,8 @@ Channel::SetRecPayloadType(const CodecInst& codec)
             VE_ALREADY_LISTENING, kTraceError,
             "SetRecPayloadType() unable to set PT while listening");
         return -1;
-	} */
-    return 0;
+    }
+
     if (codec.pltype == -1)
     {
         // De-register the selected codec (RTP/RTCP module and ACM)
