@@ -10,9 +10,11 @@
 
 //TODO(hlundin): Reformat file to meet style guide.
 
+#include <assert.h>
+#include <stdio.h>
+
 /* header includes */
 #include "typedefs.h"
-#include "stdio.h"
 #include "webrtc_neteq.h"
 #include "webrtc_neteq_internal.h"
 #include "webrtc_neteq_help_macros.h"
@@ -559,8 +561,12 @@ int main(int argc, char* argv[])
 #ifdef NETEQ_DELAY_LOGGING
         temp_var = NETEQ_DELAY_LOGGING_SIGNAL_CLOCK;
         clock_float = (float) simClock;
-        fwrite(&temp_var,sizeof(int),1,delay_fid2);
-        fwrite(&clock_float, sizeof(float),1,delay_fid2);
+        if (fwrite(&temp_var, sizeof(int), 1, delay_fid2) != 1) {
+          return -1;
+        }
+        if (fwrite(&clock_float, sizeof(float), 1, delay_fid2) != 1) {
+          return -1;
+        }
 #endif
         /* time to set extra delay */
         if (extraDelay > -1 && simClock >= nextExtraDelayTime) {
@@ -655,7 +661,9 @@ int main(int argc, char* argv[])
             }
 
             // write to file
-            fwrite(out_data,writeLen,2,out_file);
+            if (fwrite(out_data, writeLen, 2, out_file) != 2) {
+              return -1;
+            }
             writtenSamples += writeLen;
 
 
@@ -676,8 +684,13 @@ int main(int argc, char* argv[])
 
 #ifdef NETEQ_DELAY_LOGGING
     temp_var = NETEQ_DELAY_LOGGING_SIGNAL_EOF;
-    fwrite(&temp_var,sizeof(int),1,delay_fid2);
-    fwrite(&tot_received_packets,sizeof(WebRtc_UWord32),1,delay_fid2);
+    if (fwrite(&temp_var, sizeof(int), 1, delay_fid2) != 1) {
+      return -1;
+    }
+    if (fwrite(&tot_received_packets, sizeof(WebRtc_UWord32),
+               1, delay_fid2) != 1) {
+      return -1;
+    }
     fprintf(delay_fid2,"End of file\n");
     fclose(delay_fid2);
 #endif

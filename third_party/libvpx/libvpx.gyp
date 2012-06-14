@@ -7,6 +7,21 @@
 # libvpx_include, libvpx_lib.
 # http://src.chromium.org/svn/trunk/deps/third_party/libvpx/libvpx.gyp
 {
+  # The target_defaults block is unique to the WebRTC libvpx.gyp.
+  'target_defaults': {
+    'conditions': [
+      ['OS=="mac"', {
+        'xcode_settings': {
+          'WARNING_CFLAGS': [
+            '-Wno-implicit-function-declaration',
+            # TODO(andrew): this one should be fixed upstream.
+            '-Wno-parentheses-equality',
+            '-Wno-conversion',
+          ],
+        },
+      }],
+    ],
+  },
   'variables': {
     'conditions': [
       ['os_posix==1', {
@@ -18,6 +33,28 @@
     ],
   },
   'conditions': [
+    # TODO(andrew): Hack to ensure we pass -msse2 to gcc on Linux for files
+    # containing SSE intrinsics. This should be handled in the gyp generator
+    # scripts somehow. Clang (default on Mac) doesn't require this.
+    ['target_arch=="ia32"', {
+      'targets' : [
+        {
+          'target_name': 'libvpx_sse2',
+          'type': 'static_library',
+          'include_dirs': [
+            'source/config/<(OS)/<(target_arch)',
+            'source/libvpx',
+            'source/libvpx/vp8/common',
+            'source/libvpx/vp8/decoder',
+            'source/libvpx/vp8/encoder',
+          ],
+          'sources': [
+            'source/libvpx/vp8/encoder/x86/denoising_sse2.c',
+          ],
+          'cflags': [ '-msse2', ],
+        },
+      ],
+    }],
     [ '(OS=="linux" or OS=="mac" or OS=="win") and target_arch!="arm"', {
       'targets': [
         {
@@ -52,6 +89,7 @@
               'includes': [
                 'libvpx_srcs_x86.gypi',
               ],
+              'dependencies': [ 'libvpx_sse2', ],
             }],
             [ 'target_arch=="x64"', {
               'includes': [

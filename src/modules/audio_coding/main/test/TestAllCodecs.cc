@@ -10,8 +10,9 @@
 
 #include "TestAllCodecs.h"
 
+#include <stdio.h>
 #include <cassert>
-#include <iostream>
+#include <string>
 
 #include "audio_coding_module_typedefs.h"
 #include "common_types.h"
@@ -141,7 +142,7 @@ TestAllCodecs::~TestAllCodecs()
 void TestAllCodecs::Perform()
 {
 
-    char file[] = "./test/data/audio_coding/testfile32kHz.pcm";
+    char file[] = "./data/audio_coding/testfile32kHz.pcm";
     _inFileA.Open(file, 32000, "rb");
 
     if(_testMode == 0)
@@ -659,11 +660,11 @@ void TestAllCodecs::Perform()
     _testCntr++;
     OpenOutFile(_testCntr);
     char codecCELT_32[] = "CELT";
-    RegisterSendCodec('A', codecCELT_32, 32000, 48000, 320, 0);
+    RegisterSendCodec('A', codecCELT_32, 32000, 48000, 640, 0);
     Run(_channelA2B);
-    RegisterSendCodec('A', codecCELT_32, 32000, 64000, 320, 0);
+    RegisterSendCodec('A', codecCELT_32, 32000, 64000, 640, 0);
     Run(_channelA2B);
-    RegisterSendCodec('A', codecCELT_32, 32000, 128000, 320, 0);
+    RegisterSendCodec('A', codecCELT_32, 32000, 128000, 640, 0);
     Run(_channelA2B);
     _outFileB.Close();
 #endif
@@ -784,7 +785,8 @@ WebRtc_Word16 TestAllCodecs::RegisterSendCodec(char side,
     CodecInst myCodecParam;
 
     // Get all codec paramters before registering
-    CHECK_ERROR(AudioCodingModule::Codec(codecName, myCodecParam, samplingFreqHz));
+    CHECK_ERROR(AudioCodingModule::Codec(codecName, myCodecParam,
+                                         samplingFreqHz, 1));
     myCodecParam.rate = rate;
     myCodecParam.pacsize = packSize;
     CHECK_ERROR(myACM->RegisterSendCodec(myCodecParam));

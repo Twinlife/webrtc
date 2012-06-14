@@ -32,9 +32,10 @@ using ModuleRTPUtility::VideoPayload;
 RTPReceiver::RTPReceiver(const WebRtc_Word32 id,
                          const bool audio,
                          RtpRtcpClock* clock,
+                         RemoteBitrateEstimator* remote_bitrate,
                          ModuleRtpRtcpImpl* owner) :
     RTPReceiverAudio(id),
-    RTPReceiverVideo(id, owner),
+    RTPReceiverVideo(id, remote_bitrate, owner),
     Bitrate(clock),
     _id(id),
     _audio(audio),
@@ -358,7 +359,8 @@ WebRtc_Word32 RTPReceiver::RegisterReceivePayload(
         if (payload->audio) {
           if (payload->typeSpecific.Audio.frequency == frequency &&
               (payload->typeSpecific.Audio.rate == rate ||
-                  payload->typeSpecific.Audio.rate == 0 || rate == 0)) {
+                  payload->typeSpecific.Audio.rate == 0 || rate == 0) &&
+                  payload->typeSpecific.Audio.channels == channels) {
             // remove old setting
             delete payload;
             _payloadTypeMap.erase(audio_it);
@@ -1082,7 +1084,6 @@ void RTPReceiver::CheckSSRCChanged(const WebRtcRTPHeader* rtpHeader) {
 
       // reset last report
       ResetStatistics();
-      RTPReceiverVideo::ResetOverUseDetector();
 
       _lastReceivedTimestamp      = 0;
       _lastReceivedSequenceNumber = 0;

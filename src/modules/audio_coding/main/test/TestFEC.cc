@@ -59,7 +59,7 @@ void TestFEC::Perform()
         WEBRTC_TRACE(kTraceStateInfo, kTraceAudioCoding, -1,
                      "---------- TestFEC ----------");
     }
-    char fileName[] = "./test/data/audio_coding/testfile32kHz.pcm";
+    char fileName[] = "./data/audio_coding/testfile32kHz.pcm";
     _inFileA.Open(fileName, 32000, "rb");
 
 
@@ -553,7 +553,8 @@ WebRtc_Word16 TestFEC::RegisterSendCodec(char side, char* codecName, WebRtc_Word
     }
     CodecInst myCodecParam;
 
-    CHECK_ERROR(AudioCodingModule::Codec(codecName, myCodecParam, samplingFreqHz));
+    CHECK_ERROR(AudioCodingModule::Codec(codecName, myCodecParam,
+                                         samplingFreqHz, 1));
 
     CHECK_ERROR(myACM->RegisterSendCodec(myCodecParam));
 

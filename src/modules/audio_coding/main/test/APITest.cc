@@ -8,21 +8,23 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include <cctype>
-#include <iostream>
-#include <ostream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <cctype>
+#include <iostream>
+#include <ostream>
+#include <string>
+
+#include "gtest/gtest.h"
 
 #include "APITest.h"
 #include "common_types.h"
 #include "engine_configurations.h"
 #include "event_wrapper.h"
-#include "gtest/gtest.h"
 #include "thread_wrapper.h"
-#include "tick_util.h"
 #include "testsupport/fileutils.h"
+#include "tick_util.h"
 #include "trace.h"
 #include "utility.h"
 
@@ -264,7 +266,7 @@ APITest::SetUp()
     printf("Hit enter to accept the default values indicated in []\n\n");
 
     //--- Input A
-    strcpy(fileName, "./test/data/audio_coding/testfile32kHz.pcm");
+    strcpy(fileName, "./data/audio_coding/testfile32kHz.pcm");
     frequencyHz = 32000;
     printf("Enter input file at side A [%s]: ", fileName);
     PCMFile::ChooseFile(fileName, 499, &frequencyHz);
@@ -278,7 +280,7 @@ APITest::SetUp()
     _outFileA.Open(fileName, frequencyHz, "wb");
 
     //--- Input B
-    strcpy(fileName, "./test/data/audio_coding/testfile32kHz.pcm");
+    strcpy(fileName, "./data/audio_coding/testfile32kHz.pcm");
     printf("\n\nEnter input file at side B [%s]: ", fileName);
     PCMFile::ChooseFile(fileName, 499, &frequencyHz);
     _inFileB.Open(fileName, frequencyHz, "rb", true);
@@ -323,6 +325,11 @@ APITest::SetUp()
 
     char print[11];
 
+    // Create a trace file.
+    Trace::CreateTrace();
+    Trace::SetTraceFile((webrtc::test::OutputPath() +
+        "acm_api_trace.txt").c_str());
+
     printf("\nRandom Test (y/n)?");
     EXPECT_TRUE(fgets(print, 10, stdin) != NULL);
     print[10] = '\0';
@@ -331,14 +338,9 @@ APITest::SetUp()
         _randomTest = true;
         _verbose = false;
         _writeToFile = false;
-        Trace::CreateTrace();
-        Trace::SetTraceFile("ACMAPITest.txt");
-        //freopen("APITest_log.txt", "w", stdout);
     }
     else
     {
-        Trace::CreateTrace();
-        Trace::SetTraceFile("ACMAPITest.txt", true);
         _randomTest = false;
         printf("\nPrint Tests (y/n)? ");
         EXPECT_TRUE(fgets(print, 10, stdin) != NULL);
@@ -1495,11 +1497,11 @@ APITest::ChangeCodec(char side)
             Wait(1000);   
 
             // After Initialization CN is lost, re-register them
-            if(AudioCodingModule::Codec("CN", myCodec, 8000) >= 0)
+            if(AudioCodingModule::Codec("CN", myCodec, 8000, 1) >= 0)
             {
                 CHECK_ERROR_MT(myACM->RegisterSendCodec(myCodec));
             }
-            if(AudioCodingModule::Codec("CN", myCodec, 16000) >= 0)
+            if(AudioCodingModule::Codec("CN", myCodec, 16000, 1) >= 0)
             {
                 CHECK_ERROR_MT(myACM->RegisterSendCodec(myCodec));
             }

@@ -18,6 +18,7 @@
         '<(webrtc_root)/../test/test.gyp:test_support',
         '<(webrtc_root)/../testing/gtest.gyp:gtest',
         '<(webrtc_root)/../testing/gmock.gyp:gmock',
+        '<(webrtc_root)/test/libtest/libtest.gyp:libtest',
       ],
       'include_dirs': [
         'auto_test',
@@ -30,6 +31,8 @@
       ],
       'sources': [
         'auto_test/automated_mode.cc',
+        'auto_test/extended/agc_config_test.cc',
+        'auto_test/extended/ec_metrics_test.cc',
         'auto_test/fakes/fake_external_transport.cc',
         'auto_test/fakes/fake_external_transport.h',
         'auto_test/fixtures/after_initialization_fixture.cc',
@@ -38,6 +41,7 @@
         'auto_test/fixtures/after_streaming_fixture.h',
         'auto_test/fixtures/before_initialization_fixture.cc',
         'auto_test/fixtures/before_initialization_fixture.h',
+        'auto_test/fuzz/rtp_fuzz_test.cc',
         'auto_test/standard/audio_processing_test.cc',
         'auto_test/standard/call_report_test.cc',
         'auto_test/standard/codec_before_streaming_test.cc',
@@ -45,11 +49,13 @@
         'auto_test/standard/dtmf_test.cc',
         'auto_test/standard/encryption_test.cc',
         'auto_test/standard/external_media_test.cc',
+        'auto_test/standard/file_before_streaming_test.cc',
         'auto_test/standard/file_test.cc',
         'auto_test/standard/hardware_before_initializing_test.cc',
         'auto_test/standard/hardware_before_streaming_test.cc',
         'auto_test/standard/hardware_test.cc',
         'auto_test/standard/manual_hold_test.cc',
+        'auto_test/standard/mixing_test.cc',
         'auto_test/standard/neteq_stats_test.cc',
         'auto_test/standard/neteq_test.cc',
         'auto_test/standard/network_before_streaming_test.cc',
@@ -107,6 +113,7 @@
           'dependencies': [
             'voice_engine_core',
             '<(webrtc_root)/system_wrappers/source/system_wrappers.gyp:system_wrappers',
+            '<(webrtc_root)/../test/test.gyp:test_support',
           ],
           'include_dirs': [
             'win_test',

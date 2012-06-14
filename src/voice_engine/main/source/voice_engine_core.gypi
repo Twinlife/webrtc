@@ -54,8 +54,6 @@
         '../interface/voe_rtp_rtcp.h',
         '../interface/voe_video_sync.h',
         '../interface/voe_volume_control.h',
-        'audio_frame_operations.cc',
-        'audio_frame_operations.h',
         'channel.cc',
         'channel.h',
         'channel_manager.cc',
@@ -115,7 +113,7 @@
     },
   ],
   'conditions': [
-    ['build_with_chromium==0', {
+    ['include_tests==1', {
       'targets': [
         {
           'target_name': 'voice_engine_unittests',
@@ -141,12 +139,11 @@
             '../interface',
           ],
           'sources': [
-            'audio_frame_operations_unittest.cc',
             'channel_unittest.cc',
           ],
         },
       ], # targets
-    }], # build_with_chromium
+    }], # include_tests
   ], # conditions
 }
 

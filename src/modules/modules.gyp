@@ -28,6 +28,7 @@
     'audio_processing/utility/util.gypi',
     'bitrate_controller/bitrate_controller.gypi',
     'media_file/source/media_file.gypi',
+    'remote_bitrate_estimator/remote_bitrate_estimator.gypi',
     'udp_transport/source/udp_transport.gypi',
     'utility/source/utility.gypi',
     'video_coding/codecs/i420/main/source/i420.gypi',
@@ -40,16 +41,13 @@
     'rtp_rtcp/source/rtp_rtcp.gypi',
   ],
 
-  # Test targets, excluded when building with Chromium.
   'conditions': [
-    ['build_with_chromium==0', {
+    ['include_tests==1', {
       'includes': [
         'audio_coding/codecs/iSAC/isac_test.gypi',
         'audio_coding/codecs/iSAC/isacfix_test.gypi',
         'audio_processing/apm_tests.gypi',
-        'bitrate_controller/test/test_bitrate_controller.gypi',
         'rtp_rtcp/source/rtp_rtcp_tests.gypi',
-        'rtp_rtcp/test/test_bwe/test_bwe.gypi',
         'rtp_rtcp/test/testFec/test_fec.gypi',
         'rtp_rtcp/test/testAPI/test_api.gypi',
         'video_coding/main/source/video_coding_test.gypi',
@@ -57,6 +55,6 @@
         'video_coding/codecs/tools/video_codecs_tools.gypi',
         'video_processing/main/test/vpm_tests.gypi',
       ], # includes
-    }], # build_with_chromium
+    }], # include_tests
   ], # conditions
 }

@@ -172,7 +172,7 @@
         },
       ],
     }],
-    ['build_with_chromium==0', {
+    ['include_tests==1', {
       'targets': [
         {
           'target_name': 'system_wrappers_unittests',
@@ -193,6 +193,7 @@
             'data_log_helpers_unittest.cc',
             'data_log_c_helpers_unittest.c',
             'data_log_c_helpers_unittest.h',
+            'thread_unittest.cc',
             'trace_unittest.cc',
           ],
           'conditions': [
@@ -204,7 +205,7 @@
           ],
         },
       ], # targets
-    }], # build_with_chromium
+    }], # include_tests
   ], # conditions
 }
 

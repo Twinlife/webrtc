@@ -13,6 +13,7 @@
       'type': '<(library)',
       'dependencies': [
         'audio_processing',
+        'webrtc_utility',
         '<(webrtc_root)/system_wrappers/source/system_wrappers.gyp:system_wrappers',
       ],
       'include_dirs': [
@@ -43,7 +44,7 @@
     },
   ], # targets
   'conditions': [
-    ['build_with_chromium==0', {
+    ['include_tests==1', {
       'targets': [
         {
           'target_name': 'audio_conference_mixer_unittests',
@@ -59,7 +60,7 @@
           ],
         }, # audio_conference_mixer_unittests
       ], # targets
-    }], # build_with_chromium
+    }], # include_tests
   ], # conditions
 }
 

@@ -116,6 +116,15 @@ JNIEXPORT jint JNICALL Java_org_webrtc_videoengineapp_ViEAndroidJavaAPI_SetSendD
 
 /*
  * Class:     org_webrtc_videoengineapp_ViEAndroidJavaAPI
+ * Method:    GetCodecs(
+ * Signature: ()I
+ */
+JNIEXPORT jobjectArray JNICALL Java_org_webrtc_videoengineapp_ViEAndroidJavaAPI_GetCodecs(
+    JNIEnv *env,
+    jobject);
+
+/*
+ * Class:     org_webrtc_videoengineapp_ViEAndroidJavaAPI
  * Method:    SetReceiveCodec
  * Signature: (IIIIII)I
  */
@@ -382,6 +391,14 @@ JNIEXPORT jint JNICALL Java_org_webrtc_videoengineapp_ViEAndroidJavaAPI_VoE_1Num
 
 /*
  * Class:     org_webrtc_videoengineapp_ViEAndroidJavaAPI
+ * Method:    VoE_NumOfCodecs
+ * Signature: ()Z
+ */
+JNIEXPORT jobjectArray JNICALL Java_org_webrtc_videoengineapp_ViEAndroidJavaAPI_VoE_1GetCodecs
+  (JNIEnv *, jobject);
+
+/*
+ * Class:     org_webrtc_videoengineapp_ViEAndroidJavaAPI
  * Method:    VoE_SetSendCodec
  * Signature: (II)I
  */
@@ -391,18 +408,18 @@ JNIEXPORT jint JNICALL Java_org_webrtc_videoengineapp_ViEAndroidJavaAPI_VoE_1Set
 /*
  * Class:     org_webrtc_videoengineapp_ViEAndroidJavaAPI
  * Method:    VoE_SetECStatus
- * Signature: (ZIII)I
+ * Signature: (Z)I
  */
 JNIEXPORT jint JNICALL Java_org_webrtc_videoengineapp_ViEAndroidJavaAPI_VoE_1SetECStatus
-  (JNIEnv *, jobject, jboolean, jint, jint, jint);
+  (JNIEnv *, jobject, jboolean);
 
 /*
  * Class:     org_webrtc_videoengineapp_ViEAndroidJavaAPI
  * Method:    VoE_SetAGCStatus
- * Signature: (ZI)I
+ * Signature: (Z)I
  */
 JNIEXPORT jint JNICALL Java_org_webrtc_videoengineapp_ViEAndroidJavaAPI_VoE_1SetAGCStatus
-  (JNIEnv *, jobject, jboolean, jint);
+  (JNIEnv *, jobject, jboolean);
 
 /*
  * Class:     org_webrtc_videoengineapp_ViEAndroidJavaAPI
@@ -410,7 +427,7 @@ JNIEXPORT jint JNICALL Java_org_webrtc_videoengineapp_ViEAndroidJavaAPI_VoE_1Set
  * Signature: (ZI)I
  */
 JNIEXPORT jint JNICALL Java_org_webrtc_videoengineapp_ViEAndroidJavaAPI_VoE_1SetNSStatus
-  (JNIEnv *, jobject, jboolean, jint);
+  (JNIEnv *, jobject, jboolean);
 
 #ifdef __cplusplus
 }

@@ -18,7 +18,10 @@ import java.util.Enumeration;
 import org.webrtc.videoengine.ViERenderer;
 
 import android.app.TabActivity;
+import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.res.Configuration;
 import android.content.pm.ActivityInfo;
 import android.graphics.Canvas;
@@ -37,9 +40,11 @@ import android.os.PowerManager.WakeLock;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.LayoutInflater;
 import android.view.Surface;
 import android.view.SurfaceView;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Display;
 import android.view.Window;
 import android.view.WindowManager;
@@ -120,14 +125,14 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
     private boolean loopbackMode = true;
     private CheckBox cbStats;
     private boolean isStatsOn = true;
-    private boolean isSurfaceView = true;
+    private boolean useOpenGLRender = true;
 
     // Video settings
     private Spinner spCodecType;
     private int codecType = 0;
     private Spinner spCodecSize;
-    private int codecSizeWidth = 352;
-    private int codecSizeHeight = 288;
+    private int codecSizeWidth = 0;
+    private int codecSizeHeight = 0;
     private TextView etVRxPort;
     private int receivePortVideo = 11111;
     private TextView etVTxPort;
@@ -137,7 +142,7 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
 
     // Audio settings
     private Spinner spVoiceCodecType;
-    private int voiceCodecType = 5; // PCMU = 5
+    private int voiceCodecType = 0;
     private TextView etARxPort;
     private int receivePortVoice = 11113;
     private TextView etATxPort;
@@ -161,6 +166,11 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
     private WakeLock wakeLock;
 
     private boolean usingFrontCamera = false;
+
+    private String[] mVideoCodecsStrings = null;
+    private String[] mVideoCodecsSizeStrings = { "176x144", "320x240",
+                                                 "352x288", "640x480" };
+    private String[] mVoiceCodecsStrings = null;
 
     private OrientationEventListener orientationListener;
     int currentOrientation = OrientationEventListener.ORIENTATION_UNKNOWN;
@@ -348,6 +358,30 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
         }
     }
 
+    public class SpinnerAdapter extends ArrayAdapter<String> {
+        private String[] mCodecString = null;
+        public SpinnerAdapter(Context context, int textViewResourceId, String[] objects) {
+            super(context, textViewResourceId, objects);
+            mCodecString = objects;
+        }
+
+        @Override public View getDropDownView(int position, View convertView, ViewGroup parent) {
+            return getCustomView(position, convertView, parent);
+        }
+
+        @Override public View getView(int position, View convertView, ViewGroup parent) {
+            return getCustomView(position, convertView, parent);
+        }
+
+        public View getCustomView(int position, View convertView, ViewGroup parent) {
+            LayoutInflater inflater = getLayoutInflater();
+            View row = inflater.inflate(R.layout.row, parent, false);
+            TextView label = (TextView)row.findViewById(R.id.spinner_row);
+            label.setText(mCodecString[position]);
+            return row;
+        }
+    }
+
     private void StartMain() {
         mTabHost.setCurrentTab(0);
 
@@ -356,6 +390,19 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
 
         if (null == ViEAndroidAPI)
             ViEAndroidAPI = new ViEAndroidJavaAPI(this);
+
+        if (0 > SetupVoE() || 0 > ViEAndroidAPI.GetVideoEngine() ||
+                0 > ViEAndroidAPI.Init(enableTrace) ) {
+            // Show dialog
+            AlertDialog alertDialog = new AlertDialog.Builder(this).create();
+            alertDialog.setTitle("WebRTC Error");
+            alertDialog.setMessage("Can not init video engine.");
+            alertDialog.setButton("OK", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        return;
+                    } });
+            alertDialog.show();
+        }
 
         btSwitchCamera = (Button)findViewById(R.id.btSwitchCamera);
         btSwitchCamera.setOnClickListener(this);
@@ -367,46 +414,40 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
         remoteSurfaceView = null;
         svLocal = null;
 
-        // init UI
-        ArrayAdapter<?> adapter;
-
-        int resource = android.R.layout.simple_spinner_item;
-        int dropdownRes = android.R.layout.simple_spinner_dropdown_item;
-
-        // video codec
-        spCodecType = (Spinner) findViewById(R.id.spCodecType);
-        adapter = ArrayAdapter.createFromResource(this,
-                R.array.codectype,
-                resource);
-        adapter.setDropDownViewResource(dropdownRes);
-        spCodecType.setAdapter(adapter);
-        spCodecType.setSelection(codecType);
+        // Video codec
+        mVideoCodecsStrings = ViEAndroidAPI.GetCodecs();
+        spCodecType = (Spinner)findViewById(R.id.spCodecType);
         spCodecType.setOnItemSelectedListener(this);
+        spCodecType.setAdapter(new SpinnerAdapter(this,
+                        R.layout.row,
+                        mVideoCodecsStrings));
+        spCodecType.setSelection(0);
+
+        // Video Codec size
+        spCodecSize = (Spinner) findViewById(R.id.spCodecSize);
+        spCodecSize.setOnItemSelectedListener(this);
+        spCodecSize.setAdapter(new SpinnerAdapter(this,
+                        R.layout.row,
+                        mVideoCodecsSizeStrings));
+        spCodecSize.setSelection(0);
+
+        // Voice codec
+        mVoiceCodecsStrings = ViEAndroidAPI.VoE_GetCodecs();
+        spVoiceCodecType = (Spinner)findViewById(R.id.spVoiceCodecType);
+        spVoiceCodecType.setOnItemSelectedListener(this);
+        spVoiceCodecType.setAdapter(new SpinnerAdapter(this,
+                        R.layout.row,
+                        mVoiceCodecsStrings));
+        spVoiceCodecType.setSelection(0);
 
         RadioGroup radioGroup = (RadioGroup)findViewById(R.id.radio_group1);
         radioGroup.clearCheck();
-        if (isSurfaceView == true) {
-            radioGroup.check(R.id.radio_surface);
-        }
-        else {
+        if (useOpenGLRender == true) {
             radioGroup.check(R.id.radio_opengl);
         }
-
-        // voice codec
-        spVoiceCodecType = (Spinner) findViewById(R.id.spVoiceCodecType);
-        adapter = ArrayAdapter.createFromResource(this, R.array.voiceCodecType,
-                resource);
-        adapter.setDropDownViewResource(dropdownRes);
-        spVoiceCodecType.setAdapter(adapter);
-        spVoiceCodecType.setSelection(voiceCodecType);
-        spVoiceCodecType.setOnItemSelectedListener(this);
-
-        spCodecSize = (Spinner) findViewById(R.id.spCodecSize);
-        adapter = ArrayAdapter.createFromResource(this, R.array.codecSize,
-                resource);
-        adapter.setDropDownViewResource(dropdownRes);
-        spCodecSize.setAdapter(adapter);
-        spCodecSize.setOnItemSelectedListener(this);
+        else {
+            radioGroup.check(R.id.radio_surface);
+        }
 
         etRemoteIp = (EditText) findViewById(R.id.etRemoteIp);
         etRemoteIp.setText(remoteIp);
@@ -456,13 +497,15 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
 
         cbEnableAGC.setOnClickListener(this);
         cbEnableNS.setOnClickListener(this);
+
+        // Read settings to refresh each configuration
+        ReadSettings();
     }
 
     private void StartCall() {
         int ret = 0;
 
         if (enableVoice) {
-            SetupVoE();
             StartVoiceEngine();
         }
 
@@ -472,8 +515,6 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
                 svLocal = ViERenderer.CreateLocalRenderer(this);
             }
 
-            ret = ViEAndroidAPI.GetVideoEngine();
-            ret = ViEAndroidAPI.Init(enableTrace);
             channel = ViEAndroidAPI.CreateChannel(voiceChannel);
             ret = ViEAndroidAPI.SetLocalReceiver(channel,
                     receivePortVideo);
@@ -482,7 +523,7 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
                     remoteIp.getBytes());
 
             if (enableVideoReceive) {
-                if(!isSurfaceView) {
+                if(useOpenGLRender) {
                     Log.v(TAG, "Create OpenGL Render");
                     remoteSurfaceView = ViERenderer.CreateRenderer(this, true);
                     ret = ViEAndroidAPI.AddRemoteRenderer(channel, remoteSurfaceView);
@@ -573,7 +614,7 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
         }
     }
 
-    private void SetupVoE() {
+    private int SetupVoE() {
         // Create VoiceEngine
         // Error logging is done in native API wrapper
         ViEAndroidAPI.VoE_Create();
@@ -581,16 +622,19 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
         // Initialize
         if (0 != ViEAndroidAPI.VoE_Init(enableTrace)) {
             Log.d(TAG, "VoE init failed");
+            return -1;
         }
 
         // Create channel
         voiceChannel = ViEAndroidAPI.VoE_CreateChannel();
         if (0 != voiceChannel) {
             Log.d(TAG, "VoE create channel failed");
+            return -1;
         }
 
         // Suggest to use the voice call audio stream for hardware volume controls
         setVolumeControlStream(AudioManager.STREAM_VOICE_CALL);
+        return 0;
     }
 
     private int StartVoiceEngine() {
@@ -623,13 +667,20 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
             Log.d(TAG, "VoE set send  destination failed");
         }
 
-        // 0 = iPCM-wb, 5 = PCMU
         if (0 != ViEAndroidAPI.VoE_SetSendCodec(voiceChannel, voiceCodecType)) {
             Log.d(TAG, "VoE set send codec failed");
         }
 
-        if (0 != ViEAndroidAPI.VoE_SetECStatus(enableAECM, 5, 0, 28)){
+        if (0 != ViEAndroidAPI.VoE_SetECStatus(enableAECM)) {
             Log.d(TAG, "VoE set EC Status failed");
+        }
+
+        if (0 != ViEAndroidAPI.VoE_SetAGCStatus(enableAGC)) {
+            Log.d(TAG, "VoE set AGC Status failed");
+        }
+
+        if (0 != ViEAndroidAPI.VoE_SetNSStatus(enableNS)) {
+            Log.d(TAG, "VoE set NS Status failed");
         }
 
         if (0 != ViEAndroidAPI.VoE_StartSend(voiceChannel)) {
@@ -704,10 +755,10 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
                 }
                 break;
             case R.id.radio_surface:
-                isSurfaceView = true;
+                useOpenGLRender = false;
                 break;
             case R.id.radio_opengl:
-                isSurfaceView = false;
+                useOpenGLRender = true;
                 break;
             case R.id.cbNack:
                 enableNack  = cbEnableNack.isChecked();
@@ -724,23 +775,19 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
             case R.id.cbAutoGainControl:
                 enableAGC=cbEnableAGC.isChecked();
                 if(voERunning) {
-                    // Enable AGC default mode.
-                    ViEAndroidAPI.VoE_SetAGCStatus(enableAGC,1);
+                    ViEAndroidAPI.VoE_SetAGCStatus(enableAGC);
                 }
                 break;
             case R.id.cbNoiseSuppression:
                 enableNS=cbEnableNS.isChecked();
                 if(voERunning) {
-                    // Enable NS default mode.
-                    ViEAndroidAPI.VoE_SetNSStatus(enableNS, 1);
+                    ViEAndroidAPI.VoE_SetNSStatus(enableNS);
                 }
                 break;
             case R.id.cbAECM:
                 enableAECM = cbEnableAECM.isChecked();
                 if (voERunning) {
-                    // EC_AECM=5
-                    // AECM_DEFAULT=0
-                    ViEAndroidAPI.VoE_SetECStatus(enableAECM, 5, 0, 28);
+                    ViEAndroidAPI.VoE_SetECStatus(enableAECM);
                 }
                 break;
         }

@@ -79,7 +79,6 @@ int VP8Encoder::Release() {
   }
   if (raw_ != NULL) {
     vpx_img_free(raw_);
-    delete raw_;
     raw_ = NULL;
   }
 #if WEBRTC_LIBVPX_VERSION >= 971
@@ -153,9 +152,6 @@ int VP8Encoder::InitEncode(const VideoCodec* inst,
   if (config_ == NULL) {
     config_ = new vpx_codec_enc_cfg_t;
   }
-  if (raw_ == NULL) {
-    raw_ = new vpx_image_t;
-  }
   timestamp_ = 0;
 
   codec_ = *inst;
@@ -178,7 +174,11 @@ int VP8Encoder::InitEncode(const VideoCodec* inst,
   encoded_image_._buffer = new uint8_t[encoded_image_._size];
   encoded_image_._completeFrame = true;
 
-  vpx_img_alloc(raw_, IMG_FMT_I420, codec_.width, codec_.height, 32);
+  unsigned int align = 1;
+  if (codec_.width % 32 == 0) {
+    align = 32;
+  }
+  raw_ = vpx_img_alloc(NULL, IMG_FMT_I420, codec_.width, codec_.height, align);
   // populate encoder configuration with default values
   if (vpx_codec_enc_config_default(vpx_codec_vp8_cx(), config_, 0)) {
     return WEBRTC_VIDEO_CODEC_ERROR;
@@ -617,7 +617,10 @@ int VP8Decoder::InitDecode(const VideoCodec* inst, int number_of_cores) {
 
   vpx_codec_flags_t flags = 0;
 #if WEBRTC_LIBVPX_VERSION >= 971
-  flags = VPX_CODEC_USE_ERROR_CONCEALMENT | VPX_CODEC_USE_POSTPROC;
+  flags = VPX_CODEC_USE_POSTPROC;
+  if (inst->codecSpecific.VP8.errorConcealmentOn) {
+    flags |= VPX_CODEC_USE_ERROR_CONCEALMENT;
+  }
 #ifdef INDEPENDENT_PARTITIONS
   flags |= VPX_CODEC_USE_INPUT_PARTITION;
 #endif
@@ -696,7 +699,7 @@ int VP8Decoder::Decode(const EncodedImage& input_image,
       propagation_cnt_++;
   }
 
-  vpx_dec_iter_t iter = NULL;
+  vpx_codec_iter_t iter = NULL;
   vpx_image_t* img;
   int ret;
 
@@ -709,7 +712,8 @@ int VP8Decoder::Decode(const EncodedImage& input_image,
         propagation_cnt_ = 0;
       return WEBRTC_VIDEO_CODEC_ERROR;
     }
-    img = vpx_codec_get_frame(decoder_, &iter);
+    // We don't render this frame.
+    vpx_codec_get_frame(decoder_, &iter);
     iter = NULL;
   }
 
@@ -970,7 +974,7 @@ VideoDecoder* VP8Decoder::Copy() {
 
     if (!vpx_img_alloc(&ref_frame_->img,
                        static_cast<vpx_img_fmt_t>(image_format_),
-                       decoded_image_._width, decoded_image_._height, 32)) {
+                       decoded_image_._width, decoded_image_._height, 1)) {
       assert(false);
       delete copy;
       return NULL;

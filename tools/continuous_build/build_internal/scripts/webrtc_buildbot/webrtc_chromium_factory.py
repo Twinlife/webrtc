@@ -7,8 +7,6 @@
 #  in the file PATENTS.  All contributing project authors may
 #  be found in the AUTHORS file in the root of the source tree.
 
-__author__ = 'kjellander@webrtc.org (Henrik Kjellander)'
-
 """Utility class to build Chromium with the latest WebRTC.
 
 Based on chromium_factory.py and adds WebRTC-specific custom_deps."""
@@ -27,8 +25,10 @@ class ChromiumWebRTCFactory(chromium_factory.ChromiumFactory):
                                   tests=None, mode=None,
                                   slave_type='BuilderTester', options=None,
                                   compile_timeout=1200, build_url=None,
-                                  project=None, factory_properties=None):
-    self._solutions[0].custom_deps_list = [self.CUSTOM_DEPS_WEBRTC_LATEST]
+                                  project=None, factory_properties=None,
+                                  custom_deps_list=[]):
+    custom_deps_list.append(self.CUSTOM_DEPS_WEBRTC_LATEST)
+    self._solutions[0].custom_deps_list = custom_deps_list
     factory = self.ChromiumFactory(target, clobber, tests, mode, slave_type,
                                    options, compile_timeout, build_url, project,
                                    factory_properties)
@@ -43,8 +43,10 @@ class ChromiumWebRTCFactory(chromium_factory.ChromiumFactory):
                                  tests=None, mode=None,
                                  slave_type='BuilderTester', options=None,
                                  compile_timeout=1200, build_url=None,
-                                 project=None, factory_properties=None):
-    self._solutions[0].custom_deps_list = [self.CUSTOM_DEPS_WEBRTC_LATEST]
+                                 project=None, factory_properties=None,
+                                 custom_deps_list=[]):
+    custom_deps_list.append(self.CUSTOM_DEPS_WEBRTC_LATEST)
+    self._solutions[0].custom_deps_list = custom_deps_list
     factory = self.ChromiumFactory(target, clobber, tests, mode, slave_type,
                                    options, compile_timeout, build_url, project,
                                    factory_properties)

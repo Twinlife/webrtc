@@ -129,7 +129,7 @@ _waitForKey(false)
 void
 NormalAsyncTest::Setup()
 {
-    Test::Setup();
+    CodecTest::Setup();
     std::stringstream ss;
     std::string strTestNo;
     ss << _testNo;
@@ -178,7 +178,7 @@ NormalAsyncTest::Setup()
 void
 NormalAsyncTest::Teardown()
 {
-    Test::Teardown();
+    CodecTest::Teardown();
     fclose(_sourceFile);
     fclose(_encodedFile);
     fclose(_decodedFile);
@@ -246,7 +246,10 @@ VideoEncodeCompleteCallback::Encoded(EncodedImage& encodedImage,
     _test.CopyEncodedImage(*newBuffer, encodedImage, codecSpecificInfoCopy);
     if (_encodedFile != NULL)
     {
-        fwrite(newBuffer->GetBuffer(), 1, newBuffer->GetLength(), _encodedFile);
+      if (fwrite(newBuffer->GetBuffer(), 1, newBuffer->GetLength(),
+                 _encodedFile) !=  newBuffer->GetLength()) {
+        return -1;
+      }
     }
     _frameQueue->PushFrame(newBuffer, codecSpecificInfoCopy);
     return 0;
@@ -264,7 +267,10 @@ VideoDecodeCompleteCallback::Decoded(RawImage& image)
     _decodedBytes += image._length;
     if (_decodedFile != NULL)
     {
-        fwrite(image._buffer, 1, image._length, _decodedFile);
+      if (fwrite(image._buffer, 1, image._length,
+                 _decodedFile) !=  image._length) {
+        return -1;
+      }
     }
     return 0;
 }

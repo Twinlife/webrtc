@@ -716,6 +716,49 @@ JNIEXPORT jint JNICALL Java_org_webrtc_videoengineapp_ViEAndroidJavaAPI_SetSendC
 
 /*
  * Class:     org_webrtc_videoengineapp_ViEAndroidJavaAPI
+ * Method:    SetSendCodec
+ * Signature: ()Z
+ */
+JNIEXPORT jobjectArray JNICALL Java_org_webrtc_videoengineapp_ViEAndroidJavaAPI_GetCodecs(
+    JNIEnv *env,
+    jobject)
+{
+  if (NULL == vieData.codec) {
+    return NULL;
+  }
+
+  jobjectArray ret;
+  int i;
+  int num = vieData.codec->NumberOfCodecs();
+  char info[32];
+
+  ret = (jobjectArray)env->NewObjectArray(
+      num,
+      env->FindClass("java/lang/String"),
+      env->NewStringUTF(""));
+
+  for (int i = 0; i < num; ++i) {
+    webrtc::VideoCodec codecToList;
+    vieData.codec->GetCodec(i, codecToList);
+    sprintf(info, "%s pltype:%d", codecToList.plName, codecToList.plType);
+    env->SetObjectArrayElement(ret, i, env->NewStringUTF( info ));
+
+    __android_log_print(
+        ANDROID_LOG_DEBUG,
+        WEBRTC_LOG_TAG,
+        "Codec[%d] %s, pltype=%d, bitRate=%d, maxBitRate=%d,"
+        " width=%d, height=%d, frameRate=%d\n",
+        i, codecToList.plName, codecToList.plType,
+        codecToList.startBitrate, codecToList.maxBitrate,
+        codecToList.width, codecToList.height,
+        codecToList.maxFramerate);
+  }
+
+  return ret;
+}
+
+/*
+ * Class:     org_webrtc_videoengineapp_ViEAndroidJavaAPI
  * Method:    AddRemoteRenderer
  * Signature: (ILjava/lang/Object;)I
  */
@@ -1395,7 +1438,6 @@ JNIEXPORT jint JNICALL Java_org_webrtc_videoengineapp_ViEAndroidJavaAPI_VoE_1Sto
   return voeData.file->StopPlayingFileAsMicrophone(channel);
 }
 
-
 /*
  * Class:     org_webrtc_videoengineapp_ViEAndroidJavaAPI
  * Method:    VoE_NumOfCodecs
@@ -1407,6 +1449,44 @@ JNIEXPORT jint JNICALL Java_org_webrtc_videoengineapp_ViEAndroidJavaAPI_VoE_1Num
 {
   VALIDATE_CODEC_POINTER;
   return voeData.codec->NumOfCodecs();
+}
+
+/*
+ * Class:     org_webrtc_videoengineapp_ViEAndroidJavaAPI
+ * Method:    VoE_NumOfCodecs
+ * Signature: ()I
+ */
+JNIEXPORT jobjectArray JNICALL Java_org_webrtc_videoengineapp_ViEAndroidJavaAPI_VoE_1GetCodecs(
+    JNIEnv *env,
+    jobject)
+{
+  if (!voeData.codec) {
+    __android_log_write(ANDROID_LOG_ERROR, WEBRTC_LOG_TAG,
+                        "Codec pointer doesn't exist");
+    return NULL;
+  }
+
+  jobjectArray ret;
+  int i;
+  int num = voeData.codec->NumOfCodecs();
+  char info[32];
+
+  ret = (jobjectArray)env->NewObjectArray(
+      num,
+      env->FindClass("java/lang/String"),
+      env->NewStringUTF(""));
+
+  for(i = 0; i < num; i++) {
+    webrtc::CodecInst codecToList;
+    voeData.codec->GetCodec(i, codecToList);
+    __android_log_print(ANDROID_LOG_DEBUG, WEBRTC_LOG_TAG,
+                        "VoiceEgnine Codec[%d] %s, pltype=%d\n",
+                        i, codecToList.plname, codecToList.pltype);
+    sprintf(info, "%s pltype:%d", codecToList.plname, codecToList.pltype);
+    env->SetObjectArrayElement(ret, i, env->NewStringUTF( info ));
+  }
+
+  return ret;
 }
 
 /*
@@ -1446,48 +1526,47 @@ JNIEXPORT jint JNICALL Java_org_webrtc_videoengineapp_ViEAndroidJavaAPI_VoE_1Set
 /*
  * Class:     org_webrtc_videoengineapp_ViEAndroidJavaAPI
  * Method:    VoE_SetECStatus
- * Signature: (ZIII)I
+ * Signature: (Z)I
  */
 JNIEXPORT jint JNICALL Java_org_webrtc_videoengineapp_ViEAndroidJavaAPI_VoE_1SetECStatus(
     JNIEnv *,
     jobject,
-    jboolean enable,
-    jint mode,
-    jint AESmode,
-    jint AESattenuation)
-{
-  // TODO(leozwang) implement
-  return -1;
+    jboolean enable) {
+  VALIDATE_APM_POINTER;
+  if (voeData.apm->SetEcStatus(enable, kEcAecm) < 0)
+    return -1;
+  return 0;
 }
 
 /*
  * Class:     org_webrtc_videoengineapp_ViEAndroidJavaAPI
  * Method:    VoE_SetAGCStatus
- * Signature: (ZI)I
+ * Signature: (Z)I
  */
 JNIEXPORT jint JNICALL Java_org_webrtc_videoengineapp_ViEAndroidJavaAPI_VoE_1SetAGCStatus(
     JNIEnv *,
     jobject,
-    jboolean enable,
-    jint mode)
-{
-  // TODO(leozwang) implement
-  return -1;
+    jboolean enable) {
+  VALIDATE_APM_POINTER;
+  if (voeData.apm->SetAgcStatus(enable, kAgcFixedDigital) < 0)
+    return -1;
+  return 0;
 }
 
 /*
  * Class:     org_webrtc_videoengineapp_ViEAndroidJavaAPI
  * Method:    VoE_SetNSStatus
- * Signature: (ZI)I
+ * Signature: (Z)I
  */
 JNIEXPORT jint JNICALL Java_org_webrtc_videoengineapp_ViEAndroidJavaAPI_VoE_1SetNSStatus(
     JNIEnv *,
     jobject,
-    jboolean enable,
-    jint mode)
-{
-  // TODO(leozwang) implement
-  return -1;
+    jboolean enable) {
+  VALIDATE_APM_POINTER;
+  if (voeData.apm->SetNsStatus(enable) < 0) {
+    return -1;
+  }
+  return 0;
 }
 
 //

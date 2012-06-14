@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+ *  Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
@@ -253,7 +253,7 @@ void RunTest(std::string out_path) {
     // Fall back to the current directory.
     resource_path = "./";
   } else {
-    resource_path += "test/data/voice_engine/";
+    resource_path += "data/voice_engine/";
   }
 #endif
   const std::string audio_filename = resource_path + "audio_long16.pcm";
@@ -338,12 +338,12 @@ void RunTest(std::string out_path) {
     res = codec->GetCodec(i, cinst);
     VALIDATE;
     if (strncmp(cinst.plname, "ISAC", 4) == 0 && cinst.plfreq == 32000) {
-      printf("%i. ISAC-swb pltype:%i plfreqi:%i\n", i, cinst.pltype,
-             cinst.plfreq);
+      printf("%i. ISAC-swb pltype:%i plfreq:%i channels:%i\n", i, cinst.pltype,
+             cinst.plfreq, cinst.channels);
     }
     else {
-      printf("%i. %s pltype:%i plfreq:%i\n", i, cinst.plname,
-             cinst.pltype, cinst.plfreq);
+      printf("%i. %s pltype:%i plfreq:%i channels:%i\n", i, cinst.plname,
+             cinst.pltype, cinst.plfreq, cinst.channels);
     }
   }
 #ifdef DEBUG
@@ -358,7 +358,11 @@ void RunTest(std::string out_path) {
   res = codec->SetSendCodec(chan, cinst);
   VALIDATE;
 
+#ifndef WEBRTC_ANDROID
   const int kMaxNumChannels = 8;
+#else
+  const int kMaxNumChannels = 1;
+#endif
   int channel_index = 0;
   std::vector<int> channels(kMaxNumChannels);
   for (i = 0; i < kMaxNumChannels; ++i) {
@@ -376,7 +380,7 @@ void RunTest(std::string out_path) {
   bool newcall = true;
   while (newcall) {
 
-#ifdef WEBRTC_LINUX
+#if defined(WEBRTC_LINUX) && !defined(WEBRTC_ANDROID)
     int rd(-1), pd(-1);
     res = hardware->GetNumOfRecordingDevices(rd);
     VALIDATE;
@@ -452,6 +456,7 @@ void RunTest(std::string out_path) {
       VALIDATE;
     }
 
+#ifndef WEBRTC_ANDROID
     printf("Getting mic volume \n");
     unsigned int vol = 999;
     res = volume->GetMicVolume(vol);
@@ -459,6 +464,7 @@ void RunTest(std::string out_path) {
     if ((vol > 255) || (vol < 1)) {
       printf("\n****ERROR in GetMicVolume");
     }
+#endif
 
     int forever = 1;
     while (forever) {

@@ -7,14 +7,11 @@
 #  in the file PATENTS.  All contributing project authors may
 #  be found in the AUTHORS file in the root of the source tree.
 
-__author__ = 'kjellander@webrtc.org (Henrik Kjellander)'
-
 """Chrome+WebRTC bots configured in Chromium style."""
 
 from buildbot.schedulers import timed
 
 from master import master_config
-from webrtc_buildbot import webrtc_factory
 from webrtc_buildbot import webrtc_chromium_factory
 
 # Used to put builders into different categories by the Helper class.
@@ -31,7 +28,7 @@ def win():
 CHROME_LKGR = 'http://chromium-status.appspot.com/lkgr'
 
 
-def ConfigureChromeWebRTCBuilders(c):
+def ConfigureChromeWebRTCBuilders(c, custom_deps_list=[]):
   helper = master_config.Helper(defaults)
   B = helper.Builder
   F = helper.Factory
@@ -50,14 +47,16 @@ def ConfigureChromeWebRTCBuilders(c):
   F('chrome_linux_debug_factory', linux().ChromiumWebRTCLatestFactory(
       target='Debug',
       factory_properties={'safesync_url': CHROME_LKGR,
-                          'use_xvfb_on_linux': True}))
+                          'use_xvfb_on_linux': True},
+      custom_deps_list=custom_deps_list))
 
   # Mac 10.7 (Lion) ...
   defaults['category'] = 'mac-10.7'
   B('MacChrome', 'chrome_mac_debug_factory', scheduler='webrtc_rel')
   F('chrome_mac_debug_factory', mac().ChromiumWebRTCLatestFactory(
       target='Debug',
-      factory_properties={'safesync_url': CHROME_LKGR}))
+      factory_properties={'safesync_url': CHROME_LKGR},
+      custom_deps_list=custom_deps_list))
 
   # Windows...
   defaults['category'] = 'windows'
@@ -65,20 +64,21 @@ def ConfigureChromeWebRTCBuilders(c):
   F('chrome_win32_debug_factory', win().ChromiumWebRTCLatestFactory(
       project=r'..\chrome\chrome.sln',
       target='Debug',
-      factory_properties={'safesync_url': CHROME_LKGR}))
+      factory_properties={'safesync_url': CHROME_LKGR},
+      custom_deps_list=custom_deps_list))
 
   # Use the helper class to connect the builders, factories and schedulers
   # and add them to the BuildmasterConfig (c) dictionary.
   helper.Update(c)
 
 
-def ConfigureNightlyChromeWebRTCBloatBuilder(c):
-  # Nightly Scheduler at 2 AM CST/CDT. This will mean roughly 9 AM in the CET
+def ConfigureNightlyChromeWebRTCBloatBuilder(c, custom_deps_list=[]):
+  # Nightly Scheduler at 22 PM CST/CDT. This will mean 5 AM in the CET
   # time zone, which should avoid everyone's working hours.
   nightly_scheduler = timed.Nightly(name='webrtc_nightly',
                                     branch='trunk',
                                     builderNames=['LinuxChromeBloat'],
-                                    hour=2)
+                                    hour=22)
   c['schedulers'].append(nightly_scheduler)
 
   # The Bloat calculator bot is setup without the helper classes since they
@@ -86,7 +86,9 @@ def ConfigureNightlyChromeWebRTCBloatBuilder(c):
   chrome_bloat_factory = linux().ChromiumWebRTCBloatFactory(
       target='Release',
       factory_properties={'safesync_url': CHROME_LKGR,
-                          'gclient_env': {'GYP_DEFINES': 'profiling=1'}})
+                          'gclient_env': {'GYP_DEFINES': 'profiling=1'}},
+      custom_deps_list=custom_deps_list)
+
   chrome_bloat_builder = {
       'name': 'LinuxChromeBloat',
       'factory': chrome_bloat_factory,

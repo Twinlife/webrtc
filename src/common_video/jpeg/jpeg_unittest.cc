@@ -25,7 +25,7 @@ class JpegTest: public testing::Test {
  protected:
   JpegTest()
       : input_filename_(webrtc::test::ProjectRootPath() +
-                       "test/data/common_video/jpeg/webrtc_logo.jpg"),
+                       "data/common_video/jpeg/webrtc_logo.jpg"),
         decoded_filename_(webrtc::test::OutputPath() + "TestJpegDec.yuv"),
         encoded_filename_(webrtc::test::OutputPath() + "TestJpegEnc.jpg"),
         encoded_buffer_(NULL) {}
@@ -114,7 +114,10 @@ TEST_F(JpegTest, Encode) {
 
   // Save decoded image to file.
   FILE* save_file = fopen(decoded_filename_.c_str(), "wb");
-  fwrite(image_buffer._buffer, 1, image_buffer._length, save_file);
+  if (fwrite(image_buffer._buffer, 1,
+             image_buffer._length, save_file) != image_buffer._length) {
+    return;
+  }
   fclose(save_file);
 
   delete[] image_buffer._buffer;
