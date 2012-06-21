@@ -35,9 +35,7 @@ LOCAL_SRC_FILES := \
     rtp_sender_audio.cc \
     forward_error_correction.cc \
     forward_error_correction_internal.cc \
-    overuse_detector.cc \
     producer_fec.cc \
-    remote_rate_control.cc \
     rtp_packet_history.cc \
     receiver_fec.cc \
     rtp_receiver_video.cc \

@@ -56,20 +56,21 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 LOCAL_MODULE := libwebrtc_aecm_neon
 LOCAL_MODULE_TAGS := optional
 
-GEN := $(LOCAL_PATH)/aecm_core_neon_offsets.h
+# -CJ- -Issue 0007- 21060212
+#GEN := $(LOCAL_PATH)/aecm_core_neon_offsets.h
 
 # Generate a header file aecm_core_neon_offsets.h which will be included in
 # assembly file aecm_core_neon.S, from file aecm_core_neon_offsets.c.
-$(GEN): $(LOCAL_PATH)/../../../../src/build/generate_asm_header.py \
-            $(intermediates)/aecm_core_neon_offsets.S
-	@python $^ $@ offset_aecm_
+#$(GEN): $(LOCAL_PATH)/../../../../src/build/generate_asm_header.py \
+#            $(intermediates)/aecm_core_neon_offsets.S
+#	@python $^ $@ offset_aecm_
 
-$(intermediates)/aecm_core_neon_offsets.S: \
-	    $(LOCAL_PATH)/aecm_core_neon_offsets.c
-	@$(TARGET_CC) $(addprefix -I, $(LOCAL_INCLUDES)) $(addprefix -isystem ,\
-            $(TARGET_C_INCLUDES)) -S -o $@ $^
+#$(intermediates)/aecm_core_neon_offsets.S: \
+#	    $(LOCAL_PATH)/aecm_core_neon_offsets.c
+#	@$(TARGET_CC) $(addprefix -I, $(LOCAL_INCLUDES)) $(addprefix -isystem ,\
+#            $(TARGET_C_INCLUDES)) -S -o $@ $^
 
-LOCAL_GENERATED_SOURCES := $(GEN)
+#LOCAL_GENERATED_SOURCES := $(GEN)
 LOCAL_SRC_FILES := aecm_core_neon.S
 
 # Flags passed to both C and C++ files.
