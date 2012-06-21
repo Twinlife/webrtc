@@ -31,6 +31,7 @@ include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/ns/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/audio_processing/utility/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/bitrate_controller/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/media_file/source/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/remote_bitrate_estimator/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/rtp_rtcp/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/udp_transport/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/utility/source/Android.mk
@@ -116,6 +117,7 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
     libwebrtc_neteq \
     libwebrtc_audio_conference_mixer \
     libwebrtc_bitrate_controller \
+    libwebrtc_remote_bitrate_estimator \
     libwebrtc_isac \
     libwebrtc_ilbc \
     libwebrtc_isacfix \
