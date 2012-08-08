@@ -30,7 +30,6 @@ RTPReceiverVideo::RTPReceiverVideo(const WebRtc_Word32 id,
                                    RemoteBitrateEstimator* remote_bitrate,
                                    ModuleRtpRtcpImpl* owner)
     : _id(id),
-      _rtpRtcp(owner),
       _criticalSectionReceiverVideo(
           CriticalSectionWrapper::CreateCriticalSection()),
       _currentFecFrameDecoded(false),
@@ -93,10 +92,12 @@ WebRtc_Word32 RTPReceiverVideo::ParseVideoCodecSpecific(
   // Ethernet header here as well.
   const WebRtc_UWord16 packetSize = payloadDataLength + _packetOverHead +
       rtpHeader->header.headerLength + rtpHeader->header.paddingLength;
+  uint32_t compensated_timestamp = rtpHeader->header.timestamp +
+      rtpHeader->extension.transmissionTimeOffset;
   remote_bitrate_->IncomingPacket(rtpHeader->header.ssrc,
                                   packetSize,
                                   nowMS,
-                                  rtpHeader->header.timestamp,
+                                  compensated_timestamp,
                                   -1);
 
   if (isRED) {

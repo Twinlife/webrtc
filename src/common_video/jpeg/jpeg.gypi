@@ -28,6 +28,7 @@
         'include',
         '<(webrtc_root)',
         '<(webrtc_root)/common_video/interface',
+        '<(webrtc_root)/modules/interface/',
       ],
       'direct_dependent_settings': {
         'include_dirs': [
@@ -61,8 +62,8 @@
           'type': 'executable',
           'dependencies': [
              'webrtc_jpeg',
-             '<(webrtc_root)/../testing/gtest.gyp:gtest',
-             '<(webrtc_root)/../test/test.gyp:test_support_main',
+             '<(DEPTH)/testing/gtest.gyp:gtest',
+             '<(webrtc_root)/test/test.gyp:test_support_main',
           ],
           'sources': [
             'jpeg_unittest.cc',

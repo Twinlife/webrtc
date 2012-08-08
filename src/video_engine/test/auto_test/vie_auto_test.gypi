@@ -16,10 +16,10 @@
         '<(webrtc_root)/modules/modules.gyp:video_render_module',
         '<(webrtc_root)/modules/modules.gyp:video_capture_module',
         '<(webrtc_root)/voice_engine/voice_engine.gyp:voice_engine_core',
-        '<(webrtc_root)/../testing/gtest.gyp:gtest',
-        '<(webrtc_root)/../third_party/google-gflags/google-gflags.gyp:google-gflags',
-        '<(webrtc_root)/../test/metrics.gyp:metrics',
-        '<(webrtc_root)/../test/test.gyp:test_support',
+        '<(DEPTH)/testing/gtest.gyp:gtest',
+        '<(DEPTH)/third_party/google-gflags/google-gflags.gyp:google-gflags',
+        '<(webrtc_root)/test/metrics.gyp:metrics',
+        '<(webrtc_root)/test/test.gyp:test_support',
         '<(webrtc_root)/test/libtest/libtest.gyp:libtest',
         'video_engine_core',
         'libvietest',
@@ -99,22 +99,15 @@
         'source/vie_window_manager_factory_win.cc',
       ],
       'conditions': [
-        # TODO(andrew): this likely isn't an actual dependency. It should be
-        # included in webrtc.gyp or video_engine.gyp instead.
         ['OS=="android"', {
           'libraries': [
             '-lGLESv2',
             '-llog',
           ],
         }],
-        ['OS=="win"', {
-          'dependencies': [
-            'vie_win_test',
-          ],
-        }],
         ['OS=="linux"', {
-          # TODO(andrew): these should be provided directly by the projects
-          #   # which require them instead.
+          # TODO(andrew): These should be provided directly by the projects
+          #               which require them instead.
           'libraries': [
             '-lXext',
             '-lX11',

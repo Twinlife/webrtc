@@ -49,12 +49,12 @@
           'type': 'executable',
           'dependencies': [
             'remote_bitrate_estimator',
-            '<(webrtc_root)/../testing/gmock.gyp:gmock',
-            '<(webrtc_root)/../testing/gtest.gyp:gtest',
-            '<(webrtc_root)/../test/test.gyp:test_support_main',
+            '<(DEPTH)/testing/gmock.gyp:gmock',
+            '<(DEPTH)/testing/gtest.gyp:gtest',
+            '<(webrtc_root)/test/test.gyp:test_support_main',
           ],
           'sources': [
-            'include/mock/mock_remote_bitrate_estimator.h',
+            'include/mock/mock_remote_bitrate_observer.h',
             'bitrate_estimator_unittest.cc',
             'remote_bitrate_estimator_unittest.cc',
           ],

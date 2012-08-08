@@ -13,12 +13,12 @@
 
 #include <list>
 
-#include "engine_configurations.h"
-#include "rtp_rtcp_defines.h"
+#include "engine_configurations.h"  // NOLINT
+#include "modules/rtp_rtcp/interface/rtp_rtcp_defines.h"
+#include "modules/udp_transport/interface/udp_transport.h"
 #include "system_wrappers/interface/scoped_ptr.h"
-#include "typedefs.h"
-#include "udp_transport.h"
-#include "vie_defines.h"
+#include "typedefs.h"  // NOLINT
+#include "video_engine/vie_defines.h"
 
 namespace webrtc {
 

@@ -16,7 +16,7 @@
 #include <limits.h>
 
 #include "modules/interface/module_common_types.h"
-#include "modules/video_coding/codecs/vp8/main/interface/vp8_common_types.h"
+#include "modules/video_coding/codecs/vp8/include/vp8_common_types.h"
 #include "modules/video_coding/main/interface/video_coding_defines.h"
 #include "modules/video_coding/main/source/er_tables_xor.h"
 #include "modules/video_coding/main/source/fec_tables_xor.h"
@@ -653,7 +653,6 @@ _shortMaxLossPr255(0),
 _packetsPerFrame(0.9999f),
 _packetsPerFrameKey(0.9999f),
 _residualPacketLossFec(0),
-_boostRateKey(2),
 _codecWidth(0),
 _codecHeight(0),
 _numLayers(1)

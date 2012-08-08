@@ -36,8 +36,8 @@
           'type': 'executable',
           'dependencies': [
             'resampler',
-            '<(webrtc_root)/../test/test.gyp:test_support_main',
-            '<(webrtc_root)/../testing/gtest.gyp:gtest',
+            '<(webrtc_root)/test/test.gyp:test_support_main',
+            '<(DEPTH)/testing/gtest.gyp:gtest',
           ],
           'sources': [
             'resampler_unittest.cc',

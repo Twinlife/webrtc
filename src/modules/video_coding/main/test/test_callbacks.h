@@ -43,10 +43,13 @@ public:
     // Process encoded data received from the encoder, pass stream to the
     // VCMReceiver module
     WebRtc_Word32 SendData(const FrameType frameType,
-            const WebRtc_UWord8 payloadType, const WebRtc_UWord32 timeStamp,
-            const WebRtc_UWord8* payloadData, const WebRtc_UWord32 payloadSize,
-            const RTPFragmentationHeader& fragmentationHeader,
-            const RTPVideoHeader* videoHdr);
+                           const WebRtc_UWord8 payloadType,
+                           const WebRtc_UWord32 timeStamp,
+                           int64_t capture_time_ms,
+                           const WebRtc_UWord8* payloadData,
+                           const WebRtc_UWord32 payloadSize,
+                           const RTPFragmentationHeader& fragmentationHeader,
+                           const RTPVideoHeader* videoHdr);
     // Register exisitng VCM. Currently - encode and decode under same module.
     void RegisterReceiverVCM(VideoCodingModule *vcm) {_VCMReceiver = vcm;}
     // Return size of last encoded frame data (all frames in the sequence)
@@ -75,7 +78,6 @@ private:
     float              _encodedBytes;
     VideoCodingModule* _VCMReceiver;
     FrameType          _frameType;
-    WebRtc_UWord8*     _payloadData;
     WebRtc_UWord16     _seqNo;
     bool               _encodeComplete;
     WebRtc_Word32      _width;
@@ -91,7 +93,6 @@ class VCMRTPEncodeCompleteCallback: public VCMPacketizationCallback
 public:
     VCMRTPEncodeCompleteCallback(RtpRtcp* rtp) :
         _encodedBytes(0),
-        _seqNo(0),
         _encodeComplete(false),
         _RTPModule(rtp) {}
 
@@ -99,10 +100,13 @@ public:
     // Process encoded data received from the encoder, pass stream to the
     // RTP module
     WebRtc_Word32 SendData(const FrameType frameType,
-            const WebRtc_UWord8 payloadType, const WebRtc_UWord32 timeStamp,
-            const WebRtc_UWord8* payloadData, const WebRtc_UWord32 payloadSize,
-            const RTPFragmentationHeader& fragmentationHeader,
-            const RTPVideoHeader* videoHdr);
+                           const WebRtc_UWord8 payloadType,
+                           const WebRtc_UWord32 timeStamp,
+                           int64_t capture_time_ms,
+                           const WebRtc_UWord8* payloadData,
+                           const WebRtc_UWord32 payloadSize,
+                           const RTPFragmentationHeader& fragmentationHeader,
+                           const RTPVideoHeader* videoHdr);
     // Return size of last encoded frame. Value good for one call
     // (resets to zero after call to inform test of frame drop)
     float EncodedBytes();
@@ -122,8 +126,6 @@ public:
 private:
     float              _encodedBytes;
     FrameType          _frameType;
-    WebRtc_UWord8*     _payloadData;
-    WebRtc_UWord16     _seqNo;
     bool               _encodeComplete;
     RtpRtcp*           _RTPModule;
     WebRtc_Word16      _width;

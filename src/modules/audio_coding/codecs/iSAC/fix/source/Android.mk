@@ -1,4 +1,4 @@
-# Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+# Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
 #
 # Use of this source code is governed by a BSD-style license
 # that can be found in the LICENSE file in the root of the source
@@ -46,8 +46,10 @@ LOCAL_SRC_FILES := \
     transform.c
 
 ifeq ($(ARCH_ARM_HAVE_ARMV7A),true)
+# Using .S (instead of .s) extention is to include a C header file in assembly.
 LOCAL_SRC_FILES += \
-    lattice_armv7.S
+    lattice_armv7.S \
+    pitchfilter_armv6.S
 else
 LOCAL_SRC_FILES += \
     lattice_c.c
@@ -61,6 +63,8 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../interface \
     $(LOCAL_PATH)/../../../../../.. \
     $(LOCAL_PATH)/../../../../../../common_audio/signal_processing/include
+
+LOCAL_STATIC_LIBRARIES += libwebrtc_system_wrappers
 
 LOCAL_SHARED_LIBRARIES := \
     libcutils \
@@ -84,7 +88,8 @@ LOCAL_MODULE := libwebrtc_isacfix_neon
 LOCAL_MODULE_TAGS := optional
 LOCAL_SRC_FILES := \
     filters_neon.c \
-    lattice_neon.S #.S extention is for including a header file in assembly.
+    lattice_neon.S \
+    lpc_masking_model_neon.S
 
 # Flags passed to both C and C++ files.
 LOCAL_CFLAGS := \
@@ -124,7 +129,8 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_STATIC_LIBRARIES := \
     libwebrtc_isacfix \
-    libwebrtc_spl
+    libwebrtc_spl \
+    libwebrtc_system_wrappers
 
 ifeq ($(WEBRTC_BUILD_NEON_LIBS),true)
 LOCAL_STATIC_LIBRARIES += \

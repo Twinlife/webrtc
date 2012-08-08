@@ -19,8 +19,8 @@
       'type': 'static_library',
       'variables': {
         # Path needed to build the Direct Show base classes on Windows. The
-	# code is included in the Windows SDK.
-        'direct_show_dir':
+        # code is included in the Windows SDK.
+        'direct_show_dir%':
           'C:/Program Files/Microsoft SDKs/Windows/v7.1/Samples/multimedia/directshow/baseclasses/',
       },
       'defines!': [
@@ -40,7 +40,6 @@
         '<(direct_show_dir)amfilter.cpp',
         '<(direct_show_dir)amfilter.h',
         '<(direct_show_dir)amvideo.cpp',
-        '<(direct_show_dir)arithutil.cpp',
         '<(direct_show_dir)cache.h',
         '<(direct_show_dir)checkbmi.h',
         '<(direct_show_dir)combase.cpp',
@@ -62,8 +61,6 @@
         '<(direct_show_dir)mtype.h',
         '<(direct_show_dir)outputq.cpp',
         '<(direct_show_dir)outputq.h',
-        '<(direct_show_dir)perflog.cpp',
-        '<(direct_show_dir)perflog.h',
         '<(direct_show_dir)perfstruct.h',
         '<(direct_show_dir)pstream.cpp',
         '<(direct_show_dir)pstream.h',

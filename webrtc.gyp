@@ -1,4 +1,4 @@
-# Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+# Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
 #
 # Use of this source code is governed by a BSD-style license
 # that can be found in the LICENSE file in the root of the source
@@ -19,9 +19,10 @@
         'src/system_wrappers/source/system_wrappers.gyp:*',
         'src/video_engine/video_engine.gyp:*',
         'src/voice_engine/voice_engine.gyp:*',
-        'test/metrics.gyp:*',
-        'test/test.gyp:*',
+        'src/test/metrics.gyp:*',
+        'src/test/test.gyp:*',
         'tools/e2e_quality/e2e_quality.gyp:*',
+        '<(webrtc_vp8_dir)/vp8.gyp:*'
       ],
     },
   ],

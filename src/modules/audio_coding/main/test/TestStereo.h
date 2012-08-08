@@ -48,7 +48,6 @@ class TestPackStereo : public AudioPacketizationCallback {
  private:
   AudioCodingModule* receiver_acm_;
   WebRtc_Word16 seq_no_;
-  WebRtc_UWord8 payload_data_[60 * 32 * 2 * 2];
   WebRtc_UWord32 timestamp_diff_;
   WebRtc_UWord32 last_in_timestamp_;
   WebRtc_UWord64 total_bytes_;
@@ -68,10 +67,9 @@ class TestStereo : public ACMTest {
   // The default value of '-1' indicates that the registration is based only on
   // codec name and a sampling frequncy matching is not required. This is useful
   // for codecs which support several sampling frequency.
-  WebRtc_Word16 RegisterSendCodec(char side, char* codec_name,
-                                  WebRtc_Word32 samp_freq_hz, int rate,
-                                  int pack_size, int channels,
-                                  int payload_type);
+  void RegisterSendCodec(char side, char* codec_name,
+                         WebRtc_Word32 samp_freq_hz, int rate, int pack_size,
+                         int channels, int payload_type);
 
   void Run(TestPackStereo* channel, int in_channels, int out_channels,
            int percent_loss = 0);

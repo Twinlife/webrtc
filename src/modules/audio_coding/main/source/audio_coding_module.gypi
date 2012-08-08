@@ -7,23 +7,32 @@
 # be found in the AUTHORS file in the root of the source tree.
 
 {
+  'variables': {
+    'audio_coding_dependencies': [
+      'CNG',
+      'G711',
+      'G722',
+      'iLBC',
+      'iSAC',
+      'iSACFix',
+      'PCM16B',
+      'NetEq',
+      '<(webrtc_root)/common_audio/common_audio.gyp:resampler',
+      '<(webrtc_root)/common_audio/common_audio.gyp:signal_processing',
+      '<(webrtc_root)/common_audio/common_audio.gyp:vad',
+      '<(webrtc_root)/system_wrappers/source/system_wrappers.gyp:system_wrappers',
+    ],
+    'audio_coding_defines': [],
+  },
   'targets': [
     {
       'target_name': 'audio_coding_module',
       'type': '<(library)',
+      'defines': [
+        '<@(audio_coding_defines)',
+      ],
       'dependencies': [
-        'CNG',
-        'G711',
-        'G722',
-        'iLBC',
-        'iSAC',
-        'iSACFix',
-        'PCM16B',
-        'NetEq',
-        '<(webrtc_root)/common_audio/common_audio.gyp:resampler',
-        '<(webrtc_root)/common_audio/common_audio.gyp:signal_processing',
-        '<(webrtc_root)/common_audio/common_audio.gyp:vad',
-        '<(webrtc_root)/system_wrappers/source/system_wrappers.gyp:system_wrappers',
+        '<@(audio_coding_dependencies)',
       ],
       'include_dirs': [
         '../interface',
@@ -101,8 +110,8 @@
           'type': 'executable',
           'dependencies': [
             'audio_coding_module',
-            '<(webrtc_root)/../test/test.gyp:test_support_main',
-            '<(webrtc_root)/../testing/gtest.gyp:gtest',
+            '<(webrtc_root)/test/test.gyp:test_support_main',
+            '<(DEPTH)/testing/gtest.gyp:gtest',
             '<(webrtc_root)/system_wrappers/source/system_wrappers.gyp:system_wrappers',
           ],
           'sources': [
@@ -131,8 +140,8 @@
             'audio_coding_module',
             'NetEq',
             '<(webrtc_root)/common_audio/common_audio.gyp:vad',
-            '<(webrtc_root)/../testing/gtest.gyp:gtest',
-            '<(webrtc_root)/../test/test.gyp:test_support_main',
+            '<(DEPTH)/testing/gtest.gyp:gtest',
+            '<(webrtc_root)/test/test.gyp:test_support_main',
             '<(webrtc_root)/system_wrappers/source/system_wrappers.gyp:system_wrappers',
           ],
           'sources': [
