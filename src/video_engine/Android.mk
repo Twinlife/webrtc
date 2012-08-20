@@ -17,6 +17,7 @@ LOCAL_MODULE := libwebrtc_vie_core
 LOCAL_MODULE_TAGS := optional
 LOCAL_CPP_EXTENSION := .cc
 LOCAL_SRC_FILES := \
+    stream_synchronization.cc \
     vie_base_impl.cc \
     vie_capture_impl.cc \
     vie_codec_impl.cc \

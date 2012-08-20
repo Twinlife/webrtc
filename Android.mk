@@ -36,14 +36,14 @@ include $(MY_WEBRTC_ROOT_PATH)/src/modules/rtp_rtcp/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/udp_transport/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/utility/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/system_wrappers/source/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/voice_engine/main/source/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/voice_engine/Android.mk
 
 # video
 include $(MY_WEBRTC_ROOT_PATH)/src/common_video/jpeg/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/common_video/libyuv/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/video_capture/main/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/video_coding/codecs/i420/main/source/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/src/modules/video_coding/codecs/vp8/main/source/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/src/modules/video_coding/codecs/vp8/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/video_coding/main/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/video_processing/main/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/src/modules/video_render/main/source/Android.mk
@@ -83,7 +83,7 @@ LOCAL_STATIC_LIBRARIES := \
 
 LOCAL_SHARED_LIBRARIES := \
     libcutils \
-    libdl
+    libdl 
 
 LOCAL_LDLIBS := -llog
 
@@ -157,13 +157,3 @@ ifndef NDK_ROOT
 include external/stlport/libstlport.mk
 endif
 include $(BUILD_SHARED_LIBRARY)
-
-# test apps, they're for test only; all these test apps have LOCAL_MODULE_TAGS:=tests
-# voice engine test apps
-#include $(MY_WEBRTC_ROOT_PATH)/src/voice_engine/main/test/cmd_test/Android.mk
-#include $(MY_WEBRTC_ROOT_PATH)/src/voice_engine/main/test/auto_test/Android.mk
-# video engine test apps
-#include $(MY_WEBRTC_ROOT_PATH)/src/video_engine/main/test/android_test/Android.mk
-#include $(MY_WEBRTC_ROOT_PATH)/src/video_engine/test/auto_test/android/Android.mk
-
-

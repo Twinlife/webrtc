@@ -386,30 +386,54 @@ int ViEBaseImpl::DeregisterObserver() {
   return 0;
 }
 
+  // -CJ- 20082012
+  // Do not use << operator
 int ViEBaseImpl::GetVersion(char version[1024]) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVideo, ViEId(shared_data_.instance_id()),
                "GetVersion(version=?)");
   assert(kViEVersionMaxMessageSize == 1024);
+
   if (!version) {
     shared_data_.SetLastError(kViEBaseInvalidArgument);
     return -1;
   }
 
-  // Add WebRTC Version.
-  std::stringstream version_stream;
-  version_stream << "VideoEngine 3.9.0" << std::endl;
+  char version_buf[kViEVersionMaxMessageSize];
+  char* version_ptr = version_buf;
 
-  // Add build info.
-  version_stream << "Build: svn:" << WEBRTC_SVNREVISION << " " << BUILDINFO
-                 << std::endl;
+  WebRtc_Word32 len = 0;  // Does not include NULL termination.
+  WebRtc_Word32 acc_len = 0;
+
+  len = sprintf(version_ptr, "VideoEngine 3.9.0\n");
+  if (len == -1) {
+    shared_data_.SetLastError(kViEBaseUnknownError);
+    return -1;
+  }
+  version_ptr += len;
+  acc_len += len;
+  assert(acc_len < kViEVersionMaxMessageSize);
+
+  len = sprintf(version_ptr, "Build: svn:%s %s\n", WEBRTC_SVNREVISION, BUILDINFO);
+  if (len == -1) {
+    shared_data_.SetLastError(kViEBaseUnknownError);
+    return -1;
+  }
+  version_ptr += len;
+  acc_len += len;
+  assert(acc_len < kViEVersionMaxMessageSize);
 
 #ifdef WEBRTC_EXTERNAL_TRANSPORT
-  version_stream << "External transport build" << std::endl;
+  len = sprintf(version_ptr, "External transport build\n");
+  if (len == -1) {
+    shared_data_.SetLastError(kViEBaseUnknownError);
+    return -1;
+  }
+  version_ptr += len;
+  acc_len += len;
+  assert(acc_len < kViEVersionMaxMessageSize);
 #endif
-  int version_length = version_stream.tellp();
-  assert(version_length < 1024);
-  memcpy(version, version_stream.str().c_str(), version_length);
-  version[version_length] = '\0';
+  memcpy(version, version_buf, acc_len);
+  version[acc_len] = '\0';
 
   WEBRTC_TRACE(kTraceStateInfo, kTraceVideo,
                ViEId(shared_data_.instance_id()), "GetVersion() => %s",
