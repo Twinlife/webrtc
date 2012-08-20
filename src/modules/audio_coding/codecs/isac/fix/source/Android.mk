@@ -38,7 +38,6 @@ LOCAL_SRC_FILES := \
     lattice.c \
     lpc_masking_model.c \
     lpc_tables.c \
-    pitch_estimator.c \
     pitch_filter.c \
     pitch_gain_tables.c \
     pitch_lag_tables.c \
@@ -88,6 +87,7 @@ LOCAL_MODULE := libwebrtc_isacfix_neon
 LOCAL_MODULE_TAGS := optional
 LOCAL_SRC_FILES := \
     filters_neon.c \
+    pitch_estimator.c \
     lattice_neon.S \
     lpc_masking_model_neon.S
 
@@ -111,39 +111,3 @@ include $(BUILD_STATIC_LIBRARY)
 
 endif # ifeq ($(WEBRTC_BUILD_NEON_LIBS),true)
 
-###########################
-# isac test app
-
-include $(CLEAR_VARS)
-
-LOCAL_MODULE_TAGS := tests
-LOCAL_CPP_EXTENSION := .cc
-LOCAL_SRC_FILES:= ../test/kenny.c
-
-# Flags passed to both C and C++ files.
-LOCAL_CFLAGS := $(MY_WEBRTC_COMMON_DEFS)
-
-LOCAL_C_INCLUDES := \
-    $(LOCAL_PATH)/../interface \
-    $(LOCAL_PATH)/../../../../../..
-
-LOCAL_STATIC_LIBRARIES := \
-    libwebrtc_isacfix \
-    libwebrtc_spl \
-    libwebrtc_system_wrappers
-
-ifeq ($(WEBRTC_BUILD_NEON_LIBS),true)
-LOCAL_STATIC_LIBRARIES += \
-    libwebrtc_isacfix_neon
-endif
-
-LOCAL_SHARED_LIBRARIES := \
-    libutils
-
-LOCAL_MODULE:= webrtc_isac_test
-
-ifdef NDK_ROOT
-include $(BUILD_EXECUTABLE)
-else
-include $(BUILD_NATIVE_TEST)
-endif
