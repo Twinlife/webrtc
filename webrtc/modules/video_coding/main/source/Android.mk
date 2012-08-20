@@ -52,7 +52,7 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../interface \
     $(LOCAL_PATH)/../../codecs/interface \
     $(LOCAL_PATH)/../../codecs/i420/main/interface \
-    $(LOCAL_PATH)/../../codecs/vp8/main/interface \
+    $(LOCAL_PATH)/../../codecs/vp8/include \
     $(LOCAL_PATH)/../../../interface \
     $(LOCAL_PATH)/../../../.. \
     $(LOCAL_PATH)/../../../../common_video/vplib/main/interface \
