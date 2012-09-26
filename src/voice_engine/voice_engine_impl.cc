@@ -144,6 +144,12 @@ bool VoiceEngine::Delete(VoiceEngine*& voiceEngine)
     if (voiceEngine == NULL)
         return false;
 
+    if (voiceEngine == gVoiceEngine) {
+      gVoiceEngine = NULL;
+    } else if (gVoiceEngine == NULL) {
+      return true;
+    }
+
     VoiceEngineImpl* s = reinterpret_cast<VoiceEngineImpl*>(voiceEngine);
     // Release the reference that was added in GetVoiceEngine.
     int ref = s->Release();
