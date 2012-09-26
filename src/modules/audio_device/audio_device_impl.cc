@@ -457,6 +457,7 @@ AudioDeviceModuleImpl::~AudioDeviceModuleImpl()
     {
         delete _ptrAudioDevice;
         _ptrAudioDevice = NULL;
+	ptrAudioDeviceOpenSLES = NULL;
     }
 
     if (_ptrAudioDeviceUtility)
