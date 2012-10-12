@@ -34,7 +34,7 @@ void ViEAutoTest::ViEFileStandardTest()
 {
 #ifdef WEBRTC_VIDEO_ENGINE_FILE_API
     //***************************************************************
-    //	Begin create/initialize WebRTC Video Engine for testing
+    // Begin create/initialize WebRTC Video Engine for testing
     //***************************************************************
     {
         ViETest::Log("Starting a loopback call...");
@@ -169,6 +169,10 @@ void ViEAutoTest::ViEFileStandardTest()
 
         AutoTestSleep(TEST_SPACING);
 
+        // Test debug information recording.
+        EXPECT_EQ(0, ptrViEFile->StartDebugRecording(videoChannel,
+            (webrtc::test::OutputPath() + "vie_autotest_debug.yuv").c_str()));
+
         // testing StartRecordIncomingVideo and StopRecordIncomingVideo
         {
             ViETest::Log("Recording incoming video (currently no audio) for %d "
@@ -267,6 +271,7 @@ void ViEAutoTest::ViEFileStandardTest()
         AutoTestSleep(TEST_SPACING);
 
         // GetCaptureDeviceSnapshot
+        if (FLAGS_include_timing_dependent_tests)
         {
             ViETest::Log("Testing GetCaptureDeviceSnapshot(int, ViEPicture)");
             ViETest::Log("Taking a picture to use for displaying ViEPictures "
@@ -314,6 +319,7 @@ void ViEAutoTest::ViEFileStandardTest()
         AutoTestSleep(TEST_SPACING);
 
         // GetCaptureDeviceSnapshot
+        if (FLAGS_include_timing_dependent_tests)
         {
             ViETest::Log("Testing GetCaptureDeviceSnapshot(int, char*)");
             ViETest::Log("Taking snapshot from capture device %d", captureId);
@@ -342,6 +348,7 @@ void ViEAutoTest::ViEFileStandardTest()
         AutoTestSleep(TEST_SPACING);
 
         // Testing: SetCaptureDeviceImage
+        if (FLAGS_include_timing_dependent_tests)
         {
             ViETest::Log("Testing SetCaptureDeviceImage(int, ViEPicture)");
             EXPECT_EQ(0, ptrViECapture->StopCapture(captureId));
@@ -357,6 +364,7 @@ void ViEAutoTest::ViEFileStandardTest()
         AutoTestSleep(TEST_SPACING);
 
         // testing SetRenderStartImage(videoChannel, renderStartImage);
+        if (FLAGS_include_timing_dependent_tests)
         {
             ViETest::Log("Testing SetRenderStartImage(int, char*)");
             // set render image, then stop capture and stop render to display it
@@ -402,6 +410,7 @@ void ViEAutoTest::ViEFileStandardTest()
 
         // testing SetRenderTimeoutImage(videoChannel, renderTimeoutFile,
         // RENDER_TIMEOUT);
+        if (FLAGS_include_timing_dependent_tests)
         {
             ViETest::Log("Testing SetRenderTimeoutImage(int, char*)");
             ViETest::Log("Stopping capture device to induce timeout of %d ms",
@@ -456,6 +465,9 @@ void ViEAutoTest::ViEFileStandardTest()
             // Should fail since we don't observe this file.
             EXPECT_NE(0, ptrViEFile->DeregisterObserver(fileId, fileObserver));
         }
+
+        // Stop debug record.
+        EXPECT_EQ(0, ptrViEFile->StopDebugRecording(videoChannel));
 
         //***************************************************************
         //	Testing finished. Tear down Video Engine

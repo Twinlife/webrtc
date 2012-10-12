@@ -56,21 +56,8 @@ int WebRtcNetEQ_strncpy(char *strDest, int numberOfElements,
  */
 
 /*****************************************
- * Info functions
+ * Error functions
  */
-
-int WebRtcNetEQ_GetVersion(char *version)
-{
-    char versionString[] = "3.3.0\0    ";
-    char endChar[] = " ";
-    int i = 0;
-    while ((versionString[i] != endChar[0]) && (i <= 20))
-    {
-        version[i] = versionString[i]; /* To avoid using strcpy */
-        i++;
-    }
-    return (0);
-}
 
 int WebRtcNetEQ_GetErrorCode(void *inst)
 {
@@ -303,6 +290,9 @@ int WebRtcNetEQ_Assign(void **inst, void *NETEQ_inst_Addr)
     MainInst_t *NetEqMainInst = (MainInst_t*) NETEQ_inst_Addr;
     *inst = NETEQ_inst_Addr;
     if (*inst == NULL) return (-1);
+
+    WebRtcSpl_Init();
+
     /* Clear memory */
     WebRtcSpl_MemSetW16((WebRtc_Word16*) NetEqMainInst, 0,
         (sizeof(MainInst_t) / sizeof(WebRtc_Word16)));
@@ -358,12 +348,7 @@ int WebRtcNetEQ_GetRecommendedBufferSize(void *inst, const enum WebRtcNetEQDecod
     }
     *MaxNoOfPackets = (*MaxNoOfPackets) * multiplier;
     *sizeinbytes = (*sizeinbytes) * multiplier;
-    if (ok != 0)
-    {
-        NetEqMainInst->ErrorCode = -ok;
-        return (-1);
-    }
-    return (ok);
+    return 0;
 }
 
 int WebRtcNetEQ_AssignBuffer(void *inst, int MaxNoOfPackets, void *NETEQ_Buffer_Addr,

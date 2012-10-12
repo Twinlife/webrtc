@@ -102,8 +102,11 @@ protected:
     VideoCaptureImpl(const WebRtc_Word32 id);
     virtual ~VideoCaptureImpl();
     WebRtc_Word32 DeliverCapturedFrame(
-        VideoFrame& captureFrame, WebRtc_Word32 width, WebRtc_Word32 height,
+        VideoFrame& captureFrame,
         WebRtc_Word64 capture_time, VideoCodecType codec_type);
+    WebRtc_Word32 DeliverEncodedCapturedFrame(
+           VideoFrame& captureFrame,
+           WebRtc_Word64 capture_time, VideoCodecType codec_type);
 
     WebRtc_Word32 _id; // Module ID
     char* _deviceUniqueId; // current Device unique name;
@@ -134,6 +137,7 @@ private:
     VideoRotationMode _rotateFrame; //Set if the frame should be rotated by the capture module.
 
     VideoFrame _captureFrame;
+    VideoFrame _capture_encoded_frame;
 
     // Used to make sure incoming timestamp is increasing for every frame.
     WebRtc_Word64 last_capture_time_;

@@ -125,8 +125,9 @@ CodecDataBaseTest::Perform(CmdArgs& args)
     sourceFrame.SetTimeStamp(_timeStamp);
     // Encoder registration
     TEST (VideoCodingModule::NumberOfCodecs() > 0);
-    TEST(VideoCodingModule::Codec(-1, &sendCodec) == VCM_PARAMETER_ERROR);
-    TEST(VideoCodingModule::Codec(VideoCodingModule::NumberOfCodecs() + 1, &sendCodec) == VCM_PARAMETER_ERROR);
+    TEST(VideoCodingModule::Codec(-1, &sendCodec) < 0);
+    TEST(VideoCodingModule::Codec(VideoCodingModule::NumberOfCodecs() + 1,
+                                  &sendCodec) < 0);
     VideoCodingModule::Codec(1, &sendCodec);
     sendCodec.plType = 0; // random value
     TEST(_vcm->RegisterSendCodec(&sendCodec, 1, 1440) < 0);
@@ -238,7 +239,7 @@ CodecDataBaseTest::Perform(CmdArgs& args)
     // Try to decode a delta frame. Should get a warning since we have enabled the "require key frame" setting
     // and because no frame type request callback has been registered.
     TEST(_vcm->Decode() == VCM_MISSING_CALLBACK);
-    TEST(_vcm->IntraFrameRequest() == VCM_OK);
+    TEST(_vcm->IntraFrameRequest(0) == VCM_OK);
     _timeStamp += (WebRtc_UWord32)(9e4 / _frameRate);
     sourceFrame.SetTimeStamp(_timeStamp);
     TEST(_vcm->AddVideoFrame(sourceFrame) == VCM_OK);
@@ -250,7 +251,7 @@ CodecDataBaseTest::Perform(CmdArgs& args)
     sendCodec.width = _width;
     sendCodec.height = _height;
     TEST(_vcm->RegisterReceiveCodec(&sendCodec, 1) == VCM_OK);
-    TEST(_vcm->IntraFrameRequest() == VCM_OK);
+    TEST(_vcm->IntraFrameRequest(0) == VCM_OK);
     waitEvent->Wait(33);
     _timeStamp += (WebRtc_UWord32)(9e4 / _frameRate);
     sourceFrame.SetTimeStamp(_timeStamp);
@@ -260,7 +261,7 @@ CodecDataBaseTest::Perform(CmdArgs& args)
     waitEvent->Wait(33);
     _timeStamp += (WebRtc_UWord32)(9e4 / _frameRate);
     sourceFrame.SetTimeStamp(_timeStamp);
-    TEST(_vcm->IntraFrameRequest() == VCM_OK);
+    TEST(_vcm->IntraFrameRequest(0) == VCM_OK);
     TEST(_vcm->AddVideoFrame(sourceFrame) == VCM_OK);
     TEST(_vcm->Decode() == VCM_OK);
     TEST(_vcm->ResetDecoder() == VCM_OK);

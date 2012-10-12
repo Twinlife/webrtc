@@ -25,9 +25,26 @@
                  VoEId(_shared->instance_id(), -1), __FUNCTION__); \
   } while (0)
 
+#define WEBRTC_VOICE_INIT_CHECK()                        \
+  do {                                                   \
+    if (!_shared->statistics().Initialized()) {          \
+      _shared->SetLastError(VE_NOT_INITED, kTraceError); \
+      return -1;                                         \
+    }                                                    \
+  } while (0)
+
+#define WEBRTC_VOICE_INIT_CHECK_BOOL()                   \
+  do {                                                   \
+    if (!_shared->statistics().Initialized()) {          \
+      _shared->SetLastError(VE_NOT_INITED, kTraceError); \
+      return false;                                      \
+    }                                                    \
+  } while (0)
+
+
 namespace webrtc {
 
-#if defined(WEBRTC_ANDROID) || defined(MAC_IPHONE) || defined(MAC_IPHONE_SIM)
+#if defined(WEBRTC_ANDROID) || defined(WEBRTC_IOS)
 static const EcModes kDefaultEcMode = kEcAecm;
 #else
 static const EcModes kDefaultEcMode = kEcAec;
@@ -48,7 +65,8 @@ VoEAudioProcessing* VoEAudioProcessing::GetInterface(VoiceEngine* voiceEngine) {
 
 #ifdef WEBRTC_VOICE_ENGINE_AUDIO_PROCESSING_API
 VoEAudioProcessingImpl::VoEAudioProcessingImpl(voe::SharedData* shared)
-    : _isAecMode(kDefaultEcMode == kEcAec), _shared(shared) {
+    : _isAecMode(kDefaultEcMode == kEcAec),
+      _shared(shared) {
   WEBRTC_TRACE(kTraceMemory, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "VoEAudioProcessingImpl::VoEAudioProcessingImpl() - ctor");
 }
@@ -165,7 +183,7 @@ int VoEAudioProcessingImpl::SetAgcStatus(bool enable, AgcModes mode) {
     return -1;
   }
 
-#if defined(MAC_IPHONE) || defined(ATA) || defined(WEBRTC_ANDROID)
+#if defined(WEBRTC_IOS) || defined(ATA) || defined(WEBRTC_ANDROID)
   if (mode == kAgcAdaptiveAnalog) {
     _shared->SetLastError(VE_INVALID_ARGUMENT, kTraceError,
         "SetAgcStatus() invalid Agc mode for mobile device");
@@ -487,6 +505,41 @@ int VoEAudioProcessingImpl::GetRxAgcConfig(int channel, AgcConfig& config) {
 #endif
 }
 
+bool VoEAudioProcessing::DriftCompensationSupported() {
+#if defined(WEBRTC_DRIFT_COMPENSATION_SUPPORTED)
+  return true;
+#else
+  return false;
+#endif
+}
+
+int VoEAudioProcessingImpl::EnableDriftCompensation(bool enable) {
+  WEBRTC_TRACE_VOICE_API();
+  WEBRTC_VOICE_INIT_CHECK();
+
+  if (!DriftCompensationSupported()) {
+    _shared->SetLastError(VE_APM_ERROR, kTraceWarning,
+        "Drift compensation is not supported on this platform.");
+    return -1;
+  }
+
+  EchoCancellation* aec = _shared->audio_processing()->echo_cancellation();
+  if (aec->enable_drift_compensation(enable) != 0) {
+    _shared->SetLastError(VE_APM_ERROR, kTraceError,
+        "aec->enable_drift_compensation() failed");
+    return -1;
+  }
+  return 0;
+}
+
+bool VoEAudioProcessingImpl::DriftCompensationEnabled() {
+  WEBRTC_TRACE_VOICE_API();
+  WEBRTC_VOICE_INIT_CHECK_BOOL();
+
+  EchoCancellation* aec = _shared->audio_processing()->echo_cancellation();
+  return aec->is_drift_compensation_enabled();
+}
+
 int VoEAudioProcessingImpl::SetEcStatus(bool enable, EcModes mode) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "SetEcStatus(enable=%d, mode=%d)", enable, mode);
@@ -520,21 +573,6 @@ int VoEAudioProcessingImpl::SetEcStatus(bool enable, EcModes mode) {
           "SetEcStatus() failed to set AEC state");
       return -1;
     }
-#ifdef CLOCK_SKEW_COMP
-    if (_shared->audio_processing()->echo_cancellation()->
-        enable_drift_compensation(true) != 0) {
-      _shared->SetLastError(VE_APM_ERROR, kTraceError,
-          "SetEcStatus() failed to enable drift compensation");
-      return -1;
-    }
-#else
-    if (_shared->audio_processing()->echo_cancellation()->
-        enable_drift_compensation(false) != 0) {
-      _shared->SetLastError(VE_APM_ERROR, kTraceError,
-          "SetEcStatus() failed to disable drift compensation");
-      return -1;
-    }
-#endif
     if (mode == kEcConference) {
       if (_shared->audio_processing()->echo_cancellation()->
           set_suppression_level(EchoCancellation::kHighSuppression) != 0) {
@@ -750,7 +788,7 @@ int VoEAudioProcessingImpl::RegisterRxVadObserver(
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "RegisterRxVadObserver()");
   ANDROID_NOT_SUPPORTED(_shared->statistics());
-  IPHONE_NOT_SUPPORTED();
+  IPHONE_NOT_SUPPORTED(_shared->statistics());
 
   if (!_shared->statistics().Initialized()) {
     _shared->SetLastError(VE_NOT_INITED, kTraceError);
@@ -770,7 +808,7 @@ int VoEAudioProcessingImpl::DeRegisterRxVadObserver(int channel) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "DeRegisterRxVadObserver()");
   ANDROID_NOT_SUPPORTED(_shared->statistics());
-  IPHONE_NOT_SUPPORTED();
+  IPHONE_NOT_SUPPORTED(_shared->statistics());
 
   if (!_shared->statistics().Initialized()) {
     _shared->SetLastError(VE_NOT_INITED, kTraceError);
@@ -812,7 +850,7 @@ int VoEAudioProcessingImpl::SetEcMetricsStatus(bool enable) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "SetEcMetricsStatus(enable=%d)", enable);
   ANDROID_NOT_SUPPORTED(_shared->statistics());
-  IPHONE_NOT_SUPPORTED();
+  IPHONE_NOT_SUPPORTED(_shared->statistics());
 
 #ifdef WEBRTC_VOICE_ENGINE_ECHO
   if (!_shared->statistics().Initialized()) {
@@ -840,7 +878,7 @@ int VoEAudioProcessingImpl::GetEcMetricsStatus(bool& enabled) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "GetEcMetricsStatus(enabled=?)");
   ANDROID_NOT_SUPPORTED(_shared->statistics());
-  IPHONE_NOT_SUPPORTED();
+  IPHONE_NOT_SUPPORTED(_shared->statistics());
 
 #ifdef WEBRTC_VOICE_ENGINE_ECHO
   if (!_shared->statistics().Initialized()) {
@@ -878,7 +916,7 @@ int VoEAudioProcessingImpl::GetEchoMetrics(int& ERL,
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "GetEchoMetrics(ERL=?, ERLE=?, RERL=?, A_NLP=?)");
   ANDROID_NOT_SUPPORTED(_shared->statistics());
-  IPHONE_NOT_SUPPORTED();
+  IPHONE_NOT_SUPPORTED(_shared->statistics());
 
 #ifdef WEBRTC_VOICE_ENGINE_ECHO
   if (!_shared->statistics().Initialized()) {
@@ -922,7 +960,7 @@ int VoEAudioProcessingImpl::GetEcDelayMetrics(int& delay_median,
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "GetEcDelayMetrics(median=?, std=?)");
   ANDROID_NOT_SUPPORTED(_shared->statistics());
-  IPHONE_NOT_SUPPORTED();
+  IPHONE_NOT_SUPPORTED(_shared->statistics());
 
 #ifdef WEBRTC_VOICE_ENGINE_ECHO
   if (!_shared->statistics().Initialized()) {
@@ -988,7 +1026,7 @@ int VoEAudioProcessingImpl::SetTypingDetectionStatus(bool enable) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "SetTypingDetectionStatus()");
   ANDROID_NOT_SUPPORTED(_shared->statistics());
-  IPHONE_NOT_SUPPORTED();
+  IPHONE_NOT_SUPPORTED(_shared->statistics());
 #ifdef WEBRTC_VOICE_ENGINE_TYPING_DETECTION
   if (!_shared->statistics().Initialized()) {
     _shared->SetLastError(VE_NOT_INITED, kTraceError);
@@ -1022,7 +1060,7 @@ int VoEAudioProcessingImpl::GetTypingDetectionStatus(bool& enabled) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "GetTypingDetectionStatus()");
   ANDROID_NOT_SUPPORTED(_shared->statistics());
-  IPHONE_NOT_SUPPORTED();
+  IPHONE_NOT_SUPPORTED(_shared->statistics());
 
 #ifdef WEBRTC_VOICE_ENGINE_TYPING_DETECTION
   if (!_shared->statistics().Initialized()) {
@@ -1047,7 +1085,7 @@ int VoEAudioProcessingImpl::TimeSinceLastTyping(int &seconds) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "TimeSinceLastTyping()");
   ANDROID_NOT_SUPPORTED(_shared->statistics());
-  IPHONE_NOT_SUPPORTED();
+  IPHONE_NOT_SUPPORTED(_shared->statistics());
 
 #ifdef WEBRTC_VOICE_ENGINE_TYPING_DETECTION
   if (!_shared->statistics().Initialized()) {
@@ -1082,7 +1120,7 @@ int VoEAudioProcessingImpl::SetTypingDetectionParameters(int timeWindow,
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "SetTypingDetectionParameters()");
   ANDROID_NOT_SUPPORTED(_shared->statistics());
-  IPHONE_NOT_SUPPORTED();
+  IPHONE_NOT_SUPPORTED(_shared->statistics());
 
 #ifdef WEBRTC_VOICE_ENGINE_TYPING_DETECTION
   if (!_shared->statistics().Initialized()) {
@@ -1110,8 +1148,6 @@ bool VoEAudioProcessingImpl::IsStereoChannelSwappingEnabled() {
   WEBRTC_TRACE_VOICE_API();
   return _shared->transmit_mixer()->IsStereoChannelSwappingEnabled();
 }
-
-
 
 #endif  // #ifdef WEBRTC_VOICE_ENGINE_AUDIO_PROCESSING_API
 

@@ -1,3 +1,4 @@
+*.host.mk
 *.target.mk
 *.Makefile
 *.ncb
@@ -31,11 +32,14 @@
 .settings
 /build
 /chromium_deps
+/google_apis/build
 /gyp-mac-tool
 /Makefile
 /out
 /resources
 /src/supplement.gypi
+/src/video_engine/main/test/android_test/bin
+/src/video_engine/main/test/android_test/gen
 /testing
 /third_party/asan
 /third_party/cygwin

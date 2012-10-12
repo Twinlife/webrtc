@@ -21,7 +21,6 @@ namespace webrtc
 {
 
 //#define DEBUG_DECODER_BIT_STREAM
-//#define DEBUG_ENCODER_INPUT
 
 WebRtc_UWord32
 VCMProcessTimer::Period() const
@@ -74,14 +73,11 @@ _scheduleKeyRequest(false),
 _sendCritSect(CriticalSectionWrapper::CreateCriticalSection()),
 _encoder(),
 _encodedFrameCallback(),
-_nextFrameType(kVideoFrameDelta),
+_nextFrameTypes(1, kVideoFrameDelta),
 _mediaOpt(id, clock_),
 _sendCodecType(kVideoCodecUnknown),
 _sendStatsCallback(NULL),
-#ifdef DEBUG_ENCODER_INPUT
 _encoderInputFile(NULL),
-#endif
-
 _codecDataBase(id),
 _receiveStatsTimer(1000, clock_),
 _sendStatsTimer(1000, clock_),
@@ -91,9 +87,6 @@ _keyRequestTimer(500, clock_)
     assert(clock_);
 #ifdef DEBUG_DECODER_BIT_STREAM
     _bitStreamBeforeDecoder = fopen("decoderBitStream.bit", "wb");
-#endif
-#ifdef DEBUG_ENCODER_INPUT
-    _encoderInputFile = fopen("encoderInput.yuv", "wb");
 #endif
 }
 
@@ -109,9 +102,10 @@ VideoCodingModuleImpl::~VideoCodingModuleImpl()
 #ifdef DEBUG_DECODER_BIT_STREAM
     fclose(_bitStreamBeforeDecoder);
 #endif
-#ifdef DEBUG_ENCODER_INPUT
-    fclose(_encoderInputFile);
-#endif
+    if (_encoderInputFile != NULL)
+    {
+        fclose(_encoderInputFile);
+    }
 }
 
 VideoCodingModule*
@@ -277,7 +271,7 @@ VideoCodingModule::Codec(WebRtc_UWord8 listId, VideoCodec* codec)
     {
         return VCM_PARAMETER_ERROR;
     }
-    return VCMCodecDataBase::Codec(listId, codec);
+    return VCMCodecDataBase::Codec(listId, codec) ? 0 : -1;
 }
 
 // Get supported codec with type
@@ -288,7 +282,7 @@ VideoCodingModule::Codec(VideoCodecType codecType, VideoCodec* codec)
     {
         return VCM_PARAMETER_ERROR;
     }
-    return VCMCodecDataBase::Codec(codecType, codec);
+    return VCMCodecDataBase::Codec(codecType, codec) ? 0 : -1;
 }
 
 /*
@@ -320,15 +314,14 @@ VideoCodingModuleImpl::RegisterSendCodec(const VideoCodec* sendCodec,
     {
         return VCM_PARAMETER_ERROR;
     }
-    WebRtc_Word32 ret = _codecDataBase.RegisterSendCodec(sendCodec,
-                                                         numberOfCores,
-                                                         maxPayloadSize);
-    if (ret < 0)
+    bool ret = _codecDataBase.RegisterSendCodec(sendCodec, numberOfCores,
+                                                maxPayloadSize);
+    if (!ret)
     {
-        return ret;
+        return -1;
     }
 
-    _encoder = _codecDataBase.SetEncoder(sendCodec, &_encodedFrameCallback);
+    _encoder = _codecDataBase.GetEncoder(sendCodec, &_encodedFrameCallback);
     if (_encoder == NULL)
     {
         WEBRTC_TRACE(webrtc::kTraceError,
@@ -340,6 +333,9 @@ VideoCodingModuleImpl::RegisterSendCodec(const VideoCodec* sendCodec,
     _sendCodecType = sendCodec->codecType;
     int numLayers = (_sendCodecType != kVideoCodecVP8) ? 1 :
                         sendCodec->codecSpecific.VP8.numberOfTemporalLayers;
+    _nextFrameTypes.clear();
+    _nextFrameTypes.resize(VCM_MAX(sendCodec->numberOfSimulcastStreams, 1),
+                           kVideoFrameDelta);
 
     _mediaOpt.SetEncodingData(_sendCodecType,
                               sendCodec->maxBitrate,
@@ -363,7 +359,7 @@ VideoCodingModuleImpl::SendCodec(VideoCodec* currentSendCodec) const
     {
         return VCM_PARAMETER_ERROR;
     }
-    return _codecDataBase.SendCodec(currentSendCodec);
+    return _codecDataBase.SendCodec(currentSendCodec) ? 0 : -1;
 }
 
 // Get the current send codec type
@@ -387,19 +383,18 @@ VideoCodingModuleImpl::RegisterExternalEncoder(VideoEncoder* externalEncoder,
     if (externalEncoder == NULL)
     {
         bool wasSendCodec = false;
-        const WebRtc_Word32 ret = _codecDataBase.DeRegisterExternalEncoder(
-                                                                  payloadType,
-                                                                  wasSendCodec);
+        const bool ret = _codecDataBase.DeregisterExternalEncoder(
+            payloadType, &wasSendCodec);
         if (wasSendCodec)
         {
             // Make sure the VCM doesn't use the de-registered codec
             _encoder = NULL;
         }
-        return ret;
+        return ret ? 0 : -1;
     }
-    return _codecDataBase.RegisterExternalEncoder(externalEncoder,
-                                                  payloadType,
-                                                  internalSource);
+    _codecDataBase.RegisterExternalEncoder(externalEncoder, payloadType,
+                                           internalSource);
+    return 0;
 }
 
 // Get codec config parameters
@@ -648,7 +643,7 @@ VideoCodingModuleImpl::SetVideoProtection(VCMVideoProtection videoProtection,
     case kProtectionPeriodicKeyFrames:
         {
             CriticalSectionScoped cs(_sendCritSect);
-            return _codecDataBase.SetPeriodicKeyFrames(enable);
+            return _codecDataBase.SetPeriodicKeyFrames(enable) ? 0 : -1;
             break;
         }
     }
@@ -667,7 +662,9 @@ VideoCodingModuleImpl::AddVideoFrame(const VideoFrame& videoFrame,
     {
         return VCM_UNINITIALIZED;
     }
-    if (_nextFrameType == kFrameEmpty)
+    // TODO(holmer): Add support for dropping frames per stream. Currently we
+    // only have one frame dropper for all streams.
+    if (_nextFrameTypes[0] == kFrameEmpty)
     {
         return VCM_OK;
     }
@@ -685,8 +682,7 @@ VideoCodingModuleImpl::AddVideoFrame(const VideoFrame& videoFrame,
         _mediaOpt.updateContentData(contentMetrics);
         WebRtc_Word32 ret = _encoder->Encode(videoFrame,
                                              codecSpecificInfo,
-                                             _nextFrameType);
-#ifdef DEBUG_ENCODER_INPUT
+                                             &_nextFrameTypes);
         if (_encoderInputFile != NULL)
         {
           if (fwrite(videoFrame.Buffer(), 1, videoFrame.Length(),
@@ -694,7 +690,6 @@ VideoCodingModuleImpl::AddVideoFrame(const VideoFrame& videoFrame,
             return -1;
           }
         }
-#endif
         if (ret < 0)
         {
             WEBRTC_TRACE(webrtc::kTraceError,
@@ -703,19 +698,23 @@ VideoCodingModuleImpl::AddVideoFrame(const VideoFrame& videoFrame,
                          "Encode error: %d", ret);
             return ret;
         }
-        _nextFrameType = kVideoFrameDelta; // default frame type
+        for (size_t i = 0; i < _nextFrameTypes.size(); ++i) {
+          _nextFrameTypes[i] = kVideoFrameDelta;  // Default frame type.
+        }
     }
     return VCM_OK;
 }
 
-WebRtc_Word32 VideoCodingModuleImpl::IntraFrameRequest() {
+WebRtc_Word32 VideoCodingModuleImpl::IntraFrameRequest(int stream_index) {
+  assert(stream_index >= 0);
   CriticalSectionScoped cs(_sendCritSect);
-  _nextFrameType = kVideoFrameKey;
+  _nextFrameTypes[stream_index] = kVideoFrameKey;
   if (_encoder != NULL && _encoder->InternalSource()) {
     // Try to request the frame if we have an external encoder with
     // internal source since AddVideoFrame never will be called.
-    if (_encoder->RequestFrame(_nextFrameType) == WEBRTC_VIDEO_CODEC_OK) {
-      _nextFrameType = kVideoFrameDelta;
+    if (_encoder->RequestFrame(&_nextFrameTypes) ==
+        WEBRTC_VIDEO_CODEC_OK) {
+      _nextFrameTypes[stream_index] = kVideoFrameDelta;
     }
   }
   return VCM_OK;
@@ -801,14 +800,10 @@ VideoCodingModuleImpl::RegisterExternalDecoder(VideoDecoder* externalDecoder,
     {
         // Make sure the VCM updates the decoder next time it decodes.
         _decoder = NULL;
-        return _codecDataBase.DeRegisterExternalDecoder(payloadType);
+        return _codecDataBase.DeregisterExternalDecoder(payloadType) ? 0 : -1;
     }
-    else
-    {
-        return _codecDataBase.RegisterExternalDecoder(externalDecoder,
-                                                      payloadType,
-                                                      internalRenderTiming);
-    }
+    return _codecDataBase.RegisterExternalDecoder(
+        externalDecoder, payloadType, internalRenderTiming) ? 0 : -1;
 }
 
 // Register a frame type request callback.
@@ -862,10 +857,10 @@ VideoCodingModuleImpl::Decode(WebRtc_UWord16 maxWaitTimeMs)
          _dualReceiver.NackMode() == kNackInfinite);
 
     VCMEncodedFrame* frame = _receiver.FrameForDecoding(
-                                                  maxWaitTimeMs,
-                                                  nextRenderTimeMs,
-                                                  _codecDataBase.RenderTiming(),
-                                                  &_dualReceiver);
+        maxWaitTimeMs,
+        nextRenderTimeMs,
+        _codecDataBase.SupportsRenderScheduling(),
+        &_dualReceiver);
 
     if (dualReceiverEnabledNotReceiving && _dualReceiver.State() == kReceiving)
     {
@@ -1044,10 +1039,10 @@ WebRtc_Word32
 VideoCodingModuleImpl::Decode(const VCMEncodedFrame& frame)
 {
     // Change decoder if payload type has changed
-    const bool renderTimingBefore = _codecDataBase.RenderTiming();
-    _decoder = _codecDataBase.SetDecoder(frame.PayloadType(),
-                                         _decodedFrameCallback);
-    if (renderTimingBefore != _codecDataBase.RenderTiming())
+    const bool renderTimingBefore = _codecDataBase.SupportsRenderScheduling();
+    _decoder = _codecDataBase.GetDecoder(frame.PayloadType(),
+                                         &_decodedFrameCallback);
+    if (renderTimingBefore != _codecDataBase.SupportsRenderScheduling())
     {
         // Make sure we reset the decode time estimate since it will
         // be zero for codecs without render timing.
@@ -1156,8 +1151,11 @@ VideoCodingModuleImpl::RegisterReceiveCodec(const VideoCodec* receiveCodec,
     {
         return VCM_PARAMETER_ERROR;
     }
-    return _codecDataBase.RegisterReceiveCodec(receiveCodec, numberOfCores,
-                                               requireKeyFrame);
+    if (!_codecDataBase.RegisterReceiveCodec(receiveCodec, numberOfCores,
+                                             requireKeyFrame)) {
+      return -1;
+    }
+    return 0;
 }
 
 // Get current received codec
@@ -1169,7 +1167,7 @@ VideoCodingModuleImpl::ReceiveCodec(VideoCodec* currentReceiveCodec) const
     {
         return VCM_PARAMETER_ERROR;
     }
-    return _codecDataBase.ReceiveCodec(currentReceiveCodec);
+    return _codecDataBase.ReceiveCodec(currentReceiveCodec) ? 0 : -1;
 }
 
 // Get current received codec
@@ -1186,6 +1184,12 @@ VideoCodingModuleImpl::IncomingPacket(const WebRtc_UWord8* incomingPayload,
                                     WebRtc_UWord32 payloadLength,
                                     const WebRtcRTPHeader& rtpInfo)
 {
+    if (incomingPayload == NULL) {
+      // The jitter buffer doesn't handle non-zero payload lengths for packets
+      // without payload.
+      // TODO(holmer): We should fix this in the jitter buffer.
+      payloadLength = 0;
+    }
     const VCMPacket packet(incomingPayload, payloadLength, rtpInfo);
     WebRtc_Word32 ret;
     if (_dualReceiver.State() != kPassive)
@@ -1370,6 +1374,23 @@ int VideoCodingModuleImpl::SetReceiverRobustnessMode(
       _receiver.SetNackMode(kNoNack);
       _dualReceiver.SetNackMode(kNoNack);
       break;
+  }
+  return VCM_OK;
+}
+
+int VideoCodingModuleImpl::StartDebugRecording(const char* file_name_utf8) {
+  CriticalSectionScoped cs(_sendCritSect);
+  _encoderInputFile = fopen(file_name_utf8, "wb");
+  if (_encoderInputFile == NULL)
+    return VCM_GENERAL_ERROR;
+  return VCM_OK;
+}
+
+int VideoCodingModuleImpl::StopDebugRecording(){
+  CriticalSectionScoped cs(_sendCritSect);
+  if (_encoderInputFile != NULL) {
+    fclose(_encoderInputFile);
+    _encoderInputFile = NULL;
   }
   return VCM_OK;
 }

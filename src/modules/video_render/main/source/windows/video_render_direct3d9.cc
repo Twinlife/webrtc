@@ -153,65 +153,55 @@ WebRtc_Word32 D3D9Channel::RenderFrame(const WebRtc_UWord32 streamId,
             return -1;
         }
     }
-    return DeliverFrame(videoFrame.Buffer(), videoFrame.Length(),
-                        videoFrame.TimeStamp());
+    return DeliverFrame(videoFrame);
 }
 
 // Called from video engine when a new frame should be rendered.
-int D3D9Channel::DeliverFrame(unsigned char* buffer,
-                                  int bufferSize,
-                                  unsigned int timeStamp90kHz)
-{
+int D3D9Channel::DeliverFrame(const VideoFrame& videoFrame) {
+  WEBRTC_TRACE(kTraceStream, kTraceVideo, -1,
+               "DeliverFrame to D3D9Channel");
+
+  CriticalSectionScoped cs(_critSect);
+
+  // FIXME if _bufferIsUpdated is still true (not be renderred), do we want to
+  // update the texture? probably not
+  if (_bufferIsUpdated) {
     WEBRTC_TRACE(kTraceStream, kTraceVideo, -1,
-                 "DeliverFrame to D3D9Channel");
+                 "Last frame hasn't been rendered yet. Drop this frame.");
+    return -1;
+  }
 
-    CriticalSectionScoped cs(_critSect);
+  if (!_pd3dDevice) {
+    WEBRTC_TRACE(kTraceError, kTraceVideo, -1,
+                 "D3D for rendering not initialized.");
+    return -1;
+  }
 
-    //FIXME if _bufferIsUpdated is still true (not be renderred), do we what to update the texture?)
-    //probably not
-    if (_bufferIsUpdated)
-    {
-        WEBRTC_TRACE(kTraceStream, kTraceVideo, -1,
-                     "Last frame hasn't been rendered yet. Drop this frame.");
-        return -1;
-    }
+  if (!_pTexture) {
+    WEBRTC_TRACE(kTraceError, kTraceVideo, -1,
+                 "Texture for rendering not initialized.");
+    return -1;
+  }
 
-    if (!_pd3dDevice)
-    {
-        WEBRTC_TRACE(kTraceError, kTraceVideo, -1,
-                     "D3D for rendering not initialized.");
-        return -1;
-    }
+  D3DLOCKED_RECT lr;
 
-    if (!_pTexture)
-    {
-        WEBRTC_TRACE(kTraceError, kTraceVideo, -1,
-                     "Texture for rendering not initialized.");
-        return -1;
-    }
+  if (FAILED(_pTexture->LockRect(0, &lr, NULL, 0))) {
+    WEBRTC_TRACE(kTraceError, kTraceVideo, -1,
+                 "Failed to lock a texture in D3D9 Channel.");
+    return -1;
+  }
+  UCHAR* pRect = (UCHAR*) lr.pBits;
 
-    D3DLOCKED_RECT lr;
+  ConvertFromI420(videoFrame, _width, kARGB, 0, pRect);
 
-    if (FAILED(_pTexture->LockRect(0, &lr, NULL, 0)))
-    {
-        WEBRTC_TRACE(kTraceError, kTraceVideo, -1,
-                     "Failed to lock a texture in D3D9 Channel.");
-        return -1;
-    }
-    UCHAR* pRect = (UCHAR*) lr.pBits;
+  if (FAILED(_pTexture->UnlockRect(0))) {
+    WEBRTC_TRACE(kTraceError, kTraceVideo, -1,
+                 "Failed to unlock a texture in D3D9 Channel.");
+    return -1;
+  }
 
-    ConvertFromI420(buffer, _width, kARGB, 0, _width, _height, pRect);
-
-    if (FAILED(_pTexture->UnlockRect(0)))
-    {
-        WEBRTC_TRACE(kTraceError, kTraceVideo, -1,
-                     "Failed to unlock a texture in D3D9 Channel.");
-        return -1;
-    }
-
-    _bufferIsUpdated = true;
-
-    return 0;
+  _bufferIsUpdated = true;
+  return 0;
 }
 
 // Called by d3d channel owner to indicate the frame/texture has been rendered off
@@ -512,8 +502,10 @@ int VideoRenderDirect3D9::InitDevice()
     _pd3dDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
     _pd3dDevice->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
     _pd3dDevice->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-    //_pd3dDevice->SetTextureStageState(0,D3DTSS_ALPHAOP,D3DTOP_SELECTARG1);
-    //_pd3dDevice->SetTextureStageState(0,D3DTSS_ALPHAARG1,D3DTA_TEXTURE);
+
+    _pd3dDevice->SetSamplerState( 0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR );
+    _pd3dDevice->SetSamplerState( 0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR );
+    _pd3dDevice->SetSamplerState( 0, D3DSAMP_MIPFILTER, D3DTEXF_LINEAR );
 
     // Initialize Vertices
     CUSTOMVERTEX Vertices[] = {
@@ -1062,6 +1054,7 @@ WebRtc_Word32 VideoRenderDirect3D9::SetBitmap(const void* bitMap,
     {
         WEBRTC_TRACE(kTraceError, kTraceVideo, -1,
                      "Direct3D failed to GetDIBits in SetBitmap");
+        delete[] srcPtr;
         return -1;
     }
     DeleteDC(hdcNew);
@@ -1069,6 +1062,7 @@ WebRtc_Word32 VideoRenderDirect3D9::SetBitmap(const void* bitMap,
     {
         WEBRTC_TRACE(kTraceError, kTraceVideo, -1,
                      "Direct3D failed to SetBitmap invalid bit depth");
+        delete[] srcPtr;
         return -1;
     }
 
@@ -1085,18 +1079,21 @@ WebRtc_Word32 VideoRenderDirect3D9::SetBitmap(const void* bitMap,
     if (FAILED(ret))
     {
         _pTextureLogo = NULL;
+        delete[] srcPtr;
         return -1;
     }
     if (!_pTextureLogo)
     {
         WEBRTC_TRACE(kTraceError, kTraceVideo, -1,
                      "Texture for rendering not initialized.");
+        delete[] srcPtr;
         return -1;
     }
 
     D3DLOCKED_RECT lr;
     if (FAILED(_pTextureLogo->LockRect(0, &lr, NULL, 0)))
     {
+        delete[] srcPtr;
         return -1;
     }
     unsigned char* dstPtr = (UCHAR*) lr.pBits;
@@ -1117,7 +1114,7 @@ WebRtc_Word32 VideoRenderDirect3D9::SetBitmap(const void* bitMap,
         }
     }
 
-    delete srcPtr;
+    delete[] srcPtr;
     if (FAILED(_pTextureLogo->UnlockRect(0)))
     {
         return -1;

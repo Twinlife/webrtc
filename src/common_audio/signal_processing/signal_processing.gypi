@@ -14,12 +14,16 @@
       'include_dirs': [
         'include',
       ],
+      'dependencies': [
+        '<(webrtc_root)/system_wrappers/source/system_wrappers.gyp:system_wrappers',
+      ],
       'direct_dependent_settings': {
         'include_dirs': [
           'include',
         ],
       },
       'sources': [
+        'include/real_fft.h',
         'include/signal_processing_library.h',
         'include/spl_inl.h',
         'auto_corr_to_refl_coef.c',
@@ -43,18 +47,43 @@
         'min_max_operations.c',
         'randomization_functions.c',
         'refl_coef_to_lpc.c',
+        'real_fft.c',
         'resample.c',
         'resample_48khz.c',
         'resample_by_2.c',
         'resample_by_2_internal.c',
         'resample_by_2_internal.h',
         'resample_fractional.c',
+        'spl_init.c',
         'spl_sqrt.c',
         'spl_sqrt_floor.c',
         'spl_version.c',
         'splitting_filter.c',
         'sqrt_of_one_minus_x_squared.c',
         'vector_scaling_operations.c',
+      ],
+      'conditions': [
+        ['target_arch=="arm"', {
+          'sources': [
+            'complex_bit_reverse_arm.s',
+            'spl_sqrt_floor_arm.s',
+          ],
+          'sources!': [
+            'complex_bit_reverse.c',
+            'spl_sqrt_floor.c',
+          ],
+          'conditions': [
+            ['armv7==1', {
+              'dependencies': ['signal_processing_neon',],
+              'sources': [
+                'filter_ar_fast_q12_armv7.s',
+              ],
+              'sources!': [
+                'filter_ar_fast_q12.c',
+              ],
+            }],
+          ],
+        }],
       ],
     }, # spl
   ], # targets
@@ -66,20 +95,30 @@
           'type': 'executable',
           'dependencies': [
             'signal_processing',
-            '<(webrtc_root)/test/test.gyp:test_support_main',
             '<(DEPTH)/testing/gtest.gyp:gtest',
+            '<(webrtc_root)/test/test.gyp:test_support_main',
           ],
           'sources': [
+            'real_fft_unittest.cc',
             'signal_processing_unittest.cc',
           ],
         }, # spl_unittests
       ], # targets
     }], # include_tests
+    ['target_arch=="arm" and armv7==1', {
+      'targets': [
+        {
+          'target_name': 'signal_processing_neon',
+          'type': '<(library)',
+          'includes': ['../../build/arm_neon.gypi',],
+          'sources': [
+            'cross_correlation_neon.s',
+            'downsample_fast_neon.s',
+            'min_max_operations_neon.s',
+            'vector_scaling_operations_neon.s',
+          ],
+        },
+      ],
+    }], # 'target_arch=="arm" and armv7==1'
   ], # conditions
 }
-
-# Local Variables:
-# tab-width:2
-# indent-tabs-mode:nil
-# End:
-# vim: set expandtab tabstop=2 shiftwidth=2:

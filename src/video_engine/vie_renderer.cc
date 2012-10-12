@@ -55,6 +55,10 @@ WebRtc_Word32 ViERenderer::GetLastRenderedFrame(const WebRtc_Word32 renderID,
   return render_module_.GetLastRenderedFrame(renderID, video_frame);
 }
 
+int ViERenderer::SetExpectedRenderDelay(int render_delay) {
+  return render_module_.SetExpectedRenderDelay(render_id_, render_delay);
+}
+
 WebRtc_Word32 ViERenderer::ConfigureRenderer(const unsigned int z_order,
                                              const float left,
                                              const float top,
@@ -191,8 +195,7 @@ WebRtc_Word32 ViEExternalRendererImpl::RenderFrame(
     case kVideoARGB4444:
     case kVideoARGB1555 :
       {
-        ConvertFromI420(video_frame.Buffer(), video_frame.Width(), type, 0,
-                        video_frame.Width(), video_frame.Height(),
+        ConvertFromI420(video_frame, video_frame.Width(), type, 0,
                         converted_frame_->Buffer());
       }
       break;

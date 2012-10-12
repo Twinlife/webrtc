@@ -24,15 +24,15 @@
 #include "windows/video_render_windows_impl.h"
 #define STANDARD_RENDERING kRenderWindows
 
-// MAC_IPHONE should go before WEBRTC_MAC_INTEL because WEBRTC_MAC_INTEL
-// gets defined if MAC_IPHONE is defined
-#elif defined(MAC_IPHONE)
+// WEBRTC_IOS should go before WEBRTC_MAC because WEBRTC_MAC
+// gets defined if WEBRTC_IOS is defined
+#elif defined(WEBRTC_IOS)
 #if defined(IPHONE_GLES_RENDERING)
 #define STANDARD_RENDERING kRenderiPhone
 #include "iPhone/video_render_iphone_impl.h"
 #endif
 
-#elif defined(WEBRTC_MAC) || defined(WEBRTC_MAC_INTEL)
+#elif defined(WEBRTC_MAC)
 #if defined(COCOA_RENDERING)
 #define STANDARD_RENDERING kRenderCocoa
 #include "mac/video_render_mac_cocoa_impl.h"
@@ -116,7 +116,7 @@ ModuleVideoRenderImpl::ModuleVideoRenderImpl(
         }
         break;
 
-#elif defined(MAC_IPHONE)
+#elif defined(WEBRTC_IOS)
         case kRenderiPhone:
         {
             VideoRenderIPhoneImpl* ptrRenderer = new VideoRenderIPhoneImpl(_id, videoRenderType, window, _fullScreen);
@@ -127,7 +127,7 @@ ModuleVideoRenderImpl::ModuleVideoRenderImpl(
         }
         break;
 
-#elif defined(WEBRTC_MAC) || defined(WEBRTC_MAC_INTEL)
+#elif defined(WEBRTC_MAC)
 
 #if defined(COCOA_RENDERING)
         case kRenderCocoa:
@@ -256,7 +256,7 @@ ModuleVideoRenderImpl::~ModuleVideoRenderImpl()
                 delete ptrRenderer;
             }
             break;
-#elif defined(WEBRTC_MAC) || defined(WEBRTC_MAC_INTEL)
+#elif defined(WEBRTC_MAC)
 
 #if defined(COCOA_RENDERING)
             case kRenderCocoa:
@@ -276,7 +276,7 @@ ModuleVideoRenderImpl::~ModuleVideoRenderImpl()
             break;
 #endif
 
-#elif defined(MAC_IPHONE)
+#elif defined(WEBRTC_IOS)
             case kRenderiPhone:
             break;
 
@@ -350,7 +350,7 @@ WebRtc_Word32 ModuleVideoRenderImpl::ChangeWindow(void* window)
 
 #ifdef WEBRTC_INCLUDE_INTERNAL_VIDEO_RENDER
 
-#if defined(MAC_IPHONE) // MAC_IPHONE must go before WEBRTC_MAC or WEBRTC_MAC_INTEL
+#if defined(WEBRTC_IOS) // WEBRTC_IOS must go before WEBRTC_MAC
     _ptrRenderer = NULL;
     delete _ptrRenderer;
 
@@ -363,7 +363,7 @@ WebRtc_Word32 ModuleVideoRenderImpl::ChangeWindow(void* window)
     _ptrRenderer = reinterpret_cast<IVideoRender*>(ptrRenderer);
     return _ptrRenderer->ChangeWindow(window);
 
-#elif defined(WEBRTC_MAC) | defined(WEBRTC_MAC_INTEL)
+#elif defined(WEBRTC_MAC)
 
     _ptrRenderer = NULL;
     delete _ptrRenderer;
@@ -843,6 +843,37 @@ WebRtc_Word32 ModuleVideoRenderImpl::GetLastRenderedFrame(
         return 0;
     }
     return incomingStream->GetLastRenderedFrame(frame);
+}
+
+WebRtc_Word32 ModuleVideoRenderImpl::SetExpectedRenderDelay(
+    WebRtc_UWord32 stream_id, WebRtc_Word32 delay_ms) {
+  CriticalSectionScoped cs(&_moduleCrit);
+
+  if (!_ptrRenderer) {
+    WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, _id,
+                 "%s: No renderer", __FUNCTION__);
+    return false;
+  }
+
+  MapItem *item = _streamRenderMap.Find(stream_id);
+  if (item == NULL) {
+    // This stream doesn't exist
+    WEBRTC_TRACE(kTraceError, kTraceVideoRenderer, _id,
+                 "%s(%u, %d): stream doesn't exist", __FUNCTION__, stream_id,
+                 delay_ms);
+    return -1;
+  }
+
+  IncomingVideoStream* incoming_stream =
+      static_cast<IncomingVideoStream*> (item->GetItem());
+  if (incoming_stream == NULL) {
+      // This should never happen
+      assert(false);
+      _streamRenderMap.Erase(item);
+      return 0;
+  }
+
+  return incoming_stream->SetExpectedRenderDelay(delay_ms);
 }
 
 WebRtc_Word32 ModuleVideoRenderImpl::ConfigureRenderer(

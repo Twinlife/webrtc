@@ -63,7 +63,8 @@ class ViEChannel
              RtcpIntraFrameObserver* intra_frame_observer,
              RtcpBandwidthObserver* bandwidth_observer,
              RemoteBitrateEstimator* remote_bitrate_estimator,
-             RtpRtcp* default_rtp_rtcp);
+             RtpRtcp* default_rtp_rtcp,
+             bool sender);
   ~ViEChannel();
 
   WebRtc_Word32 Init();
@@ -106,6 +107,9 @@ class ViEChannel
                                        const unsigned char payload_typeFEC);
   WebRtc_Word32 SetKeyFrameRequestMethod(const KeyFrameRequestMethod method);
   bool EnableRemb(bool enable);
+  int SetSendTimestampOffsetStatus(bool enable, int id);
+  int SetReceiveTimestampOffsetStatus(bool enable, int id);
+  void SetTransmissionSmoothingStatus(bool enable);
   WebRtc_Word32 EnableTMMBR(const bool enable);
   WebRtc_Word32 EnableKeyFrameRequestCallback(const bool enable);
 
@@ -114,8 +118,8 @@ class ViEChannel
                         const StreamType usage,
                         const unsigned char simulcast_idx);
 
-  // Gets SSRC for outgoing stream.
-  WebRtc_Word32 GetLocalSSRC(uint32_t* ssrc);
+  // Gets SSRC for outgoing stream number |idx|.
+  WebRtc_Word32 GetLocalSSRC(uint8_t idx, unsigned int* ssrc);
 
   // Gets SSRC for the incoming stream.
   WebRtc_Word32 GetRemoteSSRC(uint32_t* ssrc);
@@ -178,6 +182,11 @@ class ViEChannel
                                          const WebRtc_UWord32 name,
                                          const WebRtc_UWord16 length,
                                          const WebRtc_UWord8* data);
+  virtual void OnSendReportReceived(const WebRtc_Word32 id,
+                                    const WebRtc_UWord32 senderSSRC,
+                                    uint32_t ntp_secs,
+                                    uint32_t ntp_frac,
+                                    uint32_t timestamp);
   // Implements RtpFeedback.
   virtual WebRtc_Word32 OnInitializeDecoder(
       const WebRtc_Word32 id,
@@ -373,6 +382,7 @@ class ViEChannel
   RtcpIntraFrameObserver* intra_frame_observer_;
   scoped_ptr<RtcpBandwidthObserver> bandwidth_observer_;
   bool rtp_packet_timeout_;
+  int send_timestamp_extension_id_;
   bool using_packet_spread_;
 
   Transport* external_transport_;
@@ -393,6 +403,7 @@ class ViEChannel
 
   // User set MTU, -1 if not set.
   uint16_t mtu_;
+  const bool sender_;
 };
 
 }  // namespace webrtc

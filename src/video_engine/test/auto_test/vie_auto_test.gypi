@@ -37,7 +37,6 @@
         'interface/vie_autotest.h',
         'interface/vie_autotest_defines.h',
         'interface/vie_autotest_linux.h',
-        'interface/vie_autotest_mac_carbon.h',
         'interface/vie_autotest_mac_cocoa.h',
         'interface/vie_autotest_main.h',
         'interface/vie_autotest_window_manager_interface.h',
@@ -58,13 +57,21 @@
         # Test primitives
         'primitives/base_primitives.cc',
         'primitives/base_primitives.h',
+        'primitives/choice_helpers.cc',
+        'primitives/choice_helpers.h',
+        'primitives/choice_helpers_unittest.cc',
         'primitives/codec_primitives.cc',
         'primitives/codec_primitives.h',
+        'primitives/fake_stdin.h',
+        'primitives/fake_stdin.cc',
         'primitives/framedrop_primitives.h',
         'primitives/framedrop_primitives.cc',
         'primitives/framedrop_primitives_unittest.cc',
         'primitives/general_primitives.cc',
         'primitives/general_primitives.h',
+        'primitives/input_helpers.cc',
+        'primitives/input_helpers.h',
+        'primitives/input_helpers_unittest.cc',
 
         # Platform independent
         'source/vie_autotest.cc',
@@ -78,6 +85,7 @@
         'source/vie_autotest_main.cc',
         'source/vie_autotest_network.cc',
         'source/vie_autotest_render.cc',
+        'source/vie_autotest_record.cc',
         'source/vie_autotest_rtp_rtcp.cc',
         'source/vie_autotest_custom_call.cc',
         'source/vie_autotest_simulcast.cc',
@@ -92,7 +100,6 @@
         'source/vie_window_manager_factory_linux.cc',
         # Mac
         'source/vie_autotest_cocoa_mac.mm',
-        'source/vie_autotest_carbon_mac.cc',
         'source/vie_window_manager_factory_mac.mm',
         # Windows
         'source/vie_autotest_win.cc',
@@ -114,6 +121,10 @@
           ],
         }],
         ['OS=="mac"', {
+          'dependencies': [
+            # Use a special main for mac so we can access the webcam.
+            '<(webrtc_root)/test/test.gyp:test_support_main_threaded_mac',
+          ],
           'xcode_settings': {
             'OTHER_LDFLAGS': [
               '-framework Foundation -framework AppKit -framework Cocoa -framework OpenGL -framework CoreVideo -framework CoreAudio -framework AudioToolbox',

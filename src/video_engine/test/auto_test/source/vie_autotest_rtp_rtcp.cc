@@ -8,19 +8,16 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-//
-// vie_autotest_rtp_rtcp.cc
-//
 #include <iostream>
 
 #include "engine_configurations.h"
-#include "tb_capture_device.h"
-#include "tb_external_transport.h"
-#include "tb_interfaces.h"
-#include "tb_video_channel.h"
-#include "testsupport/fileutils.h"
-#include "vie_autotest.h"
-#include "vie_autotest_defines.h"
+#include "video_engine/test/libvietest/include/tb_capture_device.h"
+#include "video_engine/test/libvietest/include/tb_external_transport.h"
+#include "video_engine/test/libvietest/include/tb_interfaces.h"
+#include "video_engine/test/libvietest/include/tb_video_channel.h"
+#include "test/testsupport/fileutils.h"
+#include "video_engine/test/auto_test/interface/vie_autotest.h"
+#include "video_engine/test/auto_test/interface/vie_autotest_defines.h"
 
 class ViERtpObserver: public webrtc::ViERTPObserver
 {
@@ -104,7 +101,8 @@ void ViEAutoTest::ViERtpRtcpStandardTest()
     tbCapture.ConnectTo(tbChannel.videoChannel);
 
     ViETest::Log("\n");
-    TbExternalTransport myTransport(*(ViE.network));
+    TbExternalTransport myTransport(*(ViE.network), tbChannel.videoChannel,
+                                    NULL);
 
     EXPECT_EQ(0, ViE.network->RegisterSendTransport(
         tbChannel.videoChannel, myTransport));
@@ -149,11 +147,13 @@ void ViEAutoTest::ViERtpRtcpStandardTest()
 
     AutoTestSleep(1000);
 
-    char remoteCName[webrtc::ViERTP_RTCP::KMaxRTCPCNameLength];
-    memset(remoteCName, 0, webrtc::ViERTP_RTCP::KMaxRTCPCNameLength);
-    EXPECT_EQ(0, ViE.rtp_rtcp->GetRemoteRTCPCName(
-        tbChannel.videoChannel, remoteCName));
-    EXPECT_STRCASEEQ(sendCName, remoteCName);
+    if (FLAGS_include_timing_dependent_tests) {
+      char remoteCName[webrtc::ViERTP_RTCP::KMaxRTCPCNameLength];
+      memset(remoteCName, 0, webrtc::ViERTP_RTCP::KMaxRTCPCNameLength);
+      EXPECT_EQ(0, ViE.rtp_rtcp->GetRemoteRTCPCName(
+          tbChannel.videoChannel, remoteCName));
+      EXPECT_STRCASEEQ(sendCName, remoteCName);
+    }
 
     //
     //  Statistics
@@ -227,10 +227,12 @@ void ViEAutoTest::ViERtpRtcpStandardTest()
         &estimated_bandwidth));
     EXPECT_GT(estimated_bandwidth, 0u);
 
-    EXPECT_EQ(0, ViE.rtp_rtcp->GetEstimatedReceiveBandwidth(
-        tbChannel.videoChannel,
-        &estimated_bandwidth));
-    EXPECT_GT(estimated_bandwidth, 0u);
+    if (FLAGS_include_timing_dependent_tests) {
+      EXPECT_EQ(0, ViE.rtp_rtcp->GetEstimatedReceiveBandwidth(
+          tbChannel.videoChannel,
+          &estimated_bandwidth));
+      EXPECT_GT(estimated_bandwidth, 0u);
+    }
 
     // Check that rec stats extended max is greater than what we've sent.
     EXPECT_GE(recExtendedMax, sentExtendedMax);
@@ -297,16 +299,20 @@ void ViEAutoTest::ViERtpRtcpStandardTest()
     AutoTestSleep(2000);
     unsigned int receivedSSRC = myTransport.ReceivedSSRC();
     ViETest::Log("Received SSRC %u\n", receivedSSRC);
-    EXPECT_EQ(setSSRC, receivedSSRC);
 
-    unsigned int localSSRC = 0;
-    EXPECT_EQ(0, ViE.rtp_rtcp->GetLocalSSRC(tbChannel.videoChannel, localSSRC));
-    EXPECT_EQ(setSSRC, localSSRC);
+    if (FLAGS_include_timing_dependent_tests) {
+      EXPECT_EQ(setSSRC, receivedSSRC);
 
-    unsigned int remoteSSRC = 0;
-    EXPECT_EQ(0, ViE.rtp_rtcp->GetRemoteSSRC(
-        tbChannel.videoChannel, remoteSSRC));
-    EXPECT_EQ(setSSRC, remoteSSRC);
+      unsigned int localSSRC = 0;
+      EXPECT_EQ(0, ViE.rtp_rtcp->GetLocalSSRC(
+          tbChannel.videoChannel, localSSRC));
+      EXPECT_EQ(setSSRC, localSSRC);
+
+      unsigned int remoteSSRC = 0;
+      EXPECT_EQ(0, ViE.rtp_rtcp->GetRemoteSSRC(
+          tbChannel.videoChannel, remoteSSRC));
+      EXPECT_EQ(setSSRC, remoteSSRC);
+    }
 
     EXPECT_EQ(0, ViE.base->StopSend(tbChannel.videoChannel));
 
@@ -375,7 +381,8 @@ void ViEAutoTest::ViERtpRtcpExtendedTest()
 
     //tbChannel.StartReceive(rtpPort);
     //tbChannel.StartSend(rtpPort);
-    TbExternalTransport myTransport(*(ViE.network));
+    TbExternalTransport myTransport(*(ViE.network), tbChannel.videoChannel,
+                                    NULL);
 
     EXPECT_EQ(0, ViE.network->RegisterSendTransport(
         tbChannel.videoChannel, myTransport));
@@ -429,8 +436,22 @@ void ViEAutoTest::ViERtpRtcpAPITest()
     //***************************************************************
     // Create VIE
     TbInterfaces ViE("ViERtpRtcpAPITest");
+
+    // Verify that we can set the bandwidth estimation mode, as that API only
+    // is valid to call before creating channels.
+    EXPECT_EQ(0, ViE.rtp_rtcp->SetBandwidthEstimationMode(
+        webrtc::kViESingleStreamEstimation));
+    EXPECT_EQ(0, ViE.rtp_rtcp->SetBandwidthEstimationMode(
+        webrtc::kViEMultiStreamEstimation));
+
     // Create a video channel
     TbVideoChannel tbChannel(ViE, webrtc::kVideoCodecVP8);
+
+    EXPECT_EQ(-1, ViE.rtp_rtcp->SetBandwidthEstimationMode(
+        webrtc::kViESingleStreamEstimation));
+    EXPECT_EQ(-1, ViE.rtp_rtcp->SetBandwidthEstimationMode(
+        webrtc::kViEMultiStreamEstimation));
+
     // Create a capture device
     TbCaptureDevice tbCapture(ViE);
     tbCapture.ConnectTo(tbChannel.videoChannel);
@@ -609,6 +630,55 @@ void ViEAutoTest::ViERtpRtcpAPITest()
     {
       EXPECT_EQ(0, ViE.rtp_rtcp->SetNACKStatus(tbChannel.videoChannel, true));
     }
+
+    // Timsetamp offset extension.
+    // Valid range is 1 to 14 inclusive.
+    EXPECT_EQ(-1, ViE.rtp_rtcp->SetSendTimestampOffsetStatus(
+        tbChannel.videoChannel, true, 0));
+    EXPECT_EQ(-1, ViE.rtp_rtcp->SetSendTimestampOffsetStatus(
+        tbChannel.videoChannel, true, 15));
+    EXPECT_EQ(0, ViE.rtp_rtcp->SetSendTimestampOffsetStatus(
+        tbChannel.videoChannel, true, 3));
+    EXPECT_EQ(0, ViE.rtp_rtcp->SetSendTimestampOffsetStatus(
+        tbChannel.videoChannel, true, 3));
+    EXPECT_EQ(0, ViE.rtp_rtcp->SetSendTimestampOffsetStatus(
+            tbChannel.videoChannel, false, 3));
+    EXPECT_EQ(0, ViE.rtp_rtcp->SetSendTimestampOffsetStatus(
+        tbChannel.videoChannel, true, 3));
+    EXPECT_EQ(0, ViE.rtp_rtcp->SetSendTimestampOffsetStatus(
+              tbChannel.videoChannel, false, 3));
+    EXPECT_EQ(0, ViE.rtp_rtcp->SetSendTimestampOffsetStatus(
+            tbChannel.videoChannel, false, 3));
+
+    EXPECT_EQ(-1, ViE.rtp_rtcp->SetReceiveTimestampOffsetStatus(
+        tbChannel.videoChannel, true, 0));
+    EXPECT_EQ(-1, ViE.rtp_rtcp->SetReceiveTimestampOffsetStatus(
+        tbChannel.videoChannel, true, 15));
+    EXPECT_EQ(0, ViE.rtp_rtcp->SetReceiveTimestampOffsetStatus(
+        tbChannel.videoChannel, true, 3));
+    EXPECT_EQ(-1, ViE.rtp_rtcp->SetReceiveTimestampOffsetStatus(
+        tbChannel.videoChannel, true, 3));
+    EXPECT_EQ(0, ViE.rtp_rtcp->SetReceiveTimestampOffsetStatus(
+            tbChannel.videoChannel, false, 3));
+    EXPECT_EQ(0, ViE.rtp_rtcp->SetReceiveTimestampOffsetStatus(
+        tbChannel.videoChannel, true, 3));
+    EXPECT_EQ(0, ViE.rtp_rtcp->SetReceiveTimestampOffsetStatus(
+              tbChannel.videoChannel, false, 3));
+    EXPECT_EQ(0, ViE.rtp_rtcp->SetReceiveTimestampOffsetStatus(
+            tbChannel.videoChannel, false, 3));
+
+    // Transmission smoothening.
+    const int invalid_channel_id = 17;
+    EXPECT_EQ(-1, ViE.rtp_rtcp->SetTransmissionSmoothingStatus(
+        invalid_channel_id, true));
+    EXPECT_EQ(0, ViE.rtp_rtcp->SetTransmissionSmoothingStatus(
+        tbChannel.videoChannel, true));
+    EXPECT_EQ(0, ViE.rtp_rtcp->SetTransmissionSmoothingStatus(
+        tbChannel.videoChannel, true));
+    EXPECT_EQ(0, ViE.rtp_rtcp->SetTransmissionSmoothingStatus(
+        tbChannel.videoChannel, false));
+    EXPECT_EQ(0, ViE.rtp_rtcp->SetTransmissionSmoothingStatus(
+        tbChannel.videoChannel, false));
 
     //***************************************************************
     //  Testing finished. Tear down Video Engine

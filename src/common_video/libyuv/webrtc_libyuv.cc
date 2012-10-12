@@ -52,6 +52,11 @@ VideoType RawVideoTypeToCommonVideoVideoType(RawVideoType type) {
   return kUnknown;
 }
 
+int AlignInt(int value, int alignment) {
+  assert(!((alignment - 1) & alignment));
+  return ((value + alignment - 1) & ~ (alignment - 1));
+}
+
 int CalcBufferSize(VideoType type, int width, int height) {
   int buffer_size = 0;
   switch (type) {
@@ -166,15 +171,17 @@ int ConvertToI420(VideoType src_video_type,
                   int crop_x, int crop_y,
                   int src_width, int src_height,
                   int sample_size,
-                  int dst_width, int dst_height, int dst_stride,
                   VideoRotationMode rotation,
-                  uint8_t* dst_frame) {
+                  VideoFrame* dst_frame) {
   // All sanity tests are conducted within LibYuv.
-  int abs_dst_height = (dst_height < 0) ? -dst_height : dst_height;
+  int dst_height = dst_frame->Height();
+  int dst_width = dst_frame->Width();
+  // TODO(mikhal): When available, use actual stride value.
+  int dst_stride = dst_frame->Width();
   int half_dst_width = (dst_width + 1) >> 1;
-  int half_dst_height = (abs_dst_height + 1) >> 1;
-  uint8_t* dst_yplane = dst_frame;
-  uint8_t* dst_uplane = dst_yplane + dst_width * abs_dst_height;
+  int half_dst_height = (dst_height + 1) >> 1;
+  uint8_t* dst_yplane = dst_frame->Buffer();
+  uint8_t* dst_uplane = dst_yplane + dst_width * dst_height;
   uint8_t* dst_vplane = dst_uplane + half_dst_width * half_dst_height;
   return libyuv::ConvertToI420(src_frame, sample_size,
                                dst_yplane, dst_stride,
@@ -187,14 +194,15 @@ int ConvertToI420(VideoType src_video_type,
                                ConvertVideoType(src_video_type));
 }
 
-int ConvertFromI420(const uint8_t* src_frame, int src_stride,
+int ConvertFromI420(const VideoFrame& src_frame, int src_stride,
                     VideoType dst_video_type, int dst_sample_size,
-                    int width, int height,
                     uint8_t* dst_frame) {
+  int height = src_frame.Height();
+  int width = src_frame.Width();
   int abs_height = (height < 0) ? -height : height;
   int half_width = (width + 1) >> 1;
   int half_height = (abs_height + 1) >> 1;
-  const uint8_t* src_yplane = src_frame;
+  const uint8_t* src_yplane = src_frame.Buffer();
   const uint8_t* src_uplane = src_yplane + width * abs_height;
   const uint8_t* src_vplane = src_uplane + half_width * half_height;
   return libyuv::ConvertFromI420(src_yplane, src_stride,
@@ -224,15 +232,20 @@ int ConvertFromYV12(const uint8_t* src_frame, int src_stride,
                                  ConvertVideoType(dst_video_type));
 }
 
-int MirrorI420LeftRight(const uint8_t* src_frame,
-                        uint8_t* dst_frame,
-                        int width, int height) {
+int MirrorI420LeftRight(const VideoFrame* src_frame,
+                        VideoFrame* dst_frame) {
+  // Source and destination frames should have equal resolution.
+  if (src_frame->Width() != dst_frame->Width() ||
+      src_frame->Height() != dst_frame->Height())
+    return -1;
+  int width = src_frame->Width();
+  int height = src_frame->Height();
   int half_width = (width + 1) >> 1;
   int half_height = (height + 1) >> 1;
-  const uint8_t* src_yplane = src_frame;
+  const uint8_t* src_yplane = src_frame->Buffer();
   const uint8_t* src_uplane = src_yplane + width * height;
   const uint8_t* src_vplane = src_uplane + half_width * half_height;
-  uint8_t* dst_yplane = dst_frame;
+  uint8_t* dst_yplane = dst_frame->Buffer();
   uint8_t* dst_uplane = dst_yplane + width * height;
   uint8_t* dst_vplane = dst_uplane + half_width * half_height;
   return libyuv::I420Mirror(src_yplane, width,
@@ -244,15 +257,21 @@ int MirrorI420LeftRight(const uint8_t* src_frame,
                             width, height);
 }
 
-int MirrorI420UpDown(const uint8_t* src_frame, uint8_t* dst_frame,
-                     int width, int height) {
+int MirrorI420UpDown(const VideoFrame* src_frame,
+                     VideoFrame* dst_frame) {
+  // Source and destination frames should have equal resolution
+  if (src_frame->Width() != dst_frame->Width() ||
+      src_frame->Height() != dst_frame->Height())
+    return -1;
+  int width = src_frame->Width();
+  int height = src_frame->Height();
   int half_width = (width + 1) >> 1;
   int half_height = (height + 1) >> 1;
-  const uint8_t* src_yplane = src_frame;
-  const uint8_t* src_uplane = src_frame + width * height;
+  const uint8_t* src_yplane = src_frame->Buffer();
+  const uint8_t* src_uplane = src_yplane + width * height;
   const uint8_t* src_vplane = src_uplane + half_width * half_height;
-  uint8_t* dst_yplane = dst_frame;
-  uint8_t* dst_uplane = dst_frame + width * height;
+  uint8_t* dst_yplane = dst_frame->Buffer();
+  uint8_t* dst_uplane = dst_yplane + width * height;
   uint8_t* dst_vplane = dst_uplane + half_width * half_height;
 
   // Inserting negative height flips the frame.
@@ -263,6 +282,69 @@ int MirrorI420UpDown(const uint8_t* src_frame, uint8_t* dst_frame,
                           dst_uplane, half_width,
                           dst_vplane, half_width,
                           width, -height);
+}
+
+// Compute PSNR for an I420 frame (all planes)
+double I420PSNR(const VideoFrame* ref_frame,
+                const VideoFrame* test_frame) {
+  if (!ref_frame || !test_frame)
+    return -1;
+  else if ((ref_frame->Width() !=  test_frame->Width()) ||
+          (ref_frame->Height() !=  test_frame->Height()))
+    return -1;
+  else if (ref_frame->Width() == 0u || ref_frame->Height() == 0u)
+    return -1;
+  int height = ref_frame->Height() ;
+  int width = ref_frame->Width();
+  int half_width = (width + 1) >> 1;
+  int half_height = (height + 1) >> 1;
+  const uint8_t* src_y_a = ref_frame->Buffer();
+  const uint8_t* src_u_a = src_y_a + width * height;
+  const uint8_t* src_v_a = src_u_a + half_width * half_height;
+  const uint8_t* src_y_b = test_frame->Buffer();
+  const uint8_t* src_u_b = src_y_b + width * height;
+  const uint8_t* src_v_b = src_u_b + half_width * half_height;
+  // In the following: stride is determined by width.
+  double psnr = libyuv::I420Psnr(src_y_a, width,
+                                 src_u_a, half_width,
+                                 src_v_a, half_width,
+                                 src_y_b, width,
+                                 src_u_b, half_width,
+                                 src_v_b, half_width,
+                                 width, height);
+  // LibYuv sets the max psnr value to 128, we restrict it to 48.
+  // In case of 0 mse in one frame, 128 can skew the results significantly.
+  return (psnr > 48.0) ? 48.0 : psnr;
+}
+// Compute SSIM for an I420 frame (all planes)
+double I420SSIM(const VideoFrame* ref_frame,
+                const VideoFrame* test_frame) {
+  if (!ref_frame || !test_frame)
+    return -1;
+  else if ((ref_frame->Width() !=  test_frame->Width()) ||
+          (ref_frame->Height() !=  test_frame->Height()))
+    return -1;
+  else if (ref_frame->Width() == 0u || ref_frame->Height() == 0u)
+    return -1;
+  int height = ref_frame->Height() ;
+  int width = ref_frame->Width();
+  int half_width = (width + 1) >> 1;
+  int half_height = (height + 1) >> 1;
+  const uint8_t* src_y_a = ref_frame->Buffer();
+  const uint8_t* src_u_a = src_y_a + width * height;
+  const uint8_t* src_v_a = src_u_a + half_width * half_height;
+  const uint8_t* src_y_b = test_frame->Buffer();
+  const uint8_t* src_u_b = src_y_b + width * height;
+  const uint8_t* src_v_b = src_u_b + half_width * half_height;
+  int stride_y = width;
+  int stride_uv = half_width;
+  return libyuv::I420Ssim(src_y_a, stride_y,
+                          src_u_a, stride_uv,
+                          src_v_a, stride_uv,
+                          src_y_b, stride_y,
+                          src_u_b, stride_uv,
+                          src_v_b, stride_uv,
+                          width, height);
 }
 
 // Compute PSNR for an I420 frame (all planes)

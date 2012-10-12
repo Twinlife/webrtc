@@ -18,11 +18,6 @@
 #include "set_thread_name_win.h"
 #include "trace.h"
 
-#if defined(_WIN32)
-// VS 2005: Disable warnings for default initialized arrays.
-#pragma warning(disable:4351)
-#endif
-
 namespace webrtc {
 ThreadWindows::ThreadWindows(ThreadRunFunction func, ThreadObj obj,
                              ThreadPriority prio, const char* threadName)
@@ -80,6 +75,9 @@ unsigned int WINAPI ThreadWindows::StartThread(LPVOID lpParameter)
 
 bool ThreadWindows::Start(unsigned int& threadID)
 {
+    if (!_runFunction) {
+      return false;
+    }
     _doNotCloseHandle = false;
 
     // Set stack size to 1M

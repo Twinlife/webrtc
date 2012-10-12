@@ -153,7 +153,6 @@ WebRtc_UWord32 simClock=0;
 int main(int argc, char* argv[])
 {
     std::vector<NETEQTEST_NetEQClass *> NetEQvector;
-    char   version[20];
 
     enum WebRtcNetEQDecoder usedCodec[kDecoderReservedEnd-1];
     int noOfCodecs;
@@ -186,10 +185,9 @@ int main(int argc, char* argv[])
     std::map<WebRtc_UWord8, decoderStruct> decoders;
     bool dummyRtp = false;
     bool noDecode = false;
+    bool filterSSRC = false;
+    uint32_t ssrc;
 
-    /* get the version string */
-    WebRtcNetEQ_GetVersion(version);
-    printf("\n\nNetEq version: %s\n", version);
 #ifdef DEF_BUILD_DATE
     printf("Build time: %s\n", __BUILD_DATE);
 #endif
@@ -228,6 +226,7 @@ int main(int argc, char* argv[])
         printf("\t-rtponly packLenBytes  : input file consists of constant size RTP packets without RTPplay headers\n");
         printf("\t-dummyrtp              : input file contains only RTP headers\n");
         printf("\t-nodecode              : no decoding will be done\n");
+        printf("\t-ssrc 0xNNNNNNNN       : discard all other SSRCs\n");
         //printf("\t-switchms              : switch from mono to stereo (copy channel) after 10 seconds\n");
         //printf("\t-duplicate             : use two instances with identical input (2-channel mono)\n");
 
@@ -325,6 +324,17 @@ int main(int argc, char* argv[])
             argIx++;
             noDecode = true;
         }
+        else if (strcmp(argv[argIx], "-ssrc") == 0)
+        {
+            argIx++;
+            filterSSRC = true;
+            if (sscanf(argv[argIx], "%X", &ssrc) != 1)
+            {
+                printf("Could not read SSRC argument.\n");
+                exit(1);
+            }
+            argIx++;
+        }
         //else if( strcmp(argv[argIx], "-switchms") == 0 ) {
         //    argIx++;
         //    switchMS = true;
@@ -357,6 +367,8 @@ int main(int argc, char* argv[])
 #ifdef WIN32
     _splitpath(argv[0],outdrive,outpath,outfile,outext);
     _makepath(ptypesfile,outdrive,outpath,"ptypes","txt");
+#elif defined(WEBRTC_ANDROID)
+  strcpy(ptypesfile, "/sdcard/ptypes.txt");
 #else
     // TODO(hlundin): Include path to ptypes, as for WIN32 above.
   strcpy(ptypesfile, "ptypes.txt");
@@ -409,6 +421,15 @@ int main(int argc, char* argv[])
         slaveRtp = new NETEQTEST_DummyRTPpacket();
     }
 
+    /* Uncomment and edit the line(s) below to block some payload types. */
+    //rtp->blockPT(72);
+    //rtp->blockPT(23);
+
+    /* Select a specific SSRC. */
+    if (filterSSRC) {
+        rtp->selectSSRC(ssrc);
+    }
+
     if (!rtpOnly)
     {
         while (rtp->readFromFile(in_file) >= 0)
@@ -441,11 +462,6 @@ int main(int argc, char* argv[])
     }
 
     fseek(in_file, tempFilePos, SEEK_SET /* from beginning */);
-
-
-    /* block some payload types */
-    //rtp->blockPT(72);
-    //rtp->blockPT(23);
 
     /* read first packet */
     if (!rtpOnly)
@@ -1576,7 +1592,6 @@ void free_coders(std::map<WebRtc_UWord8, decoderStruct> & decoders)
 
 int doAPItest() {
 
-    char   version[20];
     void *inst;
     enum WebRtcNetEQDecoder usedCodec;
     int NetEqBufferMaxPackets, BufferSizeInBytes;
@@ -1586,11 +1601,7 @@ int doAPItest() {
     int memorySize;
     int ok;
 
-    printf("API-test:\n");
-
-    /* get the version string */
-    WebRtcNetEQ_GetVersion(version);
-    printf("NetEq version: %s\n\n", version);
+    printf("API-test:\n\n");
 
     /* test that API functions return -1 if instance is NULL */
 #define CHECK_MINUS_ONE(x) {int errCode = x; if((errCode)!=-1){printf("\n API test failed at line %d: %s. Function did not return -1 as expected\n",__LINE__,#x); return(-1);}}

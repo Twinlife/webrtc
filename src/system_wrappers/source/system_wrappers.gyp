@@ -85,6 +85,8 @@
         'list_no_stl.cc',
         'map.cc',
         'rw_lock.cc',
+        'rw_lock_generic.cc',
+        'rw_lock_generic.h',
         'rw_lock_posix.cc',
         'rw_lock_posix.h',
         'rw_lock_win.cc',
@@ -151,7 +153,22 @@
             'trace_impl_no_op.cc',
           ],
         }]
-      ] # conditions
+      ], # conditions
+      'target_conditions': [
+        # We need to do this in a target_conditions block to override the
+        # filename_rules filters.
+        ['OS=="ios"', {
+          # Pull in specific Mac files for iOS (which have been filtered out
+          # by file name rules).
+          'sources/': [
+            ['include', '^atomic32_mac\\.'],
+            ['include', '^cpu_mac\\.'],
+          ],
+          'sources!': [
+            'atomic32_posix.cc',
+          ],
+        }],
+      ],
     },
   ], # targets
   'conditions': [
@@ -185,6 +202,7 @@
             '<(webrtc_root)/test/test.gyp:test_support_main',
           ],
           'sources': [
+            'aligned_malloc_unittest.cc',
             'condition_variable_unittest.cc',
             'cpu_wrapper_unittest.cc',
             'cpu_measurement_harness.h',
@@ -198,6 +216,7 @@
             'data_log_c_helpers_unittest.c',
             'data_log_c_helpers_unittest.h',
             'thread_unittest.cc',
+            'thread_posix_unittest.cc',
             'trace_unittest.cc',
             'unittest_utilities_unittest.cc',
           ],
@@ -206,6 +225,9 @@
               'sources!': [ 'data_log_unittest_disabled.cc', ],
             }, {
               'sources!': [ 'data_log_unittest.cc', ],
+            }],
+            ['os_posix!=1', {
+              'sources!': [ 'thread_posix_unittest.cc', ],
             }],
           ],
         },

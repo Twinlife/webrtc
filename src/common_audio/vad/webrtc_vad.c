@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "common_audio/signal_processing/include/signal_processing_library.h"
 #include "common_audio/vad/vad_core.h"
 #include "typedefs.h"
 
@@ -35,6 +36,8 @@ int WebRtcVad_Create(VadInst** handle) {
   if (self == NULL) {
     return -1;
   }
+
+  WebRtcSpl_Init();
 
   self->init_flag = 0;
 

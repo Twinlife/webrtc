@@ -4,16 +4,17 @@ vars = {
   # Override root_dir in your .gclient's custom_vars to specify a custom root
   # folder name.
   "root_dir": "trunk",
+  "extra_gyp_flag": "-Dextra_gyp_flag=0",
 
   # Use this googlecode_url variable only if there is an internal mirror for it.
   # If you do not know, use the full path while defining your new deps entry.
   "googlecode_url": "http://%s.googlecode.com/svn",
   "chromium_trunk" : "http://src.chromium.org/svn/trunk",
-  "chromium_revision": "143348",
+  "chromium_revision": "157509",
 
   # External resources like video and audio files used for testing purposes.
   # Downloaded on demand when needed.
-  "webrtc_resources_revision": "9",
+  "webrtc_resources_revision": "10",
 }
 
 # NOTE: Prefer revision numbers to tags for svn deps. Use http rather than
@@ -24,6 +25,10 @@ deps = {
 
   "build":
     Var("chromium_trunk") + "/src/build@" + Var("chromium_revision"),
+
+  # Needed by common.gypi.
+  "google_apis/build":
+    Var("chromium_trunk") + "/src/google_apis/build@" + Var("chromium_revision"),
 
   "testing":
     Var("chromium_trunk") + "/src/testing@" + Var("chromium_revision"),
@@ -47,10 +52,10 @@ deps = {
     From("chromium_deps", "src/third_party/libjpeg_turbo"),
 
   "third_party/libvpx/source/libvpx":
-    "http://git.chromium.org/webm/libvpx.git@cab6ac16",
+    "http://git.chromium.org/webm/libvpx.git@30d8ba541",
 
   "third_party/libyuv":
-    (Var("googlecode_url") % "libyuv") + "/trunk@255",
+    (Var("googlecode_url") % "libyuv") + "/trunk@389",
 
   "third_party/protobuf":
     Var("chromium_trunk") + "/src/third_party/protobuf@" + Var("chromium_revision"),
@@ -82,7 +87,7 @@ deps_os = {
   "win": {
     # Use our own, stripped down, version of Cygwin (required by GYP).
     "third_party/cygwin":
-      (Var("googlecode_url") % "webrtc") + "/deps/third_party/cygwin",
+      (Var("googlecode_url") % "webrtc") + "/deps/third_party/cygwin@2672",
 
     # Used by libjpeg-turbo.
     "third_party/yasm/binaries":
@@ -110,6 +115,15 @@ hooks = [
                "--mac-only"],
   },
   {
+    # Update the cygwin mount on Windows.
+    # This is necessary to get the correct mapping between e.g. /bin and the
+    # cygwin path on Windows. Without it we can't run bash scripts in actions.
+    # Ideally this should be solved in "pylib/gyp/msvs_emulation.py".
+    "pattern": ".",
+    "action": ["python", Var("root_dir") + "/build/win/setup_cygwin_mount.py",
+               "--win-only"],
+  },
+  {
     # Download test resources, i.e. video and audio files. If the latest
     # version is already downloaded, this takes zero seconds to run.
     # If a newer version or no current download exists, it will download
@@ -121,7 +135,8 @@ hooks = [
     # A change to a .gyp, .gypi, or to GYP itself should run the generator.
     "pattern": ".",
     "action": ["python", Var("root_dir") + "/build/gyp_chromium",
-               "--depth=" + Var("root_dir"), Var("root_dir") + "/webrtc.gyp"],
+               "--depth=" + Var("root_dir"), Var("root_dir") + "/webrtc.gyp",
+               Var("extra_gyp_flag")],
   },
 ]
 

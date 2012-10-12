@@ -16,6 +16,7 @@
 #define WEBRTC_COMMON_VIDEO_LIBYUV_INCLUDE_WEBRTC_LIBYUV_H_
 
 #include "common_types.h"  // RawVideoTypes.
+#include "modules/interface/module_common_types.h"  // VideoFrame
 #include "typedefs.h"
 
 namespace webrtc {
@@ -56,13 +57,20 @@ enum VideoRotationMode {
   kRotate270 = 270,
 };
 
+// Align integer values.
+// Input:
+//   - value     : Input value to be aligned.
+//   - alignment : Alignment basis (power of 2).
+// Return value: An aligned form of the input value.
+int AlignInt(int value, int alignment);
+
 // Calculate the required buffer size.
 // Input:
-//   - type - The type of the designated video frame.
-//   - width - frame width in pixels.
-//   - height - frame height in pixels.
-// Return value:  The required size in bytes to accommodate the specified
-//                video frame or -1 in case of an error .
+//   - type         :The type of the designated video frame.
+//   - width        :frame width in pixels.
+//   - height       :frame height in pixels.
+// Return value:    :The required size in bytes to accommodate the specified
+//                   video frame or -1 in case of an error .
 int CalcBufferSize(VideoType type, int width, int height);
 
 // Convert To I420
@@ -70,13 +78,12 @@ int CalcBufferSize(VideoType type, int width, int height);
 //   - src_video_type   : Type of input video.
 //   - src_frame        : Pointer to a source frame.
 //   - crop_x/crop_y    : Starting positions for cropping (0 for no crop).
-//   - src/dst_width    : src/dst width in pixels.
-//   - src/dst_height   : src/dst height in pixels.
+//   - src_width        : src width in pixels.
+//   - src_height       : src height in pixels.
 //   - sample_size      : Required only for the parsing of MJPG (set to 0 else).
-//   - dst_stride       : Number of bytes in a row of the dst Y plane.
 //   - rotate           : Rotation mode of output image.
 // Output:
-//   - dst_frame        : Pointer to a destination frame.
+//   - dst_frame        : Reference to a destination frame.
 // Return value: 0 if OK, < 0 otherwise.
 
 int ConvertToI420(VideoType src_video_type,
@@ -84,9 +91,8 @@ int ConvertToI420(VideoType src_video_type,
                   int crop_x, int crop_y,
                   int src_width, int src_height,
                   int sample_size,
-                  int dst_width, int dst_height, int dst_stride,
                   VideoRotationMode rotation,
-                  uint8_t* dst_frame);
+                  VideoFrame* dst_frame);
 
 // Convert From I420
 // Input:
@@ -94,13 +100,11 @@ int ConvertToI420(VideoType src_video_type,
 //   - src_stride       : Number of bytes in a row of the src Y plane.
 //   - dst_video_type   : Type of output video.
 //   - dst_sample_size  : Required only for the parsing of MJPG.
-//   - width            : Width in pixels.
-//   - height           : Height in pixels.
 //   - dst_frame        : Pointer to a destination frame.
 // Return value: 0 if OK, < 0 otherwise.
-int ConvertFromI420(const uint8_t* src_frame, int src_stride,
+// It is assumed that source and destination have equal height.
+int ConvertFromI420(const VideoFrame& src_frame, int src_stride,
                     VideoType dst_video_type, int dst_sample_size,
-                    int width, int height,
                     uint8_t* dst_frame);
 // ConvertFrom YV12.
 // Interface - same as above.
@@ -125,23 +129,28 @@ int ConvertNV12ToRGB565(const uint8_t* src_frame,
 // The following 2 functions perform mirroring on a given image
 // (LeftRight/UpDown).
 // Input:
-//    - width       : Image width in pixels.
-//    - height      : Image height in pixels.
 //    - src_frame   : Pointer to a source frame.
 //    - dst_frame   : Pointer to a destination frame.
 // Return value: 0 if OK, < 0 otherwise.
-int MirrorI420LeftRight(const uint8_t* src_frame,
-                        uint8_t* dst_frame,
-                        int width, int height);
-int MirrorI420UpDown(const uint8_t* src_frame,
-                     uint8_t* dst_frame,
-                     int width, int height);
+// It is assumed that src and dst frames have equal dimensions.
+int MirrorI420LeftRight(const VideoFrame* src_frame,
+                        VideoFrame* dst_frame);
+int MirrorI420UpDown(const VideoFrame* src_frame,
+                     VideoFrame* dst_frame);
 
 // Compute PSNR for an I420 frame (all planes).
+double I420PSNR(const VideoFrame* ref_frame,
+                const VideoFrame* test_frame);
+// Compute SSIM for an I420 frame (all planes).
+double I420SSIM(const VideoFrame* ref_frame,
+                const VideoFrame* test_frame);
+
+// TODO(mikhal): Remove these functions and keep only the above functionality.
+// Compute PSNR for an I420 buffer (all planes).
 double I420PSNR(const uint8_t* ref_frame,
                 const uint8_t* test_frame,
                 int width, int height);
-// Compute SSIM for an I420 frame (all planes).
+// Compute SSIM for an I420 buffer (all planes).
 double I420SSIM(const uint8_t* ref_frame,
                 const uint8_t* test_frame,
                 int width, int height);

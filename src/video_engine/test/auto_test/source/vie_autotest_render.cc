@@ -18,6 +18,7 @@
 
 #include "video_render.h"
 
+#include "common_video/libyuv/include/webrtc_libyuv.h"
 #include "tb_interfaces.h"
 #include "tb_video_channel.h"
 #include "tb_capture_device.h"
@@ -57,15 +58,13 @@ public:
 
     virtual int DeliverFrame(unsigned char* buffer, int bufferSize,
                              uint32_t time_stamp,
-                             int64_t render_time)
-    {
-        if (bufferSize != _width * _height * 3 / 2)
-        {
-            ViETest::Log("incorrect render buffer received, of length = %d\n",
-                         bufferSize);
-            return 0;
-        }
+                             int64_t render_time) {
+      if (bufferSize != CalcBufferSize(webrtc::kI420, _width, _height)) {
+        ViETest::Log("Incorrect render buffer received, of length = %d\n",
+                     bufferSize);
         return 0;
+      }
+      return 0;
     }
 
 public:
@@ -289,7 +288,31 @@ void ViEAutoTest::ViERenderExtendedTest()
     tbCapture.Disconnect(tbChannel.videoChannel);
 }
 
-void ViEAutoTest::ViERenderAPITest()
-{
-    // TODO(unknown): add the real tests cases
+void ViEAutoTest::ViERenderAPITest() {
+  TbInterfaces ViE("ViERenderAPITest");
+
+  TbVideoChannel tbChannel(ViE, webrtc::kVideoCodecVP8);
+  TbCaptureDevice tbCapture(ViE);
+  tbCapture.ConnectTo(tbChannel.videoChannel);
+  tbChannel.StartReceive();
+  tbChannel.StartSend();
+
+  EXPECT_EQ(0, ViE.render->AddRenderer(
+      tbCapture.captureId, _window1, 0, 0.0, 0.0, 1.0, 1.0));
+  EXPECT_EQ(0, ViE.render->StartRender(tbCapture.captureId));
+  EXPECT_EQ(0, ViE.render->AddRenderer(
+      tbChannel.videoChannel, _window2, 1, 0.0, 0.0, 1.0, 1.0));
+  EXPECT_EQ(0, ViE.render->StartRender(tbChannel.videoChannel));
+
+  // Test setting HW render delay.
+  // Already started.
+  EXPECT_EQ(-1, ViE.render->SetExpectedRenderDelay(tbChannel.videoChannel, 50));
+  EXPECT_EQ(0, ViE.render->StopRender(tbChannel.videoChannel));
+  // Invalid values.
+  EXPECT_EQ(-1, ViE.render->SetExpectedRenderDelay(tbChannel.videoChannel, 9));
+  EXPECT_EQ(-1, ViE.render->SetExpectedRenderDelay(tbChannel.videoChannel,
+                                                   501));
+  // Valid values.
+  EXPECT_EQ(0, ViE.render->SetExpectedRenderDelay(tbChannel.videoChannel, 11));
+  EXPECT_EQ(0, ViE.render->SetExpectedRenderDelay(tbChannel.videoChannel, 499));
 }

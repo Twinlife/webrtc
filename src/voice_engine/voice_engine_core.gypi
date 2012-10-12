@@ -26,7 +26,7 @@
       ],
       'include_dirs': [
         'include',
-        '<(webrtc_root)/modules/audio_device/main/source',
+        '<(webrtc_root)/modules/audio_device',
       ],
       'direct_dependent_settings': {
         'include_dirs': [
@@ -113,6 +113,9 @@
     },
   ],
   'conditions': [
+    ['OS=="win"', {
+      'defines': ['WEBRTC_DRIFT_COMPENSATION_SUPPORTED',],
+    }],
     ['include_tests==1', {
       'targets': [
         {
@@ -141,6 +144,7 @@
           'sources': [
             'channel_unittest.cc',
             'output_mixer_unittest.cc',
+            'voe_audio_processing_unittest.cc',
           ],
         },
       ], # targets

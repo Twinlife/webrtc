@@ -133,9 +133,19 @@ void RTCPReceiver::RegisterRtcpObservers(
 }
 
 
-void RTCPReceiver::SetSSRC( const WebRtc_UWord32 ssrc) {
+void RTCPReceiver::SetSSRC(const WebRtc_UWord32 ssrc) {
+  WebRtc_UWord32 old_ssrc = 0;
+  {
     CriticalSectionScoped lock(_criticalSectionRTCPReceiver);
+    old_ssrc = _SSRC;
     _SSRC = ssrc;
+  }
+  {
+    CriticalSectionScoped lock(_criticalSectionFeedbacks);
+    if (_cbRtcpIntraFrameObserver && old_ssrc != ssrc) {
+      _cbRtcpIntraFrameObserver->OnLocalSsrcChanged(old_ssrc, ssrc);
+    }
+  }
 }
 
 WebRtc_Word32 RTCPReceiver::ResetRTT(const WebRtc_UWord32 remoteSSRC) {
@@ -203,7 +213,8 @@ WebRtc_Word32
 RTCPReceiver::NTP(WebRtc_UWord32 *ReceivedNTPsecs,
                   WebRtc_UWord32 *ReceivedNTPfrac,
                   WebRtc_UWord32 *RTCPArrivalTimeSecs,
-                  WebRtc_UWord32 *RTCPArrivalTimeFrac) const
+                  WebRtc_UWord32 *RTCPArrivalTimeFrac,
+                  WebRtc_UWord32 *rtcp_timestamp) const
 {
     CriticalSectionScoped lock(_criticalSectionRTCPReceiver);
     if(ReceivedNTPsecs)
@@ -221,6 +232,9 @@ RTCPReceiver::NTP(WebRtc_UWord32 *ReceivedNTPsecs,
     if(RTCPArrivalTimeSecs)
     {
         *RTCPArrivalTimeSecs = _lastReceivedSRNTPsecs;
+    }
+    if (rtcp_timestamp) {
+      *rtcp_timestamp = _remoteSenderInfo.RTPtimeStamp;
     }
     return 0;
 }
@@ -372,6 +386,10 @@ RTCPReceiver::HandleSenderReceiverReport(RTCPUtility::RTCPParserV2& rtcpParser,
         {
             // only signal that we have received a SR when we accept one
             rtcpPacketInformation.rtcpPacketTypeFlags |= kRtcpSr;
+
+            rtcpPacketInformation.ntp_secs = rtcpPacket.SR.NTPMostSignificant;
+            rtcpPacketInformation.ntp_frac = rtcpPacket.SR.NTPLeastSignificant;
+            rtcpPacketInformation.rtp_timestamp = rtcpPacket.SR.RTPTimestamp;
 
             // We will only store the send report from one source, but
             // we will store all the receive block
@@ -1188,6 +1206,12 @@ void RTCPReceiver::TriggerCallbacksFromRTCPPacket(
     // Might trigger a OnReceivedBandwidthEstimateUpdate.
     UpdateTMMBR();
   }
+  unsigned int local_ssrc = 0;
+  {
+    // We don't want to hold this critsect when triggering the callbacks below.
+    CriticalSectionScoped lock(_criticalSectionRTCPReceiver);
+    local_ssrc = _SSRC;
+  }
   if (rtcpPacketInformation.rtcpPacketTypeFlags & kRtcpSrReq) {
     _rtpRtcp.OnRequestSendReport();
   }
@@ -1220,18 +1244,15 @@ void RTCPReceiver::TriggerCallbacksFromRTCPPacket(
                        "SIG [RTCP] Incoming FIR from SSRC:0x%x",
                        rtcpPacketInformation.remoteSSRC);
         }
-        _cbRtcpIntraFrameObserver->OnReceivedIntraFrameRequest(
-            rtcpPacketInformation.remoteSSRC);
+        _cbRtcpIntraFrameObserver->OnReceivedIntraFrameRequest(local_ssrc);
       }
       if (rtcpPacketInformation.rtcpPacketTypeFlags & kRtcpSli) {
         _cbRtcpIntraFrameObserver->OnReceivedSLI(
-            rtcpPacketInformation.remoteSSRC,
-            rtcpPacketInformation.sliPictureId);
+            local_ssrc, rtcpPacketInformation.sliPictureId);
       }
       if (rtcpPacketInformation.rtcpPacketTypeFlags & kRtcpRpsi) {
         _cbRtcpIntraFrameObserver->OnReceivedRPSI(
-            rtcpPacketInformation.remoteSSRC,
-            rtcpPacketInformation.rpsiPictureId);
+            local_ssrc, rtcpPacketInformation.rpsiPictureId);
       }
     }
     if (_cbRtcpBandwidthObserver) {
@@ -1257,7 +1278,10 @@ void RTCPReceiver::TriggerCallbacksFromRTCPPacket(
     if(_cbRtcpFeedback) {
       if(rtcpPacketInformation.rtcpPacketTypeFlags & kRtcpSr) {
         _cbRtcpFeedback->OnSendReportReceived(_id,
-            rtcpPacketInformation.remoteSSRC);
+            rtcpPacketInformation.remoteSSRC,
+            rtcpPacketInformation.ntp_secs,
+            rtcpPacketInformation.ntp_frac,
+            rtcpPacketInformation.rtp_timestamp);
       } else {
         _cbRtcpFeedback->OnReceiveReportReceived(_id,
             rtcpPacketInformation.remoteSSRC);

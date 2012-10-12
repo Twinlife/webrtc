@@ -31,10 +31,23 @@ class TemporalLayers {
 
   bool ConfigureBitrates(int bitrate_kbit, vpx_codec_enc_cfg_t* cfg);
 
-  void PopulateCodecSpecific(bool key_frame, CodecSpecificInfoVP8 *vp8_info);
+  void PopulateCodecSpecific(bool key_frame, CodecSpecificInfoVP8 *vp8_info,
+                             uint32_t timestamp);
 
  private:
   enum TemporalReferences {
+    // First base layer frame for 3 temporal layers, which updates last and
+    // golden with alt ref dependency.
+    kTemporalUpdateLastAndGoldenRefAltRef = 11,
+    // First enhancement layer with alt ref dependency.
+    kTemporalUpdateGoldenRefAltRef = 10,
+    // First enhancement layer with alt ref dependency.
+    kTemporalUpdateGoldenWithoutDependencyRefAltRef = 9,
+    // Base layer with alt ref dependency.
+    kTemporalUpdateLastRefAltRef = 8,
+    // Highest enhacement layer without dependency on golden with alt ref
+    // dependency.
+    kTemporalUpdateNoneNoRefGoldenRefAltRef = 7,
     // Second layer and last frame in cycle, for 2 layers.
     kTemporalUpdateNoneNoRefAltref = 6,
     // Highest enhancement layer.
@@ -61,6 +74,7 @@ class TemporalLayers {
   TemporalReferences temporal_pattern_[kMaxTemporalPattern];
   uint8_t tl0_pic_idx_;
   uint8_t pattern_idx_;
+  uint32_t timestamp_;
 };
 }  // namespace webrtc
 #endif  // WEBRTC_MODULES_VIDEO_CODING_CODECS_VP8_TEMPORAL_LAYERS_H_

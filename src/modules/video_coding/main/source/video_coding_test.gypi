@@ -18,7 +18,7 @@
          'rtp_rtcp',
          'webrtc_utility',
          'video_processing',
-         '<(webrtc_root)/common_video/common_video.gyp:webrtc_libyuv',
+         '<(webrtc_root)/common_video/common_video.gyp:common_video',
       ],
       'include_dirs': [
          '../../../interface',
@@ -83,6 +83,7 @@
         'jitter_buffer_unittest.cc',
         'session_info_unittest.cc',
         'video_coding_robustness_unittest.cc',
+        'video_coding_impl_unittest.cc',
         'qm_select_unittest.cc',
       ],
     },

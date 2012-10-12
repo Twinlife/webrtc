@@ -1,4 +1,4 @@
-/* Copyright (c) 2011 The WebRTC project authors. All Rights Reserved.
+/* Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
 *
 *  Use of this source code is governed by a BSD-style license
 *  that can be found in the LICENSE file in the root of the source
@@ -27,7 +27,8 @@ TemporalLayers::TemporalLayers(int numberOfTemporalLayers)
       temporal_ids_length_(0),
       temporal_pattern_length_(0),
       tl0_pic_idx_(rand()),
-      pattern_idx_(255) {
+      pattern_idx_(255),
+      timestamp_(0) {
   assert(kMaxTemporalStreams >= numberOfTemporalLayers);
   memset(temporal_ids_, 0, sizeof(temporal_ids_));
   memset(temporal_pattern_, 0, sizeof(temporal_pattern_));
@@ -56,14 +57,14 @@ bool TemporalLayers::ConfigureBitrates(int bitrateKbit,
              temporal_ids_,
              sizeof(unsigned int) * temporal_ids_length_);
       temporal_pattern_length_ = 8;
-      temporal_pattern_[0] = kTemporalUpdateLast;
-      temporal_pattern_[1] = kTemporalUpdateGoldenWithoutDependency;
-      temporal_pattern_[2] = kTemporalUpdateLast;
-      temporal_pattern_[3] = kTemporalUpdateGolden;
-      temporal_pattern_[4] = kTemporalUpdateLast;
-      temporal_pattern_[5] = kTemporalUpdateGolden;
-      temporal_pattern_[6] = kTemporalUpdateLast;
-      temporal_pattern_[7] = kTemporalUpdateNoneNoRefAltref;
+      temporal_pattern_[0] = kTemporalUpdateLastAndGoldenRefAltRef;
+      temporal_pattern_[1] = kTemporalUpdateGoldenWithoutDependencyRefAltRef;
+      temporal_pattern_[2] = kTemporalUpdateLastRefAltRef;
+      temporal_pattern_[3] = kTemporalUpdateGoldenRefAltRef;
+      temporal_pattern_[4] = kTemporalUpdateLastRefAltRef;
+      temporal_pattern_[5] = kTemporalUpdateGoldenRefAltRef;
+      temporal_pattern_[6] = kTemporalUpdateLastRefAltRef;
+      temporal_pattern_[7] = kTemporalUpdateNone;
       break;
     case 3:
       temporal_ids_length_ = 4;
@@ -85,13 +86,13 @@ bool TemporalLayers::ConfigureBitrates(int bitrateKbit,
              temporal_ids_,
              sizeof(unsigned int) * temporal_ids_length_);
       temporal_pattern_length_ = 8;
-      temporal_pattern_[0] = kTemporalUpdateLast;
-      temporal_pattern_[1] = kTemporalUpdateAltrefWithoutDependency;
-      temporal_pattern_[2] = kTemporalUpdateGoldenWithoutDependency;
-      temporal_pattern_[3] = kTemporalUpdateAltref;
-      temporal_pattern_[4] = kTemporalUpdateLast;
-      temporal_pattern_[5] = kTemporalUpdateAltref;
-      temporal_pattern_[6] = kTemporalUpdateGolden;
+      temporal_pattern_[0] = kTemporalUpdateLastAndGoldenRefAltRef;
+      temporal_pattern_[1] = kTemporalUpdateNoneNoRefGoldenRefAltRef;
+      temporal_pattern_[2] = kTemporalUpdateGoldenWithoutDependencyRefAltRef;
+      temporal_pattern_[3] = kTemporalUpdateNone;
+      temporal_pattern_[4] = kTemporalUpdateLastRefAltRef;
+      temporal_pattern_[5] = kTemporalUpdateNone;
+      temporal_pattern_[6] = kTemporalUpdateGoldenRefAltRef;
       temporal_pattern_[7] = kTemporalUpdateNone;
       break;
     case 4:
@@ -184,12 +185,38 @@ int TemporalLayers::EncodeFlags() {
       flags |= VP8_EFLAG_NO_UPD_LAST;
       flags |= VP8_EFLAG_NO_UPD_ENTROPY;
       break;
+    case kTemporalUpdateNoneNoRefGoldenRefAltRef:
+      flags |= VP8_EFLAG_NO_REF_GF;
+      flags |= VP8_EFLAG_NO_UPD_GF;
+      flags |= VP8_EFLAG_NO_UPD_ARF;
+      flags |= VP8_EFLAG_NO_UPD_LAST;
+      flags |= VP8_EFLAG_NO_UPD_ENTROPY;
+      break;
+    case kTemporalUpdateGoldenWithoutDependencyRefAltRef:
+      flags |= VP8_EFLAG_NO_REF_GF;
+      flags |= VP8_EFLAG_NO_UPD_ARF;
+      flags |= VP8_EFLAG_NO_UPD_LAST;
+      break;
+    case kTemporalUpdateLastRefAltRef:
+      flags |= VP8_EFLAG_NO_UPD_GF;
+      flags |= VP8_EFLAG_NO_UPD_ARF;
+      flags |= VP8_EFLAG_NO_REF_GF;
+      break;
+    case kTemporalUpdateGoldenRefAltRef:
+      flags |= VP8_EFLAG_NO_UPD_ARF;
+      flags |= VP8_EFLAG_NO_UPD_LAST;
+      break;
+    case kTemporalUpdateLastAndGoldenRefAltRef:
+      flags |= VP8_EFLAG_NO_UPD_ARF;
+      flags |= VP8_EFLAG_NO_REF_GF;
+      break;
   }
   return flags;
 }
 
 void TemporalLayers::PopulateCodecSpecific(bool key_frame,
-                                           CodecSpecificInfoVP8 *vp8_info) {
+                                           CodecSpecificInfoVP8 *vp8_info,
+                                           uint32_t timestamp) {
   assert(number_of_temporal_layers_ > 1);
   assert(0 < temporal_ids_length_);
 
@@ -204,16 +231,19 @@ void TemporalLayers::PopulateCodecSpecific(bool key_frame,
 
   if (temporal_reference == kTemporalUpdateAltrefWithoutDependency ||
       temporal_reference == kTemporalUpdateGoldenWithoutDependency ||
+      temporal_reference == kTemporalUpdateGoldenWithoutDependencyRefAltRef ||
+      temporal_reference == kTemporalUpdateNoneNoRefGoldenRefAltRef ||
       (temporal_reference == kTemporalUpdateNone &&
       number_of_temporal_layers_ == 4)) {
     vp8_info->layerSync = true;
   } else {
     vp8_info->layerSync = false;
   }
-
-  if (vp8_info->temporalIdx == 0) {
+  if (vp8_info->temporalIdx == 0 && timestamp != timestamp_) {
+    timestamp_ = timestamp;
     tl0_pic_idx_++;
   }
   vp8_info->tl0PicIdx = tl0_pic_idx_;
 }
 }  // namespace webrtc
+

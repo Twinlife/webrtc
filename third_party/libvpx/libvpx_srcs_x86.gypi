@@ -1,5 +1,5 @@
 # This file is generated. Do not edit.
-# Copyright (c) 2011 The Chromium Authors. All rights reserved.
+# Copyright (c) 2012 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -142,6 +142,8 @@
     'source/libvpx/vp8/encoder/mcomp.h',
     'source/libvpx/vp8/encoder/modecosts.c',
     'source/libvpx/vp8/encoder/modecosts.h',
+    'source/libvpx/vp8/encoder/mr_dissim.c',
+    'source/libvpx/vp8/encoder/mr_dissim.h',
     'source/libvpx/vp8/encoder/onyx_if.c',
     'source/libvpx/vp8/encoder/onyx_int.h',
     'source/libvpx/vp8/encoder/pickinter.c',
@@ -163,7 +165,7 @@
     'source/libvpx/vp8/encoder/treewriter.h',
     'source/libvpx/vp8/encoder/x86/dct_mmx.asm',
     'source/libvpx/vp8/encoder/x86/dct_sse2.asm',
-    # Hack; refer to libvpx.gyp
+    # Manually removed; refer to libvpx.gyp
     #'source/libvpx/vp8/encoder/x86/denoising_sse2.c',
     'source/libvpx/vp8/encoder/x86/encodeopt.asm',
     'source/libvpx/vp8/encoder/x86/fwalsh_sse2.asm',

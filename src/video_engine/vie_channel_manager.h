@@ -17,6 +17,7 @@
 #include "engine_configurations.h"  // NOLINT
 #include "system_wrappers/interface/scoped_ptr.h"
 #include "typedefs.h"  // NOLINT
+#include "video_engine/include/vie_rtp_rtcp.h"
 #include "video_engine/vie_channel_group.h"
 #include "video_engine/vie_defines.h"
 #include "video_engine/vie_manager_base.h"
@@ -74,12 +75,22 @@ class ViEChannelManager: private ViEManagerBase {
   // Adds a channel to include when sending REMB.
   bool SetRembStatus(int channel_id, bool sender, bool receiver);
 
+  // Sets the bandwidth estimation mode. This can only be changed before
+  // adding a channel.
+  bool SetBandwidthEstimationMode(BandwidthEstimationMode mode);
+
+  // Updates the SSRCs for a channel. If one of the SSRCs already is registered,
+  // it will simply be ignored and no error is returned.
+  void UpdateSsrcs(int channel_id, const std::list<unsigned int>& ssrcs);
+
  private:
   // Creates a channel object connected to |vie_encoder|. Assumed to be called
   // protected.
   bool CreateChannelObject(int channel_id, ViEEncoder* vie_encoder,
                            RtcpBandwidthObserver* bandwidth_observer,
-                           RemoteBitrateEstimator* remote_bitrate_estimator);
+                           RemoteBitrateEstimator* remote_bitrate_estimator,
+                           RtcpIntraFrameObserver* intra_frame_observer,
+                           bool sender);
 
   // Used by ViEChannelScoped, forcing a manager user to use scoped.
   // Returns a pointer to the channel with id 'channel_id'.
@@ -124,6 +135,7 @@ class ViEChannelManager: private ViEManagerBase {
   VoiceEngine* voice_engine_;
   ProcessThread* module_process_thread_;
   const OverUseDetectorOptions& over_use_detector_options_;
+  RemoteBitrateEstimator::EstimationMode bwe_mode_;
 };
 
 class ViEChannelManagerScoped: private ViEManagerScopedBase {

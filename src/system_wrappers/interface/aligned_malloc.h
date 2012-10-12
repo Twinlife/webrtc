@@ -11,15 +11,49 @@
 #ifndef WEBRTC_SYSTEM_WRAPPERS_INTERFACE_ALIGNED_MALLOC_H_
 #define WEBRTC_SYSTEM_WRAPPERS_INTERFACE_ALIGNED_MALLOC_H_
 
+// The functions declared here
+// 1) Allocates block of aligned memory.
+// 2) Re-calculates a pointer such that it is aligned to a higher or equal
+//    address.
+// Note: alignment must be a power of two. The alignment is in bytes.
+
 #include <stddef.h>
 
-namespace webrtc
-{
-    void* AlignedMalloc(
-        size_t size,
-        size_t alignment);
-    void AlignedFree(
-        void* memBlock);
+#include "system_wrappers/interface/scoped_ptr.h"
+
+namespace webrtc {
+
+// Returns a pointer to the first boundry of |alignment| bytes following the
+// address of |ptr|.
+// Note that there is no guarantee that the memory in question is available.
+// |ptr| has no requirements other than it can't be NULL.
+void* GetRightAlign(const void* ptr, size_t alignment);
+
+// Allocates memory of |size| bytes aligned on an |alignment| boundry.
+// The return value is a pointer to the memory. Note that the memory must
+// be de-allocated using AlignedFree.
+void* AlignedMalloc(size_t size, size_t alignment);
+// De-allocates memory created using the AlignedMalloc() API.
+void AlignedFree(void* mem_block);
+
+// Templated versions to facilitate usage of aligned malloc without casting
+// to and from void*.
+template<typename T>
+T* GetRightAlign(const T* ptr, size_t alignment) {
+  return reinterpret_cast<T*>(GetRightAlign(reinterpret_cast<const void*>(ptr),
+                                            alignment));
 }
+template<typename T>
+T* AlignedMalloc(size_t size, size_t alignment) {
+  return reinterpret_cast<T*>(AlignedMalloc(size, alignment));
+}
+
+// Scoped pointer to AlignedMalloc-memory.
+template<typename T>
+struct Allocator {
+  typedef scoped_ptr_malloc<T, AlignedFree> scoped_ptr_aligned;
+};
+
+}  // namespace webrtc
 
 #endif // WEBRTC_SYSTEM_WRAPPERS_INTERFACE_ALIGNED_MALLOC_H_

@@ -72,7 +72,6 @@ ViEEncoder::ViEEncoder(WebRtc_Word32 engine_id,
     data_cs_(CriticalSectionWrapper::CreateCriticalSection()),
     bitrate_controller_(bitrate_controller),
     paused_(false),
-    time_last_intra_request_ms_(0),
     channels_dropping_delta_frames_(0),
     drop_next_frame_(false),
     fec_enabled_(false),
@@ -585,7 +584,7 @@ int ViEEncoder::GetPreferedFrameSettings(int* width,
 int ViEEncoder::SendKeyFrame() {
   WEBRTC_TRACE(webrtc::kTraceInfo, webrtc::kTraceVideo,
                ViEId(engine_id_, channel_id_), "%s", __FUNCTION__);
-  return vcm_.IntraFrameRequest();
+  return vcm_.IntraFrameRequest(0);
 }
 
 WebRtc_Word32 ViEEncoder::SendCodecStatistics(
@@ -794,32 +793,91 @@ WebRtc_Word32 ViEEncoder::RegisterCodecObserver(ViEEncoderObserver* observer) {
   return 0;
 }
 
-void ViEEncoder::OnReceivedSLI(const uint32_t /*ssrc*/,
-                               const uint8_t picture_id) {
+void ViEEncoder::OnReceivedSLI(uint32_t /*ssrc*/,
+                               uint8_t picture_id) {
   picture_id_sli_ = picture_id;
   has_received_sli_ = true;
 }
 
-void ViEEncoder::OnReceivedRPSI(const uint32_t /*ssrc*/,
-                                const uint64_t picture_id) {
+void ViEEncoder::OnReceivedRPSI(uint32_t /*ssrc*/,
+                                uint64_t picture_id) {
   picture_id_rpsi_ = picture_id;
   has_received_rpsi_ = true;
 }
 
-void ViEEncoder::OnReceivedIntraFrameRequest(const uint32_t /*ssrc*/) {
+void ViEEncoder::OnReceivedIntraFrameRequest(uint32_t ssrc) {
   // Key frame request from remote side, signal to VCM.
   WEBRTC_TRACE(webrtc::kTraceStateInfo, webrtc::kTraceVideo,
                ViEId(engine_id_, channel_id_), "%s", __FUNCTION__);
 
-  WebRtc_Word64 now = TickTime::MillisecondTimestamp();
-  if (time_last_intra_request_ms_ + kViEMinKeyRequestIntervalMs > now) {
-    WEBRTC_TRACE(webrtc::kTraceStream, webrtc::kTraceVideo,
-                 ViEId(engine_id_, channel_id_),
-                 "%s: Not not encoding new intra due to timing", __FUNCTION__);
+  int idx = 0;
+  {
+    CriticalSectionScoped cs(data_cs_.get());
+    std::map<unsigned int, int>::iterator stream_it = ssrc_streams_.find(ssrc);
+    if (stream_it == ssrc_streams_.end()) {
+      assert(false);
+      return;
+    }
+    std::map<unsigned int, WebRtc_Word64>::iterator time_it =
+        time_last_intra_request_ms_.find(ssrc);
+    if (time_it == time_last_intra_request_ms_.end()) {
+      time_last_intra_request_ms_[ssrc] = 0;
+    }
+
+    WebRtc_Word64 now = TickTime::MillisecondTimestamp();
+    if (time_last_intra_request_ms_[ssrc] + kViEMinKeyRequestIntervalMs > now) {
+      WEBRTC_TRACE(webrtc::kTraceStream, webrtc::kTraceVideo,
+                   ViEId(engine_id_, channel_id_),
+                   "%s: Not encoding new intra due to timing", __FUNCTION__);
+      return;
+    }
+    time_last_intra_request_ms_[ssrc] = now;
+    idx = stream_it->second;
+  }
+  // Release the critsect before triggering key frame.
+  vcm_.IntraFrameRequest(idx);
+}
+
+void ViEEncoder::OnLocalSsrcChanged(uint32_t old_ssrc, uint32_t new_ssrc) {
+  CriticalSectionScoped cs(data_cs_.get());
+  std::map<unsigned int, int>::iterator it = ssrc_streams_.find(old_ssrc);
+  if (it == ssrc_streams_.end()) {
     return;
   }
-  vcm_.IntraFrameRequest();
-  time_last_intra_request_ms_ = now;
+
+  ssrc_streams_[new_ssrc] = it->second;
+  ssrc_streams_.erase(it);
+
+  std::map<unsigned int, int64_t>::iterator time_it =
+      time_last_intra_request_ms_.find(old_ssrc);
+  int64_t last_intra_request_ms = 0;
+  if (time_it != time_last_intra_request_ms_.end()) {
+    last_intra_request_ms = time_it->second;
+    time_last_intra_request_ms_.erase(time_it);
+  }
+  time_last_intra_request_ms_[new_ssrc] = last_intra_request_ms;
+}
+
+bool ViEEncoder::SetSsrcs(const std::list<unsigned int>& ssrcs) {
+  VideoCodec codec;
+  if (vcm_.SendCodec(&codec) != 0)
+    return false;
+
+  if (codec.numberOfSimulcastStreams > 0 &&
+      ssrcs.size() != codec.numberOfSimulcastStreams) {
+    return false;
+  }
+
+  CriticalSectionScoped cs(data_cs_.get());
+  ssrc_streams_.clear();
+  time_last_intra_request_ms_.clear();
+  int idx = 0;
+  for (std::list<unsigned int>::const_iterator it = ssrcs.begin();
+       it != ssrcs.end(); ++it, ++idx) {
+    unsigned int ssrc = *it;
+    ssrc_streams_[ssrc] = idx;
+  }
+  return true;
 }
 
 // Called from ViEBitrateObserver.
@@ -866,6 +924,14 @@ WebRtc_Word32 ViEEncoder::RegisterEffectFilter(ViEEffectFilter* effect_filter) {
 
 ViEFileRecorder& ViEEncoder::GetOutgoingFileRecorder() {
   return file_recorder_;
+}
+
+int ViEEncoder::StartDebugRecording(const char* fileNameUTF8) {
+  return vcm_.StartDebugRecording(fileNameUTF8);
+}
+
+int ViEEncoder::StopDebugRecording() {
+  return vcm_.StopDebugRecording();
 }
 
 QMVideoSettingsCallback::QMVideoSettingsCallback(VideoProcessingModule* vpm)

@@ -7,6 +7,9 @@
 .equ ARCH_X86_64 ,  0
 .equ ARCH_PPC32 ,  0
 .equ ARCH_PPC64 ,  0
+.equ HAVE_ARMV5TE ,  1
+.equ HAVE_ARMV6 ,  0
+.equ HAVE_ARMV7 ,  0
 .equ HAVE_EDSP ,  1
 .equ HAVE_MEDIA ,  0
 .equ HAVE_NEON ,  0
@@ -39,7 +42,7 @@
 .equ CONFIG_BIG_ENDIAN ,  0
 .equ CONFIG_CODEC_SRCS ,  0
 .equ CONFIG_DEBUG_LIBS ,  0
-.equ CONFIG_FAST_UN.balignED ,  1
+.equ CONFIG_FAST_UNALIGNED ,  1
 .equ CONFIG_MEM_MANAGER ,  0
 .equ CONFIG_MEM_TRACKER ,  0
 .equ CONFIG_MEM_CHECKS ,  0
@@ -66,7 +69,7 @@
 .equ CONFIG_POSTPROC_VISUALIZER ,  0
 .equ CONFIG_OS_SUPPORT ,  1
 .equ CONFIG_UNIT_TESTS ,  0
-.equ CONFIG_MULTI_RES_ENCODING ,  0
+.equ CONFIG_MULTI_RES_ENCODING ,  1
 .equ CONFIG_TEMPORAL_DENOISING ,  1
 	.section	.note.GNU-stack,"",%progbits
 @ This file was created from a .asm file
