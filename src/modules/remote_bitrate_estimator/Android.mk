@@ -19,8 +19,10 @@ LOCAL_CPP_EXTENSION := .cc
 LOCAL_SRC_FILES := \
     bitrate_estimator.cc \
     overuse_detector.cc \
-    remote_bitrate_estimator.cc \
-    remote_rate_control.cc
+    remote_bitrate_estimator_multi_stream.cc \
+    remote_bitrate_estimator_single_stream.cc \
+    remote_rate_control.cc \
+    rtp_to_ntp.cc
 
 # Flags passed to both C and C++ files.
 LOCAL_CFLAGS := \
