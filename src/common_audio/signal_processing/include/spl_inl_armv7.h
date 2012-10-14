@@ -161,9 +161,6 @@ static __inline int WebRtcSpl_NormW16(WebRtc_Word16 a) {
   // -CJ- 25062012
   if (a == 0) return 0;
 
-  // -CJ- 25062012
-  if (a == 0) return 0;
-
   if (a <= 0) a ^= 0xFFFFFFFF;
 
   __asm __volatile ("clz %0, %1":"=r"(tmp):"r"(a));
