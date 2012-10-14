@@ -67,3 +67,8 @@
 /tools/win
 /x86-generic_out/
 /xcodebuild
+/src/modules/audio_processing/aecm/aecm_core_neon_offsets.S
+/src/modules/audio_processing/aecm/aecm_core_neon_offsets.h
+/src/modules/audio_processing/ns/nsx_core_neon_offsets.S
+/src/modules/audio_processing/ns/nsx_core_neon_offsets.h
+

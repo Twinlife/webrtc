@@ -522,7 +522,9 @@ static void ResetAdaptiveChannelC(AecmCore_t* aecm)
 static void WebRtcAecm_InitNeon(void)
 {
   // TODO(kma): Check why WebRtcAecm_InverseFFTAndWindowNeon() doesn't work.
-  WebRtcAecm_WindowAndFFT = WebRtcAecm_WindowAndFFTNeon;
+  // -CJ- 14102012
+  // Native and Neon code do not have the same prototype (Bug #66)
+  // WebRtcAecm_WindowAndFFT = WebRtcAecm_WindowAndFFTNeon;
   WebRtcAecm_InverseFFTAndWindow = InverseFFTAndWindowC;
   WebRtcAecm_StoreAdaptiveChannel = WebRtcAecm_StoreAdaptiveChannelNeon;
   WebRtcAecm_ResetAdaptiveChannel = WebRtcAecm_ResetAdaptiveChannelNeon;
@@ -1397,9 +1399,10 @@ static int TimeToFrequencyDomain(AecmCore_t* aecm,
     tmp16no1 = WebRtcSpl_MaxAbsValueW16(time_signal, PART_LEN2);
     time_signal_scaling = WebRtcSpl_NormW16(tmp16no1);
 #endif
-
-    WebRtcAecm_WindowAndFFT(aecm, fft, time_signal, freq_signal, time_signal_scaling);
-
+    // -CJ- 14102012
+    // Call directly Neon code with correct parameters
+    //    WebRtcAecm_WindowAndFFT(aecm, fft, time_signal, freq_signal, time_signal_scaling);
+    WebRtcAecm_WindowAndFFTNeon(fft, time_signal, freq_signal, time_signal_scaling);
     // Extract imaginary and real part, calculate the magnitude for all frequency bins
     freq_signal[0].imag = 0;
     freq_signal[PART_LEN].imag = 0;

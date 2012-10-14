@@ -335,7 +335,7 @@ UpdateNoiseEstimateNeon:
 
   mov r0, r4
   mov r1, r6
-  bl WebRtcSpl_MaxValueW16
+  bl WebRtcSpl_MaxValueW16Neon
 
   sub r12, r6, #1             @ Loop counter: inst->magnLen - 1.
 
