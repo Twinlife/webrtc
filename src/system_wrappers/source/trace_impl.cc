@@ -23,6 +23,8 @@
 
 #include "system_wrappers/interface/sleep.h"
 
+#include <android/log.h>
+
 #define KEY_LEN_CHARS 31
 
 #ifdef _WIN32
@@ -30,7 +32,7 @@
 #endif // _WIN32
 
 namespace webrtc {
-static WebRtc_UWord32 levelFilter = kTraceDefault;
+static WebRtc_UWord32 levelFilter = kTraceWarning|kTraceError|kTraceCritical;
 
 // Construct On First Use idiom. Avoids "static initialization order fiasco".
 TraceImpl* TraceImpl::StaticInstance(CountOperation count_operation,
@@ -422,6 +424,10 @@ void TraceImpl::AddMessageToList(
     const char traceMessage[WEBRTC_TRACE_MAX_MESSAGE_SIZE],
     const WebRtc_UWord16 length,
     const TraceLevel level) {
+
+  __android_log_print(ANDROID_LOG_DEBUG, "WEBRTC", "%.*s", length, traceMessage);
+  return;
+
 #ifdef WEBRTC_DIRECT_TRACE
     if (_callback) {
       _callback->Print(level, traceMessage, length);
@@ -649,7 +655,6 @@ void TraceImpl::AddImpl(const TraceLevel level, const TraceModule module,
         }
         ackLen += len;
         AddMessageToList(traceMessage,(WebRtc_UWord16)ackLen, level);
-
         // Make sure that messages are written as soon as possible.
         _event.Set();
     }
@@ -749,6 +754,7 @@ void Trace::ReturnTrace()
 WebRtc_Word32 Trace::SetLevelFilter(WebRtc_UWord32 filter)
 {
     levelFilter = filter;
+    levelFilter = kTraceWarning|kTraceError|kTraceCritical;
     return 0;
 }
 
