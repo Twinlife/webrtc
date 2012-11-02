@@ -50,7 +50,6 @@ LOCAL_SRC_FILES := \
 # -CJ- -Issue 0004- 30052012 
 LOCAL_CFLAGS := \
     $(MY_WEBRTC_COMMON_DEFS) \
-   '-DWEBRTC_ANDROID_OPENSLES' \
    '-DWEBRTC_SVNREVISION="r2247"'
 
 LOCAL_C_INCLUDES := \
@@ -61,6 +60,7 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../modules/interface \
     $(LOCAL_PATH)/../modules/audio_coding/main/interface \
     $(LOCAL_PATH)/../modules/audio_conference_mixer/interface \
+    $(LOCAL_PATH)/../modules/audio_device \
     $(LOCAL_PATH)/../modules/audio_device/main/interface \
     $(LOCAL_PATH)/../modules/audio_device/main/source \
     $(LOCAL_PATH)/../modules/audio_processing/include \
