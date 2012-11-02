@@ -52,10 +52,16 @@ deps = {
     From("chromium_deps", "src/third_party/libjpeg_turbo"),
 
   "third_party/libvpx/source/libvpx":
-    "http://git.chromium.org/webm/libvpx.git@30d8ba541",
+    "http://git.chromium.org/webm/libvpx.git@fd3078fd8",
 
   "third_party/libyuv":
-    (Var("googlecode_url") % "libyuv") + "/trunk@389",
+    (Var("googlecode_url") % "libyuv") + "/trunk@438",
+
+  "third_party/opus":
+    Var("chromium_trunk") + "/src/third_party/opus@163910",
+
+  "third_party/opus/src":
+    Var("chromium_trunk") + "/deps/third_party/opus@162558",
 
   "third_party/protobuf":
     Var("chromium_trunk") + "/src/third_party/protobuf@" + Var("chromium_revision"),
@@ -101,11 +107,11 @@ deps_os = {
 
 hooks = [
   {
-    # Create a supplement.gypi file under trunk/src.  This file will be picked
+    # Create a supplement.gypi file under trunk/webrtc. This file will be picked
     # up by gyp and used to enable the standalone build.
     "pattern": ".",
     "action": ["python", Var("root_dir") + "/tools/create_supplement_gypi.py",
-               Var("root_dir") + "/src/supplement.gypi"],
+               Var("root_dir") + "/webrtc/supplement.gypi"],
   },
   {
     # Pull clang on mac. If nothing changed, or on non-mac platforms, this takes
