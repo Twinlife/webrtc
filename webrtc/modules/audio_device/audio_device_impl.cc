@@ -457,7 +457,9 @@ AudioDeviceModuleImpl::~AudioDeviceModuleImpl()
     {
         delete _ptrAudioDevice;
         _ptrAudioDevice = NULL;
+#if defined(WEBRTC_ANDROID_OPENSLES)
 	ptrAudioDeviceOpenSLES = NULL;
+#endif
     }
 
     if (_ptrAudioDeviceUtility)

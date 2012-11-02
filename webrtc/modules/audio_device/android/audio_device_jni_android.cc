@@ -2238,6 +2238,8 @@ WebRtc_Word32 AudioDeviceAndroidJni::InitJavaResources()
     // AUDIO MANAGEMENT
 
     // This is not mandatory functionality
+// -CJ- 02112012
+#if 0
     if (_javaContext) {
       jfieldID context_id = env->GetFieldID(globalScClass,
                                             "_context",
@@ -2262,6 +2264,7 @@ WebRtc_Word32 AudioDeviceAndroidJni::InitJavaResources()
                    "supported",
                    __FUNCTION__);
     }
+#endif
 
     /////////////
     // PLAYOUT
