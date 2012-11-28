@@ -356,7 +356,8 @@ WebRtc_Word32 VideoCaptureImpl::IncomingFrame(
                                     frameInfo.codecType);
     }
 
-
+    // -CJ- -Issue 140- 281112
+    /*
     const WebRtc_UWord32 processTime =
         (WebRtc_UWord32)(TickTime::Now() - startProcessTime).Milliseconds();
     if (processTime > 10) // If the process time is too long MJPG will not work well.
@@ -365,7 +366,7 @@ WebRtc_Word32 VideoCaptureImpl::IncomingFrame(
                    "Too long processing time of Incoming frame: %ums",
                    (unsigned int) processTime);
     }
-
+    */
     return 0;
 }
 
