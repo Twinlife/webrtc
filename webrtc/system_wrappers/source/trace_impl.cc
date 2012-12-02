@@ -147,8 +147,14 @@ WebRtc_Word32 TraceImpl::AddThreadId(char* traceMessage) const {
 
 WebRtc_Word32 TraceImpl::AddLevel(char* szMessage, const TraceLevel level) const
 {
+    const int kMessageLength = 12;
     switch (level)
     {
+        case kTraceTerseInfo:
+            // Add the appropriate amount of whitespace.
+            memset(szMessage, ' ', kMessageLength);
+            szMessage[kMessageLength] = '\0';
+            break;
         case kTraceStateInfo:
             sprintf (szMessage, "STATEINFO ; ");
             break;
@@ -187,7 +193,7 @@ WebRtc_Word32 TraceImpl::AddLevel(char* szMessage, const TraceLevel level) const
             return 0;
     }
     // All messages are 12 characters.
-    return 12;
+    return kMessageLength;
 }
 
 WebRtc_Word32 TraceImpl::AddModuleAndId(char* traceMessage,
@@ -199,6 +205,7 @@ WebRtc_Word32 TraceImpl::AddModuleAndId(char* traceMessage,
     // TODO (hellner): is this actually a problem? If so, it should be better to
     //                 clean up WebRtc_Word32
     const long int idl = id;
+    const int kMessageLength = 25;
     if(idl != -1)
     {
         const unsigned long int idEngine = id>>16;
@@ -206,6 +213,11 @@ WebRtc_Word32 TraceImpl::AddModuleAndId(char* traceMessage,
 
         switch (module)
         {
+            case kTraceUndefined:
+                // Add the appropriate amount of whitespace.
+                memset(traceMessage, ' ', kMessageLength);
+                traceMessage[kMessageLength] = '\0';
+                break;
             case kTraceVoice:
                 sprintf(traceMessage, "       VOICE:%5ld %5ld;", idEngine,
                         idChannel);
@@ -279,6 +291,11 @@ WebRtc_Word32 TraceImpl::AddModuleAndId(char* traceMessage,
     } else {
         switch (module)
         {
+            case kTraceUndefined:
+                // Add the appropriate amount of whitespace.
+                memset(traceMessage, ' ', kMessageLength);
+                traceMessage[kMessageLength] = '\0';
+                break;
             case kTraceVoice:
                 sprintf (traceMessage, "       VOICE:%11ld;", idl);
                 break;
@@ -332,8 +349,7 @@ WebRtc_Word32 TraceImpl::AddModuleAndId(char* traceMessage,
                 break;
         }
     }
-    // All messages are 25 characters.
-    return 25;
+    return kMessageLength;
 }
 
 WebRtc_Word32 TraceImpl::SetTraceFileImpl(const char* fileNameUTF8,
@@ -605,44 +621,44 @@ void TraceImpl::AddImpl(const TraceLevel level, const TraceModule module,
     if (TraceCheck(level))
     {
         char traceMessage[WEBRTC_TRACE_MAX_MESSAGE_SIZE];
-        char* meassagePtr = traceMessage;
+        char* messagePtr = traceMessage;
 
         WebRtc_Word32 len = 0;
         WebRtc_Word32 ackLen = 0;
 
-        len = AddLevel(meassagePtr, level);
+        len = AddLevel(messagePtr, level);
         if(len == -1)
         {
             return;
         }
-        meassagePtr += len;
+        messagePtr += len;
         ackLen += len;
 
-        len = AddTime(meassagePtr, level);
+        len = AddTime(messagePtr, level);
         if(len == -1)
         {
             return;
         }
-        meassagePtr += len;
+        messagePtr += len;
         ackLen += len;
 
-        len = AddModuleAndId(meassagePtr, module, id);
+        len = AddModuleAndId(messagePtr, module, id);
         if(len == -1)
         {
             return;
         }
-        meassagePtr += len;
+        messagePtr += len;
         ackLen += len;
 
-        len = AddThreadId(meassagePtr);
+        len = AddThreadId(messagePtr);
         if(len < 0)
         {
             return;
         }
-        meassagePtr += len;
+        messagePtr += len;
         ackLen += len;
 
-        len = AddMessage(meassagePtr, msg, (WebRtc_UWord16)ackLen);
+        len = AddMessage(messagePtr, msg, (WebRtc_UWord16)ackLen);
         if(len == -1)
         {
             return;

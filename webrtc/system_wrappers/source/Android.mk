@@ -40,6 +40,7 @@ LOCAL_SRC_FILES := \
     event_posix.cc \
     sleep.cc \
     thread_posix.cc \
+    tick_util.cc \
     trace_posix.cc \
     rw_lock_posix.cc 
 
@@ -49,7 +50,8 @@ LOCAL_CFLAGS := \
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../.. \
     $(LOCAL_PATH)/../interface \
-    $(LOCAL_PATH)/spreadsortlib
+    $(LOCAL_PATH)/spreadsortlib \
+    external/webrtc
 
 LOCAL_SHARED_LIBRARIES := \
     libcutils \

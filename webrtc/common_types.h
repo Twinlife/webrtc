@@ -57,6 +57,7 @@ protected:
 
 enum TraceModule
 {
+    kTraceUndefined          = 0,
     // not a module, triggered from the engine code
     kTraceVoice              = 0x0001,
     // not a module, triggered from the engine code
@@ -98,21 +99,21 @@ enum TraceLevel
     kTraceDebug              = 0x0800,  // debug
     kTraceInfo               = 0x1000,  // debug info
 
+    // Non-verbose level used by LS_INFO of logging.h. Do not use directly.
+    kTraceTerseInfo          = 0x2000,
+
     kTraceAll                = 0xffff
 };
 
 // External Trace API
-class TraceCallback
-{
-public:
-    virtual void Print(const TraceLevel level,
-                       const char *traceString,
-                       const int length) = 0;
-protected:
-    virtual ~TraceCallback() {}
-    TraceCallback() {}
-};
+class TraceCallback {
+ public:
+  virtual void Print(TraceLevel level, const char* message, int length) = 0;
 
+ protected:
+  virtual ~TraceCallback() {}
+  TraceCallback() {}
+};
 
 enum FileFormats
 {

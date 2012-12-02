@@ -10,7 +10,7 @@ vars = {
   # If you do not know, use the full path while defining your new deps entry.
   "googlecode_url": "http://%s.googlecode.com/svn",
   "chromium_trunk" : "http://src.chromium.org/svn/trunk",
-  "chromium_revision": "157509",
+  "chromium_revision": "169394",
 
   # External resources like video and audio files used for testing purposes.
   # Downloaded on demand when needed.
@@ -55,13 +55,13 @@ deps = {
     "http://git.chromium.org/webm/libvpx.git@fd3078fd8",
 
   "third_party/libyuv":
-    (Var("googlecode_url") % "libyuv") + "/trunk@438",
+    (Var("googlecode_url") % "libyuv") + "/trunk@481",
 
   "third_party/opus":
-    Var("chromium_trunk") + "/src/third_party/opus@163910",
+    Var("chromium_trunk") + "/src/third_party/opus@165570",
 
   "third_party/opus/src":
-    Var("chromium_trunk") + "/deps/third_party/opus@162558",
+    Var("chromium_trunk") + "/deps/third_party/opus@165487",
 
   "third_party/protobuf":
     Var("chromium_trunk") + "/src/third_party/protobuf@" + Var("chromium_revision"),
@@ -94,6 +94,9 @@ deps_os = {
     # Use our own, stripped down, version of Cygwin (required by GYP).
     "third_party/cygwin":
       (Var("googlecode_url") % "webrtc") + "/deps/third_party/cygwin@2672",
+
+    "third_party/winsdk_samples/src":
+      (Var("googlecode_url") % "webrtc") + "/deps/third_party/winsdk_samples_v71@3145",
 
     # Used by libjpeg-turbo.
     "third_party/yasm/binaries":

@@ -10,7 +10,10 @@ LOCAL_PATH := $(call my-dir)
 
 include $(call all-makefiles-under, $(LOCAL_PATH))
 
-MY_LIBS_PATH := ../../../../../out/Debug/obj.target
+# Specify BUILDTYPE=Release on the command line for a release build.
+BUILDTYPE ?= Debug
+
+MY_LIBS_PATH := ../../../../../out/$(BUILDTYPE)/obj.target
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libvoice_engine_core
@@ -270,6 +273,18 @@ LOCAL_SRC_FILES := \
 include $(PREBUILT_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
+LOCAL_MODULE := libvpx_arm_neon
+LOCAL_SRC_FILES := \
+    $(MY_LIBS_PATH)/third_party/libvpx/libvpx_arm_neon.a
+include $(PREBUILT_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := libpaced_sender
+LOCAL_SRC_FILES := \
+    $(MY_LIBS_PATH)/webrtc/modules/libpaced_sender.a
+include $(PREBUILT_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
 LOCAL_MODULE_TAGS := tests
 LOCAL_MODULE := libwebrtc-video-demo-jni
 LOCAL_CPP_EXTENSION := .cc
@@ -333,6 +348,8 @@ LOCAL_STATIC_LIBRARIES := \
     libaudioproc_debug_proto \
     libprotobuf_lite \
     libvpx \
+    libvpx_arm_neon \
+    libpaced_sender \
     $(MY_SUPPLEMENTAL_LIBS)
 
 include $(BUILD_SHARED_LIBRARY)

@@ -107,10 +107,10 @@ namespace webrtc {
 // codecs. Note! There are a limited number of payload types. If more codecs
 // are defined they will receive reserved fixed payload types (values 69-95).
 const int kDynamicPayloadtypes[ACMCodecDB::kMaxNumCodecs] = {
-  105, 107, 108, 109, 111, 112, 113, 114, 115, 116, 117, 121,
-   92,  91,  90,  89,  88,  87,  86,  85,  84,  83,  82,  81,
-   80,  79,  78,  77,  76,  75,  74,  73,  72,  71,  70,  69,
-   68, 67
+  105, 107, 108, 109, 111, 112, 113, 114, 115, 116, 117, 92,
+   91,  90,  89,  88,  87,  86,  85,  84,  83,  82,  81, 80,
+   79,  78,  77,  76,  75,  74,  73,  72,  71,  70,  69, 68,
+   67, 66
 };
 
 // Creates database with all supported codecs at compile time.
@@ -189,8 +189,9 @@ const CodecInst ACMCodecDB::database_[] = {
   {3, "GSM", 8000, 160, 1, 13200},
 #endif
 #ifdef WEBRTC_CODEC_OPUS
-  // Opus supports 48, 24, 16, 12, 8 kHz.
-  {120, "opus", 48000, 960, 1, 32000},
+  // Opus internally supports 48, 24, 16, 12, 8 kHz.
+  // Mono and stereo.
+  {120, "opus", 48000, 960, 2, 32000},
 #endif
 #ifdef WEBRTC_CODEC_SPEEX
   {kDynamicPayloadtypes[count_database++], "speex", 8000, 160, 1, 11000},
@@ -282,6 +283,7 @@ const ACMCodecDB::CodecSettings ACMCodecDB::codec_settings_[] = {
 #ifdef WEBRTC_CODEC_OPUS
   // Opus supports frames shorter than 10ms,
   // but it doesn't help us to use them.
+  // Mono and stereo.
   {1, {960}, 0, 2},
 #endif
 #ifdef WEBRTC_CODEC_SPEEX
@@ -369,6 +371,7 @@ const WebRtcNetEQDecoder ACMCodecDB::neteq_decoders_[] = {
   kDecoderGSMFR,
 #endif
 #ifdef WEBRTC_CODEC_OPUS
+  // Mono and stereo.
   kDecoderOpus,
 #endif
 #ifdef WEBRTC_CODEC_SPEEX
@@ -562,7 +565,13 @@ int ACMCodecDB::CodecId(const char* payload_name, int frequency, int channels) {
     // always treated as true, like for RED.
     name_match = (STR_CASE_CMP(database_[id].plname, payload_name) == 0);
     frequency_match = (frequency == database_[id].plfreq) || (frequency == -1);
-    channels_match = (channels == database_[id].channels);
+    // The number of channels must match for all codecs but Opus.
+    if (STR_CASE_CMP(payload_name, "opus") != 0) {
+      channels_match = (channels == database_[id].channels);
+    } else {
+      // For opus we just check that number of channels is valid.
+      channels_match = (channels == 1 || channels == 2);
+    }
 
     if (name_match && frequency_match && channels_match) {
       // We have found a matching codec in the list.

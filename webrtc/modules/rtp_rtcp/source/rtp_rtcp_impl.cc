@@ -52,7 +52,12 @@ RtpRtcp* RtpRtcp::CreateRtpRtcp(const RtpRtcp::Configuration& configuration) {
 }
 
 ModuleRtpRtcpImpl::ModuleRtpRtcpImpl(const Configuration& configuration)
-    : _rtpSender(configuration.id, configuration.audio, configuration.clock),
+    : _rtpSender(configuration.id,
+                 configuration.audio,
+                 configuration.clock,
+                 configuration.outgoing_transport,
+                 configuration.audio_messages,
+                 configuration.paced_sender),
       _rtpReceiver(configuration.id, configuration.audio, configuration.clock,
                    this),
       _rtcpSender(configuration.id, configuration.audio, configuration.clock,
@@ -81,7 +86,8 @@ ModuleRtpRtcpImpl::ModuleRtpRtcpImpl(const Configuration& configuration)
       _nackLastSeqNumberSent(0),
       _simulcast(false),
       _keyFrameReqMethod(kKeyFrameReqFirRtp),
-      remote_bitrate_(configuration.remote_bitrate_estimator)
+      remote_bitrate_(configuration.remote_bitrate_estimator),
+      rtt_observer_(configuration.rtt_observer)
 #ifdef MATLAB
        , _plot1(NULL)
 #endif
@@ -97,10 +103,8 @@ ModuleRtpRtcpImpl::ModuleRtpRtcpImpl(const Configuration& configuration)
   _rtcpReceiver.RegisterRtcpObservers(configuration.intra_frame_callback,
                                       configuration.bandwidth_callback,
                                       configuration.rtcp_feedback);
-  _rtpSender.RegisterAudioCallback(configuration.audio_messages);
   _rtpReceiver.RegisterIncomingAudioCallback(configuration.audio_messages);
 
-  _rtpSender.RegisterSendTransport(configuration.outgoing_transport);
   _rtcpSender.RegisterSendTransport(configuration.outgoing_transport);
 
   // make sure that RTCP objects are aware of our SSRC
@@ -184,8 +188,6 @@ WebRtc_Word32 ModuleRtpRtcpImpl::Process() {
   const WebRtc_Word64 now = _clock.GetTimeInMS();
   _lastProcessTime = now;
 
-  _rtpSender.ProcessSendToNetwork();
-
   if (now >= _lastPacketTimeoutProcessTime +
       kRtpRtcpPacketTimeoutProcessTimeMs) {
     _rtpReceiver.PacketTimeout();
@@ -210,27 +212,32 @@ WebRtc_Word32 ModuleRtpRtcpImpl::Process() {
       for (std::vector<RTCPReportBlock>::iterator it = receive_blocks.begin();
            it != receive_blocks.end(); ++it) {
         WebRtc_UWord16 rtt = 0;
-        _rtcpReceiver.RTT(it->remoteSSRC, &max_rtt, NULL, NULL, NULL);
+        _rtcpReceiver.RTT(it->remoteSSRC, &rtt, NULL, NULL, NULL);
         max_rtt = (rtt > max_rtt) ? rtt : max_rtt;
       }
+      // Report the rtt.
+      if (rtt_observer_ && max_rtt != 0)
+        rtt_observer_->OnRttUpdate(max_rtt);
     } else {
-      // We're only receiving, i.e. this module doesn't have its own RTT
-      // estimate. Use the RTT set by a sending channel using the same default
-      // module.
+      // No valid RTT estimate, probably since this is a receive only channel.
+      // Use an estimate set by a send module.
       max_rtt = _rtcpReceiver.RTT();
     }
     if (max_rtt == 0) {
-      // No valid estimate available, i.e. no sending channel using the same
-      // default module or no RTCP received yet.
+      // No own rtt calculation or set rtt, use default value.
       max_rtt = kDefaultRtt;
     }
     if (remote_bitrate_) {
+      // TODO(mflodman) Remove this and let this be propagated by CallStats.
       remote_bitrate_->SetRtt(max_rtt);
       remote_bitrate_->UpdateEstimate(_rtpReceiver.SSRC(), now);
       if (TMMBR()) {
         unsigned int target_bitrate = 0;
-        if (remote_bitrate_->LatestEstimate(_rtpReceiver.SSRC(),
-                                            &target_bitrate)) {
+        std::vector<unsigned int> ssrcs;
+        if (remote_bitrate_->LatestEstimate(&ssrcs, &target_bitrate)) {
+          if (!ssrcs.empty()) {
+            target_bitrate = target_bitrate / ssrcs.size();
+          }
           _rtcpSender.SetTargetBitrate(target_bitrate);
         }
       }
@@ -628,7 +635,8 @@ WebRtc_Word32 ModuleRtpRtcpImpl::SetStartTimestamp(
                "SetStartTimestamp(%d)",
                timestamp);
   _rtcpSender.SetStartTimestamp(timestamp);
-  return _rtpSender.SetStartTimestamp(timestamp, true);
+  _rtpSender.SetStartTimestamp(timestamp, true);
+  return 0;  // TODO(pwestin): change to void.
 }
 
 WebRtc_UWord16 ModuleRtpRtcpImpl::SequenceNumber() const {
@@ -646,7 +654,8 @@ WebRtc_Word32 ModuleRtpRtcpImpl::SetSequenceNumber(
                "SetSequenceNumber(%d)",
                seqNum);
 
-  return _rtpSender.SetSequenceNumber(seqNum);
+  _rtpSender.SetSequenceNumber(seqNum);
+  return 0;  // TODO(pwestin): change to void.
 }
 
 WebRtc_UWord32 ModuleRtpRtcpImpl::SSRC() const {
@@ -659,17 +668,16 @@ WebRtc_UWord32 ModuleRtpRtcpImpl::SSRC() const {
 WebRtc_Word32 ModuleRtpRtcpImpl::SetSSRC(const WebRtc_UWord32 ssrc) {
   WEBRTC_TRACE(kTraceModuleCall, kTraceRtpRtcp, _id, "SetSSRC(%d)", ssrc);
 
-  if (_rtpSender.SetSSRC(ssrc) == 0) {
-    _rtcpReceiver.SetSSRC(ssrc);
-    _rtcpSender.SetSSRC(ssrc);
-    return 0;
-  }
-  return -1;
+  _rtpSender.SetSSRC(ssrc);
+  _rtcpReceiver.SetSSRC(ssrc);
+  _rtcpSender.SetSSRC(ssrc);
+  return 0;  // TODO(pwestin): change to void.
 }
 
 WebRtc_Word32 ModuleRtpRtcpImpl::SetCSRCStatus(const bool include) {
   _rtcpSender.SetCSRCStatus(include);
-  return _rtpSender.SetCSRCStatus(include);
+  _rtpSender.SetCSRCStatus(include);
+  return 0;  // TODO(pwestin): change to void.
 }
 
 WebRtc_Word32 ModuleRtpRtcpImpl::CSRCs(
@@ -702,16 +710,15 @@ WebRtc_Word32 ModuleRtpRtcpImpl::SetCSRCs(
       }
       it++;
     }
-    return 0;
-
   } else {
     for (int i = 0; i < arrLength; i++) {
       WEBRTC_TRACE(kTraceModuleCall, kTraceRtpRtcp, _id, "\tidx:%d CSRC:%u", i,
                    arrOfCSRC[i]);
     }
     _rtcpSender.SetCSRCs(arrOfCSRC, arrLength);
-    return _rtpSender.SetCSRCs(arrOfCSRC, arrLength);
+    _rtpSender.SetCSRCs(arrOfCSRC, arrLength);
   }
+  return 0;  // TODO(pwestin): change to void.
 }
 
 WebRtc_UWord32 ModuleRtpRtcpImpl::PacketCountSent() const {
@@ -816,11 +823,11 @@ WebRtc_Word32 ModuleRtpRtcpImpl::SendOutgoingData(
     const RTPFragmentationHeader* fragmentation,
     const RTPVideoHeader* rtpVideoHdr) {
   WEBRTC_TRACE(
-    kTraceStream,
-    kTraceRtpRtcp,
-    _id,
-    "SendOutgoingData(frameType:%d payloadType:%d timeStamp:%u size:%u)",
-    frameType, payloadType, timeStamp, payloadSize);
+      kTraceStream,
+      kTraceRtpRtcp,
+      _id,
+      "SendOutgoingData(frameType:%d payloadType:%d timeStamp:%u size:%u)",
+      frameType, payloadType, timeStamp, payloadSize);
 
   _rtcpSender.SetLastRtpTime(timeStamp, capture_time_ms);
 
@@ -910,6 +917,37 @@ WebRtc_Word32 ModuleRtpRtcpImpl::SendOutgoingData(
     }
   }
   return retVal;
+}
+
+void ModuleRtpRtcpImpl::TimeToSendPacket(uint32_t ssrc,
+                                         uint16_t sequence_number,
+                                         int64_t capture_time_ms) {
+  WEBRTC_TRACE(
+      kTraceStream,
+      kTraceRtpRtcp,
+      _id,
+      "TimeToSendPacket(ssrc:0x%x sequence_number:%u capture_time_ms:%ll)",
+      ssrc, sequence_number, capture_time_ms);
+
+  if (_simulcast) {
+    CriticalSectionScoped lock(_criticalSectionModulePtrs.get());
+    std::list<ModuleRtpRtcpImpl*>::iterator it = _childModules.begin();
+    while (it != _childModules.end()) {
+      if ((*it)->SendingMedia() && ssrc == (*it)->_rtpSender.SSRC()) {
+        (*it)->_rtpSender.TimeToSendPacket(sequence_number, capture_time_ms);
+        return;
+      }
+      it++;
+    }
+  } else {
+    bool have_child_modules(_childModules.empty() ? false : true);
+    if (!have_child_modules) {
+      // Don't send from default module.
+      if (SendingMedia() && ssrc == _rtpSender.SSRC()) {
+        _rtpSender.TimeToSendPacket(sequence_number, capture_time_ms);
+      }
+    }
+  }
 }
 
 WebRtc_UWord16 ModuleRtpRtcpImpl::MaxPayloadLength() const {
@@ -1108,6 +1146,11 @@ ModuleRtpRtcpImpl::ResetRTT(const WebRtc_UWord32 remoteSSRC) {
   return _rtcpReceiver.ResetRTT(remoteSSRC);
 }
 
+void ModuleRtpRtcpImpl:: SetRtt(uint32_t rtt) {
+  WEBRTC_TRACE(kTraceModuleCall, kTraceRtpRtcp, _id, "SetRtt(rtt: %u)", rtt);
+  _rtcpReceiver.SetRTT(static_cast<WebRtc_UWord16>(rtt));
+}
+
 // Reset RTP statistics
 WebRtc_Word32
 ModuleRtpRtcpImpl::ResetStatisticsRTP() {
@@ -1129,7 +1172,8 @@ WebRtc_Word32 ModuleRtpRtcpImpl::ResetSendDataCountersRTP() {
   WEBRTC_TRACE(kTraceModuleCall, kTraceRtpRtcp, _id,
                "ResetSendDataCountersRTP()");
 
-  return _rtpSender.ResetDataCounters();
+  _rtpSender.ResetDataCounters();
+  return 0;  // TODO(pwestin): change to void.
 }
 
 // Force a send of an RTCP packet
@@ -1335,14 +1379,6 @@ WebRtc_Word32 ModuleRtpRtcpImpl::DeregisterReceiveRtpHeaderExtension(
   return _rtpReceiver.DeregisterRtpHeaderExtension(type);
 }
 
-void ModuleRtpRtcpImpl::SetTransmissionSmoothingStatus(const bool enable) {
-  _rtpSender.SetTransmissionSmoothingStatus(enable);
-}
-
-bool ModuleRtpRtcpImpl::TransmissionSmoothingStatus() const {
-  return _rtpSender.TransmissionSmoothingStatus();
-}
-
 /*
 *   (TMMBR) Temporary Max Media Bit Rate
 */
@@ -1495,7 +1531,8 @@ WebRtc_Word32 ModuleRtpRtcpImpl::SetStorePacketsStatus(
     WEBRTC_TRACE(kTraceModuleCall, kTraceRtpRtcp, _id,
                  "SetStorePacketsStatus(disable)");
   }
-  return _rtpSender.SetStorePacketsStatus(enable, numberToStore);
+  _rtpSender.SetStorePacketsStatus(enable, numberToStore);
+  return 0;  // TODO(pwestin): change to void.
 }
 
 /*
@@ -1910,9 +1947,12 @@ void ModuleRtpRtcpImpl::BitrateSent(WebRtc_UWord32* totalRate,
 int ModuleRtpRtcpImpl::EstimatedReceiveBandwidth(
     WebRtc_UWord32* available_bandwidth) const {
   if (remote_bitrate_) {
-    if (!remote_bitrate_->LatestEstimate(_rtpReceiver.SSRC(),
-                                         available_bandwidth)) {
+    std::vector<unsigned int> ssrcs;
+    if (!remote_bitrate_->LatestEstimate(&ssrcs, available_bandwidth)) {
       return -1;
+    }
+    if (!ssrcs.empty()) {
+      *available_bandwidth /= ssrcs.size();
     }
     return 0;
   }

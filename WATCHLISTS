@@ -15,6 +15,7 @@
       'filepath': '^WATCHLISTS$',
     },
     'all_webrtc': {
+      # NOTE: if you like this you might like webrtc-reviews@webrtc.org!
       'filepath': 'webrtc/.*',
     },
     'root_files': {
@@ -23,8 +24,8 @@
     },
     'documented_interfaces': {
       'filepath': 'webrtc/[^/]*\.h$|'\
-                  'webrtc/video_engine/main/interface/.*|'\
-                  'webrtc/voice_engine/main/interface/.*',
+                  'webrtc/video_engine/include/.*|'\
+                  'webrtc/voice_engine/include/.*',
     },
     'build_files': {
       'filepath': '\.gyp$|\.gypi$|Android\.mk$',
@@ -75,8 +76,8 @@
 
   'WATCHLISTS': {
     'this_file': [''],
-    'all_webrtc': ['tterriberry@mozilla.com',
-                'giles@mozilla.com'],
+    'all_webrtc': ['giles@mozilla.com',
+                   'tterriberry@mozilla.com'],
     'root_files': ['andrew@webrtc.org',
                    'niklas.enbom@webrtc.org'],
     'documented_interfaces': ['interface-changes@webrtc.org',

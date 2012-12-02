@@ -63,6 +63,13 @@ int16_t WebRtcOpus_DecoderCreate(OpusDecInst** inst, int channels);
 int16_t WebRtcOpus_DecoderFree(OpusDecInst* inst);
 
 /****************************************************************************
+ * WebRtcOpus_DecoderChannels(...)
+ *
+ * This function returns the number of channels created for Opus decoder.
+ */
+int WebRtcOpus_DecoderChannels(OpusDecInst* inst);
+
+/****************************************************************************
  * WebRtcOpus_DecoderInit(...)
  *
  * This function resets state of the decoder.
@@ -74,6 +81,7 @@ int16_t WebRtcOpus_DecoderFree(OpusDecInst* inst);
  *                             -1 - Error
  */
 int16_t WebRtcOpus_DecoderInit(OpusDecInst* inst);
+int16_t WebRtcOpus_DecoderInitSlave(OpusDecInst* inst);
 
 /****************************************************************************
  * WebRtcOpus_Decode(...)
@@ -98,7 +106,9 @@ int16_t WebRtcOpus_DecoderInit(OpusDecInst* inst);
 int16_t WebRtcOpus_Decode(OpusDecInst* inst, int16_t* encoded,
                           int16_t encoded_bytes, int16_t* decoded,
                           int16_t* audio_type);
-
+int16_t WebRtcOpus_DecodeSlave(OpusDecInst* inst, int16_t* encoded,
+                               int16_t encoded_bytes, int16_t* decoded,
+                               int16_t* audio_type);
 /****************************************************************************
  * WebRtcOpus_DecodePlc(...)
  *

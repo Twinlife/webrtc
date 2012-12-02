@@ -37,6 +37,7 @@
         '../interface/file_wrapper.h',
         '../interface/fix_interlocked_exchange_pointer_win.h',
         '../interface/list_wrapper.h',
+        '../interface/logging.h',
         '../interface/map_wrapper.h',
         '../interface/ref_count.h',
         '../interface/rw_lock_wrapper.h',
@@ -83,6 +84,8 @@
         'file_impl.cc',
         'file_impl.h',
         'list_no_stl.cc',
+        'logging.cc',
+        'logging_no_op.cc',
         'map.cc',
         'rw_lock.cc',
         'rw_lock_generic.cc',
@@ -91,14 +94,15 @@
         'rw_lock_posix.h',
         'rw_lock_win.cc',
         'rw_lock_win.h',
+        'set_thread_name_win.h',
         'sleep.cc',
         'sort.cc',
+        'tick_util.cc',
         'thread.cc',
         'thread_posix.cc',
         'thread_posix.h',
         'thread_win.cc',
         'thread_win.h',
-        'set_thread_name_win.h',
         'trace_impl.cc',
         'trace_impl.h',
         'trace_impl_no_op.cc',
@@ -110,9 +114,25 @@
       'conditions': [
         ['enable_data_logging==1', {
           'sources!': [ 'data_log_no_op.cc', ],
-        },{
+        }, {
           'sources!': [ 'data_log.cc', ],
         },],
+        ['enable_tracing==1', {
+          'sources!': [
+            'logging_no_op.cc',
+            'trace_impl_no_op.cc',
+          ],
+        }, {
+          'sources!': [
+            'logging.cc',
+            'trace_impl.cc',
+            'trace_impl.h',
+            'trace_posix.cc',
+            'trace_posix.h',
+            'trace_win.cc',
+            'trace_win.h',
+          ],
+        }],
         ['OS=="android"', {
           'dependencies': [ 'cpu_features_android', ],
         }],
@@ -140,19 +160,12 @@
             'cpu_linux.h',
             'cpu_mac.h',
             'cpu_win.h',
-            'trace_impl.cc',
-            'trace_impl.h',
-            'trace_posix.cc',
-            'trace_posix.h',
-            'trace_win.cc',
-            'trace_win.h',
           ],
         }, {
           'sources!': [
             'cpu_no_op.cc',
-            'trace_impl_no_op.cc',
           ],
-        }]
+        }],
       ], # conditions
       'target_conditions': [
         # We need to do this in a target_conditions block to override the
@@ -182,11 +195,21 @@
           'target_name': 'cpu_features_android',
           'type': '<(library)',
           'sources': [
-            'android/cpu-features.c',
-            'android/cpu-features.h',
             # TODO(leozwang): Ideally we want to audomatically exclude .c files
             # as with .cc files, gyp currently only excludes .cc files.
             'cpu_features_android.c',
+          ],
+          'conditions': [
+            ['build_with_chromium==1', {
+              'dependencies': [
+                '<(android_ndk_root)/android_tools_ndk.gyp:cpu_features',
+              ],
+            }, {
+              'sources': [
+                'android/cpu-features.c',
+                'android/cpu-features.h',
+              ],
+            }],
           ],
         },
       ],
@@ -209,6 +232,7 @@
             'cpu_measurement_harness.cc',
             'critical_section_unittest.cc',
             'list_unittest.cc',
+            'logging_unittest.cc',
             'map_unittest.cc',
             'data_log_unittest.cc',
             'data_log_unittest_disabled.cc',
