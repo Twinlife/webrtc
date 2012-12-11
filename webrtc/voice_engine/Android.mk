@@ -10,14 +10,13 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 
-include $(LOCAL_PATH)/../../../../android-webrtc.mk
+include $(LOCAL_PATH)/../../android-webrtc.mk
 
 LOCAL_ARM_MODE := arm
 LOCAL_MODULE := libwebrtc_voe_core
 LOCAL_MODULE_TAGS := optional
 LOCAL_CPP_EXTENSION := .cc
 LOCAL_SRC_FILES := \
-    audio_frame_operations.cc \
     channel.cc \
     channel_manager.cc \
     channel_manager_base.cc \
@@ -26,7 +25,7 @@ LOCAL_SRC_FILES := \
     level_indicator.cc \
     monitor_module.cc \
     output_mixer.cc \
-    ref_count.cc \
+    output_mixer_internal.cc \
     shared_data.cc \
     statistics.cc \
     transmit_mixer.cc \
@@ -48,26 +47,28 @@ LOCAL_SRC_FILES := \
     voice_engine_impl.cc
 
 # Flags passed to both C and C++ files.
+# -CJ- -Issue 0004- 30052012
 LOCAL_CFLAGS := \
     $(MY_WEBRTC_COMMON_DEFS) \
-   '-DWEBRTC_ANDROID_OPENSLES'
+   '-DWEBRTC_SVNREVISION="r2247"'
 
 LOCAL_C_INCLUDES := \
-    $(LOCAL_PATH)/../interface \
-    $(LOCAL_PATH)/../../.. \
-    $(LOCAL_PATH)/../../../common_audio/resampler/include \
-    $(LOCAL_PATH)/../../../common_audio/signal_processing/include \
-    $(LOCAL_PATH)/../../../modules/interface \
-    $(LOCAL_PATH)/../../../modules/audio_coding/main/interface \
-    $(LOCAL_PATH)/../../../modules/audio_conference_mixer/interface \
-    $(LOCAL_PATH)/../../../modules/audio_device/main/interface \
-    $(LOCAL_PATH)/../../../modules/audio_device/main/source \
-    $(LOCAL_PATH)/../../../modules/audio_processing/include \
-    $(LOCAL_PATH)/../../../modules/media_file/interface \
-    $(LOCAL_PATH)/../../../modules/rtp_rtcp/interface \
-    $(LOCAL_PATH)/../../../modules/udp_transport/interface \
-    $(LOCAL_PATH)/../../../modules/utility/interface \
-    $(LOCAL_PATH)/../../../system_wrappers/interface 
+    $(LOCAL_PATH)/include \
+    $(LOCAL_PATH)/.. \
+    $(LOCAL_PATH)/../.. \
+    $(LOCAL_PATH)/../common_audio/resampler/include \
+    $(LOCAL_PATH)/../common_audio/signal_processing/include \
+    $(LOCAL_PATH)/../modules/interface \
+    $(LOCAL_PATH)/../modules/audio_coding/main/interface \
+    $(LOCAL_PATH)/../modules/audio_conference_mixer/interface \
+    $(LOCAL_PATH)/../modules/audio_device/main/interface \
+    $(LOCAL_PATH)/../modules/audio_device \
+    $(LOCAL_PATH)/../modules/audio_processing/include \
+    $(LOCAL_PATH)/../modules/media_file/interface \
+    $(LOCAL_PATH)/../modules/rtp_rtcp/interface \
+    $(LOCAL_PATH)/../modules/udp_transport/interface \
+    $(LOCAL_PATH)/../modules/utility/interface \
+    $(LOCAL_PATH)/../system_wrappers/interface
 
 LOCAL_SHARED_LIBRARIES := \
     libcutils \

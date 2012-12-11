@@ -58,8 +58,9 @@ LOCAL_ARM_MODE := arm
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 LOCAL_MODULE := libwebrtc_ns_neon
 LOCAL_MODULE_TAGS := optional
-NS_ASM_HEADER := $(intermediates)/ns_core_neon_offsets.h
-NS_ASM_HEADER_DIR := $(intermediates)
+
+NS_ASM_HEADER := $(LOCAL_PATH)/nsx_core_neon_offsets.h
+NS_ASM_HEADER_DIR := $(LOCAL_PATH)
 
 # Generate a header file nsx_core_neon_offsets.h which will be included in
 # assembly file nsx_core_neon.S, from file nsx_core_neon_offsets.c.

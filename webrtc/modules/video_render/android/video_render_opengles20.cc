@@ -215,6 +215,33 @@ WebRtc_Word32 VideoRenderOpenGles20::SetCoordinates(WebRtc_Word32 zOrder,
   return 0;
 }
 
+// -CJ- -Issue 169-
+WebRtc_Word32 VideoRenderOpenGles20::Render(const VideoFrame& frameToRender) {
+
+  if (frameToRender.Length() == 0) {
+    return -1;
+  }
+
+  WEBRTC_TRACE(kTraceDebug, kTraceVideoRenderer, _id, "%s: id %d",
+               __FUNCTION__, (int) _id);
+
+  glUseProgram(_program);
+  checkGlError("glUseProgram");
+
+  if (_textureWidth != (GLsizei) frameToRender.Width() ||
+      _textureHeight != (GLsizei) frameToRender.Height()) {
+    SetupTextures(frameToRender);
+  }
+  else {
+    UpdateTextures(frameToRender);
+  }
+
+  glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_BYTE, g_indices);
+  checkGlError("glDrawArrays");
+
+  return 0;
+}
+
 WebRtc_Word32 VideoRenderOpenGles20::Render(const I420VideoFrame&
                                             frameToRender) {
 
@@ -383,6 +410,63 @@ void VideoRenderOpenGles20::SetupTextures(const I420VideoFrame& frameToRender) {
   _textureHeight = height;
 }
 
+// -CJ- -Issue 169-
+void VideoRenderOpenGles20::SetupTextures(const VideoFrame& frameToRender) {
+  WEBRTC_TRACE(kTraceDebug, kTraceVideoRenderer, _id,
+               "%s: width %d, height %d length %u", __FUNCTION__,
+               frameToRender.Width(), frameToRender.Height(),
+               frameToRender.Length());
+
+  const GLsizei width = frameToRender.Width();
+  const GLsizei height = frameToRender.Height();
+
+  glGenTextures(3, _textureIds); //Generate  the Y, U and V texture
+  GLuint currentTextureId = _textureIds[0]; // Y
+  glActiveTexture( GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, currentTextureId);
+
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, width, height, 0,
+               GL_LUMINANCE, GL_UNSIGNED_BYTE,
+               (const GLvoid*) frameToRender.Buffer());
+
+  currentTextureId = _textureIds[1]; // U
+  glActiveTexture( GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, currentTextureId);
+
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+  const WebRtc_UWord8* uComponent = frameToRender.Buffer() + width * height;
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, width / 2, height / 2, 0,
+               GL_LUMINANCE, GL_UNSIGNED_BYTE, (const GLvoid*) uComponent);
+
+  currentTextureId = _textureIds[2]; // V
+  glActiveTexture( GL_TEXTURE2);
+  glBindTexture(GL_TEXTURE_2D, currentTextureId);
+
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+  const WebRtc_UWord8* vComponent = uComponent + (width * height) / 4;
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, width / 2, height / 2, 0,
+               GL_LUMINANCE, GL_UNSIGNED_BYTE, (const GLvoid*) vComponent);
+  checkGlError("SetupTextures");
+
+  _textureWidth = width;
+  _textureHeight = height;
+}
+
 // Uploads a plane of pixel data, accounting for stride != width*bpp.
 static void GlTexSubImage2D(GLsizei width, GLsizei height, int stride,
                             const uint8_t* plane) {
@@ -422,6 +506,33 @@ void VideoRenderOpenGles20::UpdateTextures(const
   GlTexSubImage2D(width / 2, height / 2, frameToRender.stride(kVPlane),
                   frameToRender.buffer(kVPlane));
 
+  checkGlError("UpdateTextures");
+}
+
+// -CJ- -Issue 169-
+void VideoRenderOpenGles20::UpdateTextures(const VideoFrame& frameToRender) {
+  const GLsizei width = frameToRender.Width();
+  const GLsizei height = frameToRender.Height();
+
+  GLuint currentTextureId = _textureIds[0]; // Y
+  glActiveTexture( GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, currentTextureId);
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_LUMINANCE,
+                  GL_UNSIGNED_BYTE, (const GLvoid*) frameToRender.Buffer());
+
+  currentTextureId = _textureIds[1]; // U
+  glActiveTexture( GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, currentTextureId);
+  const WebRtc_UWord8* uComponent = frameToRender.Buffer() + width * height;
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width / 2, height / 2,
+                  GL_LUMINANCE, GL_UNSIGNED_BYTE, (const GLvoid*) uComponent);
+
+  currentTextureId = _textureIds[2]; // V
+  glActiveTexture( GL_TEXTURE2);
+  glBindTexture(GL_TEXTURE_2D, currentTextureId);
+  const WebRtc_UWord8* vComponent = uComponent + (width * height) / 4;
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width / 2, height / 2,
+                  GL_LUMINANCE, GL_UNSIGNED_BYTE, (const GLvoid*) vComponent);
   checkGlError("UpdateTextures");
 }
 

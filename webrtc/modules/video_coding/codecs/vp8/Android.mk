@@ -30,6 +30,7 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/include \
     $(LOCAL_PATH)/../interface \
     $(LOCAL_PATH)/../../../.. \
+    $(LOCAL_PATH)/../../../../.. \
     $(LOCAL_PATH)/../../../../common_video/interface \
     $(LOCAL_PATH)/../../../../common_video/vplib/main/interface \
     $(LOCAL_PATH)/../../../../modules/interface \

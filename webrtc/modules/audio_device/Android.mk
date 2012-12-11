@@ -36,6 +36,7 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/linux \
     $(LOCAL_PATH)/../interface \
     $(LOCAL_PATH)/../.. \
+    $(LOCAL_PATH)/../../.. \
     $(LOCAL_PATH)/main/interface \
     $(LOCAL_PATH)/../../common_audio/resampler/include \
     $(LOCAL_PATH)/../../common_audio/signal_processing/include \
@@ -44,8 +45,7 @@ LOCAL_C_INCLUDES := \
 LOCAL_SHARED_LIBRARIES := \
     libcutils \
     libdl \
-    libstlport \
-    libOpenSLES
+    libstlport
 
 ifndef NDK_ROOT
 include external/stlport/libstlport.mk

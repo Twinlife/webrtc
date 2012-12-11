@@ -27,6 +27,7 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../interface \
     $(LOCAL_PATH)/../../../interface \
     $(LOCAL_PATH)/../../../../../.. \
+    $(LOCAL_PATH)/../../../../../../.. \
     $(LOCAL_PATH)/../../../../../../common_video/interface \
     $(LOCAL_PATH)/../../../../../../system_wrappers/interface 
 

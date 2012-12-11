@@ -13,12 +13,16 @@ include $(CLEAR_VARS)
 include $(LOCAL_PATH)/../../../android-webrtc.mk
 
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
-LOCAL_MODULE := libwebrtc_bitrate_controller
+LOCAL_MODULE := libwebrtc_remote_bitrate_estimator
 LOCAL_MODULE_TAGS := optional
 LOCAL_CPP_EXTENSION := .cc
 LOCAL_SRC_FILES := \
-    bitrate_controller_impl.cc \
-    send_side_bandwidth_estimation.cc
+    bitrate_estimator.cc \
+    overuse_detector.cc \
+    remote_bitrate_estimator_multi_stream.cc \
+    remote_bitrate_estimator_single_stream.cc \
+    remote_rate_control.cc \
+    rtp_to_ntp.cc
 
 # Flags passed to both C and C++ files.
 LOCAL_CFLAGS := \
@@ -27,7 +31,10 @@ LOCAL_CFLAGS := \
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/include \
     $(LOCAL_PATH)/../interface \
-    $(LOCAL_PATH)/../..
+    $(LOCAL_PATH)/../rtp_rtcp/interface \
+    $(LOCAL_PATH)/../.. \
+    $(LOCAL_PATH)/../../.. \
+    $(LOCAL_PATH)/..
 
 LOCAL_SHARED_LIBRARIES := \
 
