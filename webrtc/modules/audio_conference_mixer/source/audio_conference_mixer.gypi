@@ -10,7 +10,7 @@
   'targets': [
     {
       'target_name': 'audio_conference_mixer',
-      'type': '<(library)',
+      'type': 'static_library',
       'dependencies': [
         'audio_processing',
         'webrtc_utility',
@@ -43,25 +43,6 @@
       ],
     },
   ], # targets
-  'conditions': [
-    ['include_tests==1', {
-      'targets': [
-        {
-          'target_name': 'audio_conference_mixer_unittests',
-          'type': 'executable',
-          'dependencies': [
-            'audio_conference_mixer',
-            '<(DEPTH)/testing/gtest.gyp:gtest',
-            '<(webrtc_root)/test/test.gyp:test_support_main',
-            '<(webrtc_root)/system_wrappers/source/system_wrappers.gyp:system_wrappers',
-          ],
-          'sources': [
-            'audio_conference_mixer_unittest.cc',
-          ],
-        }, # audio_conference_mixer_unittests
-      ], # targets
-    }], # include_tests
-  ], # conditions
 }
 
 # Local Variables:

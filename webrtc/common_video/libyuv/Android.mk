@@ -27,6 +27,7 @@ LOCAL_CFLAGS := \
 # Include paths placed before CFLAGS/CPPFLAGS
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../.. \
+    $(LOCAL_PATH)/../../.. \
     external \
     external/libyuv/files/include \
 

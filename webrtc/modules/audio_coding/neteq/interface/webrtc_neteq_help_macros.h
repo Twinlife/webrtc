@@ -102,6 +102,18 @@
                     inst.funcDurationEst=NULL; \
                     inst.funcGetErrorCode=(WebRtcNetEQ_FuncGetErrorCode)WebRtcIsac_GetErrorCode;
 
+#define SET_ISACFB_FUNCTIONS(inst) \
+                    inst.funcDecode=(WebRtcNetEQ_FuncDecode)WebRtcIsac_Decode; \
+                    inst.funcDecodeRCU=(WebRtcNetEQ_FuncDecode)WebRtcIsac_DecodeRcu; \
+                    inst.funcDecodePLC=NULL; \
+                    inst.funcDecodeInit=(WebRtcNetEQ_FuncDecodeInit)WebRtcIsac_DecoderInit; \
+                    inst.funcAddLatePkt=NULL; \
+                    inst.funcGetMDinfo=NULL; \
+                    inst.funcGetPitch=NULL; \
+                    inst.funcUpdBWEst=(WebRtcNetEQ_FuncUpdBWEst)WebRtcIsac_UpdateBwEstimate; \
+                    inst.funcDurationEst=NULL; \
+                    inst.funcGetErrorCode=(WebRtcNetEQ_FuncGetErrorCode)WebRtcIsac_GetErrorCode;
+
 #define SET_G729_FUNCTIONS(inst) \
                     inst.funcDecode=(WebRtcNetEQ_FuncDecode)WebRtcG729_Decode; \
                     inst.funcDecodeRCU=NULL; \
@@ -351,7 +363,7 @@
                     inst.funcGetMDinfo=NULL; \
                     inst.funcGetPitch=NULL; \
                     inst.funcUpdBWEst=NULL; \
-                    inst.funcDurationEst=NULL; \
+                    inst.funcDurationEst=(WebRtcNetEQ_FuncDurationEst)WebRtcOpus_DurationEst; \
                     inst.funcGetErrorCode=NULL;
 
 #define SET_OPUSSLAVE_FUNCTIONS(inst) \
@@ -363,7 +375,7 @@
                     inst.funcGetMDinfo=NULL; \
                     inst.funcGetPitch=NULL; \
                     inst.funcUpdBWEst=NULL; \
-                    inst.funcDurationEst=NULL; \
+                    inst.funcDurationEst=(WebRtcNetEQ_FuncDurationEst)WebRtcOpus_DurationEst; \
                     inst.funcGetErrorCode=NULL;
 
 #define SET_SPEEX_FUNCTIONS(inst) \

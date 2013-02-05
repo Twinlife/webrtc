@@ -10,10 +10,10 @@
 
 #include <algorithm>
 #include <vector>
-#include <gtest/gtest.h>
 
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "test_api.h"
-
 #include "common_types.h"
 #include "rtp_rtcp.h"
 #include "rtp_rtcp_defines.h"
@@ -78,9 +78,9 @@ class RtcpCallback : public RtcpFeedback, public RtcpIntraFrameObserver {
 
 class RtpRtcpRtcpTest : public ::testing::Test {
  protected:
-  RtpRtcpRtcpTest() {
+  RtpRtcpRtcpTest() : fake_clock(123456) {
     test_CSRC[0] = 1234;
-    test_CSRC[2] = 2345;
+    test_CSRC[1] = 2345;
     test_id = 123;
     test_ssrc = 3456;
     test_timestamp = 4567;
@@ -97,11 +97,12 @@ class RtpRtcpRtcpTest : public ::testing::Test {
 
     RtpRtcp::Configuration configuration;
     configuration.id = test_id;
-    configuration.audio = false;
+    configuration.audio = true;
     configuration.clock = &fake_clock;
     configuration.outgoing_transport = transport1;
     configuration.rtcp_feedback = myRTCPFeedback1;
     configuration.intra_frame_callback = myRTCPFeedback1;
+    configuration.incoming_data = receiver;
 
     module1 = RtpRtcp::CreateRtpRtcp(configuration);
 
@@ -150,6 +151,8 @@ class RtpRtcpRtcpTest : public ::testing::Test {
   virtual void TearDown() {
     delete module1;
     delete module2;
+    delete myRTCPFeedback1;
+    delete myRTCPFeedback2;
     delete transport1;
     delete transport2;
     delete receiver;
@@ -168,7 +171,7 @@ class RtpRtcpRtcpTest : public ::testing::Test {
   WebRtc_UWord32 test_timestamp;
   WebRtc_UWord16 test_sequence_number;
   WebRtc_UWord32 test_CSRC[webrtc::kRtpCsrcSize];
-  FakeRtpRtcpClock fake_clock;
+  SimulatedClock fake_clock;
 };
 
 TEST_F(RtpRtcpRtcpTest, RTCP_PLI_RPSI) {
@@ -191,9 +194,9 @@ TEST_F(RtpRtcpRtcpTest, RTCP_CNAME) {
   EXPECT_EQ(0, module1->AddMixedCNAME(test_CSRC[1], "jane@192.168.0.2"));
 
   // send RTCP packet, triggered by timer
-  fake_clock.IncrementTime(7500);
+  fake_clock.AdvanceTimeMilliseconds(7500);
   module1->Process();
-  fake_clock.IncrementTime(100);
+  fake_clock.AdvanceTimeMilliseconds(100);
   module2->Process();
 
   char cName[RTCP_CNAME_SIZE];
@@ -217,6 +220,8 @@ TEST_F(RtpRtcpRtcpTest, RTCP_CNAME) {
 
 TEST_F(RtpRtcpRtcpTest, RTCP) {
   RTCPReportBlock reportBlock;
+  reportBlock.remoteSSRC = 1;
+  reportBlock.sourceSSRC = 2;
   reportBlock.cumulativeLost = 1;
   reportBlock.delaySinceLastSR = 2;
   reportBlock.extendedHighSeqNum = 3;
@@ -246,9 +251,9 @@ TEST_F(RtpRtcpRtcpTest, RTCP) {
           300));
 
   // send RTCP packet, triggered by timer
-  fake_clock.IncrementTime(7500);
+  fake_clock.AdvanceTimeMilliseconds(7500);
   module1->Process();
-  fake_clock.IncrementTime(100);
+  fake_clock.AdvanceTimeMilliseconds(100);
   module2->Process();
 
   WebRtc_UWord32 receivedNTPsecs = 0;
@@ -266,7 +271,7 @@ TEST_F(RtpRtcpRtcpTest, RTCP) {
   std::vector<RTCPReportBlock> report_blocks;
   EXPECT_EQ(-1, module1->RemoteRTCPStat(NULL));
   EXPECT_EQ(0, module1->RemoteRTCPStat(&report_blocks));
-  EXPECT_EQ(1u, report_blocks.size());
+  ASSERT_EQ(1u, report_blocks.size());
   const RTCPReportBlock& reportBlockReceived = report_blocks[0];
 
   float secSinceLastReport =
@@ -313,7 +318,7 @@ TEST_F(RtpRtcpRtcpTest, RTCP) {
   EXPECT_EQ(0, module1->SetSendingStatus(false));
 
   // Send RTCP packet, triggered by timer.
-  fake_clock.IncrementTime(5000);
+  fake_clock.AdvanceTimeMilliseconds(5000);
   module1->Process();
   module2->Process();
 }
@@ -325,9 +330,9 @@ TEST_F(RtpRtcpRtcpTest, RemoteRTCPStatRemote) {
   EXPECT_EQ(0u, report_blocks.size());
 
   // send RTCP packet, triggered by timer
-  fake_clock.IncrementTime(7500);
+  fake_clock.AdvanceTimeMilliseconds(7500);
   module1->Process();
-  fake_clock.IncrementTime(100);
+  fake_clock.AdvanceTimeMilliseconds(100);
   module2->Process();
 
   EXPECT_EQ(0, module1->RemoteRTCPStat(&report_blocks));

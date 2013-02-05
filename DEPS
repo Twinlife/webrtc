@@ -10,11 +10,11 @@ vars = {
   # If you do not know, use the full path while defining your new deps entry.
   "googlecode_url": "http://%s.googlecode.com/svn",
   "chromium_trunk" : "http://src.chromium.org/svn/trunk",
-  "chromium_revision": "169394",
+  "chromium_revision": "176094",
 
   # External resources like video and audio files used for testing purposes.
   # Downloaded on demand when needed.
-  "webrtc_resources_revision": "10",
+  "webrtc_resources_revision": "15",
 }
 
 # NOTE: Prefer revision numbers to tags for svn deps. Use http rather than
@@ -52,16 +52,16 @@ deps = {
     From("chromium_deps", "src/third_party/libjpeg_turbo"),
 
   "third_party/libvpx/source/libvpx":
-    "http://git.chromium.org/webm/libvpx.git@fd3078fd8",
+    "http://git.chromium.org/webm/libvpx.git@7a09f6b8",
 
   "third_party/libyuv":
-    (Var("googlecode_url") % "libyuv") + "/trunk@481",
+    (Var("googlecode_url") % "libyuv") + "/trunk@540",
 
   "third_party/opus":
-    Var("chromium_trunk") + "/src/third_party/opus@165570",
+    Var("chromium_trunk") + "/src/third_party/opus@172355",
 
   "third_party/opus/src":
-    Var("chromium_trunk") + "/deps/third_party/opus@165487",
+    Var("chromium_trunk") + "/deps/third_party/opus@173498",
 
   "third_party/protobuf":
     Var("chromium_trunk") + "/src/third_party/protobuf@" + Var("chromium_revision"),

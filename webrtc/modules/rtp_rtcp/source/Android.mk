@@ -20,27 +20,29 @@ LOCAL_GENERATED_SOURCES :=
 LOCAL_SRC_FILES := \
     bitrate.cc \
     dtmf_queue.cc \
+    forward_error_correction.cc \
+    forward_error_correction_internal.cc \
+    producer_fec.cc \
+    receiver_fec.cc \
     rtcp_receiver.cc \
     rtcp_receiver_help.cc \
     rtcp_sender.cc \
     rtcp_utility.cc \
-    rtp_rtcp_impl.cc \
-    rtp_receiver.cc \
-    rtp_sender.cc \
-    rtp_utility.cc \
+    rtp_format_vp8.cc \
     rtp_header_extension.cc \
+    rtp_packet_history.cc \
+    rtp_payload_registry.cc \
+    rtp_receiver_audio.cc \
+    rtp_receiver.cc \
+    rtp_receiver_strategy.cc \
+    rtp_receiver_video.cc \
+    rtp_rtcp_impl.cc \
+    rtp_sender_audio.cc \
+    rtp_sender.cc \
+    rtp_sender_video.cc \
+    rtp_utility.cc \
     ssrc_database.cc \
     tmmbr_help.cc \
-    rtp_receiver_audio.cc \
-    rtp_sender_audio.cc \
-    forward_error_correction.cc \
-    forward_error_correction_internal.cc \
-    producer_fec.cc \
-    rtp_packet_history.cc \
-    receiver_fec.cc \
-    rtp_receiver_video.cc \
-    rtp_sender_video.cc \
-    rtp_format_vp8.cc \
     vp8_partition_aggregator.cc
 
 # Flags passed to both C and C++ files.

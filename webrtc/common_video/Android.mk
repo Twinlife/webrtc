@@ -25,7 +25,8 @@ LOCAL_CFLAGS := \
     $(MY_WEBRTC_COMMON_DEFS)
 
 LOCAL_C_INCLUDES := \
-    $(LOCAL_PATH)/..
+    $(LOCAL_PATH)/.. \
+    $(LOCAL_PATH)/../..
 
 LOCAL_SHARED_LIBRARIES := \
 

@@ -16,9 +16,9 @@
 #ifndef WEBRTC_MODULES_AUDIO_CODING_MAIN_SOURCE_ACM_CODEC_DATABASE_H_
 #define WEBRTC_MODULES_AUDIO_CODING_MAIN_SOURCE_ACM_CODEC_DATABASE_H_
 
-#include "acm_generic_codec.h"
-#include "common_types.h"
-#include "webrtc_neteq.h"
+#include "webrtc/common_types.h"
+#include "webrtc/modules/audio_coding/main/source/acm_generic_codec.h"
+#include "webrtc/modules/audio_coding/neteq/interface/webrtc_neteq.h"
 
 namespace webrtc {
 
@@ -33,6 +33,7 @@ class ACMCodecDB {
     , kISAC
 # if (defined(WEBRTC_CODEC_ISAC))
     , kISACSWB
+    , kISACFB
 # endif
 #endif
 #ifdef WEBRTC_CODEC_PCM16
@@ -115,6 +116,7 @@ class ACMCodecDB {
   // Set unsupported codecs to -1
 #ifndef WEBRTC_CODEC_ISAC
   enum {kISACSWB = -1};
+  enum {kISACFB = -1};
 # ifndef WEBRTC_CODEC_ISACFX
   enum {kISAC = -1};
 # endif

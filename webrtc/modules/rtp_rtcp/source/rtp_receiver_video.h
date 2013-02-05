@@ -11,40 +11,54 @@
 #ifndef WEBRTC_MODULES_RTP_RTCP_SOURCE_RTP_RECEIVER_VIDEO_H_
 #define WEBRTC_MODULES_RTP_RTCP_SOURCE_RTP_RECEIVER_VIDEO_H_
 
+#include "bitrate.h"
+#include "rtp_receiver_strategy.h"
 #include "rtp_rtcp_defines.h"
 #include "rtp_utility.h"
-
+#include "scoped_ptr.h"
 #include "typedefs.h"
 
-#include "Bitrate.h"
-#include "scoped_ptr.h"
-
 namespace webrtc {
-class ReceiverFEC;
-class ModuleRtpRtcpImpl;
 class CriticalSectionWrapper;
+class ModuleRtpRtcpImpl;
+class ReceiverFEC;
+class RTPReceiver;
+class RTPPayloadRegistry;
 
-class RTPReceiverVideo {
+class RTPReceiverVideo : public RTPReceiverStrategy {
  public:
   RTPReceiverVideo(const WebRtc_Word32 id,
-                   ModuleRtpRtcpImpl* owner);
+                   const RTPPayloadRegistry* rtp_payload_registry,
+                   RtpData* data_callback);
 
   virtual ~RTPReceiverVideo();
 
-  ModuleRTPUtility::Payload* RegisterReceiveVideoPayload(
+  WebRtc_Word32 ParseRtpPacket(
+      WebRtcRTPHeader* rtp_header,
+      const ModuleRTPUtility::PayloadUnion& specificPayload,
+      const bool is_red,
+      const WebRtc_UWord8* packet,
+      const WebRtc_UWord16 packet_length,
+      const WebRtc_Word64 timestamp,
+      const bool is_first_packet);
+
+  WebRtc_Word32 GetFrequencyHz() const;
+
+  RTPAliveType ProcessDeadOrAlive(WebRtc_UWord16 lastPayloadLength) const;
+
+  bool ShouldReportCsrcChanges(WebRtc_UWord8 payload_type) const;
+
+  WebRtc_Word32 OnNewPayloadTypeCreated(
       const char payloadName[RTP_PAYLOAD_NAME_SIZE],
       const WebRtc_Word8 payloadType,
-      const WebRtc_UWord32 maxRate);
+      const WebRtc_UWord32 frequency);
 
-  WebRtc_Word32 ParseVideoCodecSpecific(
-      WebRtcRTPHeader* rtpHeader,
-      const WebRtc_UWord8* payloadData,
-      const WebRtc_UWord16 payloadDataLength,
-      const RtpVideoCodecTypes videoType,
-      const bool isRED,
-      const WebRtc_UWord8* incomingRtpPacket,
-      const WebRtc_UWord16 incomingRtpPacketSize,
-      const WebRtc_Word64 nowMS);
+  WebRtc_Word32 InvokeOnInitializeDecoder(
+      RtpFeedback* callback,
+      const WebRtc_Word32 id,
+      const WebRtc_Word8 payloadType,
+      const char payloadName[RTP_PAYLOAD_NAME_SIZE],
+      const ModuleRTPUtility::PayloadUnion& specificPayload) const;
 
   virtual WebRtc_Word32 ReceiveRecoveredPacketCallback(
       WebRtcRTPHeader* rtpHeader,
@@ -54,25 +68,6 @@ class RTPReceiverVideo {
   void SetPacketOverHead(WebRtc_UWord16 packetOverHead);
 
  protected:
-  virtual WebRtc_Word32 CallbackOfReceivedPayloadData(
-      const WebRtc_UWord8* payloadData,
-      const WebRtc_UWord16 payloadSize,
-      const WebRtcRTPHeader* rtpHeader) = 0;
-
-  virtual WebRtc_UWord32 TimeStamp() const = 0;
-  virtual WebRtc_UWord16 SequenceNumber() const = 0;
-
-  virtual WebRtc_UWord32 PayloadTypeToPayload(
-      const WebRtc_UWord8 payloadType,
-      ModuleRTPUtility::Payload*& payload) const = 0;
-
-  virtual bool RetransmitOfOldPacket(
-      const WebRtc_UWord16 sequenceNumber,
-      const WebRtc_UWord32 rtpTimeStamp) const  = 0;
-
-  virtual WebRtc_Word8 REDPayloadType() const = 0;
-  virtual bool HaveNotReceivedPackets() const = 0;
-
   WebRtc_Word32 SetCodecType(const RtpVideoCodecTypes videoType,
                              WebRtcRTPHeader* rtpHeader) const;
 
@@ -80,7 +75,8 @@ class RTPReceiverVideo {
       WebRtcRTPHeader* rtpHeader,
       const WebRtc_UWord8* payloadData,
       const WebRtc_UWord16 payloadDataLength,
-      const RtpVideoCodecTypes videoType);
+      const RtpVideoCodecTypes videoType,
+      const bool isFirstPacket);
 
   WebRtc_Word32 ReceiveGenericCodec(WebRtcRTPHeader *rtpHeader,
                                     const WebRtc_UWord8* payloadData,
@@ -94,7 +90,19 @@ class RTPReceiverVideo {
                                WebRtc_UWord8* dataBuffer) const;
 
  private:
+  WebRtc_Word32 ParseVideoCodecSpecific(
+      WebRtcRTPHeader* rtpHeader,
+      const WebRtc_UWord8* payloadData,
+      const WebRtc_UWord16 payloadDataLength,
+      const RtpVideoCodecTypes videoType,
+      const bool isRED,
+      const WebRtc_UWord8* incomingRtpPacket,
+      const WebRtc_UWord16 incomingRtpPacketSize,
+      const WebRtc_Word64 nowMS,
+      const bool isFirstPacket);
+
   WebRtc_Word32             _id;
+  const RTPPayloadRegistry* _rtpRtpPayloadRegistry;
 
   CriticalSectionWrapper*   _criticalSectionReceiverVideo;
 

@@ -51,6 +51,9 @@ include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/video_processing/main/source/Andro
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/video_render/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/video_engine/Android.mk
 
+# test support
+include $(MY_WEBRTC_ROOT_PATH)/webrtc/test/Android.mk
+
 # build .so
 LOCAL_PATH := $(call my-dir)
 
