@@ -96,6 +96,9 @@ class ViEChannel
                                        WebRtc_UWord32* num_delta_frames);
   WebRtc_UWord32 DiscardedPackets() const;
 
+  // Returns the estimated delay in milliseconds.
+  int ReceiveDelay() const;
+
   // Only affects calls to SetReceiveCodec done after this call.
   WebRtc_Word32 WaitForKeyFrame(bool wait);
 
@@ -113,6 +116,7 @@ class ViEChannel
   WebRtc_Word32 SetHybridNACKFECStatus(const bool enable,
                                        const unsigned char payload_typeRED,
                                        const unsigned char payload_typeFEC);
+  int EnableSenderStreamingMode(int target_delay_ms);
   WebRtc_Word32 SetKeyFrameRequestMethod(const KeyFrameRequestMethod method);
   bool EnableRemb(bool enable);
   int SetSendTimestampOffsetStatus(bool enable, int id);
@@ -419,6 +423,8 @@ class ViEChannel
   // User set MTU, -1 if not set.
   uint16_t mtu_;
   const bool sender_;
+
+  int nack_history_size_sender_;
 };
 
 }  // namespace webrtc

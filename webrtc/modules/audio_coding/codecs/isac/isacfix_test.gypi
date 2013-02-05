@@ -14,27 +14,18 @@
       'type': 'executable',
       'dependencies': [
         'iSACFix',
+        '<(webrtc_root)/test/test.gyp:test_support',
       ],
       'include_dirs': [
         './fix/test',
         './fix/interface',
       ],
       'sources': [
-        './fix/test/kenny.c',
+        './fix/test/kenny.cc',
       ],
-    },
-    {
-      'target_name': 'isacfix_unittests',
-      'type': 'executable',
-      'dependencies': [
-        'iSACFix',
-        '<(DEPTH)/testing/gtest.gyp:gtest',
-        '<(webrtc_root)/test/test.gyp:test_support_main',
-      ],
-      'sources': [
-        'fix/source/filters_unittest.cc',
-        'fix/source/filterbanks_unittest.cc',
-        'fix/source/lpc_masking_model_unittest.cc',
+      # Disable warnings to enable Win64 build, issue 1323.
+      'msvs_disabled_warnings': [
+        4267,  # size_t to int truncation.
       ],
     },
   ],

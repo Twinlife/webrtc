@@ -22,9 +22,9 @@ using namespace webrtc;
 
 class RtpRtcpAPITest : public ::testing::Test {
  protected:
-  RtpRtcpAPITest() {
+  RtpRtcpAPITest() : module(NULL), fake_clock(123456) {
     test_CSRC[0] = 1234;
-    test_CSRC[2] = 2345;
+    test_CSRC[1] = 2345;
     test_id = 123;
     test_ssrc = 3456;
     test_timestamp = 4567;
@@ -50,7 +50,7 @@ class RtpRtcpAPITest : public ::testing::Test {
   WebRtc_UWord32 test_timestamp;
   WebRtc_UWord16 test_sequence_number;
   WebRtc_UWord32 test_CSRC[webrtc::kRtpCsrcSize];
-  FakeRtpRtcpClock fake_clock;
+  SimulatedClock fake_clock;
 };
 
 TEST_F(RtpRtcpAPITest, Basic) {
@@ -109,6 +109,6 @@ TEST_F(RtpRtcpAPITest, RTCP) {
   EXPECT_FALSE(module->TMMBR());
 
   EXPECT_EQ(kNackOff, module->NACK());
-  EXPECT_EQ(0, module->SetNACKStatus(kNackRtcp));
+  EXPECT_EQ(0, module->SetNACKStatus(kNackRtcp, 450));
   EXPECT_EQ(kNackRtcp, module->NACK());
 }

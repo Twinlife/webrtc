@@ -19,25 +19,25 @@ import dashboard_connection
 import tgrid_parser
 
 # Bots that must be green in order to increment the LKGR revision.
-BOTS = ['Win32Debug',
-        'Win32Release',
-        'Mac32Debug',
-        'Mac32Release',
-        'Linux32Debug',
-        'Linux32Release',
-        'Linux64Debug',
-        'Linux64Release',
-        'LinuxClang',
-        'Linux64Debug-GCC4.6',
-        'LinuxMemcheck',
-        'LinuxTsan',
-        'LinuxAsan',
-        'WinLargeTests',
-        'MacLargeTests',
-        'LinuxLargeTests',
+BOTS = ['Win32 Debug',
+        'Win32 Release',
+        'Mac32 Debug',
+        'Mac32 Release',
+        'Linux32 Debug',
+        'Linux32 Release',
+        'Linux64 Debug',
+        'Linux64 Release',
+        'Linux Clang',
+        'Linux64 Debug GCC4.6',
+        'Linux Memcheck',
+        'Linux Tsan',
+        'Linux Asan',
+        'Win Large Tests',
+        'Mac Large Tests',
+        'Linux Large Tests',
         'CrOS',
         'Android',
-        'AndroidNDK',
+        'Android NDK',
        ]
 
 
@@ -89,14 +89,6 @@ def _filter_undesired_bots(bot_to_status_mapping, desired_bot_names):
   return result
 
 
-def _filter_chrome_only_builds(bot_to_status_mapping):
-  """Filters chrome-only builds from the system so LKGR doesn't get confused."""
-  return dict((revision_to_bot_name, status)
-              for revision_to_bot_name, status
-              in bot_to_status_mapping.iteritems()
-              if not _is_chrome_only_build(revision_to_bot_name))
-
-
 def _main():
   dashboard = dashboard_connection.DashboardConnection(constants.CONSUMER_KEY)
   dashboard.read_required_files(constants.CONSUMER_SECRET_FILE,
@@ -104,7 +96,6 @@ def _main():
 
   bot_to_status_mapping = _download_and_parse_build_status()
   bot_to_status_mapping = _filter_undesired_bots(bot_to_status_mapping, BOTS)
-  bot_to_status_mapping = _filter_chrome_only_builds(bot_to_status_mapping)
 
   dashboard.send_post_request(constants.ADD_BUILD_STATUS_DATA_URL,
                               bot_to_status_mapping)

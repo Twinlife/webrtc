@@ -9,7 +9,7 @@
   'targets': [
     {
       'target_name': 'G722',
-      'type': '<(library)',
+      'type': 'static_library',
       'include_dirs': [
         'include',
       ],
@@ -30,18 +30,6 @@
   'conditions': [
     ['include_tests==1', {
       'targets': [
-        {
-          'target_name': 'g722_unittests',
-          'type': 'executable',
-          'dependencies': [
-            'G722',
-            '<(webrtc_root)/test/test.gyp:test_support_main',
-            '<(DEPTH)/testing/gtest.gyp:gtest',
-          ],
-          'sources': [
-            'g722_unittest.cc',
-          ],
-        },
         {
           'target_name': 'G722Test',
           'type': 'executable',
