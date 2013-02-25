@@ -22,6 +22,13 @@ namespace webrtc
 namespace videocapturemodule
 {
 
+static jclass g_capabilityClass = NULL;
+
+// static
+void DeviceInfoAndroid::SetAndroidCaptureClasses(jclass capabilityClass) {
+  g_capabilityClass = capabilityClass;
+}
+
 VideoCaptureModule::DeviceInfo*
 VideoCaptureImpl::CreateDeviceInfo (const WebRtc_Word32 id) {
   videocapturemodule::DeviceInfoAndroid *deviceInfo =
@@ -66,7 +73,7 @@ WebRtc_UWord32 DeviceInfoAndroid::NumberOfDevices() {
   jint numberOfDevices = 0;
   if (cid != NULL) {
     WEBRTC_TRACE(webrtc::kTraceDebug, webrtc::kTraceVideoCapture, _id,
-                 "%s Calling Number of devices env=%p javaCmDevInfoObject=%p cid=%p", __FUNCTION__, env, javaCmDevInfoObject, cid);
+                 "%s Calling Number of devices", __FUNCTION__);
     numberOfDevices = env->CallIntMethod(javaCmDevInfoObject, cid);
   }
   VideoCaptureAndroid::ReleaseAndroidDeviceInfoObjects(attached);
@@ -171,14 +178,21 @@ WebRtc_Word32 DeviceInfoAndroid::CreateCapabilityMap(
           attached) != 0)
     return -1;
 
+  // Find the capability class
+  jclass javaCapClass = g_capabilityClass;
+  if (javaCapClass == NULL) {
+    VideoCaptureAndroid::ReleaseAndroidDeviceInfoObjects(attached);
+    WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceVideoCapture, _id,
+                 "%s: SetAndroidCaptureClasses must be called first!",
+                 __FUNCTION__);
+    return -1;
+  }
+
   // get the method ID for the Android Java GetCapabilityArray .
-  char signature[256];
-  sprintf(signature,
-          "(Ljava/lang/String;)[L%s;",
-          AndroidJavaCaptureCapabilityClass);
-  jmethodID cid = env->GetMethodID(javaCmDevInfoClass,
-                                   "GetCapabilityArray",
-                                   signature);
+  jmethodID cid = env->GetMethodID(
+      javaCmDevInfoClass,
+      "GetCapabilityArray",
+      "(Ljava/lang/String;)[Lorg/webrtc/videoengine/CaptureCapabilityAndroid;");
   if (cid == NULL) {
     VideoCaptureAndroid::ReleaseAndroidDeviceInfoObjects(attached);
     WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceVideoCapture, _id,
@@ -206,10 +220,9 @@ WebRtc_Word32 DeviceInfoAndroid::CreateCapabilityMap(
     return -1;
   }
 
-  // -CJ- 30052012
-  jfieldID widthField = env->GetFieldID(VideoCaptureAndroid::g_javaCmCapabilityClass, "width", "I");
-  jfieldID heigtField = env->GetFieldID(VideoCaptureAndroid::g_javaCmCapabilityClass, "height", "I");
-  jfieldID maxFpsField = env->GetFieldID(VideoCaptureAndroid::g_javaCmCapabilityClass, "maxFPS", "I");
+  jfieldID widthField = env->GetFieldID(javaCapClass, "width", "I");
+  jfieldID heigtField = env->GetFieldID(javaCapClass, "height", "I");
+  jfieldID maxFpsField = env->GetFieldID(javaCapClass, "maxFPS", "I");
   if (widthField == NULL || heigtField == NULL || maxFpsField == NULL) {
     VideoCaptureAndroid::ReleaseAndroidDeviceInfoObjects(attached);
     WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceVideoCapture, _id,
@@ -231,7 +244,6 @@ WebRtc_Word32 DeviceInfoAndroid::CreateCapabilityMap(
     cap->expectedCaptureDelay = _expectedCaptureDelay;
     cap->rawType = kVideoNV21;
     cap->maxFPS = env->GetIntField(capabilityElement, maxFpsField);
-    // -CJ- 30052012
     WEBRTC_TRACE(webrtc::kTraceInfo, webrtc::kTraceVideoCapture, _id,
                  "%s: Cap width %d, height %d, fps %d", __FUNCTION__,
                  cap->width, cap->height, cap->maxFPS);

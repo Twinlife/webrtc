@@ -47,6 +47,7 @@ include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/video_capture/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/video_coding/codecs/i420/main/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/video_coding/codecs/vp8/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/video_coding/main/source/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/video_coding/utility/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/video_processing/main/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/video_render/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/video_engine/Android.mk
@@ -136,6 +137,7 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
     libwebrtc_i420 \
     libwebrtc_video_coding \
     libwebrtc_video_processing \
+    libvideo_coding_utility \
     libwebrtc_vp8 \
     libwebrtc_vie_core \
     libwebrtc_common_video \

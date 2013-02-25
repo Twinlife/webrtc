@@ -50,14 +50,13 @@ VoiceEngine* GetVoiceEngine()
 	return gVoiceEngine;
     }
     VoiceEngineImpl* self = new VoiceEngineImpl();
-    VoiceEngine* ve = reinterpret_cast<VoiceEngine*>(self);
-    if (ve != NULL)
+    if (self != NULL)
     {
         self->AddRef();  // First reference.  Released in VoiceEngine::Delete.
         gVoiceEngineInstanceCounter++;
     }
-    gVoiceEngine = ve;
-    return ve;
+    gVoiceEngine = self;
+    return self;
 }
 } // extern "C"
 
@@ -154,7 +153,7 @@ bool VoiceEngine::Delete(VoiceEngine*& voiceEngine)
       return true;
     }
 
-    VoiceEngineImpl* s = reinterpret_cast<VoiceEngineImpl*>(voiceEngine);
+    VoiceEngineImpl* s = static_cast<VoiceEngineImpl*>(voiceEngine);
     // Release the reference that was added in GetVoiceEngine.
     int ref = s->Release();
     voiceEngine = NULL;
