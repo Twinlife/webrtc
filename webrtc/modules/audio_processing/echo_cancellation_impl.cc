@@ -212,10 +212,9 @@ int EchoCancellationImpl::device_sample_rate_hz() const {
   return device_sample_rate_hz_;
 }
 
-int EchoCancellationImpl::set_stream_drift_samples(int drift) {
+void EchoCancellationImpl::set_stream_drift_samples(int drift) {
   was_stream_drift_set_ = true;
   stream_drift_samples_ = drift;
-  return apm_->kNoError;
 }
 
 int EchoCancellationImpl::stream_drift_samples() const {
@@ -312,6 +311,15 @@ int EchoCancellationImpl::GetDelayMetrics(int* median, int* std) {
   }
 
   return apm_->kNoError;
+}
+
+struct AecCore* EchoCancellationImpl::aec_core() const {
+  CriticalSectionScoped crit_scoped(apm_->crit());
+  if (!is_component_enabled()) {
+    return NULL;
+  }
+  Handle* my_handle = static_cast<Handle*>(handle(0));
+  return WebRtcAec_aec_core(my_handle);
 }
 
 int EchoCancellationImpl::Initialize() {
