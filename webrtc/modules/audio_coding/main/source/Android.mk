@@ -27,6 +27,7 @@ LOCAL_SRC_FILES := \
     acm_ilbc.cc \
     acm_isac.cc \
     acm_neteq.cc \
+    acm_opus.cc \
     acm_pcm16b.cc \
     acm_pcma.cc \
     acm_pcmu.cc \
@@ -37,7 +38,8 @@ LOCAL_SRC_FILES := \
 
 # Flags passed to both C and C++ files.
 LOCAL_CFLAGS := \
-    $(MY_WEBRTC_COMMON_DEFS)
+    $(MY_WEBRTC_COMMON_DEFS) \
+    -DWEBRTC_CODEC_OPUS
 
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../interface \

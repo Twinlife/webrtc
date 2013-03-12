@@ -16,6 +16,7 @@ include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/audio_coding/neteq/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/audio_coding/codecs/cng/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/audio_coding/codecs/g711/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/audio_coding/codecs/g722/Android.mk
+include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/audio_coding/codecs/opus/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/audio_coding/codecs/pcm16b/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/audio_coding/codecs/ilbc/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/audio_coding/codecs/isac/fix/source/Android.mk
@@ -131,6 +132,7 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
     libwebrtc_isacfix \
     libwebrtc_g722 \
     libwebrtc_g711 \
+    libwebrtc_opus \
     libwebrtc_voe_core \
     libwebrtc_video_render \
     libwebrtc_video_capture \
@@ -143,8 +145,9 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
     libwebrtc_common_video \
     libwebrtc_yuv \
     libwebrtc_jpeg \
-    libvpx \
     libjpeg \
+    libopus \
+    libvpx \
     libyuv
 
 # Add Neon libraries.
