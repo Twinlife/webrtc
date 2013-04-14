@@ -26,8 +26,6 @@ LOCAL_SRC_FILES := \
     cpu_features_android.c \
     cpu_features.cc \
     cpu_info.cc \
-    cpu_linux.cc \
-    cpu_no_op.cc \
     critical_section.cc \
     critical_section_posix.cc \
     event.cc \

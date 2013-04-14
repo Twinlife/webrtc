@@ -18,8 +18,8 @@ LOCAL_MODULE := libwebrtc_video_capture
 LOCAL_MODULE_TAGS := optional
 LOCAL_CPP_EXTENSION := .cc
 LOCAL_SRC_FILES := \
-    video_capture_impl.cc \
     device_info_impl.cc \
+    video_capture_impl.cc \
     video_capture_factory.cc \
     android/video_capture_android.cc \
     android/device_info_android.cc

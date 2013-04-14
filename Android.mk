@@ -35,7 +35,6 @@ include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/pacing/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/media_file/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/remote_bitrate_estimator/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/rtp_rtcp/source/Android.mk
-include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/udp_transport/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/modules/utility/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/system_wrappers/source/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/voice_engine/Android.mk
