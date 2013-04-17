@@ -10,13 +10,7 @@
 
 #include "common_video/libyuv/include/scaler.h"
 
-// LibYuv
-// -CJ- 30052012
-#ifdef WEBRTC_ANDROID
-#include "libyuv/files/include/libyuv.h"
-#else
-#include "third_party/libyuv/include/libyuv.h"
-#endif
+#include "libyuv.h"
 
 namespace webrtc {
 

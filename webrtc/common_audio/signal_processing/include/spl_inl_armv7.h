@@ -141,21 +141,12 @@ static __inline int WebRtcSpl_NormU32(uint32_t a) {
 static __inline int WebRtcSpl_NormW16(int16_t a) {
   int32_t tmp = 0;
 
-<<<<<<< HEAD
   if (a == 0) {
     return 0;
   }
   else if (a < 0) {
     a ^= 0xFFFFFFFF;
   }
-
-  // -CJ- 25062012
-  if (a == 0) return 0;
-
-  // -CJ- 25062012
-  if (a == 0) return 0;
-
-  if (a <= 0) a ^= 0xFFFFFFFF;
 
   __asm __volatile ("clz %0, %1":"=r"(tmp):"r"(a));
 
