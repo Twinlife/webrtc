@@ -33,9 +33,13 @@ VCMProcessTimer::Period() const
 uint32_t
 VCMProcessTimer::TimeUntilProcess() const
 {
-    return static_cast<uint32_t>(
-        VCM_MAX(static_cast<int64_t>(_periodMs) -
-                (_clock->TimeInMilliseconds() - _latestMs), 0));
+    const int64_t time_since_process = _clock->TimeInMilliseconds() -
+        static_cast<int64_t>(_latestMs);
+    const int64_t time_until_process = static_cast<int64_t>(_periodMs) -
+        time_since_process;
+    if (time_until_process < 0)
+      return 0;
+    return time_until_process;
 }
 
 void
@@ -62,6 +66,7 @@ VideoCodingModuleImpl::VideoCodingModuleImpl(const int32_t id,
       _frameStorageCallback(NULL),
       _receiveStatsCallback(NULL),
       _packetRequestCallback(NULL),
+      render_buffer_callback_(NULL),
       _decoder(NULL),
       _dualDecoder(NULL),
 #ifdef DEBUG_DECODER_BIT_STREAM
@@ -154,6 +159,12 @@ VideoCodingModuleImpl::Process()
             _receiver.ReceiveStatistics(&bitRate, &frameRate);
             _receiveStatsCallback->ReceiveStatistics(bitRate, frameRate);
         }
+
+        // Size of render buffer.
+        if (render_buffer_callback_) {
+          int buffer_size_ms = _receiver.RenderBufferSizeMs();
+          render_buffer_callback_->RenderBufferSizeMs(buffer_size_ms);
+      }
     }
 
     // Send-side statistics
@@ -535,10 +546,17 @@ VideoCodingModuleImpl::RegisterProtectionCallback(
 }
 
 // Enable or disable a video protection method.
+// Note: This API should be deprecated, as it does not offer a distinction
+// between the protection method and decoding with or without errors. If such a
+// behavior is desired, use the following API: SetReceiverRobustnessMode.
 int32_t
 VideoCodingModuleImpl::SetVideoProtection(VCMVideoProtection videoProtection,
                                           bool enable)
 {
+    // By default, do not decode with errors.
+    _receiver.SetDecodeWithErrors(false);
+    // The dual decoder should always be error free.
+    _dualReceiver.SetDecodeWithErrors(false);
     switch (videoProtection)
     {
 
@@ -583,6 +601,7 @@ VideoCodingModuleImpl::SetVideoProtection(VCMVideoProtection videoProtection,
                 // Enable NACK and always wait for retransmissions and
                 // compensate with extra delay.
                 _dualReceiver.SetNackMode(kNack, -1, -1);
+                _receiver.SetDecodeWithErrors(true);
             }
             else
             {
@@ -597,6 +616,7 @@ VideoCodingModuleImpl::SetVideoProtection(VCMVideoProtection videoProtection,
             if (enable)
             {
                 _keyRequestMode = kKeyOnLoss;
+                _receiver.SetDecodeWithErrors(true);
             }
             else if (_keyRequestMode == kKeyOnLoss)
             {
@@ -640,6 +660,8 @@ VideoCodingModuleImpl::SetVideoProtection(VCMVideoProtection videoProtection,
                     _receiver.SetNackMode(kNack,
                                           media_optimization::kLowRttNackMs,
                                           -1);
+                    _receiver.SetDecodeWithErrors(false);
+                    _receiver.SetDecodeWithErrors(false);
                 }
                 else
                 {
@@ -859,6 +881,13 @@ VideoCodingModuleImpl::RegisterPacketRequestCallback(
     return VCM_OK;
 }
 
+int VideoCodingModuleImpl::RegisterRenderBufferSizeCallback(
+  VCMRenderBufferSizeCallback* callback) {
+  CriticalSectionScoped cs(_receiveCritSect);
+  render_buffer_callback_ = callback;
+  return VCM_OK;
+}
+
 // Decode next frame, blocking.
 // Should be called as often as possible to get the most out of the decoder.
 int32_t
@@ -1021,6 +1050,10 @@ VideoCodingModuleImpl::DecodeDualFrame(uint16_t maxWaitTimeMs)
     }
     int64_t dummyRenderTime;
     int32_t decodeCount = 0;
+    // The dual decoder's state is copied from the main decoder, which may
+    // decode with errors. Make sure that the dual decoder does not introduce
+    // error.
+    _dualReceiver.SetDecodeWithErrors(false);
     VCMEncodedFrame* dualFrame = _dualReceiver.FrameForDecoding(
                                                             maxWaitTimeMs,
                                                             dummyRenderTime);
@@ -1417,18 +1450,23 @@ int VideoCodingModuleImpl::SetReceiverRobustnessMode(
       _dualReceiver.SetNackMode(kNoNack, -1, -1);
       break;
   }
+  _receiver.SetDecodeWithErrors(errorMode == kAllowDecodeErrors);
+  // The dual decoder should never decode with errors.
+  _dualReceiver.SetDecodeWithErrors(false);
   return VCM_OK;
 }
 
-void VideoCodingModuleImpl::SetNackSettings(
-    size_t max_nack_list_size, int max_packet_age_to_nack) {
+void VideoCodingModuleImpl::SetNackSettings(size_t max_nack_list_size,
+                                            int max_packet_age_to_nack,
+                                            int max_incomplete_time_ms) {
   if (max_nack_list_size != 0) {
     CriticalSectionScoped cs(_receiveCritSect);
     max_nack_list_size_ = max_nack_list_size;
   }
-  _receiver.SetNackSettings(max_nack_list_size, max_packet_age_to_nack);
-  _dualReceiver.SetNackSettings(max_nack_list_size,
-                                max_packet_age_to_nack);
+  _receiver.SetNackSettings(max_nack_list_size, max_packet_age_to_nack,
+                            max_incomplete_time_ms);
+  _dualReceiver.SetNackSettings(max_nack_list_size, max_packet_age_to_nack,
+                                max_incomplete_time_ms);
 }
 
 int VideoCodingModuleImpl::SetMinReceiverDelay(int desired_delay_ms) {

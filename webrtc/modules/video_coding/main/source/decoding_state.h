@@ -31,8 +31,7 @@ class VCMDecodingState {
   // possible, i.e. temporal info, picture ID or sequence number.
   bool ContinuousFrame(const VCMFrameBuffer* frame) const;
   void SetState(const VCMFrameBuffer* frame);
-  // Set the decoding state one frame back.
-  void SetStateOneBack(const VCMFrameBuffer* frame);
+  void CopyFrom(const VCMDecodingState& state);
   void UpdateEmptyFrame(const VCMFrameBuffer* frame);
   // Update the sequence number if the timestamp matches current state and the
   // sequence number is higher than the current one. This accounts for packets

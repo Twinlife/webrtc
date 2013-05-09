@@ -196,6 +196,10 @@ public:
     virtual int32_t RegisterPacketRequestCallback(
         VCMPacketRequestCallback* callback);
 
+    // Render buffer size callback.
+    virtual int RegisterRenderBufferSizeCallback(
+        VCMRenderBufferSizeCallback* callback);
+
     // Decode next frame, blocks for a maximum of maxWaitTimeMs milliseconds.
     // Should be called as often as possible to get the most out of the decoder.
     virtual int32_t Decode(uint16_t maxWaitTimeMs = 200);
@@ -261,7 +265,8 @@ public:
                                           DecodeErrors errorMode);
 
     virtual void SetNackSettings(size_t max_nack_list_size,
-                                 int max_packet_age_to_nack);
+                                 int max_packet_age_to_nack,
+                                 int max_incomplete_time_ms);
 
     // Set the video delay for the receiver (default = 0).
     virtual int SetMinReceiverDelay(int desired_delay_ms);
@@ -294,6 +299,7 @@ private:
     VCMFrameStorageCallback*            _frameStorageCallback;
     VCMReceiveStatisticsCallback*       _receiveStatsCallback;
     VCMPacketRequestCallback*           _packetRequestCallback;
+    VCMRenderBufferSizeCallback*        render_buffer_callback_;
     VCMGenericDecoder*                  _decoder;
     VCMGenericDecoder*                  _dualDecoder;
 #ifdef DEBUG_DECODER_BIT_STREAM

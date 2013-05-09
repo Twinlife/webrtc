@@ -33,7 +33,7 @@ ViECodec* ViECodec::GetInterface(VideoEngine* video_engine) {
   if (!video_engine) {
     return NULL;
   }
-  VideoEngineImpl* vie_impl = reinterpret_cast<VideoEngineImpl*>(video_engine);
+  VideoEngineImpl* vie_impl = static_cast<VideoEngineImpl*>(video_engine);
   ViECodecImpl* vie_codec_impl = vie_impl;
   // Increase ref count.
   (*vie_codec_impl)++;
@@ -86,12 +86,12 @@ int ViECodecImpl::GetCodec(const unsigned char list_number,
                list_number, video_codec.codecType);
   if (list_number == VideoCodingModule::NumberOfCodecs()) {
     memset(&video_codec, 0, sizeof(VideoCodec));
-    strncpy(video_codec.plName, "red", 3);
+    strcpy(video_codec.plName, "red");
     video_codec.codecType = kVideoCodecRED;
     video_codec.plType = VCM_RED_PAYLOAD_TYPE;
   } else if (list_number == VideoCodingModule::NumberOfCodecs() + 1) {
     memset(&video_codec, 0, sizeof(VideoCodec));
-    strncpy(video_codec.plName, "ulpfec", 6);
+    strcpy(video_codec.plName, "ulpfec");
     video_codec.codecType = kVideoCodecULPFEC;
     video_codec.plType = VCM_ULPFEC_PAYLOAD_TYPE;
   } else if (VideoCodingModule::Codec(list_number, &video_codec) != VCM_OK) {
