@@ -161,7 +161,6 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
     private TextView etATxPort;
     private int destinationPortVoice = 11113;
     private CheckBox cbEnableSpeaker;
-    private boolean enableSpeaker = false;
     private CheckBox cbEnableAGC;
     private boolean enableAGC = false;
     private CheckBox cbEnableAECM;
@@ -249,24 +248,19 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
         IntentFilter receiverFilter = new IntentFilter(Intent.ACTION_HEADSET_PLUG);
 
         receiver = new BroadcastReceiver() {
-                @Override
-                public void onReceive(Context context, Intent intent) {
-                    if (intent.getAction().compareTo(Intent.ACTION_HEADSET_PLUG)
-                            == 0) {
-                        int state = intent.getIntExtra("state", 0);
-                        Log.v(TAG, "Intent.ACTION_HEADSET_PLUG state: " + state +
-                                " microphone: " + intent.getIntExtra("microphone", 0));
-                        if (voERunning) {
-                            if (state == 1) {
-                                enableSpeaker = true;
-                            } else {
-                                enableSpeaker = false;
-                            }
-                            routeAudio(enableSpeaker);
-                        }
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (intent.getAction().compareTo(Intent.ACTION_HEADSET_PLUG)
+                        == 0) {
+                    int state = intent.getIntExtra("state", 0);
+                    Log.v(TAG, "Intent.ACTION_HEADSET_PLUG state: " + state +
+                         " microphone: " + intent.getIntExtra("microphone", 0));
+                    if (voERunning) {
+                        routeAudio(state == 0 && cbEnableSpeaker.isChecked());
                     }
                 }
-            };
+            }
+        };
         registerReceiver(receiver, receiverFilter);
 
         mTabHost = getTabHost();
@@ -342,20 +336,23 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
 
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
+            // Only draw Stats in Main tab.
+            if(mTabHost.getCurrentTabTag() == "tab_video") {
+                Paint loadPaint = new Paint();
+                loadPaint.setAntiAlias(true);
+                loadPaint.setTextSize(16);
+                loadPaint.setARGB(255, 255, 255, 255);
 
-            Paint loadPaint = new Paint();
-            loadPaint.setAntiAlias(true);
-            loadPaint.setTextSize(16);
-            loadPaint.setARGB(255, 255, 255, 255);
+                canvas.drawText("#calls " + numCalls, 4, 222, loadPaint);
 
-            canvas.drawText("#calls " + numCalls, 4, 152, loadPaint);
-
-            String loadText;
-            loadText = "> " + frameRateI + " fps/" + bitRateI + "k bps/ " + packetLoss;
-            canvas.drawText(loadText, 4, 172, loadPaint);
-            loadText = "< " + frameRateO + " fps/ " + bitRateO + "k bps";
-            canvas.drawText(loadText, 4, 192, loadPaint);
-
+                String loadText;
+                loadText = "> " + frameRateI + " fps/" +
+                           bitRateI/1024 + " kbps/ " + packetLoss;
+                canvas.drawText(loadText, 4, 242, loadPaint);
+                loadText = "< " + frameRateO + " fps/ " +
+                           bitRateO/1024 + " kbps";
+                canvas.drawText(loadText, 4, 262, loadPaint);
+            }
             updateDisplay();
         }
 
@@ -563,7 +560,6 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
         cbEnableNack.setChecked(enableNack);
 
         cbEnableSpeaker = (CheckBox) findViewById(R.id.cbSpeaker);
-        cbEnableSpeaker.setChecked(enableSpeaker);
         cbEnableAGC = (CheckBox) findViewById(R.id.cbAutoGainControl);
         cbEnableAGC.setChecked(enableAGC);
         cbEnableAECM = (CheckBox) findViewById(R.id.cbAECM);
@@ -739,6 +735,12 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
             return -1;
         }
 
+        // Suggest to use the voice call audio stream for hardware volume controls
+        setVolumeControlStream(AudioManager.STREAM_VOICE_CALL);
+        return 0;
+    }
+
+    private int startVoiceEngine() {
         // Create channel
         voiceChannel = vieAndroidAPI.VoE_CreateChannel();
         if (0 > voiceChannel) {
@@ -746,12 +748,6 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
             return -1;
         }
 
-        // Suggest to use the voice call audio stream for hardware volume controls
-        setVolumeControlStream(AudioManager.STREAM_VOICE_CALL);
-        return 0;
-    }
-
-    private int startVoiceEngine() {
         // Set local receiver
         if (0 != vieAndroidAPI.VoE_SetLocalReceiver(voiceChannel,
                         receivePortVoice)) {
@@ -763,7 +759,7 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
         }
 
         // Route audio
-        routeAudio(enableSpeaker);
+        routeAudio(cbEnableSpeaker.isChecked());
 
         // set volume to default value
         if (0 != vieAndroidAPI.VoE_SetSpeakerVolume(volumeLevel)) {
@@ -895,9 +891,8 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
                 }
                 break;
             case R.id.cbSpeaker:
-                enableSpeaker = cbEnableSpeaker.isChecked();
                 if (voERunning) {
-                    routeAudio(enableSpeaker);
+                    routeAudio(cbEnableSpeaker.isChecked());
                 }
                 break;
             case R.id.cbDebugRecording:
@@ -979,7 +974,6 @@ public class WebRTCDemo extends TabActivity implements IViEAndroidCallback,
                 Integer.parseInt(etARxPort.getText().toString());
 
         enableNack  = cbEnableNack.isChecked();
-        enableSpeaker  = cbEnableSpeaker.isChecked();
         enableAGC  = cbEnableAGC.isChecked();
         enableAECM  = cbEnableAECM.isChecked();
         enableNS  = cbEnableNS.isChecked();

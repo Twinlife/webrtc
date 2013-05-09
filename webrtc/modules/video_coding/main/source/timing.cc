@@ -34,8 +34,7 @@ _renderDelayMs(kDefaultRenderDelayMs),
 _minTotalDelayMs(0),
 _requiredDelayMs(0),
 _currentDelayMs(0),
-_prevFrameTimestamp(0),
-_maxVideoDelayMs(kMaxVideoDelayMs)
+_prevFrameTimestamp(0)
 {
     if (masterTiming == NULL)
     {
@@ -108,6 +107,10 @@ VCMTiming::SetRequiredDelay(uint32_t requiredDelayMs)
                     "Desired jitter buffer level: %u ms", requiredDelayMs);
         }
         _requiredDelayMs = requiredDelayMs;
+        // When in initial state, set current delay to minimum delay.
+        if (_currentDelayMs == 0) {
+           _currentDelayMs = _requiredDelayMs;
+        }
     }
 }
 
@@ -115,12 +118,6 @@ void VCMTiming::UpdateCurrentDelay(uint32_t frameTimestamp)
 {
     CriticalSectionScoped cs(_critSect);
     uint32_t targetDelayMs = TargetDelayInternal();
-
-    // Make sure we try to sync with audio
-    if (targetDelayMs < _minTotalDelayMs)
-    {
-        targetDelayMs = _minTotalDelayMs;
-    }
 
     if (_currentDelayMs == 0)
     {
@@ -155,14 +152,9 @@ void VCMTiming::UpdateCurrentDelay(uint32_t frameTimestamp)
             // to reordering and should be ignored.
             return;
         }
-        else if (delayDiffMs < -maxChangeMs)
-        {
-            delayDiffMs = -maxChangeMs;
-        }
-        else if (delayDiffMs > maxChangeMs)
-        {
-            delayDiffMs = maxChangeMs;
-        }
+        delayDiffMs = std::max(delayDiffMs, -maxChangeMs);
+        delayDiffMs = std::min(delayDiffMs, maxChangeMs);
+
         _currentDelayMs = _currentDelayMs + static_cast<int32_t>(delayDiffMs);
     }
     _prevFrameTimestamp = frameTimestamp;
@@ -173,18 +165,14 @@ void VCMTiming::UpdateCurrentDelay(int64_t renderTimeMs,
 {
     CriticalSectionScoped cs(_critSect);
     uint32_t targetDelayMs = TargetDelayInternal();
-    // Make sure we try to sync with audio
-    if (targetDelayMs < _minTotalDelayMs)
-    {
-        targetDelayMs = _minTotalDelayMs;
-    }
+
     int64_t delayedMs = actualDecodeTimeMs -
                               (renderTimeMs - MaxDecodeTimeMs() - _renderDelayMs);
     if (delayedMs < 0)
     {
         return;
     }
-    else if (_currentDelayMs + delayedMs <= targetDelayMs)
+    if (_currentDelayMs + delayedMs <= targetDelayMs)
     {
         _currentDelayMs += static_cast<uint32_t>(delayedMs);
     }
@@ -230,10 +218,6 @@ VCMTiming::RenderTimeMs(uint32_t frameTimestamp, int64_t nowMs) const
 {
     CriticalSectionScoped cs(_critSect);
     const int64_t renderTimeMs = RenderTimeMsInternal(frameTimestamp, nowMs);
-    if (renderTimeMs < 0)
-    {
-        return renderTimeMs;
-    }
     if (_master)
     {
         WEBRTC_TRACE(webrtc::kTraceDebug, webrtc::kTraceVideoCoding, VCMId(_vcmId, _timingId),
@@ -250,16 +234,6 @@ VCMTiming::RenderTimeMsInternal(uint32_t frameTimestamp, int64_t nowMs) const
 {
     int64_t estimatedCompleteTimeMs =
             _tsExtrapolator->ExtrapolateLocalTime(frameTimestamp);
-    if (estimatedCompleteTimeMs - nowMs > _maxVideoDelayMs)
-    {
-        if (_master)
-        {
-            WEBRTC_TRACE(webrtc::kTraceDebug, webrtc::kTraceVideoCoding, VCMId(_vcmId, _timingId),
-                    "Timestamp arrived 2 seconds early, reset statistics",
-                    frameTimestamp, estimatedCompleteTimeMs);
-        }
-        return -1;
-    }
     if (_master)
     {
         WEBRTC_TRACE(webrtc::kTraceDebug, webrtc::kTraceVideoCoding, VCMId(_vcmId, _timingId),
@@ -271,7 +245,9 @@ VCMTiming::RenderTimeMsInternal(uint32_t frameTimestamp, int64_t nowMs) const
         estimatedCompleteTimeMs = nowMs;
     }
 
-    return estimatedCompleteTimeMs + _currentDelayMs;
+    // Make sure that we have at least the total minimum delay.
+    uint32_t actual_delay = std::max(_currentDelayMs, _minTotalDelayMs);
+    return estimatedCompleteTimeMs + actual_delay;
 }
 
 // Must be called from inside a critical section
@@ -324,12 +300,6 @@ VCMTiming::EnoughTimeToDecode(uint32_t availableProcessingTimeMs) const
     return static_cast<int32_t>(availableProcessingTimeMs) - maxDecodeTimeMs > 0;
 }
 
-void VCMTiming::SetMaxVideoDelay(int maxVideoDelayMs)
-{
-    CriticalSectionScoped cs(_critSect);
-    _maxVideoDelayMs = maxVideoDelayMs;
-}
-
 uint32_t
 VCMTiming::TargetVideoDelay() const
 {
@@ -340,7 +310,8 @@ VCMTiming::TargetVideoDelay() const
 uint32_t
 VCMTiming::TargetDelayInternal() const
 {
-    return _requiredDelayMs + MaxDecodeTimeMs() + _renderDelayMs;
+    return std::max(_minTotalDelayMs,
+                    _requiredDelayMs + MaxDecodeTimeMs() + _renderDelayMs);
 }
 
 }

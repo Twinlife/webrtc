@@ -35,7 +35,7 @@ ViEBase* ViEBase::GetInterface(VideoEngine* video_engine) {
   if (!video_engine) {
     return NULL;
   }
-  VideoEngineImpl* vie_impl = reinterpret_cast<VideoEngineImpl*>(video_engine);
+  VideoEngineImpl* vie_impl = static_cast<VideoEngineImpl*>(video_engine);
   ViEBaseImpl* vie_base_impl = vie_impl;
   (*vie_base_impl)++;  // Increase ref count.
 
@@ -364,7 +364,7 @@ int ViEBaseImpl::GetVersion(char version[1024]) {
 
   // Add WebRTC Version.
   std::stringstream version_stream;
-  version_stream << "VideoEngine 3.29.0" << std::endl;
+  version_stream << "VideoEngine 3.30.0" << std::endl;
 
   // Add build info.
   version_stream << "Build: svn:" << WEBRTC_SVNREVISION << " " << BUILDINFO

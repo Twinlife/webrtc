@@ -62,8 +62,8 @@ public:
                                   int64_t startTimeMs,
                                   int64_t nowMs);
 
-    // Used to report that a frame is passed to decoding. Updates the timestamp filter
-    // which is used to map between timestamps and receiver system time.
+    // Used to report that a frame is passed to decoding. Updates the timestamp
+    // filter which is used to map between timestamps and receiver system time.
     void IncomingTimestamp(uint32_t timeStamp, int64_t lastPacketTimeMs);
 
     // Returns the receiver system time when the frame with timestamp frameTimestamp
@@ -82,32 +82,27 @@ public:
     // certain amount of processing time.
     bool EnoughTimeToDecode(uint32_t availableProcessingTimeMs) const;
 
-    // Set the max allowed video delay.
-    void SetMaxVideoDelay(int maxVideoDelayMs);
-
     enum { kDefaultRenderDelayMs = 10 };
     enum { kDelayMaxChangeMsPerS = 100 };
 
 protected:
     int32_t MaxDecodeTimeMs(FrameType frameType = kVideoFrameDelta) const;
-    int64_t RenderTimeMsInternal(uint32_t frameTimestamp,
-                                       int64_t nowMs) const;
+    int64_t RenderTimeMsInternal(uint32_t frameTimestamp, int64_t nowMs) const;
     uint32_t TargetDelayInternal() const;
 
 private:
-    CriticalSectionWrapper*       _critSect;
-    int32_t                 _vcmId;
-    Clock*                        _clock;
-    int32_t                 _timingId;
-    bool                          _master;
-    VCMTimestampExtrapolator*     _tsExtrapolator;
-    VCMCodecTimer                 _codecTimer;
-    uint32_t                _renderDelayMs;
-    uint32_t                _minTotalDelayMs;
-    uint32_t                _requiredDelayMs;
-    uint32_t                _currentDelayMs;
-    uint32_t                _prevFrameTimestamp;
-    int                           _maxVideoDelayMs;
+    CriticalSectionWrapper* _critSect;
+    int32_t _vcmId;
+    Clock* _clock;
+    int32_t _timingId;
+    bool _master;
+    VCMTimestampExtrapolator* _tsExtrapolator;
+    VCMCodecTimer _codecTimer;
+    uint32_t _renderDelayMs;
+    uint32_t _minTotalDelayMs;
+    uint32_t _requiredDelayMs;
+    uint32_t _currentDelayMs;
+    uint32_t _prevFrameTimestamp;
 };
 
 } // namespace webrtc
