@@ -9,6 +9,7 @@
 MY_WEBRTC_ROOT_PATH := $(call my-dir)
 
 # voice
+include $(MY_WEBRTC_ROOT_PATH)/webrtc/common_audio/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/common_audio/resampler/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/common_audio/signal_processing/Android.mk
 include $(MY_WEBRTC_ROOT_PATH)/webrtc/common_audio/vad/Android.mk
@@ -75,7 +76,8 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
     libwebrtc_agc \
     libwebrtc_aec \
     libwebrtc_aecm \
-    libwebrtc_system_wrappers
+    libwebrtc_system_wrappers \
+    libwebrtc_common_audio
 
 # Add Neon libraries.
 ifeq ($(WEBRTC_BUILD_NEON_LIBS),true)
