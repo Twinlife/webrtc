@@ -8,17 +8,17 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "video_engine/vie_receiver.h"
+#include "webrtc/video_engine/vie_receiver.h"
 
 #include <vector>
 
-#include "modules/remote_bitrate_estimator/include/remote_bitrate_estimator.h"
-#include "modules/rtp_rtcp/interface/rtp_rtcp.h"
-#include "modules/utility/interface/rtp_dump.h"
-#include "modules/video_coding/main/interface/video_coding.h"
-#include "system_wrappers/interface/critical_section_wrapper.h"
-#include "system_wrappers/interface/tick_util.h"
-#include "system_wrappers/interface/trace.h"
+#include "webrtc/modules/remote_bitrate_estimator/include/remote_bitrate_estimator.h"
+#include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp.h"
+#include "webrtc/modules/utility/interface/rtp_dump.h"
+#include "webrtc/modules/video_coding/main/interface/video_coding.h"
+#include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
+#include "webrtc/system_wrappers/interface/tick_util.h"
+#include "webrtc/system_wrappers/interface/trace.h"
 
 namespace webrtc {
 
@@ -115,11 +115,8 @@ int32_t ViEReceiver::OnReceivedPayloadData(
   // TODO(holmer): Make sure packets reconstructed using FEC are not passed to
   // the bandwidth estimator.
   const int packet_size = payload_size + rtp_header->header.paddingLength;
-  uint32_t compensated_timestamp = rtp_header->header.timestamp +
-      rtp_header->extension.transmissionTimeOffset;
-  remote_bitrate_estimator_->IncomingPacket(
-      rtp_header->header.ssrc, packet_size,
-      TickTime::MillisecondTimestamp(), compensated_timestamp);
+  remote_bitrate_estimator_->IncomingPacket(TickTime::MillisecondTimestamp(),
+                                            packet_size, *rtp_header);
   if (vcm_->IncomingPacket(payload_data, payload_size, *rtp_header) != 0) {
     // Check this...
     return -1;
@@ -281,7 +278,8 @@ void ViEReceiver::EstimatedReceiveBandwidth(
   // LatestEstimate returns an error if there is no valid bitrate estimate, but
   // ViEReceiver instead returns a zero estimate.
   remote_bitrate_estimator_->LatestEstimate(&ssrcs, available_bandwidth);
-  if (!ssrcs.empty()) {
+  if (std::find(ssrcs.begin(), ssrcs.end(), rtp_rtcp_->RemoteSSRC()) !=
+      ssrcs.end()) {
     *available_bandwidth /= ssrcs.size();
   } else {
     *available_bandwidth = 0;

@@ -47,7 +47,7 @@ class TestVCMReceiver : public ::testing::Test {
     bool packet_available = stream_generator_->GetPacket(&packet, index);
     EXPECT_TRUE(packet_available);
     if (!packet_available)
-      return kStateError;  // Return here to avoid crashes below.
+      return kGeneralError;  // Return here to avoid crashes below.
     // Arbitrary width and height.
     return receiver_.InsertPacket(packet, 640, 480);
   }
@@ -58,7 +58,7 @@ class TestVCMReceiver : public ::testing::Test {
     bool packet_available = stream_generator_->PopPacket(&packet, index);
     EXPECT_TRUE(packet_available);
     if (!packet_available)
-      return kStateError;  // Return here to avoid crashes below.
+      return kGeneralError;  // Return here to avoid crashes below.
     return receiver_.InsertPacket(packet, kWidth, kHeight);
   }
 
@@ -256,6 +256,41 @@ TEST_F(TestVCMReceiver, NonDecodableDuration_NoTrigger) {
   EXPECT_TRUE(DecodeNextFrame());
   // Make sure we don't get a key frame request since we haven't generated
   // enough frames.
+  uint16_t nack_list[kMaxNackListSize];
+  uint16_t nack_list_length = 0;
+  VCMNackStatus ret = receiver_.NackList(nack_list, kMaxNackListSize,
+                                         &nack_list_length);
+  EXPECT_EQ(kNackOk, ret);
+}
+
+TEST_F(TestVCMReceiver, NonDecodableDuration_NoTrigger2) {
+  // Enable NACK and with no RTT thresholds for disabling retransmission delay.
+  receiver_.SetNackMode(kNack, -1, -1);
+  const size_t kMaxNackListSize = 1000;
+  const int kMaxPacketAgeToNack = 1000;
+  const int kMaxNonDecodableDuration = 500;
+  const int kMaxNonDecodableDurationFrames = (kDefaultFrameRate *
+      kMaxNonDecodableDuration + 500) / 1000;
+  const int kMinDelayMs = 500;
+  receiver_.SetNackSettings(kMaxNackListSize, kMaxPacketAgeToNack,
+      kMaxNonDecodableDuration);
+  receiver_.SetMinReceiverDelay(kMinDelayMs);
+  int64_t key_frame_inserted = clock_->TimeInMilliseconds();
+  EXPECT_GE(InsertFrame(kVideoFrameKey, true), kNoError);
+  // Insert enough frames to have too long non-decodable sequence, except that
+  // we don't have any losses.
+  for (int i = 0; i < kMaxNonDecodableDurationFrames;
+       ++i) {
+    EXPECT_GE(InsertFrame(kVideoFrameDelta, true), kNoError);
+  }
+  // Insert an incomplete frame.
+  EXPECT_GE(InsertFrame(kVideoFrameDelta, false), kNoError);
+  // Advance time until it's time to decode the key frame.
+  clock_->AdvanceTimeMilliseconds(kMinDelayMs - clock_->TimeInMilliseconds() -
+      key_frame_inserted);
+  EXPECT_TRUE(DecodeNextFrame());
+  // Make sure we don't get a key frame request since the non-decodable duration
+  // is only one frame.
   uint16_t nack_list[kMaxNackListSize];
   uint16_t nack_list_length = 0;
   VCMNackStatus ret = receiver_.NackList(nack_list, kMaxNackListSize,

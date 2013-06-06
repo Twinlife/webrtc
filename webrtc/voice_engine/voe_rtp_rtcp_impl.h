@@ -11,9 +11,9 @@
 #ifndef WEBRTC_VOICE_ENGINE_VOE_RTP_RTCP_IMPL_H
 #define WEBRTC_VOICE_ENGINE_VOE_RTP_RTCP_IMPL_H
 
-#include "voe_rtp_rtcp.h"
+#include "webrtc/voice_engine/include/voe_rtp_rtcp.h"
 
-#include "shared_data.h"
+#include "webrtc/voice_engine/shared_data.h"
 
 namespace webrtc {
 
@@ -50,7 +50,7 @@ public:
 
     virtual int SendApplicationDefinedRTCPPacket(
         int channel,
-        const unsigned char subType,
+        unsigned char subType,
         unsigned int name,
         const char* data,
         unsigned short dataLengthInBytes);
@@ -124,4 +124,3 @@ private:
 }  // namespace webrtc
 
 #endif    // WEBRTC_VOICE_ENGINE_VOE_RTP_RTCP_IMPL_H
-

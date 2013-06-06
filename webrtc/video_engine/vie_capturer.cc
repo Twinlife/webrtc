@@ -8,22 +8,22 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "video_engine/vie_capturer.h"
+#include "webrtc/video_engine/vie_capturer.h"
 
-#include "common_video/libyuv/include/webrtc_libyuv.h"
-#include "modules/interface/module_common_types.h"
-#include "modules/utility/interface/process_thread.h"
+#include "webrtc/common_video/libyuv/include/webrtc_libyuv.h"
+#include "webrtc/modules/interface/module_common_types.h"
+#include "webrtc/modules/utility/interface/process_thread.h"
 #include "webrtc/modules/video_capture/include/video_capture_factory.h"
-#include "modules/video_processing/main/interface/video_processing.h"
+#include "webrtc/modules/video_processing/main/interface/video_processing.h"
 #include "webrtc/modules/video_render/include/video_render_defines.h"
-#include "system_wrappers/interface/critical_section_wrapper.h"
-#include "system_wrappers/interface/event_wrapper.h"
-#include "system_wrappers/interface/thread_wrapper.h"
-#include "system_wrappers/interface/trace.h"
-#include "system_wrappers/interface/trace_event.h"
-#include "video_engine/include/vie_image_process.h"
-#include "video_engine/vie_defines.h"
-#include "video_engine/vie_encoder.h"
+#include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
+#include "webrtc/system_wrappers/interface/event_wrapper.h"
+#include "webrtc/system_wrappers/interface/thread_wrapper.h"
+#include "webrtc/system_wrappers/interface/trace.h"
+#include "webrtc/system_wrappers/interface/trace_event.h"
+#include "webrtc/video_engine/include/vie_image_process.h"
+#include "webrtc/video_engine/vie_defines.h"
+#include "webrtc/video_engine/vie_encoder.h"
 
 namespace webrtc {
 
@@ -32,6 +32,7 @@ const int kMaxDeliverWaitTime = 500;
 
 ViECapturer::ViECapturer(int capture_id,
                          int engine_id,
+                         const Config& config,
                          ProcessThread& module_process_thread)
     : ViEFrameProviderBase(capture_id, engine_id),
       capture_cs_(CriticalSectionWrapper::CreateCriticalSection()),
@@ -128,9 +129,10 @@ ViECapturer::~ViECapturer() {
 ViECapturer* ViECapturer::CreateViECapture(
     int capture_id,
     int engine_id,
+    const Config& config,
     VideoCaptureModule* capture_module,
     ProcessThread& module_process_thread) {
-  ViECapturer* capture = new ViECapturer(capture_id, engine_id,
+  ViECapturer* capture = new ViECapturer(capture_id, engine_id, config,
                                          module_process_thread);
   if (!capture || capture->Init(capture_module) != 0) {
     delete capture;
@@ -154,10 +156,11 @@ int32_t ViECapturer::Init(VideoCaptureModule* capture_module) {
 ViECapturer* ViECapturer::CreateViECapture(
     int capture_id,
     int engine_id,
+    const Config& config,
     const char* device_unique_idUTF8,
     const uint32_t device_unique_idUTF8Length,
     ProcessThread& module_process_thread) {
-  ViECapturer* capture = new ViECapturer(capture_id, engine_id,
+  ViECapturer* capture = new ViECapturer(capture_id, engine_id, config,
                                          module_process_thread);
   if (!capture ||
       capture->Init(device_unique_idUTF8, device_unique_idUTF8Length) != 0) {

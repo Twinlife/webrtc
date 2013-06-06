@@ -14,20 +14,21 @@
 #include <list>
 #include <map>
 
-#include "common_types.h"  // NOLINT
-#include "typedefs.h"  //NOLINT
-#include "modules/bitrate_controller/include/bitrate_controller.h"
-#include "modules/rtp_rtcp/interface/rtp_rtcp_defines.h"
-#include "modules/video_coding/main/interface/video_coding_defines.h"
-#include "modules/video_processing/main/interface/video_processing.h"
-#include "system_wrappers/interface/scoped_ptr.h"
-#include "video_engine/vie_defines.h"
-#include "video_engine/vie_file_recorder.h"
-#include "video_engine/vie_frame_provider_base.h"
+#include "webrtc/common_types.h"
+#include "webrtc/modules/bitrate_controller/include/bitrate_controller.h"
+#include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp_defines.h"
+#include "webrtc/modules/video_coding/main/interface/video_coding_defines.h"
+#include "webrtc/modules/video_processing/main/interface/video_processing.h"
+#include "webrtc/system_wrappers/interface/scoped_ptr.h"
+#include "webrtc/typedefs.h"
+#include "webrtc/video_engine/vie_defines.h"
+#include "webrtc/video_engine/vie_file_recorder.h"
+#include "webrtc/video_engine/vie_frame_provider_base.h"
 
 namespace webrtc {
 
 class CriticalSectionWrapper;
+class Config;
 class PacedSender;
 class ProcessThread;
 class QMVideoSettingsCallback;
@@ -51,6 +52,7 @@ class ViEEncoder
   ViEEncoder(int32_t engine_id,
              int32_t channel_id,
              uint32_t number_of_cores,
+             const Config& config,
              ProcessThread& module_process_thread,
              BitrateController* bitrate_controller);
   ~ViEEncoder();

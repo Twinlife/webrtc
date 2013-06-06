@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "webrtc/test/testsupport/fileutils.h"
+#include "webrtc/voice_engine/test/auto_test/voe_test_defines.h"
 #include "webrtc/voice_engine/voice_engine_defines.h"
 
 #if defined(_WIN32)
@@ -169,7 +170,7 @@ void XRTPObserver::OnIncomingCSRCChanged(const int /*channel*/, const unsigned i
                                          const bool /*added*/) {
 }
 
-void XRTPObserver::OnIncomingSSRCChanged(const int /*channel*/, const unsigned int SSRC) {
+void XRTPObserver::OnIncomingSSRCChanged(const int /*channel*/, unsigned int SSRC) {
   // char msg[128];
   // sprintf(msg, "OnIncomingSSRCChanged(channel=%d, SSRC=%lu)\n",
   //        channel, SSRC);
@@ -199,7 +200,7 @@ int VoEExtendedTest::TestPassed(const char* str) const {
   return 0;
 }
 
-void VoEExtendedTest::OnPeriodicDeadOrAlive(const int /*channel*/, const bool alive) {
+void VoEExtendedTest::OnPeriodicDeadOrAlive(const int /*channel*/, bool alive) {
   _alive = alive;
   if (alive) {
     TEST_LOG("=> ALIVE ");
@@ -209,7 +210,7 @@ void VoEExtendedTest::OnPeriodicDeadOrAlive(const int /*channel*/, const bool al
   fflush(NULL);
 }
 
-void VoEExtendedTest::CallbackOnError(const int errCode, int) {
+void VoEExtendedTest::CallbackOnError(int errCode, int) {
   _errCode = errCode;
   TEST_LOG("\n************************\n");
   TEST_LOG(" RUNTIME ERROR: %d \n", errCode);

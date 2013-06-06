@@ -8,16 +8,16 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "video_engine/vie_sync_module.h"
+#include "webrtc/video_engine/vie_sync_module.h"
 
-#include "modules/rtp_rtcp/interface/rtp_rtcp.h"
-#include "modules/video_coding/main/interface/video_coding.h"
-#include "system_wrappers/interface/critical_section_wrapper.h"
-#include "system_wrappers/interface/trace.h"
-#include "system_wrappers/interface/trace_event.h"
-#include "video_engine/stream_synchronization.h"
-#include "video_engine/vie_channel.h"
-#include "voice_engine/include/voe_video_sync.h"
+#include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp.h"
+#include "webrtc/modules/video_coding/main/interface/video_coding.h"
+#include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
+#include "webrtc/system_wrappers/interface/trace.h"
+#include "webrtc/system_wrappers/interface/trace_event.h"
+#include "webrtc/video_engine/stream_synchronization.h"
+#include "webrtc/video_engine/vie_channel.h"
+#include "webrtc/voice_engine/include/voe_video_sync.h"
 
 namespace webrtc {
 
@@ -153,21 +153,24 @@ int32_t ViESyncModule::Process() {
   TRACE_COUNTER1("webrtc", "SyncCurrentAudioDelay",
                  audio_jitter_buffer_delay_ms);
   TRACE_COUNTER1("webrtc", "SyncRelativeDelay", relative_delay_ms);
-  int extra_audio_delay_ms = 0;
+  int total_audio_delay_target_ms = 0;
   // Calculate the necessary extra audio delay and desired total video
   // delay to get the streams in sync.
+  int current_audio_delay = audio_jitter_buffer_delay_ms +
+      playout_buffer_delay_ms;
   if (!sync_->ComputeDelays(relative_delay_ms,
-                            audio_jitter_buffer_delay_ms,
-                            &extra_audio_delay_ms,
+                            current_audio_delay,
+                            &total_audio_delay_target_ms,
                             &total_video_delay_target_ms)) {
     return 0;
   }
 
-  TRACE_COUNTER1("webrtc", "SyncExtraAudioDelayTarget", extra_audio_delay_ms);
+  TRACE_COUNTER1("webrtc", "SyncTotalAudioDelayTarget",
+                 total_audio_delay_target_ms);
   TRACE_COUNTER1("webrtc", "SyncTotalVideoDelayTarget",
                  total_video_delay_target_ms);
   if (voe_sync_interface_->SetMinimumPlayoutDelay(
-      voe_channel_id_, extra_audio_delay_ms) == -1) {
+      voe_channel_id_, total_audio_delay_target_ms) == -1) {
     WEBRTC_TRACE(webrtc::kTraceDebug, webrtc::kTraceVideo, vie_channel_->Id(),
                  "Error setting voice delay");
   }

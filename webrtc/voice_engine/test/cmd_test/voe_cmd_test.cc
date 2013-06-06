@@ -17,25 +17,25 @@
 
 #include <vector>
 
-#include "gtest/gtest.h"
-#include "voe_errors.h"
-#include "voe_base.h"
-#include "voe_codec.h"
-#include "voe_volume_control.h"
-#include "voe_dtmf.h"
-#include "voe_rtp_rtcp.h"
-#include "voe_audio_processing.h"
-#include "voe_file.h"
-#include "voe_video_sync.h"
-#include "voe_encryption.h"
-#include "voe_hardware.h"
-#include "voe_external_media.h"
-#include "voe_network.h"
-#include "voe_neteq_stats.h"
-#include "engine_configurations.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "webrtc/engine_configurations.h"
 #include "webrtc/system_wrappers/interface/scoped_ptr.h"
 #include "webrtc/test/channel_transport/include/channel_transport.h"
 #include "webrtc/test/testsupport/fileutils.h"
+#include "webrtc/voice_engine/include/voe_audio_processing.h"
+#include "webrtc/voice_engine/include/voe_base.h"
+#include "webrtc/voice_engine/include/voe_codec.h"
+#include "webrtc/voice_engine/include/voe_dtmf.h"
+#include "webrtc/voice_engine/include/voe_encryption.h"
+#include "webrtc/voice_engine/include/voe_errors.h"
+#include "webrtc/voice_engine/include/voe_external_media.h"
+#include "webrtc/voice_engine/include/voe_file.h"
+#include "webrtc/voice_engine/include/voe_hardware.h"
+#include "webrtc/voice_engine/include/voe_neteq_stats.h"
+#include "webrtc/voice_engine/include/voe_network.h"
+#include "webrtc/voice_engine/include/voe_rtp_rtcp.h"
+#include "webrtc/voice_engine/include/voe_video_sync.h"
+#include "webrtc/voice_engine/include/voe_volume_control.h"
 
 using namespace webrtc;
 using namespace test;
@@ -65,10 +65,10 @@ void RunTest(std::string out_path);
 
 class MyObserver : public VoiceEngineObserver {
  public:
-   virtual void CallbackOnError(const int channel, const int err_code);
+   virtual void CallbackOnError(int channel, int err_code);
 };
 
-void MyObserver::CallbackOnError(const int channel, const int err_code) {
+void MyObserver::CallbackOnError(int channel, int err_code) {
   // Add printf for other error codes here
   if (err_code == VE_TYPING_NOISE_WARNING) {
     printf("  TYPING NOISE DETECTED \n");
