@@ -41,7 +41,6 @@ LOCAL_CFLAGS := \
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../interface \
     $(LOCAL_PATH)/../../../.. \
-    $(LOCAL_PATH)/../../../../.. \
     $(LOCAL_PATH)/../../../interface \
     $(LOCAL_PATH)/../../../audio_coding/main/interface \
     $(LOCAL_PATH)/../../../utility/interface \

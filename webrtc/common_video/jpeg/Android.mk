@@ -27,10 +27,9 @@ LOCAL_CFLAGS := \
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/include \
     $(LOCAL_PATH)/../../ \
-    $(LOCAL_PATH)/../../.. \
     $(LOCAL_PATH)/../interface \
-    external/jpeg \
-    external/libyuv/files/include
+    $(LOCAL_PATH)/../../../../ \
+    external/jpeg
 
 LOCAL_SHARED_LIBRARIES := \
     libcutils \

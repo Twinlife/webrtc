@@ -10,7 +10,7 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 
-include $(LOCAL_PATH)/../../../android-webrtc.mk
+include $(LOCAL_PATH)/../../../../../android-webrtc.mk
 
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 LOCAL_MODULE := libwebrtc_video_render
@@ -29,21 +29,18 @@ LOCAL_SRC_FILES := \
 # Flags passed to both C and C++ files.
 LOCAL_CFLAGS := \
     $(MY_WEBRTC_COMMON_DEFS) \
-    '-DWEBRTC_INCLUDE_INTERNAL_VIDEO_RENDER' \
-    '-DANDROID_NDK_8_OR_ABOVE'
+    '-DWEBRTC_INCLUDE_INTERNAL_VIDEO_RENDER'
 
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH) \
     $(LOCAL_PATH)/android \
-    $(LOCAL_PATH)/include \
     $(LOCAL_PATH)/../interface \
-    $(LOCAL_PATH)/../.. \
-    $(LOCAL_PATH)/../../.. \
+    $(LOCAL_PATH)/../../../.. \
     $(LOCAL_PATH)/../../../audio_coding/main/interface \
     $(LOCAL_PATH)/../../../interface \
     $(LOCAL_PATH)/../../../utility/interface \
     $(LOCAL_PATH)/../../../../common_video/vplib/main/interface \
-    $(LOCAL_PATH)/../../system_wrappers/interface
+    $(LOCAL_PATH)/../../../../system_wrappers/interface 
 
 LOCAL_SHARED_LIBRARIES := \
     libcutils \

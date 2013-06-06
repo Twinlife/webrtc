@@ -28,6 +28,7 @@ LOCAL_SRC_FILES := \
     generic_encoder.cc \
     inter_frame_delay.cc \
     jitter_buffer.cc \
+    jitter_buffer_common.cc \
     jitter_estimator.cc \
     media_opt_util.cc \
     media_optimization.cc \
@@ -49,10 +50,9 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../interface \
     $(LOCAL_PATH)/../../codecs/interface \
     $(LOCAL_PATH)/../../codecs/i420/main/interface \
-    $(LOCAL_PATH)/../../codecs/vp8/include \
+    $(LOCAL_PATH)/../../codecs/vp8/main/interface \
     $(LOCAL_PATH)/../../../interface \
     $(LOCAL_PATH)/../../../.. \
-    $(LOCAL_PATH)/../../../../.. \
     $(LOCAL_PATH)/../../../../common_video/vplib/main/interface \
     $(LOCAL_PATH)/../../../../common_video/interface \
     $(LOCAL_PATH)/../../utility/include \

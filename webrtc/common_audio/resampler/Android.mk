@@ -17,11 +17,7 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 LOCAL_MODULE := libwebrtc_resampler
 LOCAL_MODULE_TAGS := optional
 LOCAL_CPP_EXTENSION := .cc
-LOCAL_SRC_FILES := \
-     push_resampler.cc \
-     push_sinc_resampler.cc \
-     resampler.cc \
-     sinc_resampler.cc
+LOCAL_SRC_FILES := resampler.cc
 
 # Flags passed to both C and C++ files.
 LOCAL_CFLAGS := \
@@ -30,7 +26,6 @@ LOCAL_CFLAGS := \
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/include \
     $(LOCAL_PATH)/../.. \
-    $(LOCAL_PATH)/../../.. \
     $(LOCAL_PATH)/../signal_processing/include 
 
 LOCAL_SHARED_LIBRARIES := \

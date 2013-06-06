@@ -209,6 +209,7 @@
             # TODO(leozwang): Ideally we want to audomatically exclude .c files
             # as with .cc files, gyp currently only excludes .cc files.
             'cpu_features_android.c',
+	    'android/cpu-features.c',
           ],
           'conditions': [
             ['build_with_chromium==1', {
@@ -219,7 +220,6 @@
                   ],
                 }, {
                   'dependencies': [
-                    '<(android_ndk_root)/android_tools_ndk.gyp:cpu_features',
                   ],
                 }],
               ],

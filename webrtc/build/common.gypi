@@ -16,8 +16,8 @@
         'variables': {
           # This will be set to zero in the supplement.gypi triggered by a
           # gclient hook in the standalone build.
-          'build_with_chromium%': 1,
-          'build_with_libjingle%': 0,
+          'build_with_chromium%': 0,
+          'build_with_libjingle%': 1,
         },
         'build_with_chromium%': '<(build_with_chromium)',
         'build_with_libjingle%': '<(build_with_libjingle)',
@@ -64,7 +64,7 @@
     'enable_data_logging%': 0,
 
     # Enables the use of protocol buffers for debug recordings.
-    'enable_protobuf%': 1,
+    'enable_protobuf%': 0,
 
     # Disable these to not build components which can be externally provided.
     'build_libjpeg%': 1,

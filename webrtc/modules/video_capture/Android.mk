@@ -10,7 +10,7 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 
-include $(LOCAL_PATH)/../../../android-webrtc.mk
+include $(LOCAL_PATH)/../../../../../android-webrtc.mk
 
 LOCAL_ARM_MODE := arm
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
@@ -18,8 +18,8 @@ LOCAL_MODULE := libwebrtc_video_capture
 LOCAL_MODULE_TAGS := optional
 LOCAL_CPP_EXTENSION := .cc
 LOCAL_SRC_FILES := \
-    device_info_impl.cc \
     video_capture_impl.cc \
+    device_info_impl.cc \
     video_capture_factory.cc \
     android/video_capture_android.cc \
     android/device_info_android.cc
@@ -29,17 +29,15 @@ LOCAL_CFLAGS := \
     $(MY_WEBRTC_COMMON_DEFS)
 
 LOCAL_C_INCLUDES := \
-    $(LOCAL_PATH) \
     $(LOCAL_PATH)/android \
-    $(LOCAL_PATH)/include \
     $(LOCAL_PATH)/../interface \
+    $(LOCAL_PATH)/../source \
     $(LOCAL_PATH)/../../../interface \
     $(LOCAL_PATH)/../../../utility/interface \
     $(LOCAL_PATH)/../../../audio_coding/main/interface \
-    $(LOCAL_PATH)/../.. \
-    $(LOCAL_PATH)/../../.. \
+    $(LOCAL_PATH)/../../../.. \
     $(LOCAL_PATH)/../../../../common_video/vplib/main/interface \
-    $(LOCAL_PATH)/../../system_wrappers/interface
+    $(LOCAL_PATH)/../../../../system_wrappers/interface
 
 LOCAL_SHARED_LIBRARIES := \
     libcutils \

@@ -16,9 +16,7 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 LOCAL_MODULE := libwebrtc_utility
 LOCAL_MODULE_TAGS := optional
 LOCAL_CPP_EXTENSION := .cc
-LOCAL_SRC_FILES := \
-    audio_frame_operations.cc \
-    coder.cc \
+LOCAL_SRC_FILES := coder.cc \
     file_player_impl.cc \
     file_recorder_impl.cc \
     process_thread_impl.cc \

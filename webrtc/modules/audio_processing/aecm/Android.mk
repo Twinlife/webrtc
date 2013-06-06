@@ -57,8 +57,8 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 LOCAL_MODULE := libwebrtc_aecm_neon
 LOCAL_MODULE_TAGS := optional
 
-AECM_ASM_HEADER := $(LOCAL_PATH)/aecm_core_neon_offsets.h
-AECM_ASM_HEADER_DIR := $(LOCAL_PATH)
+AECM_ASM_HEADER := $(intermediates)/aecm_core_neon_offsets.h
+AECM_ASM_HEADER_DIR := $(intermediates)
 
 # Generate a header file aecm_core_neon_offsets.h which will be included in
 # assembly file aecm_core_neon.S, from file aecm_core_neon_offsets.c.

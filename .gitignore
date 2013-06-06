@@ -81,7 +81,3 @@
 /webrtc/video_engine/test/android/obj
 /x86-generic_out/
 /xcodebuild
-/webrtc/modules/audio_processing/aecm/aecm_core_neon_offsets.h
-/webrtc/modules/audio_processing/aecm/aecm_core_neon_offsets.s
-/webrtc/modules/audio_processing/ns/nsx_core_neon_offsets.h
-/webrtc/modules/audio_processing/ns/nsx_core_neon_offsets.s

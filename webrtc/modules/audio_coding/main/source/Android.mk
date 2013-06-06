@@ -27,7 +27,6 @@ LOCAL_SRC_FILES := \
     acm_ilbc.cc \
     acm_isac.cc \
     acm_neteq.cc \
-    acm_opus.cc \
     acm_pcm16b.cc \
     acm_pcma.cc \
     acm_pcmu.cc \
@@ -38,8 +37,7 @@ LOCAL_SRC_FILES := \
 
 # Flags passed to both C and C++ files.
 LOCAL_CFLAGS := \
-    $(MY_WEBRTC_COMMON_DEFS) \
-    -DWEBRTC_CODEC_OPUS
+    $(MY_WEBRTC_COMMON_DEFS)
 
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../interface \
@@ -47,12 +45,11 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../../codecs/g711/include \
     $(LOCAL_PATH)/../../codecs/g722/include \
     $(LOCAL_PATH)/../../codecs/ilbc/interface \
-    $(LOCAL_PATH)/../../codecs/isac/main/interface \
-    $(LOCAL_PATH)/../../codecs/isac/fix/interface \
+    $(LOCAL_PATH)/../../codecs/iSAC/main/interface \
+    $(LOCAL_PATH)/../../codecs/iSAC/fix/interface \
     $(LOCAL_PATH)/../../codecs/pcm16b/include \
     $(LOCAL_PATH)/../../neteq/interface \
     $(LOCAL_PATH)/../../../.. \
-    $(LOCAL_PATH)/../../../../.. \
     $(LOCAL_PATH)/../../../interface \
     $(LOCAL_PATH)/../../../../common_audio/resampler/include \
     $(LOCAL_PATH)/../../../../common_audio/signal_processing/include \

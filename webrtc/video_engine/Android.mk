@@ -17,9 +17,6 @@ LOCAL_MODULE := libwebrtc_vie_core
 LOCAL_MODULE_TAGS := optional
 LOCAL_CPP_EXTENSION := .cc
 LOCAL_SRC_FILES := \
-    call_stats.cc \
-    encoder_state_feedback.cc \
-    stream_synchronization.cc \
     vie_base_impl.cc \
     vie_capture_impl.cc \
     vie_codec_impl.cc \
@@ -44,6 +41,7 @@ LOCAL_SRC_FILES := \
     vie_frame_provider_base.cc \
     vie_input_manager.cc \
     vie_manager_base.cc \
+    vie_performance_monitor.cc \
     vie_receiver.cc \
     vie_remb.cc \
     vie_renderer.cc \
@@ -52,15 +50,12 @@ LOCAL_SRC_FILES := \
     vie_sync_module.cc
 
 # Flags passed to both C and C++ files.
-# -CJ- -Issue 0004- 30052012 
 LOCAL_CFLAGS := \
-    $(MY_WEBRTC_COMMON_DEFS) \
-   '-DWEBRTC_SVNREVISION="r2247"'
+    $(MY_WEBRTC_COMMON_DEFS)
 
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/include\
     $(LOCAL_PATH)/.. \
-    $(LOCAL_PATH)/../.. \
     $(LOCAL_PATH)/../common_video/interface \
     $(LOCAL_PATH)/../common_video/jpeg/main/interface \
     $(LOCAL_PATH)/../common_video/vplib/main/interface \

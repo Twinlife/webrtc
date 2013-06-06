@@ -26,7 +26,7 @@ LOCAL_CFLAGS := \
     $(MY_WEBRTC_COMMON_DEFS)
 
 LOCAL_C_INCLUDES := \
-    $(LOCAL_PATH)/../../../..
+    $(LOCAL_PATH)/../../../../system_wrappers/interface
 
 LOCAL_SHARED_LIBRARIES := \
     libcutils \
