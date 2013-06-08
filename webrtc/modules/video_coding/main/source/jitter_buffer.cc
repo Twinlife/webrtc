@@ -1191,9 +1191,10 @@ bool VCMJitterBuffer::RecycleFramesUntilKeyFrame() {
     }
   }
   drop_count_ += dropped_frames;
-  WEBRTC_TRACE(webrtc::kTraceWarning, webrtc::kTraceVideoCoding,
-               VCMId(vcm_id_, receiver_id_),
-               "Jitter buffer drop count:%u", drop_count_);
+  // --CJ-- 08032013
+  //WEBRTC_TRACE(webrtc::kTraceWarning, webrtc::kTraceVideoCoding,
+  //             VCMId(vcm_id_, receiver_id_),
+  //             "Jitter buffer drop count:%u", drop_count_);
   TRACE_EVENT_INSTANT0("webrtc", "JB::RecycleFramesUntilKeyFrame");
   if (key_frame_found) {
     // Reset last decoded state to make sure the next frame decoded is a key
