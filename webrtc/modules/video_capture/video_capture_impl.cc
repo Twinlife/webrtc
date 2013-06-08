@@ -346,13 +346,14 @@ int32_t VideoCaptureImpl::IncomingFrame(
                                     frameInfo.codecType);
     }
 
+    // --CJ-- 08/06/2013
     const uint32_t processTime =
         (uint32_t)(TickTime::Now() - startProcessTime).Milliseconds();
     if (processTime > 10) // If the process time is too long MJPG will not work well.
     {
-        WEBRTC_TRACE(webrtc::kTraceWarning, webrtc::kTraceVideoCapture, _id,
-                   "Too long processing time of Incoming frame: %ums",
-                   (unsigned int) processTime);
+    //        WEBRTC_TRACE(webrtc::kTraceWarning, webrtc::kTraceVideoCapture, _id,
+    //                   "Too long processing time of Incoming frame: %ums",
+    //                   (unsigned int) processTime);
     }
 
     return 0;
