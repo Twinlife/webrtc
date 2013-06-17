@@ -15,6 +15,7 @@
 #include "webrtc/common_types.h"
 #include "webrtc/modules/audio_coding/main/interface/audio_coding_module.h"
 #include "webrtc/modules/audio_conference_mixer/interface/audio_conference_mixer_defines.h"
+#include "webrtc/modules/rtp_rtcp/interface/rtp_header_parser.h"
 #include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp.h"
 #include "webrtc/modules/utility/interface/file_player.h"
 #include "webrtc/modules/utility/interface/file_recorder.h"
@@ -277,6 +278,7 @@ public:
     int GetRTPStatistics(CallStatistics& stats);
     int SetFECStatus(bool enable, int redPayloadtype);
     int GetFECStatus(bool& enabled, int& redPayloadtype);
+    void SetNACKStatus(bool enable, int maxNumberOfPackets);
     int StartRTPDump(const char fileNameUTF8[1024], RTPDirections direction);
     int StopRTPDump(RTPDirections direction);
     bool RTPDumpIsActive(RTPDirections direction);
@@ -424,6 +426,7 @@ public:
     uint32_t EncodeAndSend();
 
 private:
+    int ResendPackets(const uint16_t* sequence_numbers, int length);
     int InsertInbandDtmfTone();
     int32_t MixOrReplaceAudioWithFile(int mixingFrequency);
     int32_t MixAudioWithFile(AudioFrame& audioFrame, int mixingFrequency);
@@ -442,6 +445,7 @@ private:
     int32_t _channelId;
 
 private:
+    scoped_ptr<RtpHeaderParser> rtp_header_parser_;
     scoped_ptr<RtpRtcp> _rtpRtcpModule;
     AudioCodingModule& _audioCodingModule;
     RtpDump& _rtpDumpIn;

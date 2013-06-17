@@ -7,9 +7,6 @@
 # be found in the AUTHORS file in the root of the source tree.
 
 {
-  'variables': {
-    'xv_renderer%': 0,
-  },
   'targets': [
     {
       'target_name': 'video_tests_common',
@@ -19,6 +16,8 @@
         'common/flags.h',
         'common/frame_generator.cc',
         'common/frame_generator.h',
+        'common/frame_generator_capturer.cc',
+        'common/frame_generator_capturer.h',
         'common/generate_ssrcs.h',
         'common/gl/gl_renderer.cc',
         'common/gl/gl_renderer.h',
@@ -39,15 +38,6 @@
         'common/video_renderer.h',
       ],
       'conditions': [
-        ['xv_renderer==1', {
-          'defines': [
-            'WEBRTC_TEST_XV',
-          ],
-          'sources': [
-            'common/linux/xv_renderer.cc',
-            'common/linux/xv_renderer.h',
-          ],
-        }],
         ['OS=="linux"', {
           'sources!': [
             'common/null_platform_renderer.cc',
@@ -73,11 +63,6 @@
               '-lXext',
               '-lX11',
               '-lGL',
-            ],
-          }],
-          ['xv_renderer==1', {
-            'libraries': [
-              '-lXv',
             ],
           }],
           #TODO(pbos) : These dependencies should not have to be here, they
@@ -118,7 +103,6 @@
       ],
       'dependencies': [
         '<(DEPTH)/testing/gtest.gyp:gtest',
-        '<(webrtc_root)/modules/modules.gyp:video_capture_module',
         'video_tests_common',
       ],
     },

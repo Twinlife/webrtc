@@ -224,8 +224,8 @@ int VoERTP_RTCPImpl::SetRTPAudioLevelIndicationStatus(int channel,
         _shared->SetLastError(VE_NOT_INITED, kTraceError);
         return -1;
     }
-    if (ID < kVoiceEngineMinRtpExtensionId ||
-        ID > kVoiceEngineMaxRtpExtensionId)
+    if (enable && (ID < kVoiceEngineMinRtpExtensionId ||
+                   ID > kVoiceEngineMaxRtpExtensionId))
     {
         // [RFC5285] The 4-bit ID is the local identifier of this element in
         // the range 1-14 inclusive.
@@ -567,6 +567,28 @@ int VoERTP_RTCPImpl::GetFECStatus(int channel,
     return -1;
 #endif
 }
+
+
+int VoERTP_RTCPImpl::SetNACKStatus(int channel,
+                                   bool enable,
+                                   int maxNoPackets)
+{
+    WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
+                 "SetNACKStatus(channel=%d, enable=%d, maxNoPackets=%d)",
+                 channel, enable, maxNoPackets);
+
+    voe::ScopedChannel sc(_shared->channel_manager(), channel);
+    voe::Channel* channelPtr = sc.ChannelPtr();
+    if (channelPtr == NULL)
+    {
+        _shared->SetLastError(VE_CHANNEL_NOT_VALID, kTraceError,
+            "SetNACKStatus() failed to locate channel");
+        return -1;
+    }
+    channelPtr->SetNACKStatus(enable, maxNoPackets);
+    return 0;
+}
+
 
 int VoERTP_RTCPImpl::StartRTPDump(int channel,
                                   const char fileNameUTF8[1024],

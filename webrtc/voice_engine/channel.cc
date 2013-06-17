@@ -625,9 +625,23 @@ Channel::OnReceivedPayloadData(const uint8_t* payloadData,
         return -1;
     }
 
-    // Update the packet delay
+    // Update the packet delay.
     UpdatePacketDelay(rtpHeader->header.timestamp,
                       rtpHeader->header.sequenceNumber);
+
+    if (kNackOff != _rtpRtcpModule->NACK()) {  // Is NACK on?
+        uint16_t round_trip_time = 0;
+        _rtpRtcpModule->RTT(_rtpRtcpModule->RemoteSSRC(), &round_trip_time,
+                            NULL, NULL, NULL);
+
+        std::vector<uint16_t> nack_list = _audioCodingModule.GetNackList(
+            round_trip_time);
+        if (!nack_list.empty()) {
+          // Can't use nack_list.data() since it's not supported by all
+          // compilers.
+          ResendPackets(&(nack_list[0]), static_cast<int>(nack_list.size()));
+        }
+    }
     return 0;
 }
 
@@ -868,6 +882,7 @@ Channel::Channel(int32_t channelId,
     _callbackCritSect(*CriticalSectionWrapper::CreateCriticalSection()),
     _instanceId(instanceId),
     _channelId(channelId),
+    rtp_header_parser_(RtpHeaderParser::Create()),
     _audioCodingModule(*AudioCodingModule::Create(
         VoEModuleId(instanceId, channelId))),
     _rtpDumpIn(*RtpDump::CreateRtpDump()),
@@ -2128,12 +2143,20 @@ int32_t Channel::ReceivedRTPPacket(const int8_t* data, int32_t length) {
                  VoEId(_instanceId,_channelId),
                  "Channel::SendPacket() RTP dump to input file failed");
   }
-
+  RTPHeader header;
+  if (!rtp_header_parser_->Parse(reinterpret_cast<const uint8_t*>(data),
+                                 static_cast<uint16_t>(length), &header)) {
+    WEBRTC_TRACE(webrtc::kTraceDebug, webrtc::kTraceVideo,
+                 VoEId(_instanceId,_channelId),
+                 "IncomingPacket invalid RTP header");
+    return -1;
+  }
   // Deliver RTP packet to RTP/RTCP module for parsing
   // The packet will be pushed back to the channel thru the
   // OnReceivedPayloadData callback so we don't push it to the ACM here
-  if (_rtpRtcpModule->IncomingPacket((const uint8_t*)data,
-                                     (uint16_t)length) == -1) {
+  if (_rtpRtcpModule->IncomingRtpPacket(reinterpret_cast<const uint8_t*>(data),
+                                        static_cast<uint16_t>(length),
+                                        header) == -1) {
     _engineStatisticsPtr->SetLastError(
         VE_SOCKET_TRANSPORT_MODULE_ERROR, kTraceWarning,
         "Channel::IncomingRTPPacket() RTP packet is invalid");
@@ -2156,8 +2179,8 @@ int32_t Channel::ReceivedRTCPPacket(const int8_t* data, int32_t length) {
   }
 
   // Deliver RTCP packet to RTP/RTCP module for parsing
-  if (_rtpRtcpModule->IncomingPacket((const uint8_t*)data,
-                                     (uint16_t)length) == -1) {
+  if (_rtpRtcpModule->IncomingRtcpPacket((const uint8_t*)data,
+                                         (uint16_t)length) == -1) {
     _engineStatisticsPtr->SetLastError(
         VE_SOCKET_TRANSPORT_MODULE_ERROR, kTraceWarning,
         "Channel::IncomingRTPPacket() RTCP packet is invalid");
@@ -3699,6 +3722,12 @@ Channel::SetRTPAudioLevelIndicationStatus(bool enable, unsigned char ID)
     }
 
     _includeAudioLevelIndication = enable;
+    if (enable) {
+      rtp_header_parser_->RegisterRtpHeaderExtension(kRtpExtensionAudioLevel,
+                                                     ID);
+    } else {
+      rtp_header_parser_->DeregisterRtpHeaderExtension(kRtpExtensionAudioLevel);
+    }
     return _rtpRtcpModule->SetRTPAudioLevelIndicationStatus(enable, ID);
 }
 int
@@ -4213,6 +4242,22 @@ Channel::GetFECStatus(bool& enabled, int& redPayloadtype)
                  VoEId(_instanceId, _channelId),
                  "GetFECStatus() => enabled=%d", enabled);
     return 0;
+}
+
+void Channel::SetNACKStatus(bool enable, int maxNumberOfPackets) {
+  // None of these functions can fail.
+  _rtpRtcpModule->SetStorePacketsStatus(enable, maxNumberOfPackets);
+  _rtpRtcpModule->SetNACKStatus(enable ? kNackRtcp : kNackOff,
+                                maxNumberOfPackets);
+  if (enable)
+    _audioCodingModule.EnableNack(maxNumberOfPackets);
+  else
+    _audioCodingModule.DisableNack();
+}
+
+// Called when we are missing one or more packets.
+int Channel::ResendPackets(const uint16_t* sequence_numbers, int length) {
+  return _rtpRtcpModule->SendNACK(sequence_numbers, length);
 }
 
 int

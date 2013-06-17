@@ -166,6 +166,11 @@ int32_t ViEChannel::Init() {
                  "%s: VCM::InitializeReceiver failure", __FUNCTION__);
     return -1;
   }
+  if (vcm_.SetVideoProtection(kProtectionKeyOnLoss, true)) {
+    WEBRTC_TRACE(kTraceError, kTraceVideo, ViEId(engine_id_, channel_id_),
+                 "%s: VCM::SetVideoProtection failure", __FUNCTION__);
+    return -1;
+  }
   if (vcm_.RegisterReceiveCallback(this) != 0) {
     WEBRTC_TRACE(kTraceError, kTraceVideo, ViEId(engine_id_, channel_id_),
                  "%s: VCM::RegisterReceiveCallback failure", __FUNCTION__);
@@ -873,13 +878,7 @@ int ViEChannel::SetSendTimestampOffsetStatus(bool enable, int id) {
 }
 
 int ViEChannel::SetReceiveTimestampOffsetStatus(bool enable, int id) {
-  if (enable) {
-    return rtp_rtcp_->RegisterReceiveRtpHeaderExtension(
-        kRtpExtensionTransmissionTimeOffset, id);
-  } else {
-    return rtp_rtcp_->DeregisterReceiveRtpHeaderExtension(
-        kRtpExtensionTransmissionTimeOffset);
-  }
+  return vie_receiver_.SetReceiveTimestampOffsetStatus(enable, id) ? 0 : -1;
 }
 
 int ViEChannel::SetSendAbsoluteSendTimeStatus(bool enable, int id) {
@@ -914,19 +913,8 @@ int ViEChannel::SetSendAbsoluteSendTimeStatus(bool enable, int id) {
 }
 
 int ViEChannel::SetReceiveAbsoluteSendTimeStatus(bool enable, int id) {
-  if (enable) {
-    if (rtp_rtcp_->RegisterReceiveRtpHeaderExtension(
-        kRtpExtensionAbsoluteSendTime, id) != 0) {
-      return -1;
-    }
-  } else {
-    if (rtp_rtcp_->DeregisterReceiveRtpHeaderExtension(
-        kRtpExtensionAbsoluteSendTime) != 0) {
-      return -1;
-    }
-  }
   receive_absolute_send_time_enabled_ = enable;
-  return 0;
+  return vie_receiver_.SetReceiveAbsoluteSendTimeStatus(enable, id) ? 0 : -1;
 }
 
 bool ViEChannel::GetReceiveAbsoluteSendTimeStatus() const {
@@ -959,8 +947,8 @@ int32_t ViEChannel::EnableKeyFrameRequestCallback(const bool enable) {
 }
 
 int32_t ViEChannel::SetSSRC(const uint32_t SSRC,
-                                  const StreamType usage,
-                                  const uint8_t simulcast_idx) {
+                            const StreamType usage,
+                            const uint8_t simulcast_idx) {
   WEBRTC_TRACE(webrtc::kTraceInfo,
                webrtc::kTraceVideo,
                ViEId(engine_id_, channel_id_),
@@ -973,9 +961,6 @@ int32_t ViEChannel::SetSSRC(const uint32_t SSRC,
     return rtp_rtcp_->SetSSRC(SSRC);
   }
   CriticalSectionScoped cs(rtp_rtcp_cs_.get());
-  if (rtp_rtcp_->SetSSRC(SSRC) != 0) {
-    return -1;
-  }
   if (simulcast_idx > simulcast_rtp_rtcp_.size()) {
       return -1;
   }
@@ -985,15 +970,15 @@ int32_t ViEChannel::SetSSRC(const uint32_t SSRC,
       return -1;
     }
   }
-  RtpRtcp* rtp_rtcp = *it;
+  RtpRtcp* rtp_rtcp_module = *it;
   if (usage == kViEStreamTypeRtx) {
-    return rtp_rtcp->SetRTXSendStatus(kRtxRetransmitted, true, SSRC);
+    return rtp_rtcp_module->SetRTXSendStatus(kRtxRetransmitted, true, SSRC);
   }
-  return 0;
+  return rtp_rtcp_module->SetSSRC(SSRC);
 }
 
 int32_t ViEChannel::SetRemoteSSRCType(const StreamType usage,
-                                            const uint32_t SSRC) const {
+                                      const uint32_t SSRC) const {
   WEBRTC_TRACE(webrtc::kTraceInfo,
                webrtc::kTraceVideo,
                ViEId(engine_id_, channel_id_),

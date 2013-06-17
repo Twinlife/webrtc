@@ -44,7 +44,7 @@ class RemoteBitrateEstimatorMultiStream : public RemoteBitrateEstimator {
   // Note that |payload_size| is the packet size excluding headers.
   virtual void IncomingPacket(int64_t arrival_time_ms,
                               int payload_size,
-                              const WebRtcRTPHeader& header);
+                              const RTPHeader& header);
 
   // Triggers a new estimate calculation.
   // Implements the Module interface.
@@ -139,9 +139,9 @@ void RemoteBitrateEstimatorMultiStream::IncomingRtcp(unsigned int ssrc,
 void RemoteBitrateEstimatorMultiStream::IncomingPacket(
     int64_t arrival_time_ms,
     int payload_size,
-    const WebRtcRTPHeader& header) {
-  uint32_t ssrc = header.header.ssrc;
-  uint32_t rtp_timestamp = header.header.timestamp +
+    const RTPHeader& header) {
+  uint32_t ssrc = header.ssrc;
+  uint32_t rtp_timestamp = header.timestamp +
       header.extension.transmissionTimeOffset;
   CriticalSectionScoped cs(crit_sect_.get());
   incoming_bitrate_.Update(payload_size, arrival_time_ms);
