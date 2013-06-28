@@ -30,7 +30,6 @@
         ['include_tests==1', {
           'dependencies': [
             'webrtc/system_wrappers/source/system_wrappers_tests.gyp:*',
-            'webrtc/test/channel_transport.gyp:*',
             'webrtc/test/metrics.gyp:*',
             'webrtc/test/test.gyp:*',
             'webrtc/tools/tools.gyp:*',
@@ -39,22 +38,5 @@
         }],
       ],
     },
-  ],
-  'conditions': [
-    ['include_tests==1', {
-      'targets': [
-        {
-          'target_name': 'common_unittests',
-          'type': 'executable',
-          'dependencies': [
-             '<(DEPTH)/testing/gtest.gyp:gtest',
-             '<(webrtc_root)/test/test.gyp:test_support_main',
-          ],
-          'sources': [
-            'webrtc/common_unittest.cc',
-          ],
-        },
-      ],  # targets
-    }],  # include_tests
   ],
 }
