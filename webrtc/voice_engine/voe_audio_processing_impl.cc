@@ -767,6 +767,8 @@ int VoEAudioProcessingImpl::RegisterRxVadObserver(
   VoERxVadCallback& observer) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "RegisterRxVadObserver()");
+  ANDROID_NOT_SUPPORTED(_shared->statistics());
+
   if (!_shared->statistics().Initialized()) {
     _shared->SetLastError(VE_NOT_INITED, kTraceError);
     return -1;
@@ -784,6 +786,8 @@ int VoEAudioProcessingImpl::RegisterRxVadObserver(
 int VoEAudioProcessingImpl::DeRegisterRxVadObserver(int channel) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "DeRegisterRxVadObserver()");
+  ANDROID_NOT_SUPPORTED(_shared->statistics());
+
   if (!_shared->statistics().Initialized()) {
     _shared->SetLastError(VE_NOT_INITED, kTraceError);
     return -1;
@@ -823,6 +827,8 @@ int VoEAudioProcessingImpl::VoiceActivityIndicator(int channel) {
 int VoEAudioProcessingImpl::SetEcMetricsStatus(bool enable) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "SetEcMetricsStatus(enable=%d)", enable);
+  ANDROID_NOT_SUPPORTED(_shared->statistics());
+
 #ifdef WEBRTC_VOICE_ENGINE_ECHO
   if (!_shared->statistics().Initialized()) {
     _shared->SetLastError(VE_NOT_INITED, kTraceError);
@@ -848,6 +854,8 @@ int VoEAudioProcessingImpl::SetEcMetricsStatus(bool enable) {
 int VoEAudioProcessingImpl::GetEcMetricsStatus(bool& enabled) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "GetEcMetricsStatus(enabled=?)");
+  ANDROID_NOT_SUPPORTED(_shared->statistics());
+
 #ifdef WEBRTC_VOICE_ENGINE_ECHO
   if (!_shared->statistics().Initialized()) {
     _shared->SetLastError(VE_NOT_INITED, kTraceError);
@@ -883,6 +891,8 @@ int VoEAudioProcessingImpl::GetEchoMetrics(int& ERL,
                                            int& A_NLP) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "GetEchoMetrics(ERL=?, ERLE=?, RERL=?, A_NLP=?)");
+  ANDROID_NOT_SUPPORTED(_shared->statistics());
+
 #ifdef WEBRTC_VOICE_ENGINE_ECHO
   if (!_shared->statistics().Initialized()) {
     _shared->SetLastError(VE_NOT_INITED, kTraceError);
@@ -924,6 +934,8 @@ int VoEAudioProcessingImpl::GetEcDelayMetrics(int& delay_median,
                                               int& delay_std) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "GetEcDelayMetrics(median=?, std=?)");
+  ANDROID_NOT_SUPPORTED(_shared->statistics());
+
 #ifdef WEBRTC_VOICE_ENGINE_ECHO
   if (!_shared->statistics().Initialized()) {
     _shared->SetLastError(VE_NOT_INITED, kTraceError);
@@ -986,9 +998,9 @@ int VoEAudioProcessingImpl::StopDebugRecording() {
 int VoEAudioProcessingImpl::SetTypingDetectionStatus(bool enable) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "SetTypingDetectionStatus()");
-#if !defined(WEBRTC_VOICE_ENGINE_TYPING_DETECTION)
-  NOT_SUPPORTED(_shared->statistics());
-#else
+  ANDROID_NOT_SUPPORTED(_shared->statistics());
+  IPHONE_NOT_SUPPORTED(_shared->statistics());
+#ifdef WEBRTC_VOICE_ENGINE_TYPING_DETECTION
   if (!_shared->statistics().Initialized()) {
     _shared->SetLastError(VE_NOT_INITED, kTraceError);
     return -1;
@@ -1010,12 +1022,20 @@ int VoEAudioProcessingImpl::SetTypingDetectionStatus(bool enable) {
   }
 
   return 0;
+#else
+  _shared->SetLastError(VE_FUNC_NOT_SUPPORTED, kTraceError,
+      "SetTypingDetectionStatus is not supported");
+  return -1;
 #endif
 }
 
 int VoEAudioProcessingImpl::GetTypingDetectionStatus(bool& enabled) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "GetTypingDetectionStatus()");
+  ANDROID_NOT_SUPPORTED(_shared->statistics());
+  IPHONE_NOT_SUPPORTED(_shared->statistics());
+
+#ifdef WEBRTC_VOICE_ENGINE_TYPING_DETECTION
   if (!_shared->statistics().Initialized()) {
     _shared->SetLastError(VE_NOT_INITED, kTraceError);
     return -1;
@@ -1026,15 +1046,21 @@ int VoEAudioProcessingImpl::GetTypingDetectionStatus(bool& enabled) {
   enabled = _shared->audio_processing()->voice_detection()->is_enabled();
 
   return 0;
+#else
+  _shared->SetLastError(VE_FUNC_NOT_SUPPORTED, kTraceError,
+      "SetTypingDetectionStatus is not supported");
+  return -1;
+#endif
 }
 
 
 int VoEAudioProcessingImpl::TimeSinceLastTyping(int &seconds) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "TimeSinceLastTyping()");
-#if !defined(WEBRTC_VOICE_ENGINE_TYPING_DETECTION)
-  NOT_SUPPORTED(_shared->statistics());
-#else
+  ANDROID_NOT_SUPPORTED(_shared->statistics());
+  IPHONE_NOT_SUPPORTED(_shared->statistics());
+
+#ifdef WEBRTC_VOICE_ENGINE_TYPING_DETECTION
   if (!_shared->statistics().Initialized()) {
     _shared->SetLastError(VE_NOT_INITED, kTraceError);
     return -1;
@@ -1052,6 +1078,10 @@ int VoEAudioProcessingImpl::TimeSinceLastTyping(int &seconds) {
       "SetTypingDetectionStatus is not enabled");
   return -1;
   }
+#else
+  _shared->SetLastError(VE_FUNC_NOT_SUPPORTED, kTraceError,
+      "SetTypingDetectionStatus is not supported");
+  return -1;
 #endif
 }
 
@@ -1062,15 +1092,21 @@ int VoEAudioProcessingImpl::SetTypingDetectionParameters(int timeWindow,
                                                          int typeEventDelay) {
   WEBRTC_TRACE(kTraceApiCall, kTraceVoice, VoEId(_shared->instance_id(), -1),
                "SetTypingDetectionParameters()");
-#if !defined(WEBRTC_VOICE_ENGINE_TYPING_DETECTION)
-  NOT_SUPPORTED(_shared->statistics());
-#else
+  ANDROID_NOT_SUPPORTED(_shared->statistics());
+  IPHONE_NOT_SUPPORTED(_shared->statistics());
+
+#ifdef WEBRTC_VOICE_ENGINE_TYPING_DETECTION
   if (!_shared->statistics().Initialized()) {
     _shared->statistics().SetLastError(VE_NOT_INITED, kTraceError);
     return -1;
   }
   return (_shared->transmit_mixer()->SetTypingDetectionParameters(timeWindow,
       costPerTyping, reportingThreshold, penaltyDecay, typeEventDelay));
+
+#else
+  _shared->statistics().SetLastError(VE_FUNC_NOT_SUPPORTED, kTraceError,
+      "SetTypingDetectionParameters is not supported");
+  return -1;
 #endif
 }
 
