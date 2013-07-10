@@ -63,7 +63,7 @@
       'targets': [
         {
           'target_name': 'modules_unittests',
-          'type': 'executable',
+          'type': '<(gtest_target_type)',
           'dependencies': [
             'audio_coding_module',
             'audio_processing',
@@ -87,6 +87,7 @@
             'webrtc_utility',
             'webrtc_video_coding',
             '<@(neteq_dependencies)',
+            '<(rbe_components_path)/remote_bitrate_estimator_components.gyp:rbe_components_unittests',
             '<(DEPTH)/testing/gmock.gyp:gmock',
             '<(DEPTH)/testing/gtest.gyp:gtest',
             '<(webrtc_root)/common_audio/common_audio.gyp:common_audio',
@@ -143,7 +144,7 @@
             'audio_coding/neteq4/mock/mock_payload_splitter.h',
             'audio_processing/aec/system_delay_unittest.cc',
             'audio_processing/aec/echo_cancellation_unittest.cc',
-            'audio_processing/test/unit_test.cc',
+            'audio_processing/test/audio_processing_unittest.cc',
             'audio_processing/utility/delay_estimator_unittest.cc',
             'audio_processing/utility/ring_buffer_unittest.cc',
             'bitrate_controller/bitrate_controller_unittest.cc',
@@ -163,13 +164,8 @@
             'pacing/paced_sender_unittest.cc',
             'remote_bitrate_estimator/include/mock/mock_remote_bitrate_observer.h',
             'remote_bitrate_estimator/bitrate_estimator_unittest.cc',
-            'remote_bitrate_estimator/remote_bitrate_estimator_multi_stream_unittest.cc',
-            'remote_bitrate_estimator/remote_bitrate_estimator_single_stream_unittest.cc',
-            'remote_bitrate_estimator/remote_bitrate_estimator_unittest_helper.cc',
-            'remote_bitrate_estimator/remote_bitrate_estimator_unittest_helper.h',
             'remote_bitrate_estimator/rtp_to_ntp_unittest.cc',
             'rtp_rtcp/source/mock/mock_rtp_payload_strategy.h',
-            'rtp_rtcp/source/mock/mock_rtp_receiver_video.h',
             'rtp_rtcp/source/fec_test_helper.cc',
             'rtp_rtcp/source/fec_test_helper.h',
             'rtp_rtcp/source/nack_rtx_unittest.cc',
@@ -219,8 +215,8 @@
             'video_processing/main/test/unit_test/content_metrics_test.cc',
             'video_processing/main/test/unit_test/deflickering_test.cc',
             'video_processing/main/test/unit_test/denoising_test.cc',
-            'video_processing/main/test/unit_test/unit_test.cc',
-            'video_processing/main/test/unit_test/unit_test.h',
+            'video_processing/main/test/unit_test/video_processing_unittest.cc',
+            'video_processing/main/test/unit_test/video_processing_unittest.h',
           ],
           'conditions': [
             # Run screen/window capturer tests only on platforms where they are
@@ -245,6 +241,13 @@
             ['build_libvpx==1', {
               'dependencies': [
                 '<(DEPTH)/third_party/libvpx/libvpx.gyp:libvpx',
+              ],
+            }],
+            # TODO(henrike): remove build_with_chromium==1 when the bots are
+            # using Chromium's buildbots.
+            ['build_with_chromium==1 and OS=="android" and gtest_target_type=="shared_library"', {
+              'dependencies': [
+                '<(DEPTH)/testing/android/native_test.gyp:native_test_native_code',
               ],
             }],
           ],
@@ -301,6 +304,21 @@
           ],
         },
       ],
+      'conditions': [
+        # TODO(henrike): remove build_with_chromium==1 when the bots are using
+        # Chromium's buildbots.
+        ['build_with_chromium==1 and OS=="android" and gtest_target_type=="shared_library"', {
+          'targets': [
+            {
+              'target_name': 'modules_unittests_apk_target',
+              'type': 'none',
+              'dependencies': [
+                '<(apk_tests_path):modules_unittests_apk',
+              ],
+            }
+          ],
+        }],
+      ]
     }], # include_tests
   ], # conditions
 }

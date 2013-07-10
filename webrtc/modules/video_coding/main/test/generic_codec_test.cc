@@ -343,7 +343,7 @@ GenericCodecTest::Perform(CmdArgs& args)
                     totalBytesOneSec =  _encodeCompleteCallback->EncodedBytes();//totalBytes;
                 }
                 TEST(_vcm->TimeUntilNextProcess() >= 0);
-            } // video seq. encode done
+            }  // video seq. encode done
             TEST(_vcm->TimeUntilNextProcess() == 0);
             _vcm->Process(); // Let the module calculate its send bit rate estimate
             // estimating rates
@@ -368,7 +368,7 @@ GenericCodecTest::Perform(CmdArgs& args)
             printf("frame count: %d delta, %d key\n", frameCount.numDeltaFrames, frameCount.numKeyFrames);
         }// end per codec
 
-    } // end rate control test
+    }  // end rate control test
     /********************************/
     /* Encoder Pipeline Delay Test */
     /******************************/
@@ -399,10 +399,10 @@ GenericCodecTest::Perform(CmdArgs& args)
             sourceFrame.set_timestamp(_timeStamp);
             _vcm->AddVideoFrame(sourceFrame);
             encodeComplete = _encodeCompleteCallback->EncodeComplete();
-        } // first frame encoded
+        }  // first frame encoded
         printf ("\n Codec type = %s \n", _sendCodec.plName);
         printf(" Encoder pipeline delay = %d frames\n", _frameCnt - 1);
-    } // end for all codecs
+    }  // end for all codecs
 
     /********************************/
     /* Encoder Packet Size Test     */
@@ -457,7 +457,7 @@ GenericCodecTest::Perform(CmdArgs& args)
             _vcm->Process();
         }
         IncrementDebugClock(_frameRate);
-    } // first frame encoded
+    }  // first frame encoded
 
     delete &rtpModule;
     Print();
@@ -549,7 +549,7 @@ VCMEncComplete_KeyReqTest::SendData(
     WebRtcRTPHeader rtpInfo;
     rtpInfo.header.markerBit = true; // end of frame
     rtpInfo.type.Video.codecHeader.VP8.InitRTPVideoHeaderVP8();
-    rtpInfo.type.Video.codec = kRTPVideoVP8;
+    rtpInfo.type.Video.codec = kRtpVideoVp8;
     rtpInfo.header.payloadType = payloadType;
     rtpInfo.header.sequenceNumber = _seqNo;
     _seqNo += 2;

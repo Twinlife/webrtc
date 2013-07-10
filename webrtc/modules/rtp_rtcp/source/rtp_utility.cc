@@ -46,11 +46,30 @@
 
 namespace webrtc {
 
+RtpData* NullObjectRtpData() {
+  static NullRtpData null_rtp_data;
+  return &null_rtp_data;
+}
+
+RtpFeedback* NullObjectRtpFeedback() {
+  static NullRtpFeedback null_rtp_feedback;
+  return &null_rtp_feedback;
+}
+
+RtpAudioFeedback* NullObjectRtpAudioFeedback() {
+  static NullRtpAudioFeedback null_rtp_audio_feedback;
+  return &null_rtp_audio_feedback;
+}
+
 namespace ModuleRTPUtility {
 
 enum {
+  kRtcpExpectedVersion = 2,
   kRtcpMinHeaderLength = 4,
-  kRtcpExpectedVersion = 2
+  kRtcpMinParseLength = 8,
+
+  kRtpExpectedVersion = 2,
+  kRtpMinParseLength = 12
 };
 
 /*
@@ -184,9 +203,9 @@ void RTPPayload::SetType(RtpVideoCodecTypes videoType) {
   type = videoType;
 
   switch (type) {
-    case kRtpGenericVideo:
+    case kRtpVideoGeneric:
       break;
-    case kRtpVp8Video: {
+    case kRtpVideoVp8: {
       info.VP8.nonReferenceFrame = false;
       info.VP8.beginningOfPartition = false;
       info.VP8.partitionID = 0;
@@ -291,11 +310,39 @@ bool RTPHeaderParser::RTCP() const {
   return RTCP;
 }
 
+bool RTPHeaderParser::ParseRtcp(RTPHeader* header) const {
+  assert(header != NULL);
+
+  const ptrdiff_t length = _ptrRTPDataEnd - _ptrRTPDataBegin;
+  if (length < kRtcpMinParseLength) {
+    return false;
+  }
+
+  const uint8_t V = _ptrRTPDataBegin[0] >> 6;
+  if (V != kRtcpExpectedVersion) {
+    return false;
+  }
+
+  const uint8_t PT = _ptrRTPDataBegin[1];
+  const uint16_t len = (_ptrRTPDataBegin[2] << 8) + _ptrRTPDataBegin[3];
+  const uint8_t* ptr = &_ptrRTPDataBegin[4];
+
+  uint32_t SSRC = *ptr++ << 24;
+  SSRC += *ptr++ << 16;
+  SSRC += *ptr++ << 8;
+  SSRC += *ptr++;
+
+  header->payloadType  = PT;
+  header->ssrc         = SSRC;
+  header->headerLength = 4 + (len << 2);
+
+  return true;
+}
+
 bool RTPHeaderParser::Parse(RTPHeader& header,
                             RtpHeaderExtensionMap* ptrExtensionMap) const {
   const ptrdiff_t length = _ptrRTPDataEnd - _ptrRTPDataBegin;
-
-  if (length < 12) {
+  if (length < kRtpMinParseLength) {
     return false;
   }
 
@@ -325,7 +372,7 @@ bool RTPHeaderParser::Parse(RTPHeader& header,
   SSRC += *ptr++ << 8;
   SSRC += *ptr++;
 
-  if (V != 2) {
+  if (V != kRtpExpectedVersion) {
     return false;
   }
 
@@ -535,9 +582,9 @@ bool RTPPayloadParser::Parse(RTPPayload& parsedPacket) const {
   parsedPacket.SetType(_videoType);
 
   switch (_videoType) {
-    case kRtpGenericVideo:
+    case kRtpVideoGeneric:
       return ParseGeneric(parsedPacket);
-    case kRtpVp8Video:
+    case kRtpVideoVp8:
       return ParseVP8(parsedPacket);
     default:
       return false;

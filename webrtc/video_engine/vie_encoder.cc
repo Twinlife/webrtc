@@ -132,7 +132,6 @@ ViEEncoder::ViEEncoder(int32_t engine_id,
     picture_id_sli_(0),
     has_received_rpsi_(false),
     picture_id_rpsi_(0),
-    file_recorder_(channel_id),
     qm_callback_(NULL) {
   WEBRTC_TRACE(webrtc::kTraceMemory, webrtc::kTraceVideo,
                ViEId(engine_id, channel_id),
@@ -567,10 +566,8 @@ void ViEEncoder::DeliverFrame(int id,
       kMsToRtpTimestamp *
       static_cast<uint32_t>(video_frame->render_time_ms());
 
-  TRACE_EVENT2("webrtc", "VE::DeliverFrame",
-               "timestamp", time_stamp,
-               "render_time", video_frame->render_time_ms());
-
+  TRACE_EVENT_ASYNC_STEP0("webrtc", "Video", video_frame->render_time_ms(),
+                          "Encode");
   video_frame->set_timestamp(time_stamp);
   {
     CriticalSectionScoped cs(callback_cs_.get());
@@ -587,8 +584,6 @@ void ViEEncoder::DeliverFrame(int id,
                                 video_frame->height());
     }
   }
-  // Record raw frame.
-  file_recorder_.RecordVideoFrame(*video_frame);
 
   // Make sure the CSRC list is correct.
   if (num_csrcs > 0) {
@@ -663,7 +658,6 @@ void ViEEncoder::DelayChanged(int id, int frame_delay) {
                frame_delay);
 
   default_rtp_rtcp_->SetCameraDelay(frame_delay);
-  file_recorder_.SetFrameDelay(frame_delay);
 }
 
 int ViEEncoder::GetPreferedFrameSettings(int* width,
@@ -729,7 +723,7 @@ int ViEEncoder::CodecTargetBitrate(uint32_t* bitrate) const {
   return 0;
 }
 
-int32_t ViEEncoder::UpdateProtectionMethod() {
+int32_t ViEEncoder::UpdateProtectionMethod(bool enable_nack) {
   bool fec_enabled = false;
   uint8_t dummy_ptype_red = 0;
   uint8_t dummy_ptypeFEC = 0;
@@ -742,25 +736,23 @@ int32_t ViEEncoder::UpdateProtectionMethod() {
   if (error) {
     return -1;
   }
-
-  bool nack_enabled = (default_rtp_rtcp_->NACK() == kNackOff) ? false : true;
-  if (fec_enabled_ == fec_enabled && nack_enabled_ == nack_enabled) {
+  if (fec_enabled_ == fec_enabled && nack_enabled_ == enable_nack) {
     // No change needed, we're already in correct state.
     return 0;
   }
   fec_enabled_ = fec_enabled;
-  nack_enabled_ = nack_enabled;
+  nack_enabled_ = enable_nack;
 
   // Set Video Protection for VCM.
-  if (fec_enabled && nack_enabled) {
+  if (fec_enabled && nack_enabled_) {
     vcm_.SetVideoProtection(webrtc::kProtectionNackFEC, true);
   } else {
     vcm_.SetVideoProtection(webrtc::kProtectionFEC, fec_enabled_);
-    vcm_.SetVideoProtection(webrtc::kProtectionNack, nack_enabled_);
+    vcm_.SetVideoProtection(webrtc::kProtectionNackSender, nack_enabled_);
     vcm_.SetVideoProtection(webrtc::kProtectionNackFEC, false);
   }
 
-  if (fec_enabled || nack_enabled) {
+  if (fec_enabled_ || nack_enabled_) {
     WEBRTC_TRACE(webrtc::kTraceInfo, webrtc::kTraceVideo,
                  ViEId(engine_id_, channel_id_), "%s: FEC status ",
                  __FUNCTION__, fec_enabled);
@@ -1053,10 +1045,6 @@ int32_t ViEEncoder::RegisterEffectFilter(ViEEffectFilter* effect_filter) {
   }
   effect_filter_ = effect_filter;
   return 0;
-}
-
-ViEFileRecorder& ViEEncoder::GetOutgoingFileRecorder() {
-  return file_recorder_;
 }
 
 int ViEEncoder::StartDebugRecording(const char* fileNameUTF8) {

@@ -772,4 +772,4 @@ int VoECodecImpl::RemoveSecondarySendCodec(int channel) {
 
 #endif  // WEBRTC_VOICE_ENGINE_CODEC_API
 
-} // namespace webrtc
+}  // namespace webrtc

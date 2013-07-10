@@ -50,7 +50,7 @@ VoiceEngine* GetVoiceEngine()
     gVoiceEngine = self;
     return self;
 }
-} // extern "C"
+}  // extern "C"
 
 int VoiceEngineImpl::AddRef() {
   return ++_ref_count;
@@ -173,4 +173,4 @@ int VoiceEngine::SetAndroidObjects(void* javaVM, void* env, void* context)
 #endif
 }
 
-} //namespace webrtc
+}  // namespace webrtc
