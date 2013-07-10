@@ -33,7 +33,6 @@ set -e  # Exit on any error.
 # files easily.
 echo "$0: Entering directory \``pwd`'"
 
-JAVA_HOME="$1"; shift
 JAR_NAME="$1"; shift
 TMP_DIR="$1"; shift
 CLASSPATH="$1"; shift
@@ -47,6 +46,6 @@ fi
 rm -rf "$TMP_DIR"
 mkdir -p "$TMP_DIR"
 
-$JAVA_HOME/bin/javac -Xlint:deprecation -Xlint:unchecked -d "$TMP_DIR" \
+javac -Xlint:deprecation -Xlint:unchecked -d "$TMP_DIR" \
   -classpath "$CLASSPATH" "$@"
-$JAVA_HOME/bin/jar cf "$JAR_NAME" -C "$TMP_DIR" .
+jar cf "$JAR_NAME" -C "$TMP_DIR" .

@@ -69,6 +69,7 @@ class WebRtcVideoCapturer : public VideoCapturer,
   virtual void Stop();
   virtual bool IsRunning();
   virtual bool IsScreencast() const { return false; }
+  virtual void SetCaptureRotation(int rotation);
 
  protected:
   // Override virtual methods of the parent class VideoCapturer.

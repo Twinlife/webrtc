@@ -55,6 +55,9 @@
           'sources': [
             'app/webrtc/java/jni/peerconnection_jni.cc'
           ],
+          'include_dirs': [
+            '<(DEPTH)',
+	  ],
           'conditions': [
             ['OS=="linux"', {
               'defines': [
@@ -84,6 +87,7 @@
                 'peerconnection_java_files': [
                   'app/webrtc/java/src/org/webrtc/AudioSource.java',
                   'app/webrtc/java/src/org/webrtc/AudioTrack.java',
+                  'app/webrtc/java/src/org/webrtc/DataChannel.java',
                   'app/webrtc/java/src/org/webrtc/IceCandidate.java',
                   'app/webrtc/java/src/org/webrtc/MediaConstraints.java',
                   'app/webrtc/java/src/org/webrtc/MediaSource.java',
@@ -104,13 +108,13 @@
                 # included here, or better yet, build a proper .jar in webrtc
                 # and include it here.
                 'android_java_files': [
-                  '<(webrtc_modules_dir)/audio_device/android/org/webrtc/voiceengine/WebRTCAudioDevice.java',
-                  '<(webrtc_modules_dir)/video_capture/android/java/org/webrtc/videoengine/CaptureCapabilityAndroid.java',
-                  '<(webrtc_modules_dir)/video_capture/android/java/org/webrtc/videoengine/VideoCaptureAndroid.java',
-                  '<(webrtc_modules_dir)/video_capture/android/java/org/webrtc/videoengine/VideoCaptureDeviceInfoAndroid.java',
-                  '<(webrtc_modules_dir)/video_render/android/java/org/webrtc/videoengine/ViEAndroidGLES20.java',
-                  '<(webrtc_modules_dir)/video_render/android/java/org/webrtc/videoengine/ViERenderer.java',
-                  '<(webrtc_modules_dir)/video_render/android/java/org/webrtc/videoengine/ViESurfaceRenderer.java',
+                  '<(webrtc_modules_dir)/audio_device/android/java/src/org/webrtc/voiceengine/WebRTCAudioDevice.java',
+                  '<(webrtc_modules_dir)/video_capture/android/java/src/org/webrtc/videoengine/CaptureCapabilityAndroid.java',
+                  '<(webrtc_modules_dir)/video_capture/android/java/src/org/webrtc/videoengine/VideoCaptureAndroid.java',
+                  '<(webrtc_modules_dir)/video_capture/android/java/src/org/webrtc/videoengine/VideoCaptureDeviceInfoAndroid.java',
+                  '<(webrtc_modules_dir)/video_render/android/java/src/org/webrtc/videoengine/ViEAndroidGLES20.java',
+                  '<(webrtc_modules_dir)/video_render/android/java/src/org/webrtc/videoengine/ViERenderer.java',
+                  '<(webrtc_modules_dir)/video_render/android/java/src/org/webrtc/videoengine/ViESurfaceRenderer.java',
                 ],
               },
               'action_name': 'create_jar',
@@ -125,7 +129,7 @@
                 ['OS=="android"', {
                   'variables': {
                     'java_files': ['<@(peerconnection_java_files)', '<@(android_java_files)'],
-                    'build_classpath': '<(java_src_dir):<(DEPTH)/third_party/android_tools/sdk/platforms/android-<(android_sdk_version)/android.jar',
+                    'build_classpath': '<(java_src_dir):<(android_sdk)/android.jar',
                   },
                 }, {
                   'variables': {
@@ -135,7 +139,7 @@
                 }],
               ],
               'action': [
-                'build/build_jar.sh', '<(java_home)', '<@(_outputs)',
+                'build/build_jar.sh', '<@(_outputs)',
                 '<(INTERMEDIATE_DIR)',
                 '<(build_classpath)',
                 '<@(java_files)'

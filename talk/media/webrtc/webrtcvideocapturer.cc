@@ -298,6 +298,25 @@ bool WebRtcVideoCapturer::IsRunning() {
   return (module_ != NULL && module_->CaptureStarted());
 }
 
+void WebRtcVideoCapturer::SetCaptureRotation(int rotation) {
+  webrtc::VideoCaptureRotation lRotation;
+  switch(rotation) {
+  case 0:
+    lRotation = webrtc::kCameraRotate0;
+    break;
+  case 90:
+    lRotation = webrtc::kCameraRotate90;
+    break;
+  case 180:
+    lRotation = webrtc::kCameraRotate180;
+    break;
+  case 270:
+    lRotation = webrtc::kCameraRotate270;
+    break;
+  }
+  module_->SetCaptureRotation(lRotation);
+}
+
 bool WebRtcVideoCapturer::GetPreferredFourccs(
     std::vector<uint32>* fourccs) {
   if (!fourccs) {

@@ -230,6 +230,8 @@ class VideoCapturer
   // The fourcc component is ignored.
   void ConstrainSupportedFormats(const VideoFormat& max_format);
 
+  virtual void SetCaptureRotation(int rotation) {};
+
   void set_enable_camera_list(bool enable_camera_list) {
     enable_camera_list_ = enable_camera_list;
   }

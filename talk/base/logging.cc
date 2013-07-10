@@ -94,7 +94,7 @@ const int LogMessage::NO_LOGGING = LS_ERROR + 1;
 #if _DEBUG
 static const int LOG_DEFAULT = LS_INFO;
 #else  // !_DEBUG
-static const int LOG_DEFAULT = LogMessage::NO_LOGGING;
+static const int LOG_DEFAULT = LS_WARNING; // LogMessage::NO_LOGGING;
 #endif  // !_DEBUG
 
 // Global lock for log subsystem, only needed to serialize access to streams_.
