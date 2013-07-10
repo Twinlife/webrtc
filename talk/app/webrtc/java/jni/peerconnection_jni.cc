@@ -531,6 +531,7 @@ class PCOJava : public PeerConnectionObserver {
       jboolean added = jni()->CallBooleanMethod(*audio_tracks, add, *j_track);
       CHECK_EXCEPTION(jni(), "error during CallBooleanMethod");
       CHECK(added, "");
+      track->AddRef();
     }
 
     VideoTrackVector video_tracks = stream->GetVideoTracks();
@@ -550,7 +551,9 @@ class PCOJava : public PeerConnectionObserver {
       jboolean added = jni()->CallBooleanMethod(*video_tracks, add, *j_track);
       CHECK_EXCEPTION(jni(), "error during CallBooleanMethod");
       CHECK(added, "");
+      track->AddRef();
     }
+
     streams_[stream] = jni()->NewWeakGlobalRef(*j_stream);
     CHECK_EXCEPTION(jni(), "error during NewWeakGlobalRef");
 
@@ -952,6 +955,7 @@ class MediaStreamObserverWrapper : public ObserverInterface {
 	    "getAudioTrack", "(Ljava/lang/String;)Lorg/webrtc/AudioTrack;");
 	jobject j_track = jni()->CallObjectMethod(*j_stream_global_, get_audio_track_id, *id);
 	CHECK_EXCEPTION(jni(), "error during CallObjectMethod");
+
 	if (j_track == NULL) {
 	  j_track = jni()->NewObject(
               *j_audio_track_class_, j_audio_track_ctor_, (jlong)track, *id);
@@ -965,14 +969,18 @@ class MediaStreamObserverWrapper : public ObserverInterface {
 	  jboolean added = jni()->CallBooleanMethod(*j_audio_tracks, add_id, j_track);
 	  CHECK_EXCEPTION(jni(), "error during CallBooleanMethod");
 	  CHECK(added, "");
+	  track->AddRef();
+
 	  j_track = jni()->CallObjectMethod(*j_stream_global_, get_audio_track_id, *id);
 	  CHECK_EXCEPTION(jni(), "error during CallObjectMethod");
 	  CHECK(j_track, "");
 	}
+
 	jmethodID on_add_track_id = GetMethodID(jni(), *j_observer_class_,
 	    "onAddTrack", "(Lorg/webrtc/MediaStream;Lorg/webrtc/AudioTrack;)V");
 	jni()->CallVoidMethod(*j_observer_global_, on_add_track_id, *j_stream_global_, j_track);
 	CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
+
 	jni()->DeleteLocalRef(j_track);
       }
     }
@@ -1006,6 +1014,7 @@ class MediaStreamObserverWrapper : public ObserverInterface {
 	      "onRemoveTrack", "(Lorg/webrtc/MediaStream;Lorg/webrtc/AudioTrack;)V");
 	  jni()->CallVoidMethod(*j_observer_global_, on_remove_track_id, *j_stream_global_, j_track);
 	  CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
+
 	  jni()->DeleteLocalRef(j_track);
 	}
       }
@@ -1030,6 +1039,7 @@ class MediaStreamObserverWrapper : public ObserverInterface {
 	    "getVideoTrack", "(Ljava/lang/String;)Lorg/webrtc/VideoTrack;");
 	jobject j_track = jni()->CallObjectMethod(*j_stream_global_, get_video_track_id, *id);
 	CHECK_EXCEPTION(jni(), "error during CallObjectMethod");
+
 	if (j_track == NULL) {
 	  j_track = jni()->NewObject(
               *j_video_track_class_, j_video_track_ctor_, (jlong)track, *id);
@@ -1043,17 +1053,22 @@ class MediaStreamObserverWrapper : public ObserverInterface {
 	  jboolean added = jni()->CallBooleanMethod(*j_video_tracks, add_id, j_track);
 	  CHECK_EXCEPTION(jni(), "error during CallBooleanMethod");
 	  CHECK(added, "");
+	  track->AddRef();
+
 	  j_track = jni()->CallObjectMethod(*j_stream_global_, get_video_track_id, *id);
 	  CHECK_EXCEPTION(jni(), "error during CallObjectMethod");
 	  CHECK(j_track, "");
 	}
+
 	jmethodID on_add_track_id = GetMethodID(jni(), *j_observer_class_,
 	    "onAddTrack", "(Lorg/webrtc/MediaStream;Lorg/webrtc/VideoTrack;)V");
 	jni()->CallVoidMethod(*j_observer_global_, on_add_track_id, *j_stream_global_, j_track);
 	CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
+
 	jni()->DeleteLocalRef(j_track);
       }
     }
+
     for (size_t i = 0; i < video_tracks_.size(); ++i) {
       bool found = false;
       for (size_t j = 0; j < video_tracks.size(); ++j) {
@@ -1084,6 +1099,7 @@ class MediaStreamObserverWrapper : public ObserverInterface {
 	      "onRemoveTrack", "(Lorg/webrtc/MediaStream;Lorg/webrtc/VideoTrack;)V");
 	  jni()->CallVoidMethod(*j_observer_global_, on_remove_track_id, *j_stream_global_, j_track);
 	  CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
+
 	  jni()->DeleteLocalRef(j_track);
 	}
       }
