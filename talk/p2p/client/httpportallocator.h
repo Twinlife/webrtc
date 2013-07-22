@@ -32,10 +32,13 @@
 #include <string>
 #include <vector>
 
-#include "talk/base/gunit_prod.h"
+// -CJ- 22/07/2013
+// Remove test reference
+//#include "talk/base/gunit_prod.h"
 #include "talk/p2p/client/basicportallocator.h"
 
-class HttpPortAllocatorTest_TestSessionRequestUrl_Test;
+// -CJ- 22/07/2013
+//class HttpPortAllocatorTest_TestSessionRequestUrl_Test;
 
 namespace talk_base {
 class AsyncHttpRequest;
@@ -140,7 +143,8 @@ class HttpPortAllocatorSessionBase : public BasicPortAllocatorSession {
   std::string GetSessionRequestUrl();
 
  private:
-  FRIEND_TEST(::HttpPortAllocatorTest, TestSessionRequestUrl);
+  // -CJ- 22/07/2013
+  //  FRIEND_TEST(::HttpPortAllocatorTest, TestSessionRequestUrl);
 
   std::vector<std::string> relay_hosts_;
   std::vector<talk_base::SocketAddress> stun_hosts_;
