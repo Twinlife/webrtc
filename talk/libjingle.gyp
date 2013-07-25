@@ -963,11 +963,11 @@
         'libjingle_media',
       ],
       'include_dirs': [
-        '<(DEPTH)/testing/gtest/include',
+        '<(DEPTH)/third_party/gtest/include',
       ],
       'direct_dependent_settings': {
         'include_dirs': [
-          '<(DEPTH)/testing/gtest/include',
+          '<(DEPTH)/third_party/gtest/include',
         ],
       },
       'defines': [
