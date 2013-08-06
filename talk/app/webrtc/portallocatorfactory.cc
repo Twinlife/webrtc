@@ -71,7 +71,7 @@ cricket::PortAllocator* PortAllocatorFactory::CreatePortAllocator(
       new cricket::BasicPortAllocator(
           network_manager_.get(), socket_factory_.get(), stun_addr));
 
-  for (int i = 0; i < turn.size(); i++) {
+  for (size_t i = 0; i < turn.size(); ++i) {
     cricket::RelayCredentials credentials(turn[i].username, turn[i].password);
     cricket::RelayServerConfig relay_server(cricket::RELAY_TURN);
     cricket::ProtocolType protocol;

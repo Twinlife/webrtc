@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2004--2005, Google Inc.
+ * Copyright 2013, Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,25 +25,14 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "talk/base/host.h"
+#import "RTCICEServer.h"
 
-#ifdef POSIX
-#include <sys/utsname.h>
-#endif  // POSIX
+#include "talk/app/webrtc/peerconnectioninterface.h"
 
-#include <string>
+@interface RTCICEServer (Internal)
 
-namespace talk_base {
+@property(nonatomic,
+          assign,
+          readonly) webrtc::PeerConnectionInterface::IceServer iceServer;
 
-std::string GetHostName() {
-  // TODO: fix or get rid of this
-#if 0
-  struct utsname nm;
-  if (uname(&nm) < 0)
-    FatalError("uname", LAST_SYSTEM_ERROR);
-  return std::string(nm.nodename);
-#endif
-  return "cricket";
-}
-
-}  // namespace talk_base
+@end

@@ -121,7 +121,6 @@
         'base/filelock_unittest.cc',
         'base/fileutils_unittest.cc',
         'base/helpers_unittest.cc',
-        'base/host_unittest.cc',
         'base/httpbase_unittest.cc',
         'base/httpcommon_unittest.cc',
         'base/httpserver_unittest.cc',
@@ -376,6 +375,7 @@
       ],
       # TODO(ronghuawu): Reenable below unit tests that require gmock.
       'sources': [
+        'app/webrtc/datachannel_unittest.cc',
         'app/webrtc/dtmfsender_unittest.cc',
         'app/webrtc/jsepsessiondescription_unittest.cc',
         'app/webrtc/localaudiosource_unittest.cc',
@@ -426,7 +426,7 @@
                 '<(PRODUCT_DIR)/libjingle_peerconnection_test.jar',
               ],
               'action': [
-                'build/build_jar.sh', '/usr', '<@(_outputs)',
+                'build/build_jar.sh', '<(java_home)', '<@(_outputs)',
                 '<(INTERMEDIATE_DIR)',
                 '<(java_src_dir):<(PRODUCT_DIR)/libjingle_peerconnection.jar:<(DEPTH)/third_party/junit/junit-4.11.jar',
                 '<@(java_files)'
@@ -480,6 +480,7 @@
             '<(infoplist_file)',
           ],
           'xcode_settings': {
+            'CLANG_ENABLE_OBJC_ARC': 'YES',
             'INFOPLIST_FILE': '<(infoplist_file)',
           },
           'dependencies': [
@@ -498,27 +499,13 @@
             'app/webrtc/objctests/RTCSessionDescriptionSyncObserver.h',
             'app/webrtc/objctests/RTCSessionDescriptionSyncObserver.m',
           ],
-          'include_dirs': [
-            '<(DEPTH)/talk/app/webrtc/objc/public',
-          ],
           'conditions': [
-            [ 'OS=="mac"', {
+            ['OS=="mac" or OS=="ios"', {
               'sources': [
+                # TODO(fischman): figure out if this works for ios or if it
+                # needs a GUI driver.
                 'app/webrtc/objctests/mac/main.mm',
               ],
-              'xcode_settings': {
-                'CLANG_ENABLE_OBJC_ARC': 'YES',
-                'CLANG_WARN_OBJC_MISSING_PROPERTY_SYNTHESIS': 'NO',
-                'CLANG_LINK_OBJC_RUNTIME': 'YES',
-                # build/common.gypi disables ARC by default for back-compat
-                # reasons with OSX 10.6.   Enabling OBJC runtime and clearing
-                # LDPLUSPLUS and CC re-enables it.  Setting deployment target to
-                # 10.7 as there are no back-compat issues with ARC.
-                # https://code.google.com/p/chromium/issues/detail?id=156530
-                'CC': '',
-                'LDPLUSPLUS': '',
-                'macosx_deployment_target': '10.7',
-              },
             }],
           ],
         },

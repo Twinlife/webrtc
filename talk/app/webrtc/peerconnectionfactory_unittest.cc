@@ -16,6 +16,8 @@
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
  * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO
+ * EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
  * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
  * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
@@ -155,6 +157,9 @@ TEST_F(PeerConnectionFactoryTest, CreatePCUsingIceServers) {
   ice_server.uri = kTurnIceServer;
   ice_server.password = kTurnPassword;
   ice_servers.push_back(ice_server);
+  ice_server.uri = kTurnIceServerWithTransport;
+  ice_server.password = kTurnPassword;
+  ice_servers.push_back(ice_server);
   talk_base::scoped_refptr<PeerConnectionInterface> pc(
       factory_->CreatePeerConnection(ice_servers, NULL,
                                      allocator_factory_.get(),
@@ -162,17 +167,23 @@ TEST_F(PeerConnectionFactoryTest, CreatePCUsingIceServers) {
                                      &observer_));
   EXPECT_TRUE(pc.get() != NULL);
   StunConfigurations stun_configs;
-  webrtc::PortAllocatorFactoryInterface::StunConfiguration stun(
-      "stun.l.google.com", 19302);
-  stun_configs.push_back(stun);
   webrtc::PortAllocatorFactoryInterface::StunConfiguration stun1(
-        "test.com", 1234);
+      "stun.l.google.com", 19302);
   stun_configs.push_back(stun1);
+  webrtc::PortAllocatorFactoryInterface::StunConfiguration stun2(
+        "test.com", 1234);
+  stun_configs.push_back(stun2);
+  webrtc::PortAllocatorFactoryInterface::StunConfiguration stun3(
+        "hello.com", kDefaultPort);
+  stun_configs.push_back(stun3);
   VerifyStunConfigurations(stun_configs);
   TurnConfigurations turn_configs;
-  webrtc::PortAllocatorFactoryInterface::TurnConfiguration turn(
+  webrtc::PortAllocatorFactoryInterface::TurnConfiguration turn1(
       "test.com", 1234, "test@hello.com", kTurnPassword, "udp");
-  turn_configs.push_back(turn);
+  turn_configs.push_back(turn1);
+  webrtc::PortAllocatorFactoryInterface::TurnConfiguration turn2(
+      "hello.com", kDefaultPort, "test", kTurnPassword, "tcp");
+  turn_configs.push_back(turn2);
   VerifyTurnConfigurations(turn_configs);
 }
 

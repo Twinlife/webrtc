@@ -8,7 +8,7 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include <cmath>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -126,6 +126,19 @@ class AudioTransportAPI: public AudioTransport {
       }
     }
     nSamplesOut = 480;
+    return 0;
+  }
+
+  virtual int OnDataAvailable(const int voe_channels[],
+                              int number_of_voe_channels,
+                              const int16_t* audio_data,
+                              int sample_rate,
+                              int number_of_channels,
+                              int number_of_frames,
+                              int audio_delay_milliseconds,
+                              int current_volume,
+                              bool key_pressed,
+                              bool need_audio_processing) {
     return 0;
   }
 

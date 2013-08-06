@@ -11,15 +11,24 @@
 #include "webrtc/modules/audio_coding/neteq4/background_noise.h"
 
 #include <assert.h>
+#include <string.h>  // memcpy
 
 #include <algorithm>  // min, max
-#include <cstring>  // memcpy
 
 #include "webrtc/common_audio/signal_processing/include/signal_processing_library.h"
 #include "webrtc/modules/audio_coding/neteq4/audio_multi_vector.h"
 #include "webrtc/modules/audio_coding/neteq4/post_decode_vad.h"
 
 namespace webrtc {
+
+BackgroundNoise::BackgroundNoise(size_t num_channels)
+    : num_channels_(num_channels),
+      channel_parameters_(new ChannelParameters[num_channels_]),
+      mode_(kBgnOn) {
+  Reset();
+}
+
+BackgroundNoise::~BackgroundNoise() {}
 
 void BackgroundNoise::Reset() {
   initialized_ = false;

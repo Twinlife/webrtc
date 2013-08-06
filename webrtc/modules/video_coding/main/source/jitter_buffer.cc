@@ -9,8 +9,10 @@
  */
 #include "webrtc/modules/video_coding/main/source/jitter_buffer.h"
 
+#include <assert.h>
+
 #include <algorithm>
-#include <cassert>
+#include <utility>
 
 #include "webrtc/modules/video_coding/main/interface/video_coding.h"
 #include "webrtc/modules/video_coding/main/source/frame_buffer.h"
@@ -167,7 +169,9 @@ VCMJitterBuffer::VCMJitterBuffer(Clock* clock,
       max_nack_list_size_(0),
       max_packet_age_to_nack_(0),
       max_incomplete_time_ms_(0),
-      decode_with_errors_(false) {
+      decode_error_mode_(kNoErrors),
+      average_packets_per_frame_(0.0f),
+      frame_counter_(0) {
   memset(frame_buffers_, 0, sizeof(frame_buffers_));
   memset(receive_statistics_, 0, sizeof(receive_statistics_));
 
@@ -212,7 +216,7 @@ void VCMJitterBuffer::CopyFrom(const VCMJitterBuffer& rhs) {
     first_packet_since_reset_ = rhs.first_packet_since_reset_;
     last_decoded_state_ =  rhs.last_decoded_state_;
     num_not_decodable_packets_ = rhs.num_not_decodable_packets_;
-    decode_with_errors_ = rhs.decode_with_errors_;
+    decode_error_mode_ = rhs.decode_error_mode_;
     assert(max_nack_list_size_ == rhs.max_nack_list_size_);
     assert(max_packet_age_to_nack_ == rhs.max_packet_age_to_nack_);
     assert(max_incomplete_time_ms_ == rhs.max_incomplete_time_ms_);
@@ -221,6 +225,7 @@ void VCMJitterBuffer::CopyFrom(const VCMJitterBuffer& rhs) {
     nack_seq_nums_.resize(rhs.nack_seq_nums_.size());
     missing_sequence_numbers_ = rhs.missing_sequence_numbers_;
     latest_received_sequence_number_ = rhs.latest_received_sequence_number_;
+    average_packets_per_frame_ = rhs.average_packets_per_frame_;
     for (int i = 0; i < kMaxNumberOfFrames; i++) {
       if (frame_buffers_[i] != NULL) {
         delete frame_buffers_[i];
@@ -487,7 +492,7 @@ bool VCMJitterBuffer::NextMaybeIncompleteTimestamp(uint32_t* timestamp) {
   if (!running_) {
     return false;
   }
-  if (!decode_with_errors_) {
+  if (decode_error_mode_ == kNoErrors) {
     // No point to continue, as we are not decoding with errors.
     return false;
   }
@@ -498,8 +503,8 @@ bool VCMJitterBuffer::NextMaybeIncompleteTimestamp(uint32_t* timestamp) {
   if (!oldest_frame) {
     return false;
   }
-  if (decodable_frames_.empty() && incomplete_frames_.size() <= 1 &&
-      oldest_frame->GetState() == kStateIncomplete) {
+  if (decodable_frames_.empty() && incomplete_frames_.size() <= 1
+      && oldest_frame->GetState() != kStateComplete) {
     // If we have only one frame in the buffer, release it only if it is
     // complete.
     return false;
@@ -561,6 +566,10 @@ VCMEncodedFrame* VCMJitterBuffer::ExtractAndSetDecode(uint32_t timestamp) {
   // We have a frame - update the last decoded state and nack list.
   last_decoded_state_.SetState(frame);
   DropPacketsFromNackList(last_decoded_state_.sequence_num());
+
+  if ((*frame).IsSessionComplete())
+    UpdateAveragePacketsPerFrame(frame->NumPackets());
+
   return frame;
 }
 
@@ -693,9 +702,13 @@ VCMFrameBufferEnum VCMJitterBuffer::InsertPacket(const VCMPacket& packet,
   // Note: Under current version, a decodable frame will never be
   // triggered, as the body of the function is empty.
   // TODO(mikhal): Update when decodable is enabled.
-  buffer_return = frame->InsertPacket(packet, now_ms,
-                                      decode_with_errors_,
-                                      rtt_ms_);
+  FrameData frame_data;
+  frame_data.rtt_ms = rtt_ms_;
+  frame_data.rolling_average_packets_per_frame = average_packets_per_frame_;
+  buffer_return = frame->InsertPacket(packet,
+                                      now_ms,
+                                      decode_error_mode_,
+                                      frame_data);
   if (!frame->GetCountedFrame()) {
     TRACE_EVENT_ASYNC_BEGIN1("webrtc", "Video", frame->TimeStamp(),
                              "timestamp", frame->TimeStamp());
@@ -791,9 +804,12 @@ VCMFrameBufferEnum VCMJitterBuffer::InsertPacket(const VCMPacket& packet,
 
 bool VCMJitterBuffer::IsContinuousInState(const VCMFrameBuffer& frame,
     const VCMDecodingState& decoding_state) const {
-  // Is this frame complete or decodable and continuous?
+  // Is this frame (complete or decodable) and continuous?
+  // kStateDecodable will never be set when decode_error_mode_ is false
+  // as SessionInfo determines this state based on the error mode (and frame
+  // completeness).
   if ((frame.GetState() == kStateComplete ||
-       (decode_with_errors_ && frame.GetState() == kStateDecodable)) &&
+       frame.GetState() == kStateDecodable) &&
        decoding_state.ContinuousFrame(&frame)) {
     return true;
   } else {
@@ -1207,6 +1223,22 @@ void VCMJitterBuffer::CountFrame(const VCMFrameBuffer& frame) {
       default:
         assert(false);
     }
+  }
+}
+
+void VCMJitterBuffer::UpdateAveragePacketsPerFrame(int current_number_packets) {
+  if (frame_counter_ > kFastConvergeThreshold) {
+    average_packets_per_frame_ = average_packets_per_frame_
+              * (1 - kNormalConvergeMultiplier)
+            + current_number_packets * kNormalConvergeMultiplier;
+  } else if (frame_counter_ > 0) {
+    average_packets_per_frame_ = average_packets_per_frame_
+              * (1 - kFastConvergeMultiplier)
+            + current_number_packets * kFastConvergeMultiplier;
+    frame_counter_++;
+  } else {
+    average_packets_per_frame_ = current_number_packets;
+    frame_counter_++;
   }
 }
 

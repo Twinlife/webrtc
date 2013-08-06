@@ -190,10 +190,11 @@ struct PacketMessageData : public talk_base::MessageData {
 };
 
 struct AudioRenderMessageData: public talk_base::MessageData {
-  AudioRenderMessageData(uint32 s, AudioRenderer* r)
-      : ssrc(s), renderer(r), result(false) {}
+  AudioRenderMessageData(uint32 s, AudioRenderer* r, bool l)
+      : ssrc(s), renderer(r), is_local(l), result(false) {}
   uint32 ssrc;
   AudioRenderer* renderer;
+  bool is_local;
   bool result;
 };
 
@@ -1441,8 +1442,14 @@ bool VoiceChannel::Init() {
   return true;
 }
 
-bool VoiceChannel::SetRenderer(uint32 ssrc, AudioRenderer* renderer) {
-  AudioRenderMessageData data(ssrc, renderer);
+bool VoiceChannel::SetRemoteRenderer(uint32 ssrc, AudioRenderer* renderer) {
+  AudioRenderMessageData data(ssrc, renderer, false);
+  Send(MSG_SETRENDERER, &data);
+  return data.result;
+}
+
+bool VoiceChannel::SetLocalRenderer(uint32 ssrc, AudioRenderer* renderer) {
+  AudioRenderMessageData data(ssrc, renderer, true);
   Send(MSG_SETRENDERER, &data);
   return data.result;
 }
@@ -1736,8 +1743,12 @@ bool VoiceChannel::SetChannelOptions_w(const AudioOptions& options) {
   return media_channel()->SetOptions(options);
 }
 
-bool VoiceChannel::SetRenderer_w(uint32 ssrc, AudioRenderer* renderer) {
-  return media_channel()->SetRenderer(ssrc, renderer);
+bool VoiceChannel::SetRenderer_w(uint32 ssrc, AudioRenderer* renderer,
+                                 bool is_local) {
+  if (is_local)
+    return media_channel()->SetLocalRenderer(ssrc, renderer);
+
+  return media_channel()->SetRemoteRenderer(ssrc, renderer);
 }
 
 void VoiceChannel::OnMessage(talk_base::Message *pmsg) {
@@ -1798,7 +1809,7 @@ void VoiceChannel::OnMessage(talk_base::Message *pmsg) {
     case MSG_SETRENDERER: {
       AudioRenderMessageData* data =
           static_cast<AudioRenderMessageData*>(pmsg->pdata);
-      data->result = SetRenderer_w(data->ssrc, data->renderer);
+      data->result = SetRenderer_w(data->ssrc, data->renderer, data->is_local);
       break;
     }
     default:
@@ -2283,6 +2294,7 @@ void VideoChannel::OnMessage(talk_base::Message *pmsg) {
       SetScreenCaptureFactoryMessageData* data =
           static_cast<SetScreenCaptureFactoryMessageData*>(pmsg->pdata);
       SetScreenCaptureFactory_w(data->screencapture_factory);
+      break;
     }
     case MSG_GETSTATS: {
       VideoStatsMessageData* data =
@@ -2417,6 +2429,8 @@ bool DataChannel::Init() {
       this, &DataChannel::OnDataReceived);
   media_channel()->SignalMediaError.connect(
       this, &DataChannel::OnDataChannelError);
+  media_channel()->SignalReadyToSend.connect(
+      this, &DataChannel::OnDataChannelReadyToSend);
   srtp_filter()->SignalSrtpError.connect(
       this, &DataChannel::OnSrtpError);
   return true;
@@ -2598,7 +2612,7 @@ void DataChannel::ChangeState() {
 
   // Post to trigger SignalReadyToSendData.
   signaling_thread()->Post(this, MSG_READYTOSENDDATA,
-                           new BoolMessageData(send));
+                           new DataChannelReadyToSendMessageData(send));
 
   LOG(LS_INFO) << "Changing data state, recv=" << recv << " send=" << send;
 }
@@ -2606,7 +2620,8 @@ void DataChannel::ChangeState() {
 void DataChannel::OnMessage(talk_base::Message *pmsg) {
   switch (pmsg->message_id) {
     case MSG_READYTOSENDDATA: {
-      BoolMessageData* data = static_cast<BoolMessageData*>(pmsg->pdata);
+      DataChannelReadyToSendMessageData* data =
+          static_cast<DataChannelReadyToSendMessageData*>(pmsg->pdata);
       SignalReadyToSendData(data->data());
       delete data;
       break;
@@ -2677,6 +2692,14 @@ void DataChannel::OnDataChannelError(
   DataChannelErrorMessageData* data = new DataChannelErrorMessageData(
       ssrc, err);
   signaling_thread()->Post(this, MSG_CHANNEL_ERROR, data);
+}
+
+void DataChannel::OnDataChannelReadyToSend(bool writable) {
+  // This is usded for congestion control to indicate that the stream is ready
+  // to send by the MediaChannel, as opposed to OnReadyToSend, which indicates
+  // that the transport channel is ready.
+  signaling_thread()->Post(this, MSG_READYTOSENDDATA,
+                           new DataChannelReadyToSendMessageData(writable));
 }
 
 void DataChannel::OnSrtpError(uint32 ssrc, SrtpFilter::Mode mode,

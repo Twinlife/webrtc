@@ -29,6 +29,8 @@ class TestSessionInfo : public ::testing::Test {
     packet_.dataPtr = packet_buffer_;
     packet_.seqNum = 0;
     packet_.timestamp = 0;
+    frame_data.rtt_ms = 0;
+    frame_data.rolling_average_packets_per_frame = -1;
   }
 
   void FillPacket(uint8_t start_value) {
@@ -56,6 +58,7 @@ class TestSessionInfo : public ::testing::Test {
 
   VCMSessionInfo session_;
   VCMPacket packet_;
+  FrameData frame_data;
 };
 
 class TestVP8Partitions : public TestSessionInfo {
@@ -151,7 +154,10 @@ TEST_F(TestSessionInfo, TestSimpleAPIs) {
   packet_.frameType = kVideoFrameKey;
   FillPacket(0);
   ASSERT_EQ(packet_buffer_size(),
-            session_.InsertPacket(packet_, frame_buffer_, false, 0));
+            session_.InsertPacket(packet_,
+            frame_buffer_,
+            kNoErrors,
+            frame_data));
   EXPECT_FALSE(session_.HaveLastPacket());
   EXPECT_EQ(kVideoFrameKey, session_.FrameType());
 
@@ -159,7 +165,10 @@ TEST_F(TestSessionInfo, TestSimpleAPIs) {
   packet_.markerBit = true;
   packet_.seqNum += 1;
   ASSERT_EQ(packet_buffer_size(),
-            session_.InsertPacket(packet_, frame_buffer_, false, 0));
+            session_.InsertPacket(packet_,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data));
   EXPECT_TRUE(session_.HaveLastPacket());
   EXPECT_EQ(packet_.seqNum, session_.HighSequenceNumber());
   EXPECT_EQ(0xFFFE, session_.LowSequenceNumber());
@@ -172,7 +181,10 @@ TEST_F(TestSessionInfo, TestSimpleAPIs) {
   packet_.sizeBytes = 0;
   packet_.frameType = kFrameEmpty;
   ASSERT_EQ(0,
-            session_.InsertPacket(packet_, frame_buffer_, false, 0));
+            session_.InsertPacket(packet_,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data));
   EXPECT_EQ(packet_.seqNum, session_.HighSequenceNumber());
 }
 
@@ -181,21 +193,30 @@ TEST_F(TestSessionInfo, NormalOperation) {
   packet_.isFirstPacket = true;
   packet_.markerBit = false;
   FillPacket(0);
-  ASSERT_EQ(session_.InsertPacket(packet_, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(packet_,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
 
   packet_.isFirstPacket = false;
   for (int i = 1; i < 9; ++i) {
     packet_.seqNum += 1;
     FillPacket(i);
-    ASSERT_EQ(session_.InsertPacket(packet_, frame_buffer_, false, 0),
+    ASSERT_EQ(session_.InsertPacket(packet_,
+                                    frame_buffer_,
+                                    kNoErrors,
+                                    frame_data),
               packet_buffer_size());
   }
 
   packet_.seqNum += 1;
   packet_.markerBit = true;
   FillPacket(9);
-  ASSERT_EQ(session_.InsertPacket(packet_, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(packet_,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
 
   EXPECT_EQ(0, session_.packets_not_decodable());
@@ -217,7 +238,10 @@ TEST_F(TestVP8Partitions, TwoPartitionsOneLoss) {
   FillPacket(0);
   VCMPacket* packet = new VCMPacket(packet_buffer_, packet_buffer_size(),
                                     packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -228,7 +252,10 @@ TEST_F(TestVP8Partitions, TwoPartitionsOneLoss) {
   packet_header_.header.sequenceNumber += 2;
   FillPacket(2);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -239,7 +266,10 @@ TEST_F(TestVP8Partitions, TwoPartitionsOneLoss) {
   packet_header_.header.sequenceNumber += 1;
   FillPacket(3);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -265,7 +295,10 @@ TEST_F(TestVP8Partitions, TwoPartitionsOneLoss2) {
   FillPacket(1);
   VCMPacket* packet = new VCMPacket(packet_buffer_, packet_buffer_size(),
                                     packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -276,7 +309,10 @@ TEST_F(TestVP8Partitions, TwoPartitionsOneLoss2) {
   packet_header_.header.sequenceNumber += 1;
   FillPacket(2);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -287,7 +323,10 @@ TEST_F(TestVP8Partitions, TwoPartitionsOneLoss2) {
   packet_header_.header.sequenceNumber += 1;
   FillPacket(3);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -298,7 +337,10 @@ TEST_F(TestVP8Partitions, TwoPartitionsOneLoss2) {
   packet_header_.header.sequenceNumber += 2;
   FillPacket(5);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -325,7 +367,10 @@ TEST_F(TestVP8Partitions, TwoPartitionsNoLossWrap) {
   FillPacket(0);
   VCMPacket* packet = new VCMPacket(packet_buffer_, packet_buffer_size(),
                                     packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -336,7 +381,10 @@ TEST_F(TestVP8Partitions, TwoPartitionsNoLossWrap) {
   packet_header_.header.sequenceNumber += 1;
   FillPacket(1);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -347,7 +395,10 @@ TEST_F(TestVP8Partitions, TwoPartitionsNoLossWrap) {
   packet_header_.header.sequenceNumber += 1;
   FillPacket(2);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -358,7 +409,10 @@ TEST_F(TestVP8Partitions, TwoPartitionsNoLossWrap) {
   packet_header_.header.sequenceNumber += 1;
   FillPacket(3);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -385,7 +439,10 @@ TEST_F(TestVP8Partitions, TwoPartitionsLossWrap) {
   FillPacket(0);
   VCMPacket* packet = new VCMPacket(packet_buffer_, packet_buffer_size(),
                                     packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -396,7 +453,10 @@ TEST_F(TestVP8Partitions, TwoPartitionsLossWrap) {
   packet_header_.header.sequenceNumber += 1;
   FillPacket(1);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -407,7 +467,10 @@ TEST_F(TestVP8Partitions, TwoPartitionsLossWrap) {
   packet_header_.header.sequenceNumber += 1;
   FillPacket(2);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -418,7 +481,10 @@ TEST_F(TestVP8Partitions, TwoPartitionsLossWrap) {
   packet_header_.header.sequenceNumber += 2;
   FillPacket(3);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -446,7 +512,10 @@ TEST_F(TestVP8Partitions, ThreePartitionsOneMissing) {
   FillPacket(1);
   VCMPacket* packet = new VCMPacket(packet_buffer_, packet_buffer_size(),
                                     packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -457,7 +526,10 @@ TEST_F(TestVP8Partitions, ThreePartitionsOneMissing) {
   packet_header_.header.sequenceNumber += 1;
   FillPacket(2);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -468,7 +540,10 @@ TEST_F(TestVP8Partitions, ThreePartitionsOneMissing) {
   packet_header_.header.sequenceNumber += 3;
   FillPacket(5);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -479,7 +554,10 @@ TEST_F(TestVP8Partitions, ThreePartitionsOneMissing) {
   packet_header_.header.sequenceNumber += 1;
   FillPacket(6);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -506,7 +584,10 @@ TEST_F(TestVP8Partitions, ThreePartitionsLossInSecond) {
   FillPacket(1);
   VCMPacket* packet = new VCMPacket(packet_buffer_, packet_buffer_size(),
                                     packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -518,7 +599,10 @@ TEST_F(TestVP8Partitions, ThreePartitionsLossInSecond) {
   FillPacket(2);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(),
                          packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -529,7 +613,10 @@ TEST_F(TestVP8Partitions, ThreePartitionsLossInSecond) {
   packet_header_.header.sequenceNumber += 2;
   FillPacket(4);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -540,7 +627,10 @@ TEST_F(TestVP8Partitions, ThreePartitionsLossInSecond) {
   packet_header_.header.sequenceNumber += 1;
   FillPacket(5);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -551,7 +641,10 @@ TEST_F(TestVP8Partitions, ThreePartitionsLossInSecond) {
   packet_header_.header.sequenceNumber += 1;
   FillPacket(6);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -562,7 +655,10 @@ TEST_F(TestVP8Partitions, ThreePartitionsLossInSecond) {
   packet_header_.header.sequenceNumber += 1;
   FillPacket(7);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -589,7 +685,10 @@ TEST_F(TestVP8Partitions, AggregationOverTwoPackets) {
   FillPacket(0);
   VCMPacket* packet = new VCMPacket(packet_buffer_, packet_buffer_size(),
                                     packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -600,7 +699,10 @@ TEST_F(TestVP8Partitions, AggregationOverTwoPackets) {
   packet_header_.header.sequenceNumber += 1;
   FillPacket(1);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -611,7 +713,10 @@ TEST_F(TestVP8Partitions, AggregationOverTwoPackets) {
   packet_header_.header.sequenceNumber += 1;
   FillPacket(2);
   packet = new VCMPacket(packet_buffer_, packet_buffer_size(), packet_header_);
-  ASSERT_EQ(session_.InsertPacket(*packet, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(*packet,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
   delete packet;
 
@@ -637,7 +742,10 @@ TEST_F(TestNalUnits, OnlyReceivedEmptyPacket) {
   packet_.sizeBytes = 0;
   packet_.seqNum = 0;
   packet_.markerBit = false;
-  ASSERT_EQ(0, session_.InsertPacket(packet_, frame_buffer_, false, 0));
+  ASSERT_EQ(0, session_.InsertPacket(packet_,
+                                     frame_buffer_,
+                                     kNoErrors,
+                                     frame_data));
 
   EXPECT_EQ(0, session_.MakeDecodable());
   EXPECT_EQ(0, session_.SessionLength());
@@ -650,7 +758,10 @@ TEST_F(TestNalUnits, OneIsolatedNaluLoss) {
   packet_.seqNum = 0;
   packet_.markerBit = false;
   FillPacket(0);
-  ASSERT_EQ(session_.InsertPacket(packet_, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(packet_,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
 
   packet_.isFirstPacket = false;
@@ -658,7 +769,10 @@ TEST_F(TestNalUnits, OneIsolatedNaluLoss) {
   packet_.seqNum += 2;
   packet_.markerBit = true;
   FillPacket(2);
-  ASSERT_EQ(session_.InsertPacket(packet_, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(packet_,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
 
   EXPECT_EQ(0, session_.MakeDecodable());
@@ -676,7 +790,10 @@ TEST_F(TestNalUnits, LossInMiddleOfNalu) {
   packet_.seqNum = 0;
   packet_.markerBit = false;
   FillPacket(0);
-  ASSERT_EQ(session_.InsertPacket(packet_, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(packet_,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
 
   packet_.isFirstPacket = false;
@@ -684,7 +801,10 @@ TEST_F(TestNalUnits, LossInMiddleOfNalu) {
   packet_.seqNum += 2;
   packet_.markerBit = true;
   FillPacket(2);
-  ASSERT_EQ(session_.InsertPacket(packet_, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(packet_,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
 
   EXPECT_EQ(packet_buffer_size(), session_.MakeDecodable());
@@ -700,7 +820,10 @@ TEST_F(TestNalUnits, StartAndEndOfLastNalUnitLost) {
   packet_.seqNum = 0;
   packet_.markerBit = false;
   FillPacket(0);
-  ASSERT_EQ(session_.InsertPacket(packet_, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(packet_,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
 
   packet_.isFirstPacket = false;
@@ -708,7 +831,10 @@ TEST_F(TestNalUnits, StartAndEndOfLastNalUnitLost) {
   packet_.seqNum += 2;
   packet_.markerBit = false;
   FillPacket(1);
-  ASSERT_EQ(session_.InsertPacket(packet_, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(packet_,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
 
   EXPECT_EQ(packet_buffer_size(), session_.MakeDecodable());
@@ -725,7 +851,10 @@ TEST_F(TestNalUnits, ReorderWrapNoLoss) {
   packet_.seqNum += 1;
   packet_.markerBit = false;
   FillPacket(1);
-  ASSERT_EQ(session_.InsertPacket(packet_, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(packet_,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
 
   packet_.isFirstPacket = true;
@@ -733,7 +862,10 @@ TEST_F(TestNalUnits, ReorderWrapNoLoss) {
   packet_.seqNum -= 1;
   packet_.markerBit = false;
   FillPacket(0);
-  ASSERT_EQ(session_.InsertPacket(packet_, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(packet_,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
 
   packet_.isFirstPacket = false;
@@ -741,7 +873,10 @@ TEST_F(TestNalUnits, ReorderWrapNoLoss) {
   packet_.seqNum += 2;
   packet_.markerBit = true;
   FillPacket(2);
-  ASSERT_EQ(session_.InsertPacket(packet_, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(packet_,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
 
   EXPECT_EQ(0, session_.MakeDecodable());
@@ -757,7 +892,10 @@ TEST_F(TestNalUnits, WrapLosses) {
   packet_.completeNALU = kNaluIncomplete;
   packet_.markerBit = false;
   FillPacket(1);
-  ASSERT_EQ(session_.InsertPacket(packet_, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(packet_,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
 
   packet_.isFirstPacket = false;
@@ -765,7 +903,10 @@ TEST_F(TestNalUnits, WrapLosses) {
   packet_.seqNum += 2;
   packet_.markerBit = true;
   FillPacket(2);
-  ASSERT_EQ(session_.InsertPacket(packet_, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(packet_,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
 
   EXPECT_EQ(2 * packet_buffer_size(), session_.MakeDecodable());
@@ -781,7 +922,10 @@ TEST_F(TestNalUnits, ReorderWrapLosses) {
   packet_.seqNum += 2;
   packet_.markerBit = true;
   FillPacket(2);
-  ASSERT_EQ(session_.InsertPacket(packet_, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(packet_,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
 
   packet_.seqNum -= 2;
@@ -789,7 +933,10 @@ TEST_F(TestNalUnits, ReorderWrapLosses) {
   packet_.completeNALU = kNaluIncomplete;
   packet_.markerBit = false;
   FillPacket(1);
-  ASSERT_EQ(session_.InsertPacket(packet_, frame_buffer_, false, 0),
+  ASSERT_EQ(session_.InsertPacket(packet_,
+                                  frame_buffer_,
+                                  kNoErrors,
+                                  frame_data),
             packet_buffer_size());
 
   EXPECT_EQ(2 * packet_buffer_size(), session_.MakeDecodable());

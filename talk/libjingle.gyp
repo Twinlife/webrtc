@@ -166,10 +166,10 @@
             'app/webrtc/objc/RTCEnumConverter.h',
             'app/webrtc/objc/RTCEnumConverter.mm',
             'app/webrtc/objc/RTCI420Frame.mm',
-            'app/webrtc/objc/RTCIceCandidate+Internal.h',
-            'app/webrtc/objc/RTCIceCandidate.mm',
-            'app/webrtc/objc/RTCIceServer+Internal.h',
-            'app/webrtc/objc/RTCIceServer.mm',
+            'app/webrtc/objc/RTCICECandidate+Internal.h',
+            'app/webrtc/objc/RTCICECandidate.mm',
+            'app/webrtc/objc/RTCICEServer+Internal.h',
+            'app/webrtc/objc/RTCICEServer.mm',
             'app/webrtc/objc/RTCMediaConstraints+Internal.h',
             'app/webrtc/objc/RTCMediaConstraints.mm',
             'app/webrtc/objc/RTCMediaConstraintsNative.cc',
@@ -199,8 +199,8 @@
             'app/webrtc/objc/public/RTCAudioSource.h',
             'app/webrtc/objc/public/RTCAudioTrack.h',
             'app/webrtc/objc/public/RTCI420Frame.h',
-            'app/webrtc/objc/public/RTCIceCandidate.h',
-            'app/webrtc/objc/public/RTCIceServer.h',
+            'app/webrtc/objc/public/RTCICECandidate.h',
+            'app/webrtc/objc/public/RTCICEServer.h',
             'app/webrtc/objc/public/RTCMediaConstraints.h',
             'app/webrtc/objc/public/RTCMediaSource.h',
             'app/webrtc/objc/public/RTCMediaStream.h',
@@ -218,6 +218,11 @@
             'app/webrtc/objc/public/RTCVideoSource.h',
             'app/webrtc/objc/public/RTCVideoTrack.h',
           ],
+          'direct_dependent_settings': {
+            'include_dirs': [
+              '<(DEPTH)/talk/app/webrtc/objc/public',
+            ],
+          },
           'include_dirs': [
             '<(DEPTH)/talk/app/webrtc',
             '<(DEPTH)/talk/app/webrtc/objc',
@@ -230,8 +235,6 @@
           },
           'xcode_settings': {
             'CLANG_ENABLE_OBJC_ARC': 'YES',
-            'CLANG_WARN_OBJC_MISSING_PROPERTY_SYNTHESIS': 'NO',
-            'CLANG_LINK_OBJC_RUNTIME': 'YES',
           },
         }
       ]
@@ -303,8 +306,6 @@
         'base/gunit_prod.h',
         'base/helpers.cc',
         'base/helpers.h',
-        'base/host.cc',
-        'base/host.h',
         'base/httpbase.cc',
         'base/httpbase.h',
         'base/httpclient.cc',
@@ -577,7 +578,6 @@
               '-lcrypto',
               '-ldl',
               '-lrt',
-              '-lssl',
               '-lXext',
               '-lX11',
               '-lXcomposite',
@@ -635,14 +635,11 @@
           },
         }],
         ['OS=="ios"', {
-          # 'dependencies': [
-          #   '<(DEPTH)/third_party/openssl/openssl.gyp:openssl',
-          # ],
-          # 'include_dirs': [
-          #   '<(DEPTH)/third_party/openssl/openssl/include',
-          # ],
           'sources': [
             'base/scoped_autorelease_pool.mm',
+          ],
+          'dependencies': [
+            '../net/third_party/nss/ssl.gyp:libssl',
           ],
           'xcode_settings': {
             'OTHER_LDFLAGS': [
@@ -652,9 +649,6 @@
               '-framework UIKit',
             ],
           },
-          'defines': [
-	    'SSL_USE_NSS',
-          ],
         }],
         ['OS=="win"', {
           'sources': [
@@ -844,6 +838,8 @@
         'media/webrtc/webrtcmediaengine.h',
         'media/webrtc/webrtcpassthroughrender.cc',
         'media/webrtc/webrtcpassthroughrender.h',
+        'media/webrtc/webrtctexturevideoframe.cc',
+        'media/webrtc/webrtctexturevideoframe.h',
         'media/webrtc/webrtcvideocapturer.cc',
         'media/webrtc/webrtcvideocapturer.h',
         'media/webrtc/webrtcvideodecoderfactory.h',
