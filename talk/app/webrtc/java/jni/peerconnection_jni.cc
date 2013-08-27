@@ -130,7 +130,7 @@ using webrtc::VideoRendererInterface;
       LOG(LS_ERROR) << "Refcount unexpectedly not 0: " << (ptr)   \
                     << ": " << count;                             \
     }                                                             \
-    CHECK(!count, "Unexpected refcount");                         \
+    CHECK(!count, "Unexpected refcount");		   	  \
   } while (0)
 
 namespace {
@@ -1007,7 +1007,7 @@ class MediaStreamObserverWrapper : public ObserverInterface {
               *j_audio_track_class_, j_audio_track_ctor_, (jlong)track, *id);
 	  CHECK_EXCEPTION(jni(), "error during NewObject");
 	  jfieldID audio_tracks_id = GetFieldID(jni(),
-              *j_stream_class_, "audioTracks", "Ljava/util/List;");
+              *j_stream_class_, "audioTracks", "Ljava/util/LinkedList;");
 	  ScopedLocalRef<jobject> j_audio_tracks(jni(), GetObjectField(
               jni(), *j_stream_global_, audio_tracks_id));
 	  jmethodID add_id = GetMethodID(jni(),
@@ -1049,7 +1049,7 @@ class MediaStreamObserverWrapper : public ObserverInterface {
 	CHECK_EXCEPTION(jni(), "error during CallObjectMethod");
 	if (j_track != NULL) {
 	  jfieldID audio_tracks_id = GetFieldID(jni(),
-              *j_stream_class_, "audioTracks", "Ljava/util/List;");
+              *j_stream_class_, "audioTracks", "Ljava/util/LinkedList;");
 	  ScopedLocalRef<jobject> j_audio_tracks(jni(), GetObjectField(
               jni(), *j_stream_global_, audio_tracks_id));
 	  jmethodID remove_id = GetMethodID(jni(),
@@ -1091,7 +1091,7 @@ class MediaStreamObserverWrapper : public ObserverInterface {
               *j_video_track_class_, j_video_track_ctor_, (jlong)track, *id);
 	  CHECK_EXCEPTION(jni(), "error during NewObject");
 	  jfieldID video_tracks_id = GetFieldID(jni(),
-              *j_stream_class_, "videoTracks", "Ljava/util/List;");
+              *j_stream_class_, "videoTracks", "Ljava/util/LinkedList;");
 	  ScopedLocalRef<jobject> j_video_tracks(jni(), GetObjectField(
               jni(), *j_stream_global_, video_tracks_id));
 	  jmethodID add_id = GetMethodID(jni(),
@@ -1134,7 +1134,7 @@ class MediaStreamObserverWrapper : public ObserverInterface {
 	CHECK_EXCEPTION(jni(), "error during CallObjectMethod");
 	if (j_track != NULL) {
 	  jfieldID video_tracks_id = GetFieldID(jni(),
-              *j_stream_class_, "videoTracks", "Ljava/util/List;");
+              *j_stream_class_, "videoTracks", "Ljava/util/LinkedList;");
 	  ScopedLocalRef<jobject> j_video_tracks(jni(), GetObjectField(
               jni(), *j_stream_global_, video_tracks_id));
 	  jmethodID remove_id = GetMethodID(jni(),
