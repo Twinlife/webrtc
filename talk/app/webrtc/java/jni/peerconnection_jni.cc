@@ -130,7 +130,6 @@ using webrtc::VideoRendererInterface;
       LOG(LS_ERROR) << "Refcount unexpectedly not 0: " << (ptr)   \
                     << ": " << count;                             \
     }                                                             \
-    CHECK(!count, "Unexpected refcount");		   	  \
   } while (0)
 
 namespace {
