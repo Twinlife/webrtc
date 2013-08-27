@@ -42,7 +42,6 @@
        }],
      ],
     }],
-
     ['OS=="linux" or OS=="android"', {
       'targets': [
         {
@@ -89,6 +88,7 @@
                   'app/webrtc/java/src/org/webrtc/AudioTrack.java',
                   'app/webrtc/java/src/org/webrtc/DataChannel.java',
                   'app/webrtc/java/src/org/webrtc/IceCandidate.java',
+                  'app/webrtc/java/src/org/webrtc/Logging.java',
                   'app/webrtc/java/src/org/webrtc/MediaConstraints.java',
                   'app/webrtc/java/src/org/webrtc/MediaSource.java',
                   'app/webrtc/java/src/org/webrtc/MediaStream.java',
@@ -152,7 +152,7 @@
         },
       ],
     }],
-    ['libjingle_objc == 1', {
+    ['OS=="ios" or (OS=="mac" and target_arch!="ia32")', {
       'targets': [
         {
           'target_name': 'libjingle_peerconnection_objc',
@@ -236,8 +236,8 @@
           'xcode_settings': {
             'CLANG_ENABLE_OBJC_ARC': 'YES',
           },
-        }
-      ]
+        },  # target libjingle_peerconnection_objc
+      ],
     }],
   ],
 
@@ -593,17 +593,6 @@
           ],
         }],
         ['OS=="mac"', {
-          'conditions': [
-            ['libjingle_objc != 1', {
-              'link_settings' :{
-                'xcode_settings': {
-                  'OTHER_LDFLAGS': [
-                    '-framework Carbon',
-                  ],
-                },
-              },
-            }],
-          ],
           'sources': [
             'base/macasyncsocket.cc',
             'base/macasyncsocket.h',
@@ -621,18 +610,36 @@
           ],
           'link_settings': {
             'libraries': [
-             '$(SDKROOT)/usr/lib/libcrypto.dylib',
-             '$(SDKROOT)/usr/lib/libssl.dylib',
+              '$(SDKROOT)/usr/lib/libcrypto.dylib',
+              '$(SDKROOT)/usr/lib/libssl.dylib',
             ],
-            'xcode_settings': {
-              'OTHER_LDFLAGS': [
-                '-framework Cocoa',
-                '-framework IOKit',
-                '-framework Security',
-                '-framework SystemConfiguration',
-              ],
+          },
+          'all_dependent_settings': {
+            'link_settings': {
+              'xcode_settings': {
+                'OTHER_LDFLAGS': [
+                  '-framework Cocoa',
+                  '-framework Foundation',
+                  '-framework IOKit',
+                  '-framework Security',
+                  '-framework SystemConfiguration',
+                ],
+              },
             },
           },
+          'conditions': [
+            ['target_arch=="ia32"', {
+              'all_dependent_settings': {
+                'link_settings': {
+                  'xcode_settings': {
+                    'OTHER_LDFLAGS': [
+                      '-framework Carbon',
+                    ],
+                  },
+                },
+              },
+            }],
+          ],
         }],
         ['OS=="ios"', {
           'sources': [
@@ -641,13 +648,16 @@
           'dependencies': [
             '../net/third_party/nss/ssl.gyp:libssl',
           ],
-          'xcode_settings': {
-            'OTHER_LDFLAGS': [
-              '-framework IOKit',
-              '-framework Security',
-              '-framework SystemConfiguration',
-              '-framework UIKit',
-            ],
+          'all_dependent_settings': {
+            'xcode_settings': {
+              'OTHER_LDFLAGS': [
+                '-framework Foundation',
+                '-framework IOKit',
+                '-framework Security',
+                '-framework SystemConfiguration',
+                '-framework UIKit',
+              ],
+            },
           },
         }],
         ['OS=="win"', {
@@ -905,12 +915,18 @@
             'media/devices/macdevicemanagermm.mm',
           ],
           'conditions': [
-            # TODO(hughv):  Investigate if this is needed.
-            [ 'libjingle_objc != 1', {
+            ['target_arch=="ia32"', {
               'sources': [
                 'media/devices/carbonvideorenderer.cc',
                 'media/devices/carbonvideorenderer.h',
               ],
+              'link_settings': {
+                'xcode_settings': {
+                  'OTHER_LDFLAGS': [
+                    '-framework Carbon',
+                  ],
+                },
+              },
             }],
           ],
           'xcode_settings': {
@@ -1034,6 +1050,7 @@
         'p2p/base/transportchannelimpl.h',
         'p2p/base/transportchannelproxy.cc',
         'p2p/base/transportchannelproxy.h',
+        'p2p/base/transportdescription.cc',
         'p2p/base/transportdescription.h',
         'p2p/base/transportdescriptionfactory.cc',
         'p2p/base/transportdescriptionfactory.h',
@@ -1160,6 +1177,8 @@
         'app/webrtc/webrtcsdp.h',
         'app/webrtc/webrtcsession.cc',
         'app/webrtc/webrtcsession.h',
+        'app/webrtc/webrtcsessiondescriptionfactory.cc',
+        'app/webrtc/webrtcsessiondescriptionfactory.h',
       ],
     },  # target libjingle_peerconnection
   ],

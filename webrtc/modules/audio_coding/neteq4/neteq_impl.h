@@ -102,19 +102,17 @@ class NetEqImpl : public webrtc::NetEq {
   // -1 on failure.
   virtual int RemovePayloadType(uint8_t rtp_payload_type);
 
-  // Sets the desired extra delay on top of what NetEq already applies due to
-  // current network situation. Used for synchronization with video. Returns
-  // true if successful, otherwise false.
-  virtual bool SetExtraDelay(int extra_delay_ms);
+  virtual bool SetMinimumDelay(int delay_ms);
+
+  virtual bool SetMaximumDelay(int delay_ms);
+
+  virtual int LeastRequiredDelayMs() const;
 
   virtual int SetTargetDelay() { return kNotImplemented; }
 
   virtual int TargetDelay() { return kNotImplemented; }
 
   virtual int CurrentDelay() { return kNotImplemented; }
-
-  // Enables playout of DTMF tones.
-  virtual int EnableDtmf();
 
   // Sets the playout mode to |mode|.
   virtual void SetPlayoutMode(NetEqPlayoutMode mode);
@@ -316,7 +314,6 @@ class NetEqImpl : public webrtc::NetEq {
   uint8_t current_cng_rtp_payload_type_;
   uint32_t ssrc_;
   bool first_packet_;
-  bool dtmf_enabled_;
   int error_code_;  // Store last error code.
   int decoder_error_code_;
   CriticalSectionWrapper* crit_sect_;

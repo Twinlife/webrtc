@@ -98,7 +98,8 @@ class NetEq {
     kDecodedTooMuch,
     kFrameSplitError,
     kRedundancySplitError,
-    kPacketBufferCorruption
+    kPacketBufferCorruption,
+    kOversizePacket
   };
 
   static const int kMaxNumPacketsInBuffer = 240;  // TODO(hlundin): Remove.
@@ -150,10 +151,22 @@ class NetEq {
   // -1 on failure.
   virtual int RemovePayloadType(uint8_t rtp_payload_type) = 0;
 
-  // Sets the desired extra delay on top of what NetEq already applies due to
-  // current network situation. Used for synchronization with video. Returns
-  // true if successful, otherwise false.
-  virtual bool SetExtraDelay(int extra_delay_ms) = 0;
+  // Sets a minimum delay in millisecond for packet buffer. The minimum is
+  // maintained unless a higher latency is dictated by channel condition.
+  // Returns true if the minimum is successfully applied, otherwise false is
+  // returned.
+  virtual bool SetMinimumDelay(int delay_ms) = 0;
+
+  // Sets a maximum delay in milliseconds for packet buffer. The latency will
+  // not exceed the given value, even required delay (given the channel
+  // conditions) is higher.
+  virtual bool SetMaximumDelay(int delay_ms) = 0;
+
+  // The smallest latency required. This is computed bases on inter-arrival
+  // time and internal NetEq logic. Note that in computing this latency none of
+  // the user defined limits (applied by calling setMinimumDelay() and/or
+  // SetMaximumDelay()) are applied.
+  virtual int LeastRequiredDelayMs() const = 0;
 
   // Not implemented.
   virtual int SetTargetDelay() = 0;
@@ -163,9 +176,6 @@ class NetEq {
 
   // Not implemented.
   virtual int CurrentDelay() = 0;
-
-  // Enables playout of DTMF tones.
-  virtual int EnableDtmf() = 0;
 
   // Sets the playout mode to |mode|.
   virtual void SetPlayoutMode(NetEqPlayoutMode mode) = 0;

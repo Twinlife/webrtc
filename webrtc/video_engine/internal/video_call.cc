@@ -21,13 +21,20 @@
 #include "webrtc/video_engine/include/vie_rtp_rtcp.h"
 #include "webrtc/video_engine/internal/video_receive_stream.h"
 #include "webrtc/video_engine/internal/video_send_stream.h"
-#include "webrtc/video_engine/new_include/video_engine.h"
 
 namespace webrtc {
+
+VideoCall* VideoCall::Create(const VideoCall::Config& config) {
+  webrtc::VideoEngine* video_engine = webrtc::VideoEngine::Create();
+  assert(video_engine != NULL);
+
+  return new internal::VideoCall(video_engine, config);
+}
+
 namespace internal {
 
 VideoCall::VideoCall(webrtc::VideoEngine* video_engine,
-                     const newapi::VideoCall::Config& config)
+                     const VideoCall::Config& config)
     : config_(config),
       receive_lock_(RWLockWrapper::CreateRWLock()),
       send_lock_(RWLockWrapper::CreateRWLock()),
@@ -44,11 +51,12 @@ VideoCall::VideoCall(webrtc::VideoEngine* video_engine,
 }
 
 VideoCall::~VideoCall() {
-  rtp_rtcp_->Release();
   codec_->Release();
+  rtp_rtcp_->Release();
+  webrtc::VideoEngine::Delete(video_engine_);
 }
 
-newapi::PacketReceiver* VideoCall::Receiver() { return this; }
+PacketReceiver* VideoCall::Receiver() { return this; }
 
 std::vector<VideoCodec> VideoCall::GetVideoCodecs() {
   std::vector<VideoCodec> codecs;
@@ -68,8 +76,8 @@ VideoSendStream::Config VideoCall::GetDefaultSendConfig() {
   return config;
 }
 
-newapi::VideoSendStream* VideoCall::CreateSendStream(
-    const newapi::VideoSendStream::Config& config) {
+VideoSendStream* VideoCall::CreateSendStream(
+    const VideoSendStream::Config& config) {
   assert(config.rtp.ssrcs.size() > 0);
   assert(config.codec.numberOfSimulcastStreams == 0 ||
          config.codec.numberOfSimulcastStreams == config.rtp.ssrcs.size());
@@ -85,8 +93,8 @@ newapi::VideoSendStream* VideoCall::CreateSendStream(
   return send_stream;
 }
 
-newapi::SendStreamState* VideoCall::DestroySendStream(
-    newapi::VideoSendStream* send_stream) {
+SendStreamState* VideoCall::DestroySendStream(
+    webrtc::VideoSendStream* send_stream) {
   if (send_stream == NULL) {
     return NULL;
   }
@@ -98,11 +106,11 @@ newapi::SendStreamState* VideoCall::DestroySendStream(
 }
 
 VideoReceiveStream::Config VideoCall::GetDefaultReceiveConfig() {
-  return newapi::VideoReceiveStream::Config();
+  return VideoReceiveStream::Config();
 }
 
-newapi::VideoReceiveStream* VideoCall::CreateReceiveStream(
-    const newapi::VideoReceiveStream::Config& config) {
+VideoReceiveStream* VideoCall::CreateReceiveStream(
+    const VideoReceiveStream::Config& config) {
   VideoReceiveStream* receive_stream =
       new VideoReceiveStream(video_engine_, config, config_.send_transport);
 
@@ -113,7 +121,7 @@ newapi::VideoReceiveStream* VideoCall::CreateReceiveStream(
 }
 
 void VideoCall::DestroyReceiveStream(
-    newapi::VideoReceiveStream* receive_stream) {
+    webrtc::VideoReceiveStream* receive_stream) {
   if (receive_stream == NULL) {
     return;
   }

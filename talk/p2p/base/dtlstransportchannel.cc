@@ -102,7 +102,7 @@ DtlsTransportChannelWrapper::DtlsTransportChannelWrapper(
       downward_(NULL),
       dtls_state_(STATE_NONE),
       local_identity_(NULL),
-      dtls_role_(talk_base::SSL_CLIENT) {
+      ssl_role_(talk_base::SSL_CLIENT) {
   channel_->SignalReadableState.connect(this,
       &DtlsTransportChannelWrapper::OnReadableState);
   channel_->SignalWritableState.connect(this,
@@ -149,8 +149,12 @@ void DtlsTransportChannelWrapper::Reset() {
   dtls_state_ = STATE_ACCEPTED;
 }
 
-bool DtlsTransportChannelWrapper::SetLocalIdentity(talk_base::SSLIdentity*
-                                                   identity) {
+bool DtlsTransportChannelWrapper::SetLocalIdentity(
+    talk_base::SSLIdentity* identity) {
+  if (dtls_state_ == STATE_OPEN && identity == local_identity_) {
+    return true;
+  }
+
   // TODO(ekr@rtfm.com): Forbid this if Connect() has been called.
   if (dtls_state_ != STATE_NONE) {
     LOG_J(LS_ERROR, this) << "Can't set DTLS local identity in this state";
@@ -167,40 +171,52 @@ bool DtlsTransportChannelWrapper::SetLocalIdentity(talk_base::SSLIdentity*
   return true;
 }
 
-void DtlsTransportChannelWrapper::SetRole(TransportRole role) {
-  // TODO(ekr@rtfm.com): Forbid this if Connect() has been called.
-  ASSERT(dtls_state_ < STATE_ACCEPTED);
+bool DtlsTransportChannelWrapper::SetSslRole(talk_base::SSLRole role) {
+  if (dtls_state_ == STATE_OPEN) {
+    if (ssl_role_ != role) {
+      LOG(LS_ERROR) << "SSL Role can't be reversed after the session is setup.";
+      return false;
+    }
+    return true;
+  }
 
-  // Set the role that is most conformant with RFC 5763, Section 5, bullet 1:
-  //     The endpoint that is the offerer MUST [...] be prepared to receive
-  //     a client_hello before it receives the answer.
-  // (IOW, the offerer is the server, and the answerer is the client).
-  dtls_role_ = (role == ROLE_CONTROLLING) ?
-      talk_base::SSL_SERVER : talk_base::SSL_CLIENT;
-
-  channel_->SetRole(role);
+  ssl_role_ = role;
+  return true;
 }
 
-bool DtlsTransportChannelWrapper::SetRemoteFingerprint(const std::string&
-                                                       digest_alg,
-                                                       const uint8* digest,
-                                                       size_t digest_len) {
+bool DtlsTransportChannelWrapper::GetSslRole(talk_base::SSLRole* role) const {
+  *role = ssl_role_;
+  return true;
+}
+
+bool DtlsTransportChannelWrapper::SetRemoteFingerprint(
+    const std::string& digest_alg,
+    const uint8* digest,
+    size_t digest_len) {
+
+  talk_base::Buffer remote_fingerprint_value(digest, digest_len);
+
+  if ((dtls_state_ == STATE_OPEN) &&
+      (remote_fingerprint_value_ == remote_fingerprint_value)) {
+    return true;
+  }
+
   // Allow SetRemoteFingerprint with a NULL digest even if SetLocalIdentity
   // hasn't been called.
   if (dtls_state_ > STATE_OFFERED ||
       (dtls_state_ == STATE_NONE && !digest_alg.empty())) {
-    LOG_J(LS_ERROR, this) << "Can't set DTLS remote settings in this state";
+    LOG_J(LS_ERROR, this) << "Can't set DTLS remote settings in this state.";
     return false;
   }
 
   if (digest_alg.empty()) {
-    LOG_J(LS_INFO, this) << "Other side didn't support DTLS";
+    LOG_J(LS_INFO, this) << "Other side didn't support DTLS.";
     dtls_state_ = STATE_NONE;
     return true;
   }
 
   // At this point we know we are doing DTLS
-  remote_fingerprint_value_.SetData(digest, digest_len);
+  remote_fingerprint_value.TransferTo(&remote_fingerprint_value_);
   remote_fingerprint_algorithm_ = digest_alg;
 
   if (!SetupDtls()) {
@@ -218,7 +234,7 @@ bool DtlsTransportChannelWrapper::SetupDtls() {
 
   dtls_.reset(talk_base::SSLStreamAdapter::Create(downward));
   if (!dtls_) {
-    LOG_J(LS_ERROR, this) << "Failed to create DTLS adapter";
+    LOG_J(LS_ERROR, this) << "Failed to create DTLS adapter.";
     delete downward;
     return false;
   }
@@ -227,27 +243,27 @@ bool DtlsTransportChannelWrapper::SetupDtls() {
 
   dtls_->SetIdentity(local_identity_->GetReference());
   dtls_->SetMode(talk_base::SSL_MODE_DTLS);
-  dtls_->SetServerRole(dtls_role_);
+  dtls_->SetServerRole(ssl_role_);
   dtls_->SignalEvent.connect(this, &DtlsTransportChannelWrapper::OnDtlsEvent);
   if (!dtls_->SetPeerCertificateDigest(
           remote_fingerprint_algorithm_,
           reinterpret_cast<unsigned char *>(remote_fingerprint_value_.data()),
           remote_fingerprint_value_.length())) {
-    LOG_J(LS_ERROR, this) << "Couldn't set DTLS certificate digest";
+    LOG_J(LS_ERROR, this) << "Couldn't set DTLS certificate digest.";
     return false;
   }
 
   // Set up DTLS-SRTP, if it's been enabled.
   if (!srtp_ciphers_.empty()) {
     if (!dtls_->SetDtlsSrtpCiphers(srtp_ciphers_)) {
-      LOG_J(LS_ERROR, this) << "Couldn't set DTLS-SRTP ciphers";
+      LOG_J(LS_ERROR, this) << "Couldn't set DTLS-SRTP ciphers.";
       return false;
     }
   } else {
-    LOG_J(LS_INFO, this) << "Not using DTLS";
+    LOG_J(LS_INFO, this) << "Not using DTLS.";
   }
 
-  LOG_J(LS_INFO, this) << "DTLS setup complete";
+  LOG_J(LS_INFO, this) << "DTLS setup complete.";
   return true;
 }
 
@@ -337,7 +353,7 @@ void DtlsTransportChannelWrapper::OnReadableState(TransportChannel* channel) {
   ASSERT(talk_base::Thread::Current() == worker_thread_);
   ASSERT(channel == channel_);
   LOG_J(LS_VERBOSE, this)
-      << "DTLSTransportChannelWrapper: channel readable state changed";
+      << "DTLSTransportChannelWrapper: channel readable state changed.";
 
   if (dtls_state_ == STATE_NONE || dtls_state_ == STATE_OPEN) {
     set_readable(channel_->readable());
@@ -349,7 +365,7 @@ void DtlsTransportChannelWrapper::OnWritableState(TransportChannel* channel) {
   ASSERT(talk_base::Thread::Current() == worker_thread_);
   ASSERT(channel == channel_);
   LOG_J(LS_VERBOSE, this)
-      << "DTLSTransportChannelWrapper: channel writable state changed";
+      << "DTLSTransportChannelWrapper: channel writable state changed.";
 
   switch (dtls_state_) {
     case STATE_NONE:
@@ -404,13 +420,13 @@ void DtlsTransportChannelWrapper::OnReadPacket(TransportChannel* channel,
       // decide to take this as evidence that the other
       // side is ready to do DTLS and start the handshake
       // on our end
-      LOG_J(LS_WARNING, this) << "Received packet before we know if we are doing "
-                              << "DTLS or not; dropping";
+      LOG_J(LS_WARNING, this) << "Received packet before we know if we are "
+                              << "doing DTLS or not; dropping.";
       break;
 
     case STATE_ACCEPTED:
       // Drop packets received before DTLS has actually started
-      LOG_J(LS_INFO, this) << "Dropping packet received before DTLS started";
+      LOG_J(LS_INFO, this) << "Dropping packet received before DTLS started.";
       break;
 
     case STATE_STARTED:
@@ -419,19 +435,20 @@ void DtlsTransportChannelWrapper::OnReadPacket(TransportChannel* channel,
       // Is this potentially a DTLS packet?
       if (IsDtlsPacket(data, size)) {
         if (!HandleDtlsPacket(data, size)) {
-          LOG_J(LS_ERROR, this) << "Failed to handle DTLS packet";
+          LOG_J(LS_ERROR, this) << "Failed to handle DTLS packet.";
           return;
         }
       } else {
         // Not a DTLS packet; our handshake should be complete by now.
         if (dtls_state_ != STATE_OPEN) {
-          LOG_J(LS_ERROR, this) << "Received non-DTLS packet before DTLS complete";
+          LOG_J(LS_ERROR, this) << "Received non-DTLS packet before DTLS "
+                                << "complete.";
           return;
         }
 
         // And it had better be a SRTP packet.
         if (!IsRtpPacket(data, size)) {
-          LOG_J(LS_ERROR, this) << "Received unexpected non-DTLS packet";
+          LOG_J(LS_ERROR, this) << "Received unexpected non-DTLS packet.";
           return;
         }
 
@@ -460,7 +477,7 @@ void DtlsTransportChannelWrapper::OnDtlsEvent(talk_base::StreamInterface* dtls,
   ASSERT(dtls == dtls_.get());
   if (sig & talk_base::SE_OPEN) {
     // This is the first time.
-    LOG_J(LS_INFO, this) << "DTLS handshake complete";
+    LOG_J(LS_INFO, this) << "DTLS handshake complete.";
     if (dtls_->GetState() == talk_base::SS_OPEN) {
       // The check for OPEN shouldn't be necessary but let's make
       // sure we don't accidentally frob the state if it's closed.

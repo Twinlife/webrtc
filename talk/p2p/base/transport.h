@@ -52,6 +52,7 @@
 #include "talk/base/criticalsection.h"
 #include "talk/base/messagequeue.h"
 #include "talk/base/sigslot.h"
+#include "talk/base/sslstreamadapter.h"
 #include "talk/p2p/base/candidate.h"
 #include "talk/p2p/base/constants.h"
 #include "talk/p2p/base/sessiondescription.h"
@@ -126,13 +127,6 @@ class TransportParser {
                     ParseError* error);
 
   virtual ~TransportParser() {}
-};
-
-// Whether our side of the call is driving the negotiation, or the other side.
-enum TransportRole {
-  ROLE_CONTROLLING = 0,
-  ROLE_CONTROLLED,
-  ROLE_UNKNOWN
 };
 
 // For "writable" and "readable", we need to differentiate between
@@ -244,11 +238,14 @@ class Transport : public talk_base::MessageHandler,
   // Returns whether the client has requested the channels to connect.
   bool connect_requested() const { return connect_requested_; }
 
-  void SetRole(TransportRole role);
-  TransportRole role() const { return role_; }
+  void SetIceRole(IceRole role);
+  IceRole ice_role() const { return ice_role_; }
 
-  void SetTiebreaker(uint64 tiebreaker) { tiebreaker_ = tiebreaker; }
-  uint64 tiebreaker() { return tiebreaker_; }
+  void SetIceTiebreaker(uint64 IceTiebreaker) { tiebreaker_ = IceTiebreaker; }
+  uint64 IceTiebreaker() { return tiebreaker_; }
+
+  // Must be called before applying local session description.
+  void SetIdentity(talk_base::SSLIdentity* identity);
 
   TransportProtocol protocol() const { return protocol_; }
 
@@ -327,6 +324,8 @@ class Transport : public talk_base::MessageHandler,
   // Forwards the signal from TransportChannel to BaseSession.
   sigslot::signal0<> SignalRoleConflict;
 
+  virtual bool GetSslRole(talk_base::SSLRole* ssl_role) const;
+
  protected:
   // These are called by Create/DestroyChannel above in order to create or
   // destroy the appropriate type of channel.
@@ -348,6 +347,8 @@ class Transport : public talk_base::MessageHandler,
     return remote_description_.get();
   }
 
+  virtual void SetIdentity_w(talk_base::SSLIdentity* identity) {}
+
   // Pushes down the transport parameters from the local description, such
   // as the ICE ufrag and pwd.
   // Derived classes can override, but must call the base as well.
@@ -368,8 +369,12 @@ class Transport : public talk_base::MessageHandler,
   // Pushes down the transport parameters obtained via negotiation.
   // Derived classes can set their specific parameters here, but must call the
   // base as well.
-  virtual void ApplyNegotiatedTransportDescription_w(
+  virtual bool ApplyNegotiatedTransportDescription_w(
       TransportChannelImpl* channel);
+
+  virtual bool GetSslRole_w(talk_base::SSLRole* ssl_role) const {
+    return false;
+  }
 
  private:
   struct ChannelMapEntry {
@@ -450,7 +455,7 @@ class Transport : public talk_base::MessageHandler,
 
   void OnChannelCandidateReady_s();
 
-  void SetRole_w(TransportRole role);
+  void SetIceRole_w(IceRole role);
   void SetRemoteIceMode_w(IceMode mode);
   bool SetLocalTransportDescription_w(const TransportDescription& desc,
                                       ContentAction action);
@@ -468,7 +473,7 @@ class Transport : public talk_base::MessageHandler,
   TransportState writable_;
   bool was_writable_;
   bool connect_requested_;
-  TransportRole role_;
+  IceRole ice_role_;
   uint64 tiebreaker_;
   TransportProtocol protocol_;
   IceMode remote_ice_mode_;

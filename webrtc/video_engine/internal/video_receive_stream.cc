@@ -28,7 +28,7 @@ namespace internal {
 
 VideoReceiveStream::VideoReceiveStream(
     webrtc::VideoEngine* video_engine,
-    const newapi::VideoReceiveStream::Config& config,
+    const VideoReceiveStream::Config& config,
     newapi::Transport* transport)
     : transport_(transport), config_(config), channel_(-1) {
   video_engine_base_ = ViEBase::GetInterface(video_engine);
@@ -41,6 +41,8 @@ VideoReceiveStream::VideoReceiveStream(
 
   // TODO(pbos): This is not fine grained enough...
   rtp_rtcp_->SetNACKStatus(channel_, config_.rtp.nack.rtp_history_ms > 0);
+  rtp_rtcp_->SetKeyFrameRequestMethod(channel_,
+                                      kViEKeyFrameRequestPliRtcp);
 
   assert(config_.rtp.ssrc != 0);
 

@@ -67,13 +67,25 @@ class DataChannel : public DataChannelInterface,
   virtual void RegisterObserver(DataChannelObserver* observer);
   virtual void UnregisterObserver();
 
-  virtual std::string label() const  { return label_; }
+  virtual std::string label() const { return label_; }
   virtual bool reliable() const;
+  virtual bool ordered() const { return config_.ordered; }
+  virtual uint16 maxRetransmitTime() const {
+    return config_.maxRetransmitTime;
+  }
+  virtual uint16 maxRetransmits() const {
+    return config_.maxRetransmits;
+  }
+  virtual std::string protocol() const { return config_.protocol; }
+  virtual bool negotiated() const { return config_.negotiated; }
   virtual int id() const { return config_.id; }
   virtual uint64 buffered_amount() const;
   virtual void Close();
   virtual DataState state() const { return state_; }
   virtual bool Send(const DataBuffer& buffer);
+  // Send a control message right now, or queue for later.
+  virtual bool SendControl(const talk_base::Buffer* buffer);
+  void ConnectToDataSession();
 
   // Set the SSRC this channel should use to receive data from the
   // underlying data engine.
@@ -89,6 +101,10 @@ class DataChannel : public DataChannelInterface,
   // Called if the underlying data engine is closing.
   void OnDataEngineClose();
 
+  // Called when the channel's ready to use.  That can happen when the
+  // underlying DataMediaChannel becomes ready, or when this channel is a new
+  // stream on an existing DataMediaChannel, and we've finished negotiation.
+  void OnChannelReady(bool writable);
  protected:
   DataChannel(WebRtcSession* session, const std::string& label);
   virtual ~DataChannel();
@@ -100,18 +116,19 @@ class DataChannel : public DataChannelInterface,
   void OnDataReceived(cricket::DataChannel* channel,
                       const cricket::ReceiveDataParams& params,
                       const talk_base::Buffer& payload);
-  void OnChannelReady(bool writable);
 
  private:
   void DoClose();
   void UpdateState();
   void SetState(DataState state);
-  void ConnectToDataSession();
   void DisconnectFromDataSession();
   bool IsConnectedToDataSession() { return data_session_ != NULL; }
+  void DeliverQueuedControlData();
+  void QueueControl(const talk_base::Buffer* buffer);
+  void ClearQueuedControlData();
   void DeliverQueuedReceivedData();
   void ClearQueuedReceivedData();
-  void SendQueuedSendData();
+  void DeliverQueuedSendData();
   void ClearQueuedSendData();
   bool InternalSendWithoutQueueing(const DataBuffer& buffer,
                                    cricket::SendDataResult* send_result);
@@ -128,6 +145,9 @@ class DataChannel : public DataChannelInterface,
   uint32 send_ssrc_;
   bool receive_ssrc_set_;
   uint32 receive_ssrc_;
+  // Control messages that always have to get sent out before any queued
+  // data.
+  std::queue<const talk_base::Buffer*> queued_control_data_;
   std::queue<DataBuffer*> queued_received_data_;
   std::deque<DataBuffer*> queued_send_data_;
 };
@@ -148,6 +168,11 @@ BEGIN_PROXY_MAP(DataChannel)
   PROXY_METHOD0(void, UnregisterObserver)
   PROXY_CONSTMETHOD0(std::string, label)
   PROXY_CONSTMETHOD0(bool, reliable)
+  PROXY_CONSTMETHOD0(bool, ordered)
+  PROXY_CONSTMETHOD0(uint16, maxRetransmitTime)
+  PROXY_CONSTMETHOD0(uint16, maxRetransmits)
+  PROXY_CONSTMETHOD0(std::string, protocol)
+  PROXY_CONSTMETHOD0(bool, negotiated)
   PROXY_CONSTMETHOD0(int, id)
   PROXY_CONSTMETHOD0(DataState, state)
   PROXY_CONSTMETHOD0(uint64, buffered_amount)

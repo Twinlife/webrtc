@@ -74,7 +74,6 @@ class RawTransportChannel : public TransportChannelImpl,
                                  const std::string& ice_pwd) {}
   virtual void SetRemoteIceCredentials(const std::string& ice_ufrag,
                                        const std::string& ice_pwd) {}
-  virtual TransportRole GetRole() const { return ROLE_UNKNOWN; }
 
   // Creates an allocator session to start figuring out which type of
   // port we should send to the other client.  This will send
@@ -94,12 +93,62 @@ class RawTransportChannel : public TransportChannelImpl,
   void OnRemoteAddress(const talk_base::SocketAddress& remote_address);
 
   // Below ICE specific virtual methods not implemented.
-  virtual void SetRole(TransportRole role) {}
-  virtual void SetTiebreaker(uint64 tiebreaker) {}
+  virtual IceRole GetIceRole() const { return ICEROLE_UNKNOWN; }
+  virtual void SetIceRole(IceRole role) {}
+  virtual void SetIceTiebreaker(uint64 tiebreaker) {}
   virtual void SetIceProtocolType(IceProtocolType type) {}
   virtual void SetIceUfrag(const std::string& ice_ufrag) {}
   virtual void SetIcePwd(const std::string& ice_pwd) {}
   virtual void SetRemoteIceMode(IceMode mode) {}
+
+  virtual bool GetStats(ConnectionInfos* infos) {
+    return false;
+  }
+
+  // DTLS methods.
+  virtual bool IsDtlsActive() const { return false; }
+
+  // Default implementation.
+  virtual bool GetSslRole(talk_base::SSLRole* role) const {
+    return false;
+  }
+
+  virtual bool SetSslRole(talk_base::SSLRole role) {
+    return false;
+  }
+
+  // Set up the ciphers to use for DTLS-SRTP.
+  virtual bool SetSrtpCiphers(const std::vector<std::string>& ciphers) {
+    return false;
+  }
+
+  // Find out which DTLS-SRTP cipher was negotiated
+  virtual bool GetSrtpCipher(std::string* cipher) {
+    return false;
+  }
+
+  // Allows key material to be extracted for external encryption.
+  virtual bool ExportKeyingMaterial(
+      const std::string& label,
+      const uint8* context,
+      size_t context_len,
+      bool use_context,
+      uint8* result,
+      size_t result_len) {
+    return false;
+  }
+
+  virtual bool SetLocalIdentity(talk_base::SSLIdentity* identity) {
+    return false;
+  }
+
+  // Set DTLS Remote fingerprint. Must be after local identity set.
+  virtual bool SetRemoteFingerprint(
+    const std::string& digest_alg,
+    const uint8* digest,
+    size_t digest_len) {
+    return false;
+  }
 
  private:
   RawTransport* raw_transport_;

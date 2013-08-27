@@ -24,6 +24,7 @@ class ViEBase;
 class ViECapture;
 class ViECodec;
 class ViEExternalCapture;
+class ViEExternalCodec;
 class ViENetwork;
 class ViERTP_RTCP;
 
@@ -31,21 +32,21 @@ namespace internal {
 
 class ResolutionAdaptor;
 
-class VideoSendStream : public newapi::VideoSendStream,
-                        public newapi::VideoSendStreamInput,
+class VideoSendStream : public webrtc::VideoSendStream,
+                        public VideoSendStreamInput,
                         public webrtc::Transport {
  public:
   VideoSendStream(newapi::Transport* transport,
                   bool overuse_detection,
                   webrtc::VideoEngine* video_engine,
-                  const newapi::VideoSendStream::Config& config);
+                  const VideoSendStream::Config& config);
 
   virtual ~VideoSendStream();
 
   virtual void PutFrame(const I420VideoFrame& frame,
                         uint32_t time_since_capture_ms) OVERRIDE;
 
-  virtual newapi::VideoSendStreamInput* Input() OVERRIDE;
+  virtual VideoSendStreamInput* Input() OVERRIDE;
 
   virtual void StartSend() OVERRIDE;
 
@@ -68,12 +69,13 @@ class VideoSendStream : public newapi::VideoSendStream,
 
  private:
   newapi::Transport* transport_;
-  newapi::VideoSendStream::Config config_;
+  VideoSendStream::Config config_;
 
   ViEBase* video_engine_base_;
   ViECapture* capture_;
   ViECodec* codec_;
   ViEExternalCapture* external_capture_;
+  ViEExternalCodec* external_codec_;
   ViENetwork* network_;
   ViERTP_RTCP* rtp_rtcp_;
 

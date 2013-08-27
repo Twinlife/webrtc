@@ -246,7 +246,7 @@ int ViECodecImpl::SetSendCodec(const int video_channel,
   shared_data_->channel_manager()->UpdateSsrcs(video_channel, ssrcs);
 
   // Update the protection mode, we might be switching NACK/FEC.
-  vie_encoder->UpdateProtectionMethod();
+  vie_encoder->UpdateProtectionMethod(vie_encoder->nack_enabled());
 
   // Get new best format for frame provider.
   ViEFrameProviderBase* frame_provider = is.FrameProvider(vie_encoder);
@@ -687,6 +687,25 @@ int ViECodecImpl::WaitForFirstKeyFrame(const int video_channel,
     shared_data_->SetLastError(kViECodecUnknownError);
     return -1;
   }
+  return 0;
+}
+
+int ViECodecImpl::SetDecodeErrorMode(const int video_channel,
+                                     const ViEDecodeErrorMode error_mode) {
+  WEBRTC_TRACE(kTraceApiCall, kTraceVideo,
+               ViEId(shared_data_->instance_id(), video_channel),
+               "%s(channel: %d)", __FUNCTION__, video_channel);
+
+  ViEChannelManagerScoped cs(*(shared_data_->channel_manager()));
+  ViEChannel* vie_channel = cs.Channel(video_channel);
+  if (!vie_channel) {
+    WEBRTC_TRACE(kTraceError, kTraceVideo,
+                 ViEId(shared_data_->instance_id(), video_channel),
+                 "%s: Channel %d does not exist", __FUNCTION__, video_channel);
+    shared_data_->SetLastError(kViEBaseInvalidChannelId);
+    return -1;
+  }
+  vie_channel->SetDecodeErrorMode(error_mode);
   return 0;
 }
 

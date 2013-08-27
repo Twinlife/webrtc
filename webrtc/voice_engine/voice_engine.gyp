@@ -57,8 +57,6 @@
         'channel.h',
         'channel_manager.cc',
         'channel_manager.h',
-        'channel_manager_base.cc',
-        'channel_manager_base.h',
         'dtmf_inband.cc',
         'dtmf_inband.h',
         'dtmf_inband_queue.cc',
@@ -166,7 +164,7 @@
             'voice_engine',
             '<(DEPTH)/testing/gmock.gyp:gmock',
             '<(DEPTH)/testing/gtest.gyp:gtest',
-            '<(DEPTH)/third_party/google-gflags/google-gflags.gyp:google-gflags',
+            '<(DEPTH)/third_party/gflags/gflags.gyp:gflags',
             '<(webrtc_root)/system_wrappers/source/system_wrappers.gyp:system_wrappers',
             '<(webrtc_root)/test/libtest/libtest.gyp:libtest',
             '<(webrtc_root)/test/test.gyp:channel_transport',
@@ -318,6 +316,38 @@
               'type': 'none',
               'dependencies': [
                 '<(apk_tests_path):voice_engine_unittests_apk',
+              ],
+            },
+          ],
+        }],
+        ['test_isolation_mode != "noop"', {
+          'targets': [
+            {
+              'target_name': 'voice_engine_unittests_run',
+              'type': 'none',
+              'dependencies': [
+                '<(import_isolate_path):import_isolate_gypi',
+                'voice_engine_unittests',
+              ],
+              'includes': [
+                'voice_engine_unittests.isolate',
+              ],
+              'sources': [
+                'voice_engine_unittests.isolate',
+              ],
+            },
+            {
+              'target_name': 'voe_auto_test_run',
+              'type': 'none',
+              'dependencies': [
+                '<(import_isolate_path):import_isolate_gypi',
+                'voe_auto_test',
+              ],
+              'includes': [
+                'voe_auto_test.isolate',
+              ],
+              'sources': [
+                'voe_auto_test.isolate',
               ],
             },
           ],

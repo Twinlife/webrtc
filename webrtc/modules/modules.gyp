@@ -166,12 +166,12 @@
             'remote_bitrate_estimator/bitrate_estimator_unittest.cc',
             'remote_bitrate_estimator/rtp_to_ntp_unittest.cc',
             'rtp_rtcp/source/mock/mock_rtp_payload_strategy.h',
-            'rtp_rtcp/source/mock/mock_rtp_receiver_video.h',
             'rtp_rtcp/source/fec_test_helper.cc',
             'rtp_rtcp/source/fec_test_helper.h',
             'rtp_rtcp/source/nack_rtx_unittest.cc',
             'rtp_rtcp/source/producer_fec_unittest.cc',
             'rtp_rtcp/source/receiver_fec_unittest.cc',
+            'rtp_rtcp/source/receive_statistics_unittest.cc',
             'rtp_rtcp/source/rtcp_format_remb_unittest.cc',
             'rtp_rtcp/source/rtcp_sender_unittest.cc',
             'rtp_rtcp/source/rtcp_receiver_unittest.cc',
@@ -258,7 +258,7 @@
           ],
         },
         {
-          'target_name': 'modules_integrationtests',
+          'target_name': 'modules_tests',
           'type': '<(gtest_target_type)',
           'dependencies': [
             'audio_coding_module',
@@ -327,10 +327,42 @@
               ],
             },
             {
-              'target_name': 'modules_integrationtests_apk_target',
+              'target_name': 'modules_tests_apk_target',
               'type': 'none',
               'dependencies': [
-                '<(apk_tests_path):modules_integrationtests_apk',
+                '<(apk_tests_path):modules_tests_apk',
+              ],
+            },
+          ],
+        }],
+        ['test_isolation_mode != "noop"', {
+          'targets': [
+            {
+              'target_name': 'modules_tests_run',
+              'type': 'none',
+              'dependencies': [
+                '<(import_isolate_path):import_isolate_gypi',
+                'modules_tests',
+              ],
+              'includes': [
+                'modules_tests.isolate',
+              ],
+              'sources': [
+                'modules_tests.isolate',
+              ],
+            },
+            {
+              'target_name': 'modules_unittests_run',
+              'type': 'none',
+              'dependencies': [
+                '<(import_isolate_path):import_isolate_gypi',
+                'modules_unittests',
+              ],
+              'includes': [
+                'modules_unittests.isolate',
+              ],
+              'sources': [
+                'modules_unittests.isolate',
               ],
             },
           ],

@@ -61,13 +61,10 @@ class TransportChannel : public sigslot::has_slots<> {
         readable_(false), writable_(false) {}
   virtual ~TransportChannel() {}
 
+  // TODO(mallinath) - Remove this API, as it's no longer useful.
   // Returns the session id of this channel.
-  virtual const std::string& SessionId() const { return session_id_; }
-  // Sets session id which created this transport channel.
-  // This is called from TransportProxy::GetOrCreateImpl.
-  virtual void SetSessionId(const std::string& session_id) {
-    session_id_ = session_id;
-  }
+  virtual const std::string SessionId() const { return std::string(); }
+
   const std::string& content_name() const { return content_name_; }
   int component() const { return component_; }
 
@@ -92,28 +89,20 @@ class TransportChannel : public sigslot::has_slots<> {
   // Returns the most recent error that occurred on this channel.
   virtual int GetError() = 0;
 
-  // Returns current transportchannel ICE role.
-  virtual TransportRole GetRole() const = 0;
-
   // Returns the current stats for this connection.
-  virtual bool GetStats(ConnectionInfos* infos) {
-    return false;
-  }
+  virtual bool GetStats(ConnectionInfos* infos) = 0;
 
   // Is DTLS active?
-  virtual bool IsDtlsActive() const {
-    return false;
-  }
+  virtual bool IsDtlsActive() const = 0;
+
+  // Default implementation.
+  virtual bool GetSslRole(talk_base::SSLRole* role) const = 0;
 
   // Set up the ciphers to use for DTLS-SRTP.
-  virtual bool SetSrtpCiphers(const std::vector<std::string>& ciphers) {
-    return false;
-  }
+  virtual bool SetSrtpCiphers(const std::vector<std::string>& ciphers) = 0;
 
   // Find out which DTLS-SRTP cipher was negotiated
-  virtual bool GetSrtpCipher(std::string* cipher) {
-    return false;
-  }
+  virtual bool GetSrtpCipher(std::string* cipher) = 0;
 
   // Allows key material to be extracted for external encryption.
   virtual bool ExportKeyingMaterial(const std::string& label,
@@ -121,9 +110,7 @@ class TransportChannel : public sigslot::has_slots<> {
       size_t context_len,
       bool use_context,
       uint8* result,
-      size_t result_len) {
-    return false;
-  }
+      size_t result_len) = 0;
 
   // Signalled each time a packet is received on this channel.
   sigslot::signal4<TransportChannel*, const char*,
@@ -149,7 +136,6 @@ class TransportChannel : public sigslot::has_slots<> {
 
 
  private:
-  std::string session_id_;
   // Used mostly for debugging.
   std::string content_name_;
   int component_;

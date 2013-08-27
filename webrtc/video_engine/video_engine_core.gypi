@@ -117,7 +117,6 @@
         # New VideoEngine API
         'internal/video_call.cc',
         'internal/video_call.h',
-        'internal/video_engine.cc',
         'internal/video_receive_stream.cc',
         'internal/video_receive_stream.h',
         'internal/video_send_stream.cc',
@@ -125,7 +124,7 @@
         'new_include/config.h',
         'new_include/frame_callback.h',
         'new_include/transport.h',
-        'new_include/video_engine.h',
+        'new_include/video_call.h',
         'new_include/video_receive_stream.h',
         'new_include/video_renderer.h',
         'new_include/video_send_stream.h',
@@ -179,6 +178,24 @@
               'type': 'none',
               'dependencies': [
                 '<(apk_tests_path):video_engine_core_unittests_apk',
+              ],
+            },
+          ],
+        }],
+        ['test_isolation_mode != "noop"', {
+          'targets': [
+            {
+              'target_name': 'video_engine_core_unittests_run',
+              'type': 'none',
+              'dependencies': [
+                '<(import_isolate_path):import_isolate_gypi',
+                'video_engine_core_unittests',
+              ],
+              'includes': [
+                'video_engine_core_unittests.isolate',
+              ],
+              'sources': [
+                'video_engine_core_unittests.isolate',
               ],
             },
           ],

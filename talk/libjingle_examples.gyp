@@ -218,7 +218,7 @@
       ], # targets
     }],  # OS=="linux" or OS=="win"
 
-    ['libjingle_objc==1 and OS=="ios"', {
+    ['OS=="ios"', {
       'targets': [
         {
           'target_name': 'AppRTCDemo',
@@ -266,16 +266,33 @@
               # Ideally app signing would be a part of gyp.
               # Delete if/when that comes to pass.
               'postbuild_name': 'Sign AppRTCDemo',
-              'action': [
-                '/usr/bin/codesign', '-v', '--force', '--sign',
-                '<!(security find-identity -p codesigning -v | grep "iPhone Developer" | awk \'{print $2}\')',
-                '${BUILT_PRODUCTS_DIR}/AppRTCDemo.app',
+              'variables': {
+                'variables': {
+                  'key_id%': '<!(security find-identity -p codesigning -v | grep "iPhone Developer" | awk \'{print $2}\')',
+                },
+                'key_id%': '<(key_id)',
+                # Total HACK to give a more informative message when multiple
+                # codesigning keys are present in the default keychain.  Ideally
+                # we could pick more intelligently among the keys, but as a
+                # first cut just tell the developer to specify a key identity
+                # explicitly.
+                'ensure_single_key': '<!(python -c "assert \'\\n\' not in \'\'\'<(key_id)\'\'\', \'key_id gyp variable needs to be set explicitly because there are multiple codesigning keys!\'")',
+              },
+              'conditions': [
+                ['key_id==""', {
+                  'action': [ 'echo', 'Skipping signing' ],
+                }, {
+                  'action': [
+                    '/usr/bin/codesign', '-v', '--force', '--sign', '<(key_id)',
+                    '${BUILT_PRODUCTS_DIR}/AppRTCDemo.app',
+                  ],
+                }],
               ],
             },
           ],
         },  # target AppRTCDemo
       ],  # targets
-    }],  # libjingle_objc==1
+    }],  # OS=="ios"
 
     ['OS=="android"', {
       'targets': [

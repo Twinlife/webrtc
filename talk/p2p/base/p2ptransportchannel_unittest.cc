@@ -134,8 +134,8 @@ class P2PTransportChannelTestBase : public testing::Test,
         socks_server2_(ss_.get(), kSocksProxyAddrs[1],
                        ss_.get(), kSocksProxyAddrs[1]),
         clear_remote_candidates_ufrag_pwd_(false) {
-    ep1_.role_ = cricket::ROLE_CONTROLLING;
-    ep2_.role_ = cricket::ROLE_CONTROLLED;
+    ep1_.role_ = cricket::ICEROLE_CONTROLLING;
+    ep2_.role_ = cricket::ICEROLE_CONTROLLED;
     ep1_.allocator_.reset(new cricket::BasicPortAllocator(
         &ep1_.network_manager_, kStunAddr, kRelayUdpIntAddr,
         kRelayTcpIntAddr, kRelaySslTcpIntAddr));
@@ -198,7 +198,7 @@ class P2PTransportChannelTestBase : public testing::Test,
   };
 
   struct Endpoint {
-    Endpoint() : signaling_delay_(0), role_(cricket::ROLE_UNKNOWN),
+    Endpoint() : signaling_delay_(0), role_(cricket::ICEROLE_UNKNOWN),
         tiebreaker_(0), role_conflict_(false),
         protocol_type_(cricket::ICEPROTO_GOOGLE) {}
     bool HasChannel(cricket::TransportChannel* ch) {
@@ -213,18 +213,21 @@ class P2PTransportChannelTestBase : public testing::Test,
     }
     void SetSignalingDelay(int delay) { signaling_delay_ = delay; }
 
-    void SetRole(cricket::TransportRole role) { role_ = role; }
-    cricket::TransportRole role() { return role_; }
+    void SetIceRole(cricket::IceRole role) { role_ = role; }
+    cricket::IceRole ice_role() { return role_; }
     void SetIceProtocolType(cricket::IceProtocolType type) {
       protocol_type_ = type;
     }
     cricket::IceProtocolType protocol_type() { return protocol_type_; }
-    void SetTiebreaker(uint64 tiebreaker) { tiebreaker_ = tiebreaker; }
-    uint64 GetTiebreaker() { return tiebreaker_; }
+    void SetIceTiebreaker(uint64 tiebreaker) { tiebreaker_ = tiebreaker; }
+    uint64 GetIceTiebreaker() { return tiebreaker_; }
     void OnRoleConflict(bool role_conflict) { role_conflict_ = role_conflict; }
     bool role_conflict() { return role_conflict_; }
     void SetAllocationStepDelay(uint32 delay) {
       allocator_->set_step_delay(delay);
+    }
+    void SetAllowTcpListen(bool allow_tcp_listen) {
+      allocator_->set_allow_tcp_listen(allow_tcp_listen);
     }
 
     talk_base::FakeNetworkManager network_manager_;
@@ -232,7 +235,7 @@ class P2PTransportChannelTestBase : public testing::Test,
     ChannelData cd1_;
     ChannelData cd2_;
     int signaling_delay_;
-    cricket::TransportRole role_;
+    cricket::IceRole role_;
     uint64 tiebreaker_;
     bool role_conflict_;
     cricket::IceProtocolType protocol_type_;
@@ -314,8 +317,8 @@ class P2PTransportChannelTestBase : public testing::Test,
       // candidates.  Some unit tests rely on this not being set.
       channel->SetRemoteIceCredentials(remote_ice_ufrag, remote_ice_pwd);
     }
-    channel->SetRole(GetEndpoint(endpoint)->role());
-    channel->SetTiebreaker(GetEndpoint(endpoint)->GetTiebreaker());
+    channel->SetIceRole(GetEndpoint(endpoint)->ice_role());
+    channel->SetIceTiebreaker(GetEndpoint(endpoint)->GetIceTiebreaker());
     channel->Connect();
     return channel;
   }
@@ -386,17 +389,20 @@ class P2PTransportChannelTestBase : public testing::Test,
   void SetIceProtocol(int endpoint, cricket::IceProtocolType type) {
     GetEndpoint(endpoint)->SetIceProtocolType(type);
   }
-  void SetIceRole(int endpoint, cricket::TransportRole role) {
-    GetEndpoint(endpoint)->SetRole(role);
+  void SetIceRole(int endpoint, cricket::IceRole role) {
+    GetEndpoint(endpoint)->SetIceRole(role);
   }
-  void SetTiebreaker(int endpoint, uint64 tiebreaker) {
-    GetEndpoint(endpoint)->SetTiebreaker(tiebreaker);
+  void SetIceTiebreaker(int endpoint, uint64 tiebreaker) {
+    GetEndpoint(endpoint)->SetIceTiebreaker(tiebreaker);
   }
   bool GetRoleConflict(int endpoint) {
     return GetEndpoint(endpoint)->role_conflict();
   }
   void SetAllocationStepDelay(int endpoint, uint32 delay) {
     return GetEndpoint(endpoint)->SetAllocationStepDelay(delay);
+  }
+  void SetAllowTcpListen(int endpoint, bool allow_tcp_listen) {
+    return GetEndpoint(endpoint)->SetAllowTcpListen(allow_tcp_listen);
   }
 
   void Test(const Result& expected) {
@@ -551,11 +557,11 @@ class P2PTransportChannelTestBase : public testing::Test,
 
   void TestSignalRoleConflict() {
     SetIceProtocol(0, cricket::ICEPROTO_RFC5245);
-    SetTiebreaker(0, kTiebreaker1);  // Default EP1 is in controlling state.
+    SetIceTiebreaker(0, kTiebreaker1);  // Default EP1 is in controlling state.
 
     SetIceProtocol(1, cricket::ICEPROTO_RFC5245);
-    SetIceRole(1, cricket::ROLE_CONTROLLING);
-    SetTiebreaker(1, kTiebreaker2);
+    SetIceRole(1, cricket::ICEROLE_CONTROLLING);
+    SetIceTiebreaker(1, kTiebreaker2);
 
     // Creating channels with both channels role set to CONTROLLING.
     CreateChannels(1);
@@ -595,9 +601,9 @@ class P2PTransportChannelTestBase : public testing::Test,
       c.set_password("");
     }
     LOG(LS_INFO) << "Candidate(" << data->channel->component() << "->"
-                 << rch->component() << "): " << c.type() << ", " << c.protocol()
-                 << ", " << c.address().ToString() << ", " << c.username()
-                 << ", " << c.generation();
+                 << rch->component() << "): " << c.type() << ", "
+                 << c.protocol() << ", " << c.address().ToString() << ", "
+                 << c.username() << ", " << c.generation();
     rch->OnCandidate(c);
   }
   void OnReadPacket(cricket::TransportChannel* channel, const char* data,
@@ -607,10 +613,10 @@ class P2PTransportChannelTestBase : public testing::Test,
   }
   void OnRoleConflict(cricket::TransportChannelImpl* channel) {
     GetEndpoint(channel)->OnRoleConflict(true);
-    cricket::TransportRole new_role =
-        GetEndpoint(channel)->role() == cricket::ROLE_CONTROLLING ?
-            cricket::ROLE_CONTROLLED : cricket::ROLE_CONTROLLING;
-    channel->SetRole(new_role);
+    cricket::IceRole new_role =
+        GetEndpoint(channel)->ice_role() == cricket::ICEROLE_CONTROLLING ?
+            cricket::ICEROLE_CONTROLLED : cricket::ICEROLE_CONTROLLING;
+    channel->SetIceRole(new_role);
   }
   int SendData(cricket::TransportChannel* channel,
                const char* data, size_t len) {
@@ -1222,6 +1228,207 @@ TEST_F(P2PTransportChannelTest, IncomingOnlyOpen) {
   DestroyChannels();
 }
 
+TEST_F(P2PTransportChannelTest, TestTcpConnectionsFromActiveToPassive) {
+  AddAddress(0, kPublicAddrs[0]);
+  AddAddress(1, kPublicAddrs[1]);
+
+  SetAllocationStepDelay(0, kMinimumStepDelay);
+  SetAllocationStepDelay(1, kMinimumStepDelay);
+
+  int kOnlyLocalTcpPorts = cricket::PORTALLOCATOR_DISABLE_UDP |
+                           cricket::PORTALLOCATOR_DISABLE_STUN |
+                           cricket::PORTALLOCATOR_DISABLE_RELAY |
+                           cricket::PORTALLOCATOR_ENABLE_SHARED_UFRAG;
+  // Disable all protocols except TCP.
+  SetAllocatorFlags(0, kOnlyLocalTcpPorts);
+  SetAllocatorFlags(1, kOnlyLocalTcpPorts);
+
+  SetAllowTcpListen(0, true);   // actpass.
+  SetAllowTcpListen(1, false);  // active.
+
+  CreateChannels(1);
+
+  EXPECT_TRUE_WAIT(ep1_ch1()->readable() && ep1_ch1()->writable() &&
+                   ep2_ch1()->readable() && ep2_ch1()->writable(),
+                   1000);
+  EXPECT_TRUE(
+      ep1_ch1()->best_connection() && ep2_ch1()->best_connection() &&
+      LocalCandidate(ep1_ch1())->address().EqualIPs(kPublicAddrs[0]) &&
+      RemoteCandidate(ep1_ch1())->address().EqualIPs(kPublicAddrs[1]));
+
+  std::string kTcpProtocol = "tcp";
+  EXPECT_EQ(kTcpProtocol, RemoteCandidate(ep1_ch1())->protocol());
+  EXPECT_EQ(kTcpProtocol, LocalCandidate(ep1_ch1())->protocol());
+  EXPECT_EQ(kTcpProtocol, RemoteCandidate(ep2_ch1())->protocol());
+  EXPECT_EQ(kTcpProtocol, LocalCandidate(ep2_ch1())->protocol());
+
+  TestSendRecv(1);
+  DestroyChannels();
+}
+
+TEST_F(P2PTransportChannelTest, TestBundleAllocatorToBundleAllocator) {
+  AddAddress(0, kPublicAddrs[0]);
+  AddAddress(1, kPublicAddrs[1]);
+  SetAllocatorFlags(0, cricket::PORTALLOCATOR_ENABLE_BUNDLE);
+  SetAllocatorFlags(1, cricket::PORTALLOCATOR_ENABLE_BUNDLE);
+
+  CreateChannels(2);
+
+  EXPECT_TRUE_WAIT(ep1_ch1()->readable() &&
+                   ep1_ch1()->writable() &&
+                   ep2_ch1()->readable() &&
+                   ep2_ch1()->writable(),
+                   1000);
+  EXPECT_TRUE(ep1_ch1()->best_connection() &&
+              ep2_ch1()->best_connection());
+
+  EXPECT_FALSE(ep1_ch2()->readable());
+  EXPECT_FALSE(ep1_ch2()->writable());
+  EXPECT_FALSE(ep2_ch2()->readable());
+  EXPECT_FALSE(ep2_ch2()->writable());
+
+  TestSendRecv(1);  // Only 1 channel is writable per Endpoint.
+  DestroyChannels();
+}
+
+TEST_F(P2PTransportChannelTest, TestBundleAllocatorToNonBundleAllocator) {
+  AddAddress(0, kPublicAddrs[0]);
+  AddAddress(1, kPublicAddrs[1]);
+  // Enable BUNDLE flag at one side.
+  SetAllocatorFlags(0, cricket::PORTALLOCATOR_ENABLE_BUNDLE);
+
+  CreateChannels(2);
+
+  EXPECT_TRUE_WAIT(ep1_ch1()->readable() &&
+                   ep1_ch1()->writable() &&
+                   ep2_ch1()->readable() &&
+                   ep2_ch1()->writable(),
+                   1000);
+  EXPECT_TRUE_WAIT(ep1_ch2()->readable() &&
+                   ep1_ch2()->writable() &&
+                   ep2_ch2()->readable() &&
+                   ep2_ch2()->writable(),
+                   1000);
+
+  EXPECT_TRUE(ep1_ch1()->best_connection() &&
+              ep2_ch1()->best_connection());
+  EXPECT_TRUE(ep1_ch2()->best_connection() &&
+              ep2_ch2()->best_connection());
+
+  TestSendRecv(2);
+  DestroyChannels();
+}
+
+TEST_F(P2PTransportChannelTest, TestIceRoleConflictWithoutBundle) {
+  AddAddress(0, kPublicAddrs[0]);
+  AddAddress(1, kPublicAddrs[1]);
+  TestSignalRoleConflict();
+}
+
+TEST_F(P2PTransportChannelTest, TestIceRoleConflictWithBundle) {
+  AddAddress(0, kPublicAddrs[0]);
+  AddAddress(1, kPublicAddrs[1]);
+  SetAllocatorFlags(0, cricket::PORTALLOCATOR_ENABLE_BUNDLE);
+  SetAllocatorFlags(1, cricket::PORTALLOCATOR_ENABLE_BUNDLE);
+  TestSignalRoleConflict();
+}
+
+// Tests that the ice configs (protocol, tiebreaker and role) can be passed
+// down to ports.
+TEST_F(P2PTransportChannelTest, TestIceConfigWillPassDownToPort) {
+  AddAddress(0, kPublicAddrs[0]);
+  AddAddress(1, kPublicAddrs[1]);
+
+  SetIceRole(0, cricket::ICEROLE_CONTROLLING);
+  SetIceProtocol(0, cricket::ICEPROTO_GOOGLE);
+  SetIceTiebreaker(0, kTiebreaker1);
+  SetIceRole(1, cricket::ICEROLE_CONTROLLING);
+  SetIceProtocol(1, cricket::ICEPROTO_RFC5245);
+  SetIceTiebreaker(1, kTiebreaker2);
+
+  CreateChannels(1);
+
+  EXPECT_EQ_WAIT(2u, ep1_ch1()->ports().size(), 1000);
+
+  const std::vector<cricket::PortInterface *> ports_before = ep1_ch1()->ports();
+  for (size_t i = 0; i < ports_before.size(); ++i) {
+    EXPECT_EQ(cricket::ICEROLE_CONTROLLING, ports_before[i]->GetIceRole());
+    EXPECT_EQ(cricket::ICEPROTO_GOOGLE, ports_before[i]->IceProtocol());
+    EXPECT_EQ(kTiebreaker1, ports_before[i]->IceTiebreaker());
+  }
+
+  ep1_ch1()->SetIceRole(cricket::ICEROLE_CONTROLLED);
+  ep1_ch1()->SetIceProtocolType(cricket::ICEPROTO_RFC5245);
+  ep1_ch1()->SetIceTiebreaker(kTiebreaker2);
+
+  const std::vector<cricket::PortInterface *> ports_after = ep1_ch1()->ports();
+  for (size_t i = 0; i < ports_after.size(); ++i) {
+    EXPECT_EQ(cricket::ICEROLE_CONTROLLED, ports_before[i]->GetIceRole());
+    EXPECT_EQ(cricket::ICEPROTO_RFC5245, ports_before[i]->IceProtocol());
+    // SetIceTiebreaker after Connect() has been called will fail. So expect the
+    // original value.
+    EXPECT_EQ(kTiebreaker1, ports_before[i]->IceTiebreaker());
+  }
+
+  EXPECT_TRUE_WAIT(ep1_ch1()->readable() &&
+                   ep1_ch1()->writable() &&
+                   ep2_ch1()->readable() &&
+                   ep2_ch1()->writable(),
+                   1000);
+
+  EXPECT_TRUE(ep1_ch1()->best_connection() &&
+              ep2_ch1()->best_connection());
+
+  TestSendRecv(1);
+  DestroyChannels();
+}
+
+// Test that channel will handle connectivity checks received before the
+// candidates received and channel has remote ice credentials.
+TEST_F(P2PTransportChannelTest, TestSlowSignalingAsIce) {
+  set_clear_remote_candidates_ufrag_pwd(true);
+  AddAddress(0, kPublicAddrs[0]);
+  AddAddress(1, kPublicAddrs[1]);
+
+  // Disable all protocols except TCP.
+  SetAllocatorFlags(0, cricket::PORTALLOCATOR_ENABLE_SHARED_UFRAG);
+  SetAllocatorFlags(1, cricket::PORTALLOCATOR_ENABLE_SHARED_UFRAG);
+
+  SetIceRole(0, cricket::ICEROLE_CONTROLLING);
+  SetIceProtocol(0, cricket::ICEPROTO_RFC5245);
+  SetIceTiebreaker(0, kTiebreaker1);
+  SetIceRole(1, cricket::ICEROLE_CONTROLLED);
+  SetIceProtocol(1, cricket::ICEPROTO_RFC5245);
+  SetIceTiebreaker(1, kTiebreaker2);
+
+  // Delay handling of the candidates from Endpoint 1.
+  // Since remote ICE username and passwords are already provided during
+  // channel creation time using set_clear_remote_candidates_ufrag_pwd,
+  // channel should make a connection when it receives remote ping before
+  // candidates arrives. Channel will create connections only if remote username
+  // and passwords match with the one received in stun ping messages.
+  SetSignalingDelay(1, 1000);
+  CreateChannels(1);
+
+  EXPECT_TRUE_WAIT(ep1_ch1()->readable() &&
+                   ep1_ch1()->writable() &&
+                   ep2_ch1()->readable() &&
+                   ep2_ch1()->writable(),
+                   1000);
+
+  EXPECT_EQ(std::string(cricket::PRFLX_PORT_TYPE),
+            RemoteCandidate(ep1_ch1())->type());
+  EXPECT_EQ(std::string(cricket::LOCAL_PORT_TYPE),
+            LocalCandidate(ep1_ch1())->type());
+  EXPECT_EQ(std::string(cricket::LOCAL_PORT_TYPE),
+            RemoteCandidate(ep2_ch1())->type());
+  EXPECT_EQ(std::string(cricket::LOCAL_PORT_TYPE),
+            LocalCandidate(ep2_ch1())->type());
+
+  TestSendRecv(1);
+  DestroyChannels();
+}
+
 // Test what happens when we have 2 users behind the same NAT. This can lead
 // to interesting behavior because the STUN server will only give out the
 // address of the outermost NAT.
@@ -1342,120 +1549,4 @@ TEST_F(P2PTransportChannelMultihomedTest, TestDrain) {
       3000);
 
   DestroyChannels();
-}
-
-TEST_F(P2PTransportChannelTest, TestBundleAllocatorToBundleAllocator) {
-  AddAddress(0, kPublicAddrs[0]);
-  AddAddress(1, kPublicAddrs[1]);
-  SetAllocatorFlags(0, cricket::PORTALLOCATOR_ENABLE_BUNDLE);
-  SetAllocatorFlags(1, cricket::PORTALLOCATOR_ENABLE_BUNDLE);
-
-  CreateChannels(2);
-
-  EXPECT_TRUE_WAIT(ep1_ch1()->readable() &&
-                   ep1_ch1()->writable() &&
-                   ep2_ch1()->readable() &&
-                   ep2_ch1()->writable(),
-                   1000);
-  EXPECT_TRUE(ep1_ch1()->best_connection() &&
-              ep2_ch1()->best_connection());
-
-  EXPECT_FALSE(ep1_ch2()->readable());
-  EXPECT_FALSE(ep1_ch2()->writable());
-  EXPECT_FALSE(ep2_ch2()->readable());
-  EXPECT_FALSE(ep2_ch2()->writable());
-
-  TestSendRecv(1);  // Only 1 channel is writable per Endpoint.
-  DestroyChannels();
-}
-
-TEST_F(P2PTransportChannelTest, TestBundleAllocatorToNonBundleAllocator) {
-  AddAddress(0, kPublicAddrs[0]);
-  AddAddress(1, kPublicAddrs[1]);
-  // Enable BUNDLE flag at one side.
-  SetAllocatorFlags(0, cricket::PORTALLOCATOR_ENABLE_BUNDLE);
-
-  CreateChannels(2);
-
-  EXPECT_TRUE_WAIT(ep1_ch1()->readable() &&
-                   ep1_ch1()->writable() &&
-                   ep2_ch1()->readable() &&
-                   ep2_ch1()->writable(),
-                   1000);
-  EXPECT_TRUE_WAIT(ep1_ch2()->readable() &&
-                   ep1_ch2()->writable() &&
-                   ep2_ch2()->readable() &&
-                   ep2_ch2()->writable(),
-                   1000);
-
-  EXPECT_TRUE(ep1_ch1()->best_connection() &&
-              ep2_ch1()->best_connection());
-  EXPECT_TRUE(ep1_ch2()->best_connection() &&
-              ep2_ch2()->best_connection());
-
-  TestSendRecv(2);
-  DestroyChannels();
-}
-
-TEST_F(P2PTransportChannelTest, TestIceRoleConflictWithoutBundle) {
-  AddAddress(0, kPublicAddrs[0]);
-  AddAddress(1, kPublicAddrs[1]);
-  TestSignalRoleConflict();
-}
-
-TEST_F(P2PTransportChannelTest, TestIceRoleConflictWithBundle) {
-  AddAddress(0, kPublicAddrs[0]);
-  AddAddress(1, kPublicAddrs[1]);
-  SetAllocatorFlags(0, cricket::PORTALLOCATOR_ENABLE_BUNDLE);
-  SetAllocatorFlags(1, cricket::PORTALLOCATOR_ENABLE_BUNDLE);
-  TestSignalRoleConflict();
-}
-
-// Tests that the ice configs (protocol, tiebreaker and role can be passed down
-// to ports.
-TEST_F(P2PTransportChannelTest, TestIceConfigWillPassDownToPort) {
-  AddAddress(0, kPublicAddrs[0]);
-  AddAddress(1, kPublicAddrs[1]);
-
-  SetIceRole(0, cricket::ROLE_CONTROLLING);
-  SetIceProtocol(0, cricket::ICEPROTO_GOOGLE);
-  SetTiebreaker(0, kTiebreaker1);
-  SetIceRole(1, cricket::ROLE_CONTROLLING);
-  SetIceProtocol(1, cricket::ICEPROTO_RFC5245);
-  SetTiebreaker(1, kTiebreaker2);
-
-  CreateChannels(1);
-
-  EXPECT_EQ_WAIT(2u, ep1_ch1()->ports().size(), 1000);
-
-  const std::vector<cricket::PortInterface *> ports_before = ep1_ch1()->ports();
-  for (size_t i = 0; i < ports_before.size(); ++i) {
-    EXPECT_EQ(cricket::ROLE_CONTROLLING, ports_before[i]->Role());
-    EXPECT_EQ(cricket::ICEPROTO_GOOGLE, ports_before[i]->IceProtocol());
-    EXPECT_EQ(kTiebreaker1, ports_before[i]->Tiebreaker());
-  }
-
-  ep1_ch1()->SetRole(cricket::ROLE_CONTROLLED);
-  ep1_ch1()->SetIceProtocolType(cricket::ICEPROTO_RFC5245);
-  ep1_ch1()->SetTiebreaker(kTiebreaker2);
-
-  const std::vector<cricket::PortInterface *> ports_after = ep1_ch1()->ports();
-  for (size_t i = 0; i < ports_after.size(); ++i) {
-    EXPECT_EQ(cricket::ROLE_CONTROLLED, ports_before[i]->Role());
-    EXPECT_EQ(cricket::ICEPROTO_RFC5245, ports_before[i]->IceProtocol());
-    // SetTiebreaker after Connect() has been called will fail. So expect the
-    // original value.
-    EXPECT_EQ(kTiebreaker1, ports_before[i]->Tiebreaker());
-  }
-
-  EXPECT_TRUE_WAIT(ep1_ch1()->readable() &&
-                   ep1_ch1()->writable() &&
-                   ep2_ch1()->readable() &&
-                   ep2_ch1()->writable(),
-                   1000);
-
-  EXPECT_TRUE(ep1_ch1()->best_connection() &&
-              ep2_ch1()->best_connection());
-
-  TestSendRecv(1);
 }

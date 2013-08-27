@@ -54,6 +54,7 @@
       ],
       'sources': [
         'interface/i420_video_frame.h',
+        'interface/native_handle.h',
         'interface/texture_video_frame.h',
         'i420_video_frame.cc',
         'jpeg/include/jpeg.h',
@@ -117,6 +118,24 @@
               'type': 'none',
               'dependencies': [
                 '<(apk_tests_path):common_video_unittests_apk',
+              ],
+            },
+          ],
+        }],
+        ['test_isolation_mode != "noop"', {
+          'targets': [
+            {
+              'target_name': 'common_video_unittests_run',
+              'type': 'none',
+              'dependencies': [
+                '<(import_isolate_path):import_isolate_gypi',
+                'common_video_unittests',
+              ],
+              'includes': [
+                'common_video_unittests.isolate',
+              ],
+              'sources': [
+                'common_video_unittests.isolate',
               ],
             },
           ],

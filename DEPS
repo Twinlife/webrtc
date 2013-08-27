@@ -9,8 +9,9 @@ vars = {
   # Use this googlecode_url variable only if there is an internal mirror for it.
   # If you do not know, use the full path while defining your new deps entry.
   "googlecode_url": "http://%s.googlecode.com/svn",
+  "sourceforge_url": "http://svn.code.sf.net/p/%(repo)s/code",
   "chromium_trunk" : "http://src.chromium.org/svn/trunk",
-  "chromium_revision": "214260",
+  "chromium_revision": "217707",
 
   # A small subset of WebKit is needed for the Android Python test framework.
   "webkit_trunk": "http://src.chromium.org/blink/trunk",
@@ -41,8 +42,10 @@ deps = {
   "third_party/expat":
     Var("chromium_trunk") + "/src/third_party/expat@" + Var("chromium_revision"),
 
-  "third_party/google-gflags/src":
-    (Var("googlecode_url") % "google-gflags") + "/trunk/src@45",
+  # When rolling gflags, also update deps/third_party/webrtc/webrtc.DEPS/DEPS
+  # in Chromium's repo.
+  "third_party/gflags/src":
+    (Var("googlecode_url") % "gflags") + "/trunk/src@84",
 
   "third_party/icu/":
     From("chromium_deps", "src/third_party/icu"),
@@ -51,7 +54,7 @@ deps = {
     Var("chromium_trunk") + "/src/third_party/jsoncpp@" + Var("chromium_revision"),
 
   "third_party/jsoncpp/source":
-    "http://jsoncpp.svn.sourceforge.net/svnroot/jsoncpp/trunk/jsoncpp@248",
+    (Var("sourceforge_url") % {"repo": "jsoncpp"}) + "/trunk/jsoncpp@248",
 
   "third_party/junit/":
     (Var("googlecode_url") % "webrtc") + "/deps/third_party/junit@3367",
@@ -100,6 +103,9 @@ deps = {
 
   "tools/python":
     Var("chromium_trunk") + "/src/tools/python@" + Var("chromium_revision"),
+
+  "tools/swarm_client":
+    Var("chromium_trunk") + "/tools/swarm_client@" + Var("chromium_revision"),
 
   "tools/valgrind":
     Var("chromium_trunk") + "/src/tools/valgrind@" + Var("chromium_revision"),

@@ -44,6 +44,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.webrtc.DataChannel;
 import org.webrtc.IceCandidate;
+import org.webrtc.Logging;
 import org.webrtc.MediaConstraints;
 import org.webrtc.MediaStream;
 import org.webrtc.PeerConnection;
@@ -58,6 +59,7 @@ import org.webrtc.VideoRenderer.I420Frame;
 import org.webrtc.VideoSource;
 import org.webrtc.VideoTrack;
 
+import java.util.EnumSet;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -69,6 +71,8 @@ import java.util.List;
 public class AppRTCDemoActivity extends Activity
     implements AppRTCClient.IceServersObserver {
   private static final String TAG = "AppRTCDemoActivity";
+  private PeerConnectionFactory factory;
+  private VideoSource videoSource;
   private PeerConnection pc;
   private final PCObserver pcObserver = new PCObserver();
   private final SDPObserver sdpObserver = new SDPObserver();
@@ -97,6 +101,12 @@ public class AppRTCDemoActivity extends Activity
             System.exit(-1);
           }
         });
+
+    // Uncomment to get ALL WebRTC tracing and SENSITIVE libjingle logging.
+    // Logging.enableTracing(
+    //     "/sdcard/trace.txt",
+    //     EnumSet.of(Logging.TraceLevel.TRACE_ALL),
+    //     Logging.Severity.LS_SENSITIVE);
 
     PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
     wakeLock = powerManager.newWakeLock(
@@ -175,8 +185,7 @@ public class AppRTCDemoActivity extends Activity
 
   @Override
   public void onIceServers(List<PeerConnection.IceServer> iceServers) {
-    PeerConnectionFactory factory = new PeerConnectionFactory();
-
+    factory = new PeerConnectionFactory();
     pc = factory.createPeerConnection(
         iceServers, appRtcClient.pcConstraints(), pcObserver);
 
@@ -209,7 +218,7 @@ public class AppRTCDemoActivity extends Activity
     {
       logAndToast("Creating local video source...");
       VideoCapturer capturer = getVideoCapturer();
-      VideoSource videoSource = factory.createVideoSource(
+      videoSource = factory.createVideoSource(
           capturer, appRtcClient.videoConstraints());
       MediaStream lMS = factory.createLocalMediaStream("ARDAMS");
       VideoTrack videoTrack = factory.createVideoTrack("ARDAMSv0", videoSource);
@@ -318,11 +327,13 @@ public class AppRTCDemoActivity extends Activity
     @Override public void onAddStream(final MediaStream stream){
       runOnUiThread(new Runnable() {
           public void run() {
-            abortUnless(stream.audioTracks.size() == 1 &&
-                stream.videoTracks.size() == 1,
+            abortUnless(stream.audioTracks.size() <= 1 &&
+                stream.videoTracks.size() <= 1,
                 "Weird-looking stream: " + stream);
-            stream.videoTracks.get(0).addRenderer(new VideoRenderer(
-                new VideoCallbacks(vsv, VideoStreamsView.Endpoint.REMOTE)));
+            if (stream.videoTracks.size() == 1) {
+              stream.videoTracks.get(0).addRenderer(new VideoRenderer(
+                  new VideoCallbacks(vsv, VideoStreamsView.Endpoint.REMOTE)));
+            }
           }
         });
     }
@@ -476,6 +487,14 @@ public class AppRTCDemoActivity extends Activity
         appRtcClient.sendMessage("{\"type\": \"bye\"}");
         appRtcClient.disconnect();
         appRtcClient = null;
+      }
+      if (videoSource != null) {
+        videoSource.dispose();
+        videoSource = null;
+      }
+      if (factory != null) {
+        factory.dispose();
+        factory = null;
       }
       finish();
     }

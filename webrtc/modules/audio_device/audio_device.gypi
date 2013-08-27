@@ -187,7 +187,7 @@
     ['include_tests==1', {
       'targets': [
         {
-          'target_name': 'audio_device_integrationtests',
+          'target_name': 'audio_device_tests',
          'type': 'executable',
          'dependencies': [
             'audio_device',
@@ -219,8 +219,28 @@
             'test/func_test_manager.h',
           ],
         },
+      ], # targets
+      'conditions': [
+        ['test_isolation_mode != "noop"', {
+          'targets': [
+            {
+              'target_name': 'audio_device_tests_run',
+              'type': 'none',
+              'dependencies': [
+                '<(import_isolate_path):import_isolate_gypi',
+                'audio_device_tests',
+              ],
+              'includes': [
+                'audio_device_tests.isolate',
+              ],
+              'sources': [
+                'audio_device_tests.isolate',
+              ],
+            },
+          ],
+        }],
       ],
-    }],
+    }], # include_tests
   ],
 }
 

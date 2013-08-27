@@ -148,6 +148,8 @@ VCMFrameBuffer::InsertPacket(const VCMPacket& packet,
         return kSizeError;
     } else if (retVal == -2) {
         return kDuplicatePacket;
+    } else if (retVal == -3) {
+        return kOutOfBoundsPacket;
     }
     // update length
     _length = Length() + static_cast<uint32_t>(retVal);
@@ -205,6 +207,14 @@ VCMFrameBuffer::Reset() {
     _latestPacketTimeMs = -1;
     _state = kStateEmpty;
     VCMEncodedFrame::Reset();
+}
+
+void
+VCMFrameBuffer::SetNotDecodableIfIncomplete() {
+  if (_state == kStateDecodable) {
+    _state = kStateIncomplete;
+    _sessionInfo.SetNotDecodableIfIncomplete();
+  }
 }
 
 // Set state of frame
