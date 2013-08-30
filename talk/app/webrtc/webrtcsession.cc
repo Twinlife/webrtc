@@ -1426,8 +1426,6 @@ bool WebRtcSession::ExpectSetRemoteDescription(Action action) {
           // accept local offer
           (action == kAnswer && state() == STATE_SENTINITIATE) ||
           (action == kAnswer && state() == STATE_RECEIVEDPRACCEPT) ||
-	  // -CJ- 28/08/2013 - Add STATE_INPROGRESS in expected state
-          (action == kAnswer && state() == STATE_INPROGRESS) ||
           (action == kPrAnswer && state() == STATE_SENTINITIATE) ||
           (action == kPrAnswer && state() == STATE_RECEIVEDPRACCEPT));
 }
