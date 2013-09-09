@@ -662,13 +662,7 @@ int32_t ViEChannel::ProcessNACKRequest(const bool enable) {
                    "%s: Could not enable NACK, RTPC not on ", __FUNCTION__);
       return -1;
     }
-    if (!vie_receiver_.SetNackStatus(true,
-                                     max_nack_reordering_threshold_)) {
-      WEBRTC_TRACE(kTraceError, kTraceVideo, ViEId(engine_id_, channel_id_),
-                   "%s: Could not set NACK method %d", __FUNCTION__,
-                   nackMethod);
-      return -1;
-    }
+    vie_receiver_.SetNackStatus(true, max_nack_reordering_threshold_);
     WEBRTC_TRACE(kTraceInfo, kTraceVideo, ViEId(engine_id_, channel_id_),
                  "%s: Using NACK method %d", __FUNCTION__, nackMethod);
     rtp_rtcp_->SetStorePacketsStatus(true, nack_history_size_sender_);
@@ -699,12 +693,7 @@ int32_t ViEChannel::ProcessNACKRequest(const bool enable) {
     if (paced_sender_ == NULL) {
       rtp_rtcp_->SetStorePacketsStatus(false, 0);
     }
-    if (!vie_receiver_.SetNackStatus(false,
-                                     max_nack_reordering_threshold_)) {
-      WEBRTC_TRACE(kTraceError, kTraceVideo, ViEId(engine_id_, channel_id_),
-                   "%s: Could not turn off NACK", __FUNCTION__);
-      return -1;
-    }
+    vie_receiver_.SetNackStatus(false, max_nack_reordering_threshold_);
     // When NACK is off, allow decoding with errors. Otherwise, the video
     // will freeze, and will only recover with a complete key frame.
     vcm_.SetDecodeErrorMode(kWithErrors);
@@ -766,20 +755,6 @@ int32_t ViEChannel::SetHybridNACKFECStatus(
     return ret_val;
   }
   return ProcessFECRequest(enable, payload_typeRED, payload_typeFEC);
-}
-
-void ViEChannel::SetDecodeErrorMode(ViECodec::ViEDecodeErrorMode error_mode) {
-  switch (error_mode) {
-  case ViECodec::kNoErrors:
-    vcm_.SetDecodeErrorMode(kNoErrors);
-    break;
-  case ViECodec::kSelectiveErrors:
-    vcm_.SetDecodeErrorMode(kSelectiveErrors);
-    break;
-  case ViECodec::kWithErrors:
-    vcm_.SetDecodeErrorMode(kWithErrors);
-    break;
-  }
 }
 
 int ViEChannel::SetSenderBufferingMode(int target_delay_ms) {
@@ -1203,10 +1178,10 @@ int32_t ViEChannel::SendApplicationDefinedRTCPPacket(
 }
 
 int32_t ViEChannel::GetSendRtcpStatistics(uint16_t* fraction_lost,
-                                                uint32_t* cumulative_lost,
-                                                uint32_t* extended_max,
-                                                uint32_t* jitter_samples,
-                                                int32_t* rtt_ms) {
+                                          uint32_t* cumulative_lost,
+                                          uint32_t* extended_max,
+                                          uint32_t* jitter_samples,
+                                          int32_t* rtt_ms) {
   WEBRTC_TRACE(kTraceInfo, kTraceVideo, ViEId(engine_id_, channel_id_), "%s",
                __FUNCTION__);
 
@@ -1659,11 +1634,6 @@ int32_t ViEChannel::ReceivedDecodedReferenceFrame(
 void ViEChannel::IncomingCodecChanged(const VideoCodec& codec) {
   CriticalSectionScoped cs(callback_cs_.get());
   receive_codec_ = codec;
-}
-
-int32_t ViEChannel::StoreReceivedFrame(
-  const EncodedVideoData& frame_to_store) {
-  return 0;
 }
 
 int32_t ViEChannel::OnReceiveStatisticsUpdate(const uint32_t bit_rate,

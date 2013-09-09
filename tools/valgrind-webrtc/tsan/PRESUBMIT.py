@@ -29,13 +29,14 @@ def CheckChange(input_api, output_api):
 
   return suppressions.PresubmitCheck(input_api, output_api)
 
+
 def CheckChangeOnUpload(input_api, output_api):
   return CheckChange(input_api, output_api)
+
 
 def CheckChangeOnCommit(input_api, output_api):
   return CheckChange(input_api, output_api)
 
+
 def GetPreferredTrySlaves():
-  # We don't have any tsan slaves yet, so there's no use for this method.
-  # When we have, the slave name(s) should be put into this list.
-  return []
+  return ['linux_tsan']

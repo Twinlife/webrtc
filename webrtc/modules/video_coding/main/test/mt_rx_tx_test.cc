@@ -129,7 +129,7 @@ int MTRxTxTest(CmdArgs& args)
     // Set up trace
     Trace::CreateTrace();
     Trace::SetTraceFile((test::OutputPath() + "MTRxTxTestTrace.txt").c_str());
-    Trace::SetLevelFilter(webrtc::kTraceAll);
+    Trace::set_level_filter(webrtc::kTraceAll);
 
     FILE* sourceFile;
     FILE* decodedFile;
@@ -257,8 +257,7 @@ int MTRxTxTest(CmdArgs& args)
     FecProtectionParams delta_params = protectionCallback.DeltaFecParameters();
     FecProtectionParams key_params = protectionCallback.KeyFecParameters();
     rtp->SetFecParameters(&delta_params, &key_params);
-    rtp_receiver->SetNACKStatus(nackEnabled ? kNackRtcp : kNackOff,
-        kMaxPacketAgeToNack);
+    rtp_receiver->SetNACKStatus(nackEnabled ? kNackRtcp : kNackOff);
 
     vcm->SetChannelParameters(static_cast<uint32_t>(1000 * bitRate),
                               (uint8_t) lossRate, rttMS);

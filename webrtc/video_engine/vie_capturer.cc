@@ -511,22 +511,8 @@ bool ViECapturer::ViECaptureThreadFunction(void* obj) {
 bool ViECapturer::ViECaptureProcess() {
   if (capture_event_.Wait(kThreadWaitTimeMs) == kEventSignaled) {
     deliver_cs_->Enter();
-    if (!captured_frame_.IsZeroSize()) {
-      // New I420 frame.
-      capture_cs_->Enter();
-      deliver_frame_.SwapFrame(&captured_frame_);
-      captured_frame_.ResetSize();
-      capture_cs_->Leave();
-
-      int64_t encode_start_time =
-          Clock::GetRealTimeClock()->TimeInMilliseconds();
+    if (SwapCapturedAndDeliverFrameIfAvailable()) {
       DeliverI420Frame(&deliver_frame_);
-
-      // The frame has been encoded, update the overuse detector with the
-      // duration.
-      overuse_detector_->FrameEncoded(
-          Clock::GetRealTimeClock()->TimeInMilliseconds() - encode_start_time,
-          deliver_frame_.width(), deliver_frame_.height());
     }
     deliver_cs_->Leave();
     if (current_brightness_level_ != reported_brightness_level_) {
@@ -658,6 +644,16 @@ void ViECapturer::OnNoPictureAlarm(const int32_t id,
   CriticalSectionScoped cs(observer_cs_.get());
   CaptureAlarm vie_alarm = (alarm == Raised) ? AlarmRaised : AlarmCleared;
   observer_->NoPictureAlarm(id, vie_alarm);
+}
+
+bool ViECapturer::SwapCapturedAndDeliverFrameIfAvailable() {
+  CriticalSectionScoped cs(capture_cs_.get());
+  if (captured_frame_.IsZeroSize())
+    return false;
+
+  deliver_frame_.SwapFrame(&captured_frame_);
+  captured_frame_.ResetSize();
+  return true;
 }
 
 }  // namespace webrtc

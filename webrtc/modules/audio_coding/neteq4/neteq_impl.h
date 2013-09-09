@@ -167,6 +167,10 @@ class NetEqImpl : public webrtc::NetEq {
                                       int* current_memory_size_bytes,
                                       int* max_memory_size_bytes) const;
 
+  // Get sequence number and timestamp of the latest RTP.
+  // This method is to facilitate NACK.
+  virtual int DecodedRtpInfo(int* sequence_number, uint32_t* timestamp);
+
  private:
   static const int kOutputSizeMs = 10;
   static const int kMaxFrameSize = 2880;  // 60 ms @ 48 kHz.
@@ -218,49 +222,42 @@ class NetEqImpl : public webrtc::NetEq {
 
   // Sub-method which calls the Normal class to perform the normal operation.
   void DoNormal(const int16_t* decoded_buffer, size_t decoded_length,
-                AudioDecoder::SpeechType speech_type, bool play_dtmf,
-                AudioMultiVector<int16_t>* algorithm_buffer);
+                AudioDecoder::SpeechType speech_type, bool play_dtmf);
 
   // Sub-method which calls the Merge class to perform the merge operation.
   void DoMerge(int16_t* decoded_buffer, size_t decoded_length,
-               AudioDecoder::SpeechType speech_type, bool play_dtmf,
-               AudioMultiVector<int16_t>* algorithm_buffer);
+               AudioDecoder::SpeechType speech_type, bool play_dtmf);
 
   // Sub-method which calls the Expand class to perform the expand operation.
-  int DoExpand(bool play_dtmf, AudioMultiVector<int16_t>* algorithm_buffer);
+  int DoExpand(bool play_dtmf);
 
   // Sub-method which calls the Accelerate class to perform the accelerate
   // operation.
   int DoAccelerate(int16_t* decoded_buffer, size_t decoded_length,
-                   AudioDecoder::SpeechType speech_type, bool play_dtmf,
-                   AudioMultiVector<int16_t>* algorithm_buffer);
+                   AudioDecoder::SpeechType speech_type, bool play_dtmf);
 
   // Sub-method which calls the PreemptiveExpand class to perform the
   // preemtive expand operation.
   int DoPreemptiveExpand(int16_t* decoded_buffer, size_t decoded_length,
-                         AudioDecoder::SpeechType speech_type, bool play_dtmf,
-                         AudioMultiVector<int16_t>* algorithm_buffer);
+                         AudioDecoder::SpeechType speech_type, bool play_dtmf);
 
   // Sub-method which calls the ComfortNoise class to generate RFC 3389 comfort
   // noise. |packet_list| can either contain one SID frame to update the
   // noise parameters, or no payload at all, in which case the previously
   // received parameters are used.
-  int DoRfc3389Cng(PacketList* packet_list, bool play_dtmf,
-                   AudioMultiVector<int16_t>* algorithm_buffer);
+  int DoRfc3389Cng(PacketList* packet_list, bool play_dtmf);
 
   // Calls the audio decoder to generate codec-internal comfort noise when
   // no packet was received.
-  void DoCodecInternalCng(AudioMultiVector<int16_t>* algorithm_buffer);
+  void DoCodecInternalCng();
 
   // Calls the DtmfToneGenerator class to generate DTMF tones.
-  int DoDtmf(const DtmfEvent& dtmf_event, bool* play_dtmf,
-             AudioMultiVector<int16_t>* algorithm_buffer);
+  int DoDtmf(const DtmfEvent& dtmf_event, bool* play_dtmf);
 
   // Produces packet-loss concealment using alternative methods. If the codec
   // has an internal PLC, it is called to generate samples. Otherwise, the
   // method performs zero-stuffing.
-  void DoAlternativePlc(bool increase_timestamp,
-                        AudioMultiVector<int16_t>* algorithm_buffer);
+  void DoAlternativePlc(bool increase_timestamp);
 
   // Overdub DTMF on top of |output|.
   int DtmfOverdub(const DtmfEvent& dtmf_event, size_t num_channels,
@@ -292,6 +289,7 @@ class NetEqImpl : public webrtc::NetEq {
   scoped_ptr<TimestampScaler> timestamp_scaler_;
   scoped_ptr<DecisionLogic> decision_logic_;
   scoped_ptr<PostDecodeVad> vad_;
+  AudioMultiVector<int16_t>* algorithm_buffer_;
   SyncBuffer* sync_buffer_;
   Expand* expand_;
   RandomVector random_vector_;
@@ -317,6 +315,16 @@ class NetEqImpl : public webrtc::NetEq {
   int error_code_;  // Store last error code.
   int decoder_error_code_;
   CriticalSectionWrapper* crit_sect_;
+
+  // These values are used by NACK module to estimate time-to-play of
+  // a missing packet. Occasionally, NetEq might decide to decode more
+  // than one packet. Therefore, these values store sequence number and
+  // timestamp of the first packet pulled from the packet buffer. In
+  // such cases, these values do not exactly represent the sequence number
+  // or timestamp associated with a 10ms audio pulled from NetEq. NACK
+  // module is designed to compensate for this.
+  int decoded_packet_sequence_number_;
+  uint32_t decoded_packet_timestamp_;
 
   DISALLOW_COPY_AND_ASSIGN(NetEqImpl);
 };
