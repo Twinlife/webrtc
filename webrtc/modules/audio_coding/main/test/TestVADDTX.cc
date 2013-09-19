@@ -16,27 +16,19 @@
 #include "webrtc/engine_configurations.h"
 #include "webrtc/modules/audio_coding/main/interface/audio_coding_module_typedefs.h"
 #include "webrtc/modules/audio_coding/main/test/utility.h"
-#include "webrtc/modules/audio_coding/main/source/acm_common_defs.h"
+#include "webrtc/modules/audio_coding/main/acm2/acm_common_defs.h"
 #include "webrtc/test/testsupport/fileutils.h"
 #include "webrtc/system_wrappers/interface/trace.h"
 
 namespace webrtc {
 
 TestVADDTX::TestVADDTX()
-    : _acmA(NULL),
-      _acmB(NULL),
+    : _acmA(AudioCodingModule::Create(0)),
+      _acmB(AudioCodingModule::Create(1)),
       _channelA2B(NULL) {
 }
 
 TestVADDTX::~TestVADDTX() {
-  if (_acmA != NULL) {
-    AudioCodingModule::Destroy(_acmA);
-    _acmA = NULL;
-  }
-  if (_acmB != NULL) {
-    AudioCodingModule::Destroy(_acmB);
-    _acmB = NULL;
-  }
   if (_channelA2B != NULL) {
     delete _channelA2B;
     _channelA2B = NULL;
@@ -47,9 +39,6 @@ void TestVADDTX::Perform() {
   const std::string file_name = webrtc::test::ResourcePath(
       "audio_coding/testfile32kHz", "pcm");
   _inFileA.Open(file_name, 32000, "rb");
-
-  _acmA = AudioCodingModule::Create(0);
-  _acmB = AudioCodingModule::Create(1);
 
   EXPECT_EQ(0, _acmA->InitializeReceiver());
   EXPECT_EQ(0, _acmB->InitializeReceiver());
@@ -68,7 +57,7 @@ void TestVADDTX::Perform() {
   // Create and connect the channel
   _channelA2B = new Channel;
   _acmA->RegisterTransportCallback(_channelA2B);
-  _channelA2B->RegisterReceiverACM(_acmB);
+  _channelA2B->RegisterReceiverACM(_acmB.get());
 
   _acmA->RegisterVADCallback(&_monitor);
 
@@ -207,11 +196,11 @@ int16_t TestVADDTX::RegisterSendCodec(char side, char* codecName,
   AudioCodingModule* myACM;
   switch (side) {
     case 'A': {
-      myACM = _acmA;
+      myACM = _acmA.get();
       break;
     }
     case 'B': {
-      myACM = _acmB;
+      myACM = _acmB.get();
       break;
     }
     default:

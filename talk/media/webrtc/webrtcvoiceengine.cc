@@ -125,16 +125,19 @@ static const int kOpusStereoBitrate = 64000;
 static const int kOpusMinBitrate = 6000;
 static const int kOpusMaxBitrate = 510000;
 
-#if defined(CHROMEOS)
-// Ensure we open the file in a writeable path on ChromeOS. This workaround
-// can be removed when it's possible to specify a filename for audio option
-// based AEC dumps.
+// Ensure we open the file in a writeable path on ChromeOS and Android. This
+// workaround can be removed when it's possible to specify a filename for audio
+// option based AEC dumps.
 //
 // TODO(grunell): Use a string in the options instead of hardcoding it here
 // and let the embedder choose the filename (crbug.com/264223).
 //
-// NOTE(ajm): Don't use this hardcoded /tmp path on non-ChromeOS platforms.
+// NOTE(ajm): Don't use hardcoded paths on platforms not explicitly specified
+// below.
+#if defined(CHROMEOS)
 static const char kAecDumpByAudioOptionFilename[] = "/tmp/audio.aecdump";
+#elif defined(ANDROID)
+static const char kAecDumpByAudioOptionFilename[] = "/sdcard/audio.aecdump";
 #else
 static const char kAecDumpByAudioOptionFilename[] = "audio.aecdump";
 #endif
@@ -1495,6 +1498,7 @@ WebRtcVoiceMediaChannel::WebRtcVoiceMediaChannel(WebRtcVoiceEngine *engine)
       desired_playout_(false),
       nack_enabled_(false),
       playout_(false),
+      typing_noise_detected_(false),
       desired_send_(SEND_NOTHING),
       send_(SEND_NOTHING),
       default_receive_ssrc_(0) {
@@ -2815,6 +2819,7 @@ bool WebRtcVoiceMediaChannel::GetStats(VoiceMediaInfo* info) {
     sinfo.echo_return_loss_enhancement = echo_return_loss_enhancement;
     sinfo.echo_delay_median_ms = echo_delay_median_ms;
     sinfo.echo_delay_std_ms = echo_delay_std_ms;
+    sinfo.typing_noise_detected = typing_noise_detected_;
 
     info->senders.push_back(sinfo);
   }
@@ -2923,6 +2928,13 @@ bool WebRtcVoiceMediaChannel::FindSsrc(int channel_num, uint32* ssrc) {
 }
 
 void WebRtcVoiceMediaChannel::OnError(uint32 ssrc, int error) {
+#ifdef USE_WEBRTC_DEV_BRANCH
+  if (error == VE_TYPING_NOISE_WARNING) {
+    typing_noise_detected_ = true;
+  } else if (error == VE_TYPING_NOISE_OFF_WARNING) {
+    typing_noise_detected_ = false;
+  }
+#endif
   SignalMediaError(ssrc, WebRtcErrorToChannelError(error));
 }
 

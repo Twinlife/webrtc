@@ -246,12 +246,8 @@ class TestTransport : public Transport,
     rtcp_packet_info_.applicationSubType =
         rtcpPacketInformation.applicationSubType;
     rtcp_packet_info_.applicationName = rtcpPacketInformation.applicationName;
-    rtcp_packet_info_.reportBlock = rtcpPacketInformation.reportBlock;
-    rtcp_packet_info_.fractionLost = rtcpPacketInformation.fractionLost;
-    rtcp_packet_info_.roundTripTime = rtcpPacketInformation.roundTripTime;
-    rtcp_packet_info_.lastReceivedExtendedHighSeqNum =
-        rtcpPacketInformation.lastReceivedExtendedHighSeqNum;
-    rtcp_packet_info_.jitter = rtcpPacketInformation.jitter;
+    rtcp_packet_info_.report_blocks = rtcpPacketInformation.report_blocks;
+    rtcp_packet_info_.rtt = rtcpPacketInformation.rtt;
     rtcp_packet_info_.interArrivalJitter =
         rtcpPacketInformation.interArrivalJitter;
     rtcp_packet_info_.sliPictureId = rtcpPacketInformation.sliPictureId;
@@ -299,8 +295,8 @@ class RtcpSenderTest : public ::testing::Test {
     rtp_rtcp_impl_ = new ModuleRtpRtcpImpl(configuration);
     rtp_receiver_.reset(RtpReceiver::CreateVideoReceiver(
         0, system_clock_, test_transport_, NULL, rtp_payload_registry_.get()));
-    rtcp_sender_ = new RTCPSender(0, false, system_clock_, rtp_rtcp_impl_,
-                                  receive_statistics_.get());
+    rtcp_sender_ =
+        new RTCPSender(0, false, system_clock_, receive_statistics_.get());
     rtcp_receiver_ = new RTCPReceiver(0, system_clock_, rtp_rtcp_impl_);
     test_transport_->SetRTCPReceiver(rtcp_receiver_);
     // Initialize
@@ -338,7 +334,8 @@ class RtcpSenderTest : public ::testing::Test {
 
 TEST_F(RtcpSenderTest, RtcpOff) {
   EXPECT_EQ(0, rtcp_sender_->SetRTCPStatus(kRtcpOff));
-  EXPECT_EQ(-1, rtcp_sender_->SendRTCP(kRtcpSr));
+  RTCPSender::FeedbackState feedback_state(rtp_rtcp_impl_);
+  EXPECT_EQ(-1, rtcp_sender_->SendRTCP(feedback_state, kRtcpSr));
 }
 
 TEST_F(RtcpSenderTest, IJStatus) {
@@ -381,7 +378,8 @@ TEST_F(RtcpSenderTest, TestCompound) {
 
   EXPECT_EQ(0, rtcp_sender_->SetIJStatus(true));
   EXPECT_EQ(0, rtcp_sender_->SetRTCPStatus(kRtcpCompound));
-  EXPECT_EQ(0, rtcp_sender_->SendRTCP(kRtcpRr));
+  RTCPSender::FeedbackState feedback_state(rtp_rtcp_impl_);
+  EXPECT_EQ(0, rtcp_sender_->SendRTCP(feedback_state, kRtcpRr));
 
   // Transmission time offset packet should be received.
   ASSERT_TRUE(test_transport_->rtcp_packet_info_.rtcpPacketTypeFlags &
@@ -391,7 +389,8 @@ TEST_F(RtcpSenderTest, TestCompound) {
 TEST_F(RtcpSenderTest, TestCompound_NoRtpReceived) {
   EXPECT_EQ(0, rtcp_sender_->SetIJStatus(true));
   EXPECT_EQ(0, rtcp_sender_->SetRTCPStatus(kRtcpCompound));
-  EXPECT_EQ(0, rtcp_sender_->SendRTCP(kRtcpRr));
+  RTCPSender::FeedbackState feedback_state(rtp_rtcp_impl_);
+  EXPECT_EQ(0, rtcp_sender_->SendRTCP(feedback_state, kRtcpRr));
 
   // Transmission time offset packet should not be received.
   ASSERT_FALSE(test_transport_->rtcp_packet_info_.rtcpPacketTypeFlags &
@@ -409,7 +408,8 @@ TEST_F(RtcpSenderTest, SendsTmmbnIfSetAndEmpty) {
   TMMBRSet bounding_set;
   EXPECT_EQ(0, rtcp_sender_->SetTMMBN(&bounding_set, 3));
   ASSERT_EQ(0U, test_transport_->rtcp_packet_info_.rtcpPacketTypeFlags);
-  EXPECT_EQ(0, rtcp_sender_->SendRTCP(kRtcpSr));
+  RTCPSender::FeedbackState feedback_state(rtp_rtcp_impl_);
+  EXPECT_EQ(0, rtcp_sender_->SendRTCP(feedback_state,kRtcpSr));
   // We now expect the packet to show up in the rtcp_packet_info_ of
   // test_transport_.
   ASSERT_NE(0U, test_transport_->rtcp_packet_info_.rtcpPacketTypeFlags);
@@ -431,7 +431,8 @@ TEST_F(RtcpSenderTest, SendsTmmbnIfSetAndValid) {
 
   EXPECT_EQ(0, rtcp_sender_->SetTMMBN(&bounding_set, 3));
   ASSERT_EQ(0U, test_transport_->rtcp_packet_info_.rtcpPacketTypeFlags);
-  EXPECT_EQ(0, rtcp_sender_->SendRTCP(kRtcpSr));
+  RTCPSender::FeedbackState feedback_state(rtp_rtcp_impl_);
+  EXPECT_EQ(0, rtcp_sender_->SendRTCP(feedback_state, kRtcpSr));
   // We now expect the packet to show up in the rtcp_packet_info_ of
   // test_transport_.
   ASSERT_NE(0U, test_transport_->rtcp_packet_info_.rtcpPacketTypeFlags);

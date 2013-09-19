@@ -16,11 +16,13 @@
 #include "webrtc/common_audio/vad/include/webrtc_vad.h"
 #include "webrtc/modules/audio_coding/codecs/cng/include/webrtc_cng.h"
 #include "webrtc/modules/audio_coding/main/source/acm_codec_database.h"
-#include "webrtc/modules/audio_coding/main/source/acm_common_defs.h"
+#include "webrtc/modules/audio_coding/main/acm2/acm_common_defs.h"
 #include "webrtc/modules/audio_coding/main/source/acm_neteq.h"
 #include "webrtc/system_wrappers/interface/trace.h"
 
 namespace webrtc {
+
+namespace acm1 {
 
 // Enum for CNG
 enum {
@@ -1250,5 +1252,7 @@ int16_t ACMGenericCodec::REDPayloadISAC(const int32_t /* isac_rate */,
 }
 
 bool ACMGenericCodec::IsTrueStereoCodec() { return false; }
+
+}  // namespace acm1
 
 }  // namespace webrtc

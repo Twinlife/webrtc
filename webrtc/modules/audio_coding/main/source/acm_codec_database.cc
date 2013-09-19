@@ -17,7 +17,7 @@
 // references, where appropriate.
 #include "webrtc/modules/audio_coding/main/source/acm_codec_database.h"
 
-#include "webrtc/modules/audio_coding/main/source/acm_common_defs.h"
+#include "webrtc/modules/audio_coding/main/acm2/acm_common_defs.h"
 #include "webrtc/system_wrappers/interface/trace.h"
 
 // Includes needed to create the codecs.
@@ -100,6 +100,8 @@
 #endif
 
 namespace webrtc {
+
+namespace acm1 {
 
 // Not yet used payload-types.
 // 83,  82,  81, 80, 79,  78,  77,  76,  75,  74,  73,  72,  71,  70,  69, 68,
@@ -948,5 +950,7 @@ bool ACMCodecDB::ValidPayloadType(int payload_type) {
   }
   return true;
 }
+
+}  // namespace acm1
 
 }  // namespace webrtc

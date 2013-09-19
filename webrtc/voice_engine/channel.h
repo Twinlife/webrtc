@@ -36,6 +36,7 @@
 namespace webrtc
 {
 class AudioDeviceModule;
+class Config;
 class CriticalSectionWrapper;
 class FileWrapper;
 class ProcessThread;
@@ -80,8 +81,9 @@ public:
     virtual ~Channel();
     static int32_t CreateChannel(Channel*& channel,
                                  int32_t channelId,
-                                 uint32_t instanceId);
-    Channel(int32_t channelId, uint32_t instanceId);
+                                 uint32_t instanceId,
+                                 const Config& config);
+    Channel(int32_t channelId, uint32_t instanceId, const Config& config);
     int32_t Init();
     int32_t SetEngineInformation(
         Statistics& engineStatistics,
@@ -518,8 +520,8 @@ private:
     CriticalSectionWrapper* _callbackCritSectPtr; // owned by base
     Transport* _transportPtr; // WebRtc socket or external transport
     Encryption* _encryptionPtr; // WebRtc SRTP or external encryption
-    scoped_ptr<AudioProcessing> _rtpAudioProc;
-    AudioProcessing* _rxAudioProcessingModulePtr; // far end AudioProcessing
+    scoped_ptr<AudioProcessing> rtp_audioproc_;
+    scoped_ptr<AudioProcessing> rx_audioproc_; // far end AudioProcessing
     VoERxVadCallback* _rxVadObserverPtr;
     int32_t _oldVadDecision;
     int32_t _sendFrameType; // Send data is voice, 1-voice, 0-otherwise

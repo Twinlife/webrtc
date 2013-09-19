@@ -8,17 +8,17 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#if defined(WEBRTC_ANDROID) && !defined(WEBRTC_ANDROID_OPENSLES)
+#if defined(WEBRTC_ANDROID)
+#if defined(WEBRTC_ANDROID_OPENSLES)
+#include "webrtc/modules/audio_device/android/audio_manager_jni.h"
+#else
 #include "webrtc/modules/audio_device/android/audio_device_jni_android.h"
 #endif
+#endif
 
+#include "webrtc/modules/audio_coding/main/interface/audio_coding_module.h"
 #include "webrtc/system_wrappers/interface/trace.h"
 #include "webrtc/voice_engine/voice_engine_impl.h"
-
-//
-// -CJ- 11012012
-// Add global variable gVoiceEngine to allocate only one VoiceEngine object
-//
 
 namespace webrtc
 {
@@ -29,28 +29,33 @@ namespace webrtc
 // improvement here.
 static int32_t gVoiceEngineInstanceCounter = 0;
 
-static VoiceEngine* gVoiceEngine = NULL;
-
-extern "C"
+VoiceEngine* GetVoiceEngine(const Config* config, bool owns_config)
 {
-WEBRTC_DLLEXPORT VoiceEngine* GetVoiceEngine();
+#if (defined _WIN32)
+  HMODULE hmod = LoadLibrary(TEXT("VoiceEngineTestingDynamic.dll"));
 
-VoiceEngine* GetVoiceEngine()
-{
-    if (gVoiceEngine != NULL)
-    {
-	return gVoiceEngine;
+  if (hmod) {
+    typedef VoiceEngine* (*PfnGetVoiceEngine)(void);
+    PfnGetVoiceEngine pfn = (PfnGetVoiceEngine)GetProcAddress(
+        hmod,"GetVoiceEngine");
+    if (pfn) {
+      VoiceEngine* self = pfn();
+      if (owns_config) {
+        delete config;
+      }
+      return (self);
     }
-    VoiceEngineImpl* self = new VoiceEngineImpl();
+  }
+#endif
+
+    VoiceEngineImpl* self = new VoiceEngineImpl(config, owns_config);
     if (self != NULL)
     {
         self->AddRef();  // First reference.  Released in VoiceEngine::Delete.
         gVoiceEngineInstanceCounter++;
     }
-    gVoiceEngine = self;
     return self;
 }
-}  // extern "C"
 
 int VoiceEngineImpl::AddRef() {
   return ++_ref_count;
@@ -71,25 +76,15 @@ int VoiceEngineImpl::Release() {
   return new_ref;
 }
 
-VoiceEngine* VoiceEngine::Create()
-{
-#if (defined _WIN32)
-    HMODULE hmod_ = LoadLibrary(TEXT("VoiceEngineTestingDynamic.dll"));
+VoiceEngine* VoiceEngine::Create() {
+  Config* config = new Config();
+  config->Set<AudioCodingModuleFactory>(new AudioCodingModuleFactory());
 
-    if (hmod_)
-    {
-        typedef VoiceEngine* (*PfnGetVoiceEngine)(void);
-        PfnGetVoiceEngine pfn = (PfnGetVoiceEngine)GetProcAddress(
-                hmod_,"GetVoiceEngine");
-        if (pfn)
-        {
-            VoiceEngine* self = pfn();
-            return (self);
-        }
-    }
-#endif
+  return GetVoiceEngine(config, true);
+}
 
-    return GetVoiceEngine();
+VoiceEngine* VoiceEngine::Create(const Config& config) {
+  return GetVoiceEngine(&config, false);
 }
 
 int VoiceEngine::SetTraceFilter(unsigned int filter)
@@ -136,12 +131,6 @@ bool VoiceEngine::Delete(VoiceEngine*& voiceEngine)
     if (voiceEngine == NULL)
         return false;
 
-    if (voiceEngine == gVoiceEngine) {
-      gVoiceEngine = NULL;
-    } else if (gVoiceEngine == NULL) {
-      return true;
-    }
-
     VoiceEngineImpl* s = static_cast<VoiceEngineImpl*>(voiceEngine);
     // Release the reference that was added in GetVoiceEngine.
     int ref = s->Release();
@@ -160,6 +149,7 @@ int VoiceEngine::SetAndroidObjects(void* javaVM, void* env, void* context)
 {
 #ifdef WEBRTC_ANDROID
 #ifdef WEBRTC_ANDROID_OPENSLES
+  AudioManagerJni::SetAndroidAudioDeviceObjects(javaVM, env, context);
   return 0;
 #else
   return AudioDeviceAndroidJni::SetAndroidAudioDeviceObjects(

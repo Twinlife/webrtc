@@ -74,7 +74,7 @@ ModuleRtpRtcpImpl::ModuleRtpRtcpImpl(const Configuration& configuration)
                   configuration.audio_messages,
                   configuration.paced_sender),
       rtcp_sender_(configuration.id, configuration.audio, configuration.clock,
-                   this, configuration.receive_statistics),
+                   configuration.receive_statistics),
       rtcp_receiver_(configuration.id, configuration.clock, this),
       clock_(configuration.clock),
       id_(configuration.id),
@@ -111,10 +111,10 @@ ModuleRtpRtcpImpl::ModuleRtpRtcpImpl(const Configuration& configuration)
                                        configuration.rtcp_feedback);
   rtcp_sender_.RegisterSendTransport(configuration.outgoing_transport);
 
-  // Make sure that RTCP objects are aware of our SSRC
+  // Make sure that RTCP objects are aware of our SSRC.
   uint32_t SSRC = rtp_sender_.SSRC();
   rtcp_sender_.SetSSRC(SSRC);
-  rtcp_receiver_.SetSSRC(SSRC);
+  SetRtcpReceiverSsrcs(SSRC);
 
   WEBRTC_TRACE(kTraceMemory, kTraceRtpRtcp, id_, "%s created", __FUNCTION__);
 }
@@ -246,7 +246,8 @@ int32_t ModuleRtpRtcpImpl::Process() {
       }
     }
     if (rtcp_sender_.TimeToSendRTCPReport()) {
-      rtcp_sender_.SendRTCP(kRtcpReport);
+      RTCPSender::FeedbackState feedback_state(this);
+      rtcp_sender_.SendRTCP(feedback_state, kRtcpReport);
     }
   }
 
@@ -260,6 +261,8 @@ int32_t ModuleRtpRtcpImpl::Process() {
 int32_t ModuleRtpRtcpImpl::SetRTXSendStatus(RtxMode mode, bool set_ssrc,
                                             uint32_t ssrc) {
   rtp_sender_.SetRTXStatus(mode, set_ssrc, ssrc);
+
+
   return 0;
 }
 
@@ -409,8 +412,9 @@ int32_t ModuleRtpRtcpImpl::SetSSRC(const uint32_t ssrc) {
   WEBRTC_TRACE(kTraceModuleCall, kTraceRtpRtcp, id_, "SetSSRC(%d)", ssrc);
 
   rtp_sender_.SetSSRC(ssrc);
-  rtcp_receiver_.SetSSRC(ssrc);
   rtcp_sender_.SetSSRC(ssrc);
+  SetRtcpReceiverSsrcs(ssrc);
+
   return 0;  // TODO(pwestin): change to void.
 }
 
@@ -490,7 +494,8 @@ int32_t ModuleRtpRtcpImpl::SetSendingStatus(const bool sending) {
   }
   if (rtcp_sender_.Sending() != sending) {
     // Sends RTCP BYE when going from true to false
-    if (rtcp_sender_.SetSendingStatus(sending) != 0) {
+    RTCPSender::FeedbackState feedback_state(this);
+    if (rtcp_sender_.SetSendingStatus(feedback_state, sending) != 0) {
       WEBRTC_TRACE(kTraceWarning, kTraceRtpRtcp, id_,
                    "Failed to send RTCP BYE");
     }
@@ -508,8 +513,9 @@ int32_t ModuleRtpRtcpImpl::SetSendingStatus(const bool sending) {
     // Make sure that RTCP objects are aware of our SSRC (it could have changed
     // Due to collision)
     uint32_t SSRC = rtp_sender_.SSRC();
-    rtcp_receiver_.SetSSRC(SSRC);
     rtcp_sender_.SetSSRC(SSRC);
+    SetRtcpReceiverSsrcs(SSRC);
+
     return 0;
   }
   return 0;
@@ -575,7 +581,8 @@ int32_t ModuleRtpRtcpImpl::SendOutgoingData(
   if (!have_child_modules) {
     // Don't send RTCP from default module.
     if (rtcp_sender_.TimeToSendRTCPReport(kVideoFrameKey == frame_type)) {
-      rtcp_sender_.SendRTCP(kRtcpReport);
+      RTCPSender::FeedbackState feedback_state(this);
+      rtcp_sender_.SendRTCP(feedback_state, kRtcpReport);
     }
     return rtp_sender_.SendOutgoingData(frame_type,
                                         payload_type,
@@ -917,7 +924,8 @@ int32_t ModuleRtpRtcpImpl::ResetSendDataCountersRTP() {
 int32_t ModuleRtpRtcpImpl::SendRTCP(uint32_t rtcp_packet_type) {
   WEBRTC_TRACE(kTraceModuleCall, kTraceRtpRtcp, id_, "SendRTCP(0x%x)",
                rtcp_packet_type);
-  return rtcp_sender_.SendRTCP(rtcp_packet_type);
+  RTCPSender::FeedbackState feedback_state(this);
+  return rtcp_sender_.SendRTCP(feedback_state, rtcp_packet_type);
 }
 
 int32_t ModuleRtpRtcpImpl::SetRTCPApplicationSpecificData(
@@ -1134,7 +1142,9 @@ int32_t ModuleRtpRtcpImpl::SendNACK(const uint16_t* nack_list,
   }
   nack_last_seq_number_sent_ = nack_list[start_id + nackLength - 1];
 
-  return rtcp_sender_.SendRTCP(kRtcpNack, nackLength, &nack_list[start_id]);
+  RTCPSender::FeedbackState feedback_state(this);
+  return rtcp_sender_.SendRTCP(
+      feedback_state, kRtcpNack, nackLength, &nack_list[start_id]);
 }
 
 // Store the sent packets, needed to answer to a Negative acknowledgment
@@ -1323,7 +1333,9 @@ int32_t ModuleRtpRtcpImpl::SendRTCPSliceLossIndication(
                "SendRTCPSliceLossIndication (picture_id:%d)",
                picture_id);
 
-  return rtcp_sender_.SendRTCP(kRtcpSli, 0, 0, false, picture_id);
+  RTCPSender::FeedbackState feedback_state(this);
+  return rtcp_sender_.SendRTCP(
+      feedback_state, kRtcpSli, 0, 0, false, picture_id);
 }
 
 int32_t ModuleRtpRtcpImpl::SetCameraDelay(const int32_t delay_ms) {
@@ -1451,7 +1463,7 @@ void ModuleRtpRtcpImpl::SetRemoteSSRC(const uint32_t ssrc) {
     }
     // Change local SSRC and inform all objects about the new SSRC.
     rtcp_sender_.SetSSRC(new_ssrc);
-    rtcp_receiver_.SetSSRC(new_ssrc);
+    SetRtcpReceiverSsrcs(new_ssrc);
   }
 }
 
@@ -1521,7 +1533,9 @@ void ModuleRtpRtcpImpl::OnRequestSendReport() {
 
 int32_t ModuleRtpRtcpImpl::SendRTCPReferencePictureSelection(
     const uint64_t picture_id) {
-  return rtcp_sender_.SendRTCP(kRtcpRpsi, 0, 0, false, picture_id);
+  RTCPSender::FeedbackState feedback_state(this);
+  return rtcp_sender_.SendRTCP(
+      feedback_state, kRtcpRpsi, 0, 0, false, picture_id);
 }
 
 uint32_t ModuleRtpRtcpImpl::SendTimeOfSendReport(
@@ -1577,4 +1591,17 @@ int64_t ModuleRtpRtcpImpl::RtcpReportInterval() {
   else
     return RTCP_INTERVAL_VIDEO_MS;
 }
+
+void ModuleRtpRtcpImpl::SetRtcpReceiverSsrcs(uint32_t main_ssrc) {
+  std::set<uint32_t> ssrcs;
+  ssrcs.insert(main_ssrc);
+  RtxMode rtx_mode = kRtxOff;
+  uint32_t rtx_ssrc = 0;
+  int rtx_payload_type = 0;
+  rtp_sender_.RTXStatus(&rtx_mode, &rtx_ssrc, &rtx_payload_type);
+  if (rtx_mode != kRtxOff)
+    ssrcs.insert(rtx_ssrc);
+  rtcp_receiver_.SetSsrcs(main_ssrc, ssrcs);
+}
+
 }  // Namespace webrtc
