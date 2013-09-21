@@ -130,6 +130,7 @@ using webrtc::VideoRendererInterface;
       LOG(LS_ERROR) << "Refcount unexpectedly not 0: " << (ptr)   \
                     << ": " << count;                             \
     }                                                             \
+    CHECK(!count, "Unexpected refcount");                         \
   } while (0)
 
 // Lifted from chromium's base/basictypes.h.
@@ -480,6 +481,168 @@ static DataChannelInit JavaDataChannelInitToNative(
 
 class ConstraintsWrapper;
 
+//
+// -CJ- Add MediaStreamObserver in Java
+//
+class MediaStreamObserver : public ObserverInterface {
+ public:
+  MediaStreamObserver(JNIEnv* jni, jobject j_stream)
+      : j_stream_global_(jni, j_stream),
+        j_stream_class_(jni, GetObjectClass(jni, j_stream)),
+        j_audio_track_class_(jni, FindClass(jni, "org/webrtc/AudioTrack")),
+        j_audio_track_ctor_(GetMethodID(
+            jni, *j_audio_track_class_, "<init>", "(J)V")),
+        j_video_track_class_(jni, FindClass(jni, "org/webrtc/VideoTrack")),
+        j_video_track_ctor_(GetMethodID(
+	   jni, *j_video_track_class_, "<init>", "(J)V")) {
+    jfieldID native_stream_id = GetFieldID(jni, *j_stream_class_, "nativeStream", "J");
+    jlong j_p = GetLongField(jni, j_stream, native_stream_id);
+    stream_ = reinterpret_cast<MediaStreamInterface*>(j_p);
+    stream_->RegisterObserver(this);
+    audio_tracks_ = stream_->GetAudioTracks();
+    video_tracks_ = stream_->GetVideoTracks();
+  }
+
+  virtual ~MediaStreamObserver() {
+   stream_->UnregisterObserver(this);
+  }
+
+  virtual void OnChanged() OVERRIDE {
+    LOG(LS_ERROR) << "OnChanged() stream_=" << stream_;
+    AudioTrackVector audio_tracks = stream_->GetAudioTracks();
+    for (size_t i = 0; i < audio_tracks.size(); ++i) {
+      bool found = false;
+      for (size_t j = 0; j < audio_tracks_.size(); ++j) {
+	if (audio_tracks[i]->id() == audio_tracks_[j]->id()) {
+	  found = true;
+	  break;
+	}
+      }
+      if (!found) {
+	AudioTrackInterface* track = audio_tracks[i];
+	ScopedLocalRef<jstring> id(
+	    jni(), JavaStringFromStdString(jni(), track->id()));
+	jmethodID get_audio_track_id = GetMethodID(jni(),
+            *j_stream_class_,
+	    "getAudioTrack", "(Ljava/lang/String;)Lorg/webrtc/AudioTrack;");
+	ScopedLocalRef<jobject> j_track(jni(), jni()->CallObjectMethod(*j_stream_global_, get_audio_track_id, *id));
+	CHECK_EXCEPTION(jni(), "error during CallObjectMethod");
+	if (*j_track == NULL) {
+	  ScopedLocalRef<jobject> j_track(jni(), jni()->NewObject(
+	    *j_audio_track_class_, j_audio_track_ctor_, (jlong)track, *id));
+	  CHECK_EXCEPTION(jni(), "error during NewObject");
+	  jmethodID on_add_track_id = GetMethodID(jni(), *j_stream_class_,
+	    "onAddTrack", "(Lorg/webrtc/AudioTrack;)V");
+	  jni()->CallVoidMethod(*j_stream_global_, on_add_track_id, *j_track);
+	  CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
+	  track->AddRef();
+	}
+      }
+    }
+    for (size_t i = 0; i < audio_tracks_.size(); ++i) {
+      bool found = false;
+      for (size_t j = 0; j < audio_tracks.size(); ++j) {
+	if (audio_tracks_[i]->id() == audio_tracks[j]->id()) {
+	  found = true;
+	  break;
+	}
+      }
+      if (!found) {
+	AudioTrackInterface* track = audio_tracks_[i];
+	ScopedLocalRef<jstring> id(
+	    jni(), JavaStringFromStdString(jni(), track->id()));
+	jmethodID get_audio_track_id = GetMethodID(jni(),
+            *j_stream_class_,
+	    "getAudioTrack", "(Ljava/lang/String;)Lorg/webrtc/AudioTrack;");
+	ScopedLocalRef<jobject> j_track(jni(), jni()->CallObjectMethod(*j_stream_global_, get_audio_track_id, *id));
+	CHECK_EXCEPTION(jni(), "error during CallObjectMethod");
+	if (*j_track != NULL) {
+	  jmethodID on_remove_track_id = GetMethodID(jni(), *j_stream_class_,
+	    "onRemoveTrack", "(Lorg/webrtc/AudioTrack;)V");
+	  jni()->CallVoidMethod(*j_stream_global_, on_remove_track_id, *j_track);
+	  CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
+	  track->AddRef();
+	}
+      }
+    }
+    audio_tracks_ = audio_tracks;
+
+    VideoTrackVector video_tracks = stream_->GetVideoTracks();
+    for (size_t i = 0; i < video_tracks.size(); ++i) {
+      bool found = false;
+      for (size_t j = 0; j < video_tracks_.size(); ++j) {
+	if (video_tracks[i]->id() == video_tracks_[j]->id()) {
+	  found = true;
+	  break;
+	}
+      }
+      if (!found) {
+	VideoTrackInterface* track = video_tracks[i];
+	ScopedLocalRef<jstring> id(
+	    jni(), JavaStringFromStdString(jni(), track->id()));
+	jmethodID get_video_track_id = GetMethodID(jni(),
+            *j_stream_class_,
+	    "getVideoTrack", "(Ljava/lang/String;)Lorg/webrtc/VideoTrack;");
+	ScopedLocalRef<jobject> j_track(jni(), jni()->CallObjectMethod(*j_stream_global_, get_video_track_id, *id));
+	CHECK_EXCEPTION(jni(), "error during CallObjectMethod");
+	if (*j_track == NULL) {
+	  ScopedLocalRef<jobject> j_track(jni(), jni()->NewObject(
+	    *j_video_track_class_, j_video_track_ctor_, (jlong)track, *id));
+	  CHECK_EXCEPTION(jni(), "error during NewObject");
+	  jmethodID on_add_track_id = GetMethodID(jni(), *j_stream_class_,
+	    "onAddTrack", "(Lorg/webrtc/VideoTrack;)V");
+	  jni()->CallVoidMethod(*j_stream_global_, on_add_track_id, *j_track);
+	  CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
+	  track->AddRef();
+	}
+      }
+    }
+
+    for (size_t i = 0; i < video_tracks_.size(); ++i) {
+      bool found = false;
+      for (size_t j = 0; j < video_tracks.size(); ++j) {
+	if (video_tracks_[i]->id() == video_tracks[j]->id()) {
+	  found = true;
+	  break;
+	}
+      }
+      if (!found) {
+	VideoTrackInterface* track = video_tracks_[i];
+	ScopedLocalRef<jstring> id(
+	    jni(), JavaStringFromStdString(jni(), track->id()));
+	jmethodID get_video_track_id = GetMethodID(jni(),
+            *j_stream_class_,
+	    "getVideoTrack", "(Ljava/lang/String;)Lorg/webrtc/VideoTrack;");
+	ScopedLocalRef<jobject> j_track(jni(), jni()->CallObjectMethod(*j_stream_global_, get_video_track_id, *id));
+	CHECK_EXCEPTION(jni(), "error during CallObjectMethod");
+	if (*j_track != NULL) {
+	  jmethodID on_remove_track_id = GetMethodID(jni(), *j_stream_class_,
+	    "onRemoveTrack", "(Lorg/webrtc/VideoTrack;)V");
+	  jni()->CallVoidMethod(*j_stream_global_, on_remove_track_id, *j_track);
+	  CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
+	  track->AddRef();
+	}
+      }
+    }
+    video_tracks_ = video_tracks;
+  }
+
+ private:
+  JNIEnv* jni() {
+    return AttachCurrentThreadIfNeeded();
+  }
+
+  const ScopedGlobalRef<jobject> j_stream_global_;
+  const ScopedGlobalRef<jclass> j_stream_class_;
+  const ScopedGlobalRef<jclass> j_audio_track_class_;
+  const jmethodID j_audio_track_ctor_;
+  const ScopedGlobalRef<jclass> j_video_track_class_;
+  const jmethodID j_video_track_ctor_;
+  talk_base::scoped_refptr<MediaStreamInterface> stream_;
+  AudioTrackVector audio_tracks_;
+  VideoTrackVector video_tracks_;
+};
+
 // Adapter between the C++ PeerConnectionObserver interface and the Java
 // PeerConnection.Observer interface.  Wraps an instance of the Java interface
 // and dispatches C++ callbacks to Java.
@@ -539,14 +702,6 @@ class PCOJava : public PeerConnectionObserver {
     CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
   }
 
-  virtual void OnRenegotiationNeeded() OVERRIDE {
-    jmethodID m = GetMethodID(
-        jni(), *j_observer_class_, "onRenegotiationNeeded",
-        "()V");
-    jni()->CallVoidMethod(*j_observer_global_, m);
-    CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
-  }
-
   virtual void OnIceConnectionChange(
       PeerConnectionInterface::IceConnectionState new_state) OVERRIDE {
     jmethodID m = GetMethodID(
@@ -593,7 +748,6 @@ class PCOJava : public PeerConnectionObserver {
       jboolean added = jni()->CallBooleanMethod(*audio_tracks, add, *j_track);
       CHECK_EXCEPTION(jni(), "error during CallBooleanMethod");
       CHECK(added, "");
-      track->AddRef();
     }
 
     VideoTrackVector video_tracks = stream->GetVideoTracks();
@@ -615,11 +769,11 @@ class PCOJava : public PeerConnectionObserver {
       jboolean added = jni()->CallBooleanMethod(*video_tracks, add, *j_track);
       CHECK_EXCEPTION(jni(), "error during CallBooleanMethod");
       CHECK(added, "");
-      track->AddRef();
     }
-
     streams_[stream] = jni()->NewWeakGlobalRef(*j_stream);
     CHECK_EXCEPTION(jni(), "error during NewWeakGlobalRef");
+    // -CJ- stream observer management
+    streamObservers_[stream] = new MediaStreamObserver(jni(), *j_stream);
 
     jmethodID m = GetMethodID(jni(), *j_observer_class_, "onAddStream",
                               "(Lorg/webrtc/MediaStream;)V");
@@ -633,6 +787,10 @@ class PCOJava : public PeerConnectionObserver {
 
     WeakRef s(jni(), it->second);
     streams_.erase(it);
+    // -CJ- TBD
+    //    std::map<void*, MediaStreamObserver*>::iterator itObserver = 
+    //      streamObservers_.find(stream);
+    //    streamObservers_.erase(itObserver);
     if (!s.obj())
       return;
 
@@ -661,6 +819,16 @@ class PCOJava : public PeerConnectionObserver {
     CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
   }
 
+  // -CJ- support renegotiation
+
+  virtual void OnRenegotiationNeeded() OVERRIDE {
+    jmethodID m = GetMethodID(
+        jni(), *j_observer_class_, "onRenegotiationNeeded",
+        "()V");
+    jni()->CallVoidMethod(*j_observer_global_, m);
+    CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
+  }
+
   void SetConstraints(ConstraintsWrapper* constraints) {
     CHECK(!constraints_.get(), "constraints already set!");
     constraints_.reset(constraints);
@@ -685,6 +853,7 @@ class PCOJava : public PeerConnectionObserver {
   const jmethodID j_data_channel_ctor_;
   typedef std::map<void*, jweak> NativeToJavaStreamsMap;
   NativeToJavaStreamsMap streams_;  // C++ -> Java streams.
+  std::map<void*, MediaStreamObserver*> streamObservers_;
   talk_base::scoped_ptr<ConstraintsWrapper> constraints_;
 };
 
@@ -977,223 +1146,6 @@ class StatsObserverWrapper : public StatsObserver {
   const jmethodID j_value_ctor_;
 };
 
-// Adapter for a Java MediaStream.Observer presenting a C++ ObserverInterface and
-// dispatching the callback from C++ back to Java.
-class MediaStreamObserverWrapper : public ObserverInterface {
- public:
-  MediaStreamObserverWrapper(JNIEnv* jni, jobject j_stream, jobject j_observer)
-      : j_stream_global_(jni, j_stream),
-        j_stream_class_(jni, GetObjectClass(jni, j_stream)),
-        j_observer_global_(jni, j_observer),
-        j_observer_class_(jni, GetObjectClass(jni, j_observer)),
-        j_audio_track_class_(jni, FindClass(jni, "org/webrtc/AudioTrack")),
-        j_audio_track_ctor_(GetMethodID(
-            jni, *j_audio_track_class_, "<init>", "(J)V")),
-        j_video_track_class_(jni, FindClass(jni, "org/webrtc/VideoTrack")),
-        j_video_track_ctor_(GetMethodID(
-	   jni, *j_video_track_class_, "<init>", "(J)V")) {
-    jfieldID native_stream_id = GetFieldID(jni, *j_stream_class_, "nativeStream", "J");
-    jlong j_p = GetLongField(jni, j_stream, native_stream_id);
-    stream_ = reinterpret_cast<MediaStreamInterface*>(j_p);
-
-    stream_->RegisterObserver(this);
-    audio_tracks_ = stream_->GetAudioTracks();
-    video_tracks_ = stream_->GetVideoTracks();
-  }
-
-  virtual ~MediaStreamObserverWrapper() {
-   stream_->UnregisterObserver(this);
-  }
-
-  virtual void OnChanged() OVERRIDE {
-    AudioTrackVector audio_tracks = stream_->GetAudioTracks();
-    for (size_t i = 0; i < audio_tracks.size(); ++i) {
-      bool found = false;
-      for (size_t j = 0; j < audio_tracks_.size(); ++j) {
-	if (audio_tracks[i]->id() == audio_tracks_[j]->id()) {
-	  found = true;
-	  break;
-	}
-      }
-      if (!found) {
-	AudioTrackInterface* track = audio_tracks[i];
-	ScopedLocalRef<jstring> id(
-	    jni(), JavaStringFromStdString(jni(), track->id()));
-	jmethodID get_audio_track_id = GetMethodID(jni(),
-            *j_stream_class_,
-	    "getAudioTrack", "(Ljava/lang/String;)Lorg/webrtc/AudioTrack;");
-	jobject j_track = jni()->CallObjectMethod(*j_stream_global_, get_audio_track_id, *id);
-	CHECK_EXCEPTION(jni(), "error during CallObjectMethod");
-
-	if (j_track == NULL) {
-	  j_track = jni()->NewObject(
-              *j_audio_track_class_, j_audio_track_ctor_, (jlong)track, *id);
-	  CHECK_EXCEPTION(jni(), "error during NewObject");
-	  jfieldID audio_tracks_id = GetFieldID(jni(),
-              *j_stream_class_, "audioTracks", "Ljava/util/LinkedList;");
-	  ScopedLocalRef<jobject> j_audio_tracks(jni(), GetObjectField(
-              jni(), *j_stream_global_, audio_tracks_id));
-	  jmethodID add_id = GetMethodID(jni(),
-              GetObjectClass(jni(), *j_audio_tracks), "add", "(Ljava/lang/Object;)Z");
-	  jboolean added = jni()->CallBooleanMethod(*j_audio_tracks, add_id, j_track);
-	  CHECK_EXCEPTION(jni(), "error during CallBooleanMethod");
-	  CHECK(added, "");
-	  track->AddRef();
-
-	  j_track = jni()->CallObjectMethod(*j_stream_global_, get_audio_track_id, *id);
-	  CHECK_EXCEPTION(jni(), "error during CallObjectMethod");
-	  CHECK(j_track, "");
-	}
-
-	jmethodID on_add_track_id = GetMethodID(jni(), *j_observer_class_,
-	    "onAddTrack", "(Lorg/webrtc/MediaStream;Lorg/webrtc/AudioTrack;)V");
-	jni()->CallVoidMethod(*j_observer_global_, on_add_track_id, *j_stream_global_, j_track);
-	CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
-
-	jni()->DeleteLocalRef(j_track);
-      }
-    }
-    for (size_t i = 0; i < audio_tracks_.size(); ++i) {
-      bool found = false;
-      for (size_t j = 0; j < audio_tracks.size(); ++j) {
-	if (audio_tracks_[i]->id() == audio_tracks[j]->id()) {
-	  found = true;
-	  break;
-	}
-      }
-      if (!found) {
-	AudioTrackInterface* track = audio_tracks_[i];
-	ScopedLocalRef<jstring> id(
-	    jni(), JavaStringFromStdString(jni(), track->id()));
-	jmethodID get_audio_track_id = GetMethodID(jni(),
-            *j_stream_class_,
-	    "getAudioTrack", "(Ljava/lang/String;)Lorg/webrtc/AudioTrack;");
-	jobject j_track = jni()->CallObjectMethod(*j_stream_global_, get_audio_track_id, *id);
-	CHECK_EXCEPTION(jni(), "error during CallObjectMethod");
-	if (j_track != NULL) {
-	  jfieldID audio_tracks_id = GetFieldID(jni(),
-              *j_stream_class_, "audioTracks", "Ljava/util/LinkedList;");
-	  ScopedLocalRef<jobject> j_audio_tracks(jni(), GetObjectField(
-              jni(), *j_stream_global_, audio_tracks_id));
-	  jmethodID remove_id = GetMethodID(jni(),
-              GetObjectClass(jni(), *j_audio_tracks), "remove", "(Ljava/lang/Object;)Z");
-	  jni()->CallBooleanMethod(*j_audio_tracks, remove_id, j_track);
-	  CHECK_EXCEPTION(jni(), "error during CallBooleanMethod");
-	  jmethodID on_remove_track_id = GetMethodID(jni(), *j_observer_class_,
-	      "onRemoveTrack", "(Lorg/webrtc/MediaStream;Lorg/webrtc/AudioTrack;)V");
-	  jni()->CallVoidMethod(*j_observer_global_, on_remove_track_id, *j_stream_global_, j_track);
-	  CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
-
-	  jni()->DeleteLocalRef(j_track);
-	}
-      }
-    }
-    audio_tracks_ = audio_tracks;
-
-    VideoTrackVector video_tracks = stream_->GetVideoTracks();
-    for (size_t i = 0; i < video_tracks.size(); ++i) {
-      bool found = false;
-      for (size_t j = 0; j < video_tracks_.size(); ++j) {
-	if (video_tracks[i]->id() == video_tracks_[j]->id()) {
-	  found = true;
-	  break;
-	}
-      }
-      if (!found) {
-	VideoTrackInterface* track = video_tracks[i];
-	ScopedLocalRef<jstring> id(
-	    jni(), JavaStringFromStdString(jni(), track->id()));
-	jmethodID get_video_track_id = GetMethodID(jni(),
-            *j_stream_class_,
-	    "getVideoTrack", "(Ljava/lang/String;)Lorg/webrtc/VideoTrack;");
-	jobject j_track = jni()->CallObjectMethod(*j_stream_global_, get_video_track_id, *id);
-	CHECK_EXCEPTION(jni(), "error during CallObjectMethod");
-
-	if (j_track == NULL) {
-	  j_track = jni()->NewObject(
-              *j_video_track_class_, j_video_track_ctor_, (jlong)track, *id);
-	  CHECK_EXCEPTION(jni(), "error during NewObject");
-	  jfieldID video_tracks_id = GetFieldID(jni(),
-              *j_stream_class_, "videoTracks", "Ljava/util/LinkedList;");
-	  ScopedLocalRef<jobject> j_video_tracks(jni(), GetObjectField(
-              jni(), *j_stream_global_, video_tracks_id));
-	  jmethodID add_id = GetMethodID(jni(),
-              GetObjectClass(jni(), *j_video_tracks), "add", "(Ljava/lang/Object;)Z");
-	  jboolean added = jni()->CallBooleanMethod(*j_video_tracks, add_id, j_track);
-	  CHECK_EXCEPTION(jni(), "error during CallBooleanMethod");
-	  CHECK(added, "");
-	  track->AddRef();
-
-	  j_track = jni()->CallObjectMethod(*j_stream_global_, get_video_track_id, *id);
-	  CHECK_EXCEPTION(jni(), "error during CallObjectMethod");
-	  CHECK(j_track, "");
-	}
-
-	jmethodID on_add_track_id = GetMethodID(jni(), *j_observer_class_,
-	    "onAddTrack", "(Lorg/webrtc/MediaStream;Lorg/webrtc/VideoTrack;)V");
-	jni()->CallVoidMethod(*j_observer_global_, on_add_track_id, *j_stream_global_, j_track);
-	CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
-
-	jni()->DeleteLocalRef(j_track);
-      }
-    }
-
-    for (size_t i = 0; i < video_tracks_.size(); ++i) {
-      bool found = false;
-      for (size_t j = 0; j < video_tracks.size(); ++j) {
-	if (video_tracks_[i]->id() == video_tracks[j]->id()) {
-	  found = true;
-	  break;
-	}
-      }
-      if (!found) {
-	VideoTrackInterface* track = video_tracks_[i];
-	ScopedLocalRef<jstring> id(
-	    jni(), JavaStringFromStdString(jni(), track->id()));
-	jmethodID get_video_track_id = GetMethodID(jni(),
-            *j_stream_class_,
-	    "getVideoTrack", "(Ljava/lang/String;)Lorg/webrtc/VideoTrack;");
-	jobject j_track = jni()->CallObjectMethod(*j_stream_global_, get_video_track_id, *id);
-	CHECK_EXCEPTION(jni(), "error during CallObjectMethod");
-	if (j_track != NULL) {
-	  jfieldID video_tracks_id = GetFieldID(jni(),
-              *j_stream_class_, "videoTracks", "Ljava/util/LinkedList;");
-	  ScopedLocalRef<jobject> j_video_tracks(jni(), GetObjectField(
-              jni(), *j_stream_global_, video_tracks_id));
-	  jmethodID remove_id = GetMethodID(jni(),
-              GetObjectClass(jni(), *j_video_tracks), "remove", "(Ljava/lang/Object;)Z");
-	  jni()->CallBooleanMethod(*j_video_tracks, remove_id, j_track);
-	  CHECK_EXCEPTION(jni(), "error during CallBooleanMethod");
-	  jmethodID on_remove_track_id = GetMethodID(jni(), *j_observer_class_,
-	      "onRemoveTrack", "(Lorg/webrtc/MediaStream;Lorg/webrtc/VideoTrack;)V");
-	  jni()->CallVoidMethod(*j_observer_global_, on_remove_track_id, *j_stream_global_, j_track);
-	  CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
-
-	  jni()->DeleteLocalRef(j_track);
-	}
-      }
-    }
-    video_tracks_ = video_tracks;
-  }
-
- private:
-  JNIEnv* jni() {
-    return AttachCurrentThreadIfNeeded();
-  }
-
-  const ScopedGlobalRef<jobject> j_stream_global_;
-  const ScopedGlobalRef<jclass> j_stream_class_;
-  const ScopedGlobalRef<jobject> j_observer_global_;
-  const ScopedGlobalRef<jclass> j_observer_class_;
-  const ScopedGlobalRef<jclass> j_audio_track_class_;
-  const jmethodID j_audio_track_ctor_;
-  const ScopedGlobalRef<jclass> j_video_track_class_;
-  const jmethodID j_video_track_ctor_;
-  talk_base::scoped_refptr<MediaStreamInterface> stream_;
-  AudioTrackVector audio_tracks_;
-  VideoTrackVector video_tracks_;
-};
-
 // Adapter presenting a cricket::VideoRenderer as a
 // webrtc::VideoRendererInterface.
 class VideoRendererWrapper : public VideoRendererInterface {
@@ -1312,22 +1264,6 @@ extern "C" jint JNIEXPORT JNICALL JNI_OnLoad(JavaVM *jvm, void *reserved) {
     return -1;
   g_class_reference_holder = new ClassReferenceHolder(jni);
 
-// -CJ- 08032013
-// Do not create trace file
-#if 0
-#ifdef ANDROID
-  webrtc::Trace::CreateTrace();
-  CHECK(!webrtc::Trace::SetTraceFile("/sdcard/trace.txt", false),
-        "SetTraceFile failed");
-  CHECK(!webrtc::Trace::SetLevelFilter(webrtc::kTraceAll),
-        "SetLevelFilter failed");
-#endif  // ANDROID
-// -CJ- 08032013
-#endif
-
-  // Uncomment to get sensitive logs emitted (to stderr or logcat).
-  // talk_base::LogMessage::LogToDebug(talk_base::LS_SENSITIVE);
-
   return JNI_VERSION_1_6;
 }
 
@@ -1414,16 +1350,9 @@ JOW(void, PeerConnection_freeObserver)(JNIEnv*, jclass, jlong j_p) {
 }
 
 JOW(void, MediaSource_free)(JNIEnv*, jclass, jlong j_p) {
-  CHECK_RELEASE(reinterpret_cast<MediaSourceInterface*>(j_p));
-}
-
-JOW(void, MediaStream_freeObserver)(JNIEnv*, jclass, jlong j_p) {
-  MediaStreamObserverWrapper* p = reinterpret_cast<MediaStreamObserverWrapper*>(j_p);
-  delete p;
-}
-
-JOW(void, MediaStreamTrack_free)(JNIEnv*, jclass, jlong j_p) {
-  reinterpret_cast<MediaStreamTrackInterface*>(j_p)->Release();
+  // -CJ- TBD
+  //CHECK_RELEASE(reinterpret_cast<MediaSourceInterface*>(j_p));
+  (reinterpret_cast<MediaSourceInterface*>(j_p))->Release();
 }
 
 JOW(void, VideoCapturer_free)(JNIEnv*, jclass, jlong j_p) {
@@ -1434,11 +1363,10 @@ JOW(void, VideoRenderer_free)(JNIEnv*, jclass, jlong j_p) {
   delete reinterpret_cast<VideoRendererWrapper*>(j_p);
 }
 
-JOW(jlong, MediaStream_nativeCreateObserver)(
-    JNIEnv* jni, jobject j_stream, jobject j_observer) {
-  MediaStreamObserverWrapper* observer = new MediaStreamObserverWrapper(
-        jni, j_stream, j_observer);
-  return (jlong)observer;
+JOW(void, MediaStreamTrack_free)(JNIEnv*, jclass, jlong j_p) {
+  // -CJ- TBD
+  //  CHECK_RELEASE(reinterpret_cast<MediaStreamTrackInterface*>(j_p));
+  (reinterpret_cast<MediaStreamTrackInterface*>(j_p))->Release();
 }
 
 JOW(jboolean, MediaStream_nativeAddAudioTrack)(
@@ -1663,11 +1591,6 @@ JOW(void, PeerConnection_createAnswer)(
   ExtractNativePC(jni, j_pc)->CreateAnswer(observer, constraints);
 }
 
-JOW(void, VideoCapturer_nativeSetCaptureRotation)(
-    JNIEnv* jni, jclass, jlong pointer, jint rotation) {
-  (reinterpret_cast<cricket::VideoCapturer*>(pointer))->SetCaptureRotation(rotation);
-}
-
 // Helper to create a SessionDescriptionInterface from a SessionDescription.
 static SessionDescriptionInterface* JavaSdpToNativeSdp(
     JNIEnv* jni, jobject j_sdp) {
@@ -1861,4 +1784,10 @@ JOW(void, VideoTrack_nativeRemoveRenderer)(
     jlong j_video_track_pointer, jlong j_renderer_pointer) {
   reinterpret_cast<VideoTrackInterface*>(j_video_track_pointer)->RemoveRenderer(
       reinterpret_cast<VideoRendererInterface*>(j_renderer_pointer));
+}
+
+// -CJ- set capture rotation
+JOW(void, VideoCapturer_nativeSetCaptureRotation)(
+    JNIEnv* jni, jclass, jlong pointer, jint rotation) {
+  (reinterpret_cast<cricket::VideoCapturer*>(pointer))->SetCaptureRotation(rotation);
 }
