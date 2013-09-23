@@ -1792,6 +1792,12 @@ JOW(void, VideoCapturer_nativeSetCaptureRotation)(
   (reinterpret_cast<cricket::VideoCapturer*>(pointer))->SetCaptureRotation(rotation);
 }
 
+// -twinlife- set camera mute
+JOW(void, VideoCapturer_nativeSetCameraMute)(
+    JNIEnv* jni, jclass, jlong pointer, jboolean mute) {
+  (reinterpret_cast<cricket::VideoCapturer*>(pointer))->SetCameraMute(mute);
+}
+
 // -twinlife- switch camera
 JOW(void, VideoCapturer_nativeSwitchCamera)(
     JNIEnv* jni, jclass, jlong pointer, jint camera_id) {

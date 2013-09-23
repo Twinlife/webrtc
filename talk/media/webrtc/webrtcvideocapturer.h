@@ -70,6 +70,8 @@ class WebRtcVideoCapturer : public VideoCapturer,
   virtual bool IsRunning();
   virtual bool IsScreencast() const { return false; }
   virtual void SetCaptureRotation(int rotation);
+  // -twinlife- set camera mute
+  virtual void SetCameraMute(bool mute);
   // -twinlife- switch camera
   virtual void SwitchCamera(int camera_id);
 

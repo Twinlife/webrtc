@@ -671,6 +671,28 @@ int32_t VideoCaptureAndroid::SetCaptureRotation(
   return 0;
 }
 
+  // -twinlife- set camera mute
+void VideoCaptureAndroid::SetCameraMute(bool mute) {
+  CriticalSectionScoped cs(&_apiCs);
+
+  // get the JNI env for this thread
+  JNIEnv *env = NULL;
+  if (g_jvm->GetEnv((void**) &env, JNI_VERSION_1_4) != JNI_OK) {
+    // try to attach the thread and get the env
+    // Attach this thread to JVM
+    jint res = g_jvm->AttachCurrentThread(&env, NULL);
+    if ((res < 0) || !env) {
+      WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceVideoCapture, _id,
+                   "%s: Could not attach thread to JVM (%d, %p)",
+                   __FUNCTION__, res, env);
+    }
+  }
+
+  jmethodID cid = env->GetMethodID(g_javaCmClass, "SetCameraMute", "(Z)V");
+
+  env->CallVoidMethod(_javaCaptureObj, cid, mute);
+}
+
   // -twinlife- switch camera
 void VideoCaptureAndroid::SwitchCamera(int cameraId) {
   CriticalSectionScoped cs(&_apiCs);

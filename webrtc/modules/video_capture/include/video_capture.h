@@ -140,6 +140,8 @@ class VideoCaptureModule: public RefCountedModule {
   // displayed correctly if rendered.
   virtual int32_t SetCaptureRotation(VideoCaptureRotation rotation) = 0;
 
+  // -twinlife- set camera mute
+  virtual void SetCameraMute(bool mute) = 0;
   // -twinlife- switch camera
   virtual void SwitchCamera(int cameraId) = 0;
 

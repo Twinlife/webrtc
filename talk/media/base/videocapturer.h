@@ -232,6 +232,8 @@ class VideoCapturer
 
   // -twinlife- set capture rotation
   virtual void SetCaptureRotation(int rotation) {};
+  // -twinlife- set camera mute
+  virtual void SetCameraMute(bool mute) {};
   // -twinlife- switch camera
   virtual void SwitchCamera(int camera_id){};
 

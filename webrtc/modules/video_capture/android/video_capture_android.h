@@ -43,6 +43,8 @@ class VideoCaptureAndroid : public VideoCaptureImpl {
   virtual int32_t SetCaptureRotation(VideoCaptureRotation rotation);
   // -twinlife- switch camera
   virtual void SwitchCamera(int cameraId);
+  // -twinlife- set camera mute
+  virtual void SetCameraMute(bool mute);
 
  protected:
   virtual ~VideoCaptureAndroid();

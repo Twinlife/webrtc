@@ -317,6 +317,11 @@ void WebRtcVideoCapturer::SetCaptureRotation(int rotation) {
   module_->SetCaptureRotation(lRotation);
 }
 
+  // -twinlife- set camera mute
+void WebRtcVideoCapturer::SetCameraMute(bool mute) {
+  module_->SetCameraMute(mute);
+}
+
   // -twinlife- switch camera
 void WebRtcVideoCapturer::SwitchCamera(int camera_id) {
   module_->SwitchCamera(camera_id);
