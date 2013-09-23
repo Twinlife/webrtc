@@ -63,6 +63,8 @@ public:
     virtual int32_t SetCaptureDelay(int32_t delayMS);
     virtual int32_t CaptureDelay();
     virtual int32_t SetCaptureRotation(VideoCaptureRotation rotation);
+    // -twinlife- switch camera
+    virtual void SwitchCamera(int cameraId) {};
 
     virtual int32_t EnableFrameRateCallback(const bool enable);
     virtual int32_t EnableNoPictureAlarm(const bool enable);

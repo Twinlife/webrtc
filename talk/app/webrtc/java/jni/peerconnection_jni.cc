@@ -482,7 +482,7 @@ static DataChannelInit JavaDataChannelInitToNative(
 class ConstraintsWrapper;
 
 //
-// -CJ- Add MediaStreamObserver in Java
+// -twinlife- Add MediaStreamObserver in Java
 //
 class MediaStreamObserver : public ObserverInterface {
  public:
@@ -772,7 +772,7 @@ class PCOJava : public PeerConnectionObserver {
     }
     streams_[stream] = jni()->NewWeakGlobalRef(*j_stream);
     CHECK_EXCEPTION(jni(), "error during NewWeakGlobalRef");
-    // -CJ- stream observer management
+    // -twinlife- stream observer management
     streamObservers_[stream] = new MediaStreamObserver(jni(), *j_stream);
 
     jmethodID m = GetMethodID(jni(), *j_observer_class_, "onAddStream",
@@ -819,7 +819,7 @@ class PCOJava : public PeerConnectionObserver {
     CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
   }
 
-  // -CJ- support renegotiation
+  // -twinlife- support renegotiation
 
   virtual void OnRenegotiationNeeded() OVERRIDE {
     jmethodID m = GetMethodID(
@@ -1786,8 +1786,14 @@ JOW(void, VideoTrack_nativeRemoveRenderer)(
       reinterpret_cast<VideoRendererInterface*>(j_renderer_pointer));
 }
 
-// -CJ- set capture rotation
+// -twinlife- set capture rotation
 JOW(void, VideoCapturer_nativeSetCaptureRotation)(
     JNIEnv* jni, jclass, jlong pointer, jint rotation) {
   (reinterpret_cast<cricket::VideoCapturer*>(pointer))->SetCaptureRotation(rotation);
+}
+
+// -twinlife- switch camera
+JOW(void, VideoCapturer_nativeSwitchCamera)(
+    JNIEnv* jni, jclass, jlong pointer, jint camera_id) {
+  (reinterpret_cast<cricket::VideoCapturer*>(pointer))->SwitchCamera(camera_id);
 }

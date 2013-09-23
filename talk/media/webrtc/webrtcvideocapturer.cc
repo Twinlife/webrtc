@@ -317,6 +317,11 @@ void WebRtcVideoCapturer::SetCaptureRotation(int rotation) {
   module_->SetCaptureRotation(lRotation);
 }
 
+  // -twinlife- switch camera
+void WebRtcVideoCapturer::SwitchCamera(int camera_id) {
+  module_->SwitchCamera(camera_id);
+}
+
 bool WebRtcVideoCapturer::GetPreferredFourccs(
     std::vector<uint32>* fourccs) {
   if (!fourccs) {
