@@ -28,11 +28,11 @@ int Normal::Process(const int16_t* input,
                     size_t length,
                     Modes last_mode,
                     int16_t* external_mute_factor_array,
-                    AudioMultiVector<int16_t>* output) {
+                    AudioMultiVector* output) {
   if (length == 0) {
     // Nothing to process.
     output->Clear();
-    return length;
+    return static_cast<int>(length);
   }
 
   assert(output->Empty());
@@ -55,7 +55,7 @@ int Normal::Process(const int16_t* input,
     expand_->SetParametersForNormalAfterExpand();
 
     // Call Expand.
-    AudioMultiVector<int16_t> expanded(output->Channels());
+    AudioMultiVector expanded(output->Channels());
     expand_->Process(&expanded);
     expand_->Reset();
 
@@ -68,11 +68,11 @@ int Normal::Process(const int16_t* input,
       int16_t* signal = &(*output)[channel_ix][0];
       size_t length_per_channel = length / output->Channels();
       // Find largest absolute value in new data.
-      int16_t decoded_max = WebRtcSpl_MaxAbsValueW16(signal,
-                                                     length_per_channel);
+      int16_t decoded_max = WebRtcSpl_MaxAbsValueW16(
+        signal,  static_cast<int>(length_per_channel));
       // Adjust muting factor if needed (to BGN level).
-      int energy_length = std::min(static_cast<size_t>(fs_mult * 64),
-                                   length_per_channel);
+      int energy_length = std::min(static_cast<int>(fs_mult * 64),
+                                   static_cast<int>(length_per_channel));
       int scaling = 6 + fs_shift
           - WebRtcSpl_NormW32(decoded_max * decoded_max);
       scaling = std::max(scaling, 0);  // |scaling| should always be >= 0.
@@ -184,7 +184,7 @@ int Normal::Process(const int16_t* input,
     }
   }
 
-  return length;
+  return static_cast<int>(length);
 }
 
 }  // namespace webrtc

@@ -14,13 +14,17 @@
 
 #include "gtest/gtest.h"
 #include "webrtc/modules/audio_coding/main/interface/audio_coding_module.h"
+#include "webrtc/modules/audio_coding/main/acm2/audio_coding_module_impl.h"
 #include "webrtc/modules/audio_coding/main/acm2/acm_codec_database.h"
 #include "webrtc/modules/audio_coding/neteq4/tools/rtp_generator.h"
 #include "webrtc/system_wrappers/interface/scoped_ptr.h"
 #include "webrtc/test/test_suite.h"
 #include "webrtc/test/testsupport/fileutils.h"
+#include "webrtc/test/testsupport/gtest_disable.h"
 
 namespace webrtc {
+
+namespace acm2 {
 namespace {
 
 bool CodecsEqual(const CodecInst& codec_a, const CodecInst& codec_b) {
@@ -39,7 +43,7 @@ class AcmReceiverTest : public AudioPacketizationCallback,
  protected:
   AcmReceiverTest()
       : receiver_(new AcmReceiver),
-        acm_(AudioCodingModule::Create(0)),
+        acm_(new AudioCodingModuleImpl(0)),
         timestamp_(0),
         packet_sent_(false),
         last_packet_send_timestamp_(timestamp_),
@@ -49,7 +53,7 @@ class AcmReceiverTest : public AudioPacketizationCallback,
 
   void SetUp() {
     ASSERT_TRUE(receiver_.get() != NULL);
-    ASSERT_TRUE(acm_ != NULL);
+    ASSERT_TRUE(acm_.get() != NULL);
     for (int n = 0; n < ACMCodecDB::kNumCodecs; n++) {
       ASSERT_EQ(0, ACMCodecDB::Codec(n, &codecs_[n]));
     }
@@ -69,7 +73,6 @@ class AcmReceiverTest : public AudioPacketizationCallback,
   }
 
   void TearDown() {
-    AudioCodingModule::Destroy(acm_);
   }
 
   void InsertOnePacketOfSilence(int codec_id) {
@@ -145,7 +148,7 @@ class AcmReceiverTest : public AudioPacketizationCallback,
 
   scoped_ptr<AcmReceiver> receiver_;
   CodecInst codecs_[ACMCodecDB::kMaxNumCodecs];
-  AudioCodingModule* acm_;
+  scoped_ptr<AudioCodingModule> acm_;
   WebRtcRTPHeader rtp_header_;
   uint32_t timestamp_;
   bool packet_sent_;  // Set when SendData is called reset when inserting audio.
@@ -153,7 +156,7 @@ class AcmReceiverTest : public AudioPacketizationCallback,
   FrameType last_frame_type_;
 };
 
-TEST_F(AcmReceiverTest, AddCodecGetCodec) {
+TEST_F(AcmReceiverTest, DISABLED_ON_ANDROID(AddCodecGetCodec)) {
   // Add codec.
   for (int n = 0; n < ACMCodecDB::kNumCodecs; ++n) {
     if (n & 0x1)  // Just add codecs with odd index.
@@ -176,7 +179,7 @@ TEST_F(AcmReceiverTest, AddCodecGetCodec) {
   }
 }
 
-TEST_F(AcmReceiverTest, AddCodecChangePayloadType) {
+TEST_F(AcmReceiverTest, DISABLED_ON_ANDROID(AddCodecChangePayloadType)) {
   CodecInst ref_codec;
   const int codec_id = ACMCodecDB::kPCMA;
   EXPECT_EQ(0, ACMCodecDB::Codec(codec_id, &ref_codec));
@@ -200,7 +203,7 @@ TEST_F(AcmReceiverTest, AddCodecChangePayloadType) {
   EXPECT_TRUE(CodecsEqual(test_codec, ref_codec));
 }
 
-TEST_F(AcmReceiverTest, AddCodecRemoveCodec) {
+TEST_F(AcmReceiverTest, DISABLED_ON_ANDROID(AddCodecRemoveCodec)) {
   CodecInst codec;
   const int codec_id = ACMCodecDB::kPCMA;
   EXPECT_EQ(0, ACMCodecDB::Codec(codec_id, &codec));
@@ -218,7 +221,7 @@ TEST_F(AcmReceiverTest, AddCodecRemoveCodec) {
   EXPECT_EQ(-1, receiver_->DecoderByPayloadType(payload_type, &codec));
 }
 
-TEST_F(AcmReceiverTest, SampleRate) {
+TEST_F(AcmReceiverTest, DISABLED_ON_ANDROID(SampleRate)) {
   const int kCodecId[] = {
       ACMCodecDB::kISAC, ACMCodecDB::kISACSWB, ACMCodecDB::kISACFB,
       -1  // Terminator.
@@ -242,7 +245,8 @@ TEST_F(AcmReceiverTest, SampleRate) {
 }
 
 // Changing playout mode to FAX should not change the background noise mode.
-TEST_F(AcmReceiverTest, PlayoutModeAndBackgroundNoiseMode) {
+TEST_F(AcmReceiverTest,
+       DISABLED_ON_ANDROID(PlayoutModeAndBackgroundNoiseMode)) {
   EXPECT_EQ(kBgnOn, receiver_->BackgroundNoiseModeForTest());  // Default
 
   receiver_->SetPlayoutMode(voice);
@@ -270,7 +274,7 @@ TEST_F(AcmReceiverTest, PlayoutModeAndBackgroundNoiseMode) {
   EXPECT_EQ(kBgnOn, receiver_->BackgroundNoiseModeForTest());
 }
 
-TEST_F(AcmReceiverTest, PostdecodingVad) {
+TEST_F(AcmReceiverTest, DISABLED_ON_ANDROID(PostdecodingVad)) {
   receiver_->EnableVad();
   EXPECT_TRUE(receiver_->vad_enabled());
 
@@ -298,7 +302,7 @@ TEST_F(AcmReceiverTest, PostdecodingVad) {
   EXPECT_EQ(AudioFrame::kVadUnknown, frame.vad_activity_);
 }
 
-TEST_F(AcmReceiverTest, FlushBuffer) {
+TEST_F(AcmReceiverTest, DISABLED_ON_ANDROID(FlushBuffer)) {
   const int id = ACMCodecDB::kISAC;
   EXPECT_EQ(0, receiver_->AddCodec(id, codecs_[id].pltype, codecs_[id].channels,
                                    NULL));
@@ -315,7 +319,7 @@ TEST_F(AcmReceiverTest, FlushBuffer) {
   ASSERT_EQ(0, statistics.currentBufferSize);
 }
 
-TEST_F(AcmReceiverTest, PlayoutTimestamp) {
+TEST_F(AcmReceiverTest, DISABLED_ON_ANDROID(PlayoutTimestamp)) {
   const int id = ACMCodecDB::kPCM16Bwb;
   EXPECT_EQ(0, receiver_->AddCodec(id, codecs_[id].pltype, codecs_[id].channels,
                                    NULL));
@@ -347,7 +351,7 @@ TEST_F(AcmReceiverTest, PlayoutTimestamp) {
   }
 }
 
-TEST_F(AcmReceiverTest, LastAudioCodec) {
+TEST_F(AcmReceiverTest, DISABLED_ON_ANDROID(LastAudioCodec)) {
   const int kCodecId[] = {
       ACMCodecDB::kISAC, ACMCodecDB::kPCMA, ACMCodecDB::kISACSWB,
       ACMCodecDB::kPCM16Bswb32kHz, ACMCodecDB::kG722_1C_48,
@@ -415,5 +419,7 @@ TEST_F(AcmReceiverTest, LastAudioCodec) {
     ++n;
   }
 }
+
+}  // namespace acm2
 
 }  // namespace webrtc

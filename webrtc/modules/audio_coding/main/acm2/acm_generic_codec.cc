@@ -21,6 +21,8 @@
 
 namespace webrtc {
 
+namespace acm2 {
+
 // Enum for CNG
 enum {
   kMaxPLCParamsCNG = WEBRTC_CNG_MAX_LPC_ORDER,
@@ -123,7 +125,10 @@ int32_t ACMGenericCodec::Add10MsDataSafe(const uint32_t timestamp,
     if ((in_audio_ix_write_ >= length_smpl * audio_channel) &&
         (in_timestamp_ix_write_ > 0)) {
       in_audio_ix_write_ -= length_smpl * audio_channel;
+      assert(in_timestamp_ix_write_ >= 0);
+
       in_timestamp_ix_write_--;
+      assert(in_audio_ix_write_ >= 0);
       WEBRTC_TRACE(webrtc::kTraceDebug, webrtc::kTraceAudioCoding, unique_id_,
                    "Adding 10ms with previous timestamp, overwriting the "
                    "previous 10ms");
@@ -160,8 +165,11 @@ int32_t ACMGenericCodec::Add10MsDataSafe(const uint32_t timestamp,
     memmove(in_timestamp_, in_timestamp_ + missed_10ms_blocks,
             (in_timestamp_ix_write_ - missed_10ms_blocks) * sizeof(uint32_t));
     in_timestamp_ix_write_ -= missed_10ms_blocks;
+    assert(in_timestamp_ix_write_ >= 0);
+
     in_timestamp_[in_timestamp_ix_write_] = timestamp;
     in_timestamp_ix_write_++;
+    assert(in_timestamp_ix_write_ < TIMESTAMP_BUFFER_SIZE_W32);
 
     // Buffer is full.
     in_audio_ix_write_ = AUDIO_BUFFER_SIZE_W16;
@@ -173,12 +181,11 @@ int32_t ACMGenericCodec::Add10MsDataSafe(const uint32_t timestamp,
   memcpy(in_audio_ + in_audio_ix_write_, data,
          length_smpl * audio_channel * sizeof(int16_t));
   in_audio_ix_write_ += length_smpl * audio_channel;
-
   assert(in_timestamp_ix_write_ < TIMESTAMP_BUFFER_SIZE_W32);
-  assert(in_timestamp_ix_write_ >= 0);
 
   in_timestamp_[in_timestamp_ix_write_] = timestamp;
   in_timestamp_ix_write_++;
+  assert(in_timestamp_ix_write_ < TIMESTAMP_BUFFER_SIZE_W32);
   return 0;
 }
 
@@ -313,11 +320,7 @@ int16_t ACMGenericCodec::Encode(uint8_t* bitstream,
             // break from the loop
             break;
           }
-
-          // TODO(andrew): This should be multiplied by the number of
-          //               channels, right?
-          // http://code.google.com/p/webrtc/issues/detail?id=714
-          done = in_audio_ix_read_ >= frame_len_smpl_;
+          done = in_audio_ix_read_ >= frame_len_smpl_ * num_channels_;
         }
       }
       if (status >= 0) {
@@ -345,6 +348,7 @@ int16_t ACMGenericCodec::Encode(uint8_t* bitstream,
             (in_timestamp_ix_write_ - num_10ms_blocks) * sizeof(int32_t));
   }
   in_timestamp_ix_write_ -= num_10ms_blocks;
+  assert(in_timestamp_ix_write_ >= 0);
 
   // Remove encoded audio and move next audio to be encoded to the beginning
   // of the buffer. Accordingly, adjust the read and write indices.
@@ -423,7 +427,11 @@ int16_t ACMGenericCodec::ResetEncoderSafe() {
   DisableVAD();
 
   // Set DTX/VAD.
-  return SetVADSafe(enable_dtx, enable_vad, mode);
+  int status = SetVADSafe(&enable_dtx, &enable_vad, &mode);
+  dtx_enabled_ = enable_dtx;
+  vad_enabled_ = enable_vad;
+  vad_mode_ = mode;
+  return status;
 }
 
 int16_t ACMGenericCodec::InternalResetEncoder() {
@@ -444,11 +452,8 @@ int16_t ACMGenericCodec::InitEncoderSafe(WebRtcACMCodecParams* codec_params,
   int mirrorID;
   int codec_number = ACMCodecDB::CodecNumber(codec_params->codec_inst,
                                              &mirrorID);
-  if (codec_number < 0) {
-    WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, unique_id_,
-                 "InitEncoderSafe: error, codec number negative");
-    return -1;
-  }
+  assert(codec_number >= 0);
+
   // Check if the parameters are for this codec.
   if ((codec_id_ >= 0) && (codec_id_ != codec_number) &&
       (codec_id_ != mirrorID)) {
@@ -477,7 +482,7 @@ int16_t ACMGenericCodec::InitEncoderSafe(WebRtcACMCodecParams* codec_params,
       encoder_exist_ = true;
     }
   }
-  frame_len_smpl_ = (codec_params->codec_inst).pacsize;
+  frame_len_smpl_ = codec_params->codec_inst.pacsize;
   num_channels_ = codec_params->codec_inst.channels;
   status = InternalInitEncoder(codec_params);
   if (status < 0) {
@@ -486,28 +491,27 @@ int16_t ACMGenericCodec::InitEncoderSafe(WebRtcACMCodecParams* codec_params,
     encoder_initialized_ = false;
     return -1;
   } else {
+    // TODO(turajs): Move these allocations to the constructor issue 2445.
     // Store encoder parameters.
     memcpy(&encoder_params_, codec_params, sizeof(WebRtcACMCodecParams));
     encoder_initialized_ = true;
     if (in_audio_ == NULL) {
       in_audio_ = new int16_t[AUDIO_BUFFER_SIZE_W16];
-      if (in_audio_ == NULL) {
-        return -1;
-      }
-      memset(in_audio_, 0, AUDIO_BUFFER_SIZE_W16 * sizeof(int16_t));
     }
     if (in_timestamp_ == NULL) {
       in_timestamp_ = new uint32_t[TIMESTAMP_BUFFER_SIZE_W32];
-      if (in_timestamp_ == NULL) {
-        return -1;
-      }
-      memset(in_timestamp_, 0, sizeof(uint32_t) * TIMESTAMP_BUFFER_SIZE_W32);
     }
   }
-  status = SetVADSafe(codec_params->enable_dtx, codec_params->enable_vad,
-                      codec_params->vad_mode);
 
-  return status;
+  // Fresh start of audio buffer.
+  memset(in_audio_, 0, sizeof(*in_audio_) * AUDIO_BUFFER_SIZE_W16);
+  memset(in_timestamp_, 0, sizeof(*in_timestamp_) * TIMESTAMP_BUFFER_SIZE_W32);
+  in_audio_ix_write_ = 0;
+  in_audio_ix_read_ = 0;
+  in_timestamp_ix_write_ = 0;
+
+  return SetVADSafe(&codec_params->enable_dtx, &codec_params->enable_vad,
+                    &codec_params->vad_mode);
 }
 
 void ACMGenericCodec::ResetNoMissedSamples() {
@@ -634,70 +638,78 @@ uint32_t ACMGenericCodec::EarliestTimestamp() const {
   return in_timestamp_[0];
 }
 
-int16_t ACMGenericCodec::SetVAD(const bool enable_dtx,
-                                const bool enable_vad,
-                                const ACMVADMode mode) {
+int16_t ACMGenericCodec::SetVAD(bool* enable_dtx,
+                                bool* enable_vad,
+                                ACMVADMode* mode) {
   WriteLockScoped cs(codec_wrapper_lock_);
   return SetVADSafe(enable_dtx, enable_vad, mode);
 }
 
-int16_t ACMGenericCodec::SetVADSafe(const bool enable_dtx,
-                                    const bool enable_vad,
-                                    const ACMVADMode mode) {
-  if (enable_dtx) {
+int16_t ACMGenericCodec::SetVADSafe(bool* enable_dtx,
+                                    bool* enable_vad,
+                                    ACMVADMode* mode) {
+  if (!STR_CASE_CMP(encoder_params_.codec_inst.plname, "OPUS") ||
+      encoder_params_.codec_inst.channels == 2 ) {
+    // VAD/DTX is not supported for Opus (even if sending mono), or other
+    // stereo codecs.
+    DisableDTX();
+    DisableVAD();
+    *enable_dtx = false;
+    *enable_vad = false;
+    return 0;
+  }
+
+  if (*enable_dtx) {
     // Make G729 AnnexB a special case.
     if (!STR_CASE_CMP(encoder_params_.codec_inst.plname, "G729")
         && !has_internal_dtx_) {
       if (ACMGenericCodec::EnableDTX() < 0) {
         WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, unique_id_,
                      "SetVADSafe: error in enable DTX");
+        *enable_dtx = false;
+        *enable_vad = vad_enabled_;
         return -1;
       }
     } else {
       if (EnableDTX() < 0) {
         WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, unique_id_,
                      "SetVADSafe: error in enable DTX");
+        *enable_dtx = false;
+        *enable_vad = vad_enabled_;
         return -1;
       }
     }
 
-    if (has_internal_dtx_) {
-      // Codec has internal DTX, practically we don't need WebRtc VAD, however,
-      // we let the user to turn it on if they need call-backs on silence.
-      // Store VAD mode for future even if VAD is off.
-      vad_mode_ = mode;
-      return (enable_vad) ? EnableVAD(mode) : DisableVAD();
-    } else {
-      // Codec does not have internal DTX so enabling DTX requires an active
-      // VAD. 'enable_dtx == true' overwrites VAD status.
-      if (EnableVAD(mode) < 0) {
-        // If we cannot create VAD we have to disable DTX.
-        if (!vad_enabled_) {
-          DisableDTX();
-        }
-        WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, unique_id_,
-                     "SetVADSafe: error in enable VAD");
-        return -1;
-      }
-
-      // Return '1', to let the caller know VAD was turned on, even if the
-      // function was called with VAD='false'.
-      if (enable_vad == false) {
-        return 1;
-      } else {
-        return 0;
-      }
+    // If codec does not have internal DTX (normal case) enabling DTX requires
+    // an active VAD. '*enable_dtx == true' overwrites VAD status.
+    // If codec has internal DTX, practically we don't need WebRtc VAD, however,
+    // we let the user to turn it on if they need call-backs on silence.
+    if (!has_internal_dtx_) {
+      // DTX is enabled, and VAD will be activated.
+      *enable_vad = true;
     }
   } else {
     // Make G729 AnnexB a special case.
     if (!STR_CASE_CMP(encoder_params_.codec_inst.plname, "G729")
         && !has_internal_dtx_) {
       ACMGenericCodec::DisableDTX();
+      *enable_dtx = false;
     } else {
       DisableDTX();
+      *enable_dtx = false;
     }
-    return (enable_vad) ? EnableVAD(mode) : DisableVAD();
   }
+
+  int16_t status = (*enable_vad) ? EnableVAD(*mode) : DisableVAD();
+  if (status < 0) {
+    // Failed to set VAD, disable DTX.
+    WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, unique_id_,
+    "SetVADSafe: error in enable VAD");
+    DisableDTX();
+    *enable_dtx = false;
+    *enable_vad = false;
+  }
+  return status;
 }
 
 int16_t ACMGenericCodec::EnableDTX() {
@@ -991,5 +1003,7 @@ int16_t ACMGenericCodec::REDPayloadISAC(const int32_t /* isac_rate */,
                "Error: REDPayloadISAC is an iSAC specific function");
   return -1;
 }
+
+}  // namespace acm2
 
 }  // namespace webrtc

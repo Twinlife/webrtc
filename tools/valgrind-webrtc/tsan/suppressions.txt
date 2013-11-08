@@ -47,50 +47,22 @@
   fun:webrtc::ThreadPosix::Run
   fun:webrtc::StartThread
 }
+{
+  bug_2497
+  ThreadSanitizer:Race
+  fun:webrtc::VCMJitterBuffer::RecycleFramesUntilKeyFrame
+  ...
+}
+{
+  bug_2497_2
+  ThreadSanitizer:Race
+  fun:webrtc::VideoEngine::SetTraceFilter
+  ...
+}
 
 #-----------------------------------------------------------------------
 # 2. libjingle stuff (talk folder)
 
-{
-  bug_1205_1
-  ThreadSanitizer:Race
-  fun:webrtc::AudioDeviceLinuxALSA::PlayoutWarning
-  fun:webrtc::AudioDeviceModuleImpl::Process
-  fun:webrtc::ProcessThreadImpl::Process
-  fun:webrtc::ProcessThreadImpl::Run
-  fun:webrtc::ThreadPosix::Run
-  fun:StartThread
-}
-{
-  bug_1205_2
-  ThreadSanitizer:Race
-  fun:webrtc::AudioDeviceLinuxALSA::PlayoutError
-  fun:webrtc::AudioDeviceModuleImpl::Process
-  fun:webrtc::ProcessThreadImpl::Process
-  fun:webrtc::ProcessThreadImpl::Run
-  fun:webrtc::ThreadPosix::Run
-  fun:StartThread
-}
-{
-  bug_1205_3
-  ThreadSanitizer:Race
-  fun:webrtc::AudioDeviceLinuxALSA::RecordingWarning
-  fun:webrtc::AudioDeviceModuleImpl::Process
-  fun:webrtc::ProcessThreadImpl::Process
-  fun:webrtc::ProcessThreadImpl::Run
-  fun:webrtc::ThreadPosix::Run
-  fun:StartThread
-}
-{
-  bug_1205_4
-  ThreadSanitizer:Race
-  fun:webrtc::AudioDeviceLinuxALSA::RecordingError
-  fun:webrtc::AudioDeviceModuleImpl::Process
-  fun:webrtc::ProcessThreadImpl::Process
-  fun:webrtc::ProcessThreadImpl::Run
-  fun:webrtc::ThreadPosix::Run
-  fun:StartThread
-}
 {
   bug_1205_5
   ThreadSanitizer:Race
@@ -100,17 +72,6 @@
   fun:webrtc::ProcessThreadImpl::Run
   fun:webrtc::ThreadPosix::Run
   fun:StartThread
-}
-{
-  bug_1205_6
-  ThreadSanitizer:Race
-  fun:std::__detail::_List_node_base::_M_hook
-  fun:std::list::_M_insert
-  fun:std::list::push_back
-  fun:webrtc::ModuleRtpRtcpImpl::RegisterChildModule
-  fun:webrtc::ModuleRtpRtcpImpl::ModuleRtpRtcpImpl
-  fun:webrtc::RtpRtcp::CreateRtpRtcp
-  ...
 }
 {
   bug_1205_7
@@ -166,135 +127,12 @@
   fun:StartThread
 }
 {
-  bug_1205_12
-  ThreadSanitizer:Race
-  fun:webrtc::voe::Channel::GetAudioFrame
-  fun:webrtc::AudioConferenceMixerImpl::UpdateToMix
-  fun:webrtc::AudioConferenceMixerImpl::Process
-  fun:webrtc::voe::OutputMixer::MixActiveChannels
-  fun:webrtc::VoEBaseImpl::NeedMorePlayData
-  ...
-}
-{
-  bug_1205_13
-  ThreadSanitizer:Race
-  fun:talk_base::Thread::ReceiveSends
-  fun:talk_base::MessageQueue::Get
-  fun:talk_base::Thread::ProcessMessages
-  fun:talk_base::Thread::Run
-  fun:talk_base::Thread::PreRun
-}
-{
-  bug_1205_14
-  ThreadSanitizer:Race
-  fun:cricket::BaseChannel::~BaseChannel
-  fun:cricket::VoiceChannel::~VoiceChannel
-  fun:cricket::VoiceChannel::~VoiceChannel
-  fun:cricket::ChannelManager::DestroyVoiceChannel_w
-  ...
-}
-{
-  bug_1205_15
-  ThreadSanitizer:Race
-  fun:cricket::BaseChannel::~BaseChannel
-  fun:cricket::VideoChannel::~VideoChannel
-  fun:cricket::VideoChannel::~VideoChannel
-  fun:cricket::ChannelManager::DestroyVideoChannel_w
-  ...
-}
-{
-  bug_1205_16
-  ThreadSanitizer:Race
-  fun:std::__detail::_List_node_base::_M_unhook
-  fun:std::list::_M_erase
-  fun:std::list::erase
-  fun:webrtc::ModuleRtpRtcpImpl::DeRegisterChildModule
-  fun:webrtc::ModuleRtpRtcpImpl::~ModuleRtpRtcpImpl
-  fun:webrtc::ModuleRtpRtcpImpl::~ModuleRtpRtcpImpl
-  ...
-}
-{
-  bug_1205_18
-  ThreadSanitizer:Race
-  fun:webrtc::voe::Channel::SetChannelOutputVolumeScaling
-  fun:webrtc::VoEVolumeControlImpl::SetChannelOutputVolumeScaling
-  fun:cricket::WebRtcVoiceMediaChannel::SetOutputScaling
-  fun:cricket::VoiceChannel::SetOutputScaling_w
-  fun:cricket::VoiceChannel::OnMessage
-  ...
-}
-{
-  bug_1205_19
-  ThreadSanitizer:Race
-  fun:webrtc::voe::Channel::SetOutputVolumePan
-  fun:webrtc::VoEVolumeControlImpl::SetOutputVolumePan
-  fun:cricket::WebRtcVoiceMediaChannel::SetOutputScaling
-  fun:cricket::VoiceChannel::SetOutputScaling_w
-  fun:cricket::VoiceChannel::OnMessage
-  ...
-}
-{
-  bug_1205_20
-  ThreadSanitizer:Race
-  fun:cricket::WebRtcDecoderObserver::IncomingRate
-  fun:webrtc::ViEChannel::ReceiveStatistics
-  fun:webrtc::VideoCodingModuleImpl::Process
-  fun:webrtc::ProcessThreadImpl::Process
-  fun:webrtc::ProcessThreadImpl::Run
-  fun:webrtc::ThreadPosix::Run
-  fun:StartThread
-}
-{
-  bug_1205_21
-  ThreadSanitizer:Race
-  fun:talk_base::Thread::ReceiveSends
-  fun:talk_base::MessageQueue::Get
-  fun:talk_base::Thread::ProcessMessages
-  fun:talk_base::Thread::Run
-  fun:talk_base::Thread::PreRun
-}
-{
   bug_1205_22
   ThreadSanitizer:Race
   fun:webrtc::EventPosix::Process
   fun:webrtc::EventPosix::Run
   fun:webrtc::ThreadPosix::Run
   fun:StartThread
-}
-{
-  bug_1205_23
-  ThreadSanitizer:Race
-  fun:cricket::WebRtcEncoderObserver::framerate
-  fun:cricket::WebRtcVideoMediaChannel::GetStats
-  fun:cricket::VideoChannel::GetStats_w
-  fun:cricket::VideoChannel::OnMessage
-  ...
-}
-{
-  bug_1205_24
-  ThreadSanitizer:Race
-  fun:cricket::WebRtcEncoderObserver::bitrate
-  fun:cricket::WebRtcVideoMediaChannel::GetStats
-  fun:cricket::VideoChannel::GetStats_w
-  fun:cricket::VideoChannel::OnMessage
-  ...
-}
-{
-  bug_1205_25
-  ThreadSanitizer:Race
-  fun:webrtc::AudioCodingModuleImpl::PlayoutData10Ms
-  fun:webrtc::voe::Channel::GetAudioFrame
-  fun:webrtc::AudioConferenceMixerImpl::UpdateToMix
-  fun:webrtc::AudioConferenceMixerImpl::Process
-  fun:webrtc::voe::OutputMixer::MixActiveChannels
-  fun:webrtc::VoEBaseImpl::NeedMorePlayData
-  fun:FakeAudioCaptureModule::ReceiveFrameP
-  fun:FakeAudioCaptureModule::ProcessFrameP
-  fun:FakeAudioCaptureModule::OnMessage
-  fun:talk_base::MessageQueue::Dispatch
-  fun:talk_base::Thread::ProcessMessages
-  fun:talk_base::Thread::Run
-  fun:talk_base::Thread::PreRun
 }
 {
   bug_1205_26
@@ -357,14 +195,6 @@
   fun:webrtc::RTPSenderVideo::ProcessBitrate
   fun:webrtc::RTPSender::ProcessBitrate
   fun:webrtc::ModuleRtpRtcpImpl::Process
-  ...
-}
-{
-  bug_1205_32
-  ThreadSanitizer:Race
-  fun:cricket::WebRtcEncoderObserver::OutgoingRate
-  fun:webrtc::ViEEncoder::SendStatistics
-  fun:webrtc::VideoCodingModuleImpl::Process
   ...
 }
 {
@@ -453,14 +283,6 @@
   ...
 }
 {
-  bug_1205_43
-  ThreadSanitizer:Race
-  fun:talk_base::Thread::Send
-  fun:FakeAudioCaptureModule::UpdateProcessing
-  fun:FakeAudioCaptureModule::StopPlayout
-  ...
-}
-{
   bug_1205_44
   ThreadSanitizer:Race
   fun:webrtc::VCMJitterBuffer::DecodeErrorMode
@@ -471,47 +293,9 @@
   ...
 }
 {
-  bug_1205_45
-  ThreadSanitizer:Race
-  fun:cricket::WebRtcDecoderObserver::framerate
-  fun:cricket::WebRtcVideoMediaChannel::GetStats
-  fun:cricket::VideoChannel::GetStats_w
-  fun:cricket::VideoChannel::OnMessage
-  ...
-}
-{
-  bug_1205_46
-  ThreadSanitizer:Race
-  fun:talk_base::Thread::Send
-  fun:FakeAudioCaptureModule::UpdateProcessing
-  fun:FakeAudioCaptureModule::StopRecording
-  fun:webrtc::VoEBaseImpl::StopSend
-  ...
-}
-{
-  bug_1205_47
-  ThreadSanitizer:Race
-  fun:cricket::WebRtcDecoderObserver::IncomingRate
-  fun:webrtc::ViEChannel::OnReceiveStatisticsUpdate
-  fun:webrtc::VideoCodingModuleImpl::Process
-  fun:webrtc::ProcessThreadImpl::Process
-  fun:webrtc::ProcessThreadImpl::Run
-  fun:webrtc::ThreadPosix::Run
-  fun:StartThread
-}
-{
   bug_1205_48
   ThreadSanitizer:Race
   fun:webrtc::Bitrate::BitrateLast
-  ...
-}
-{
-  bug_2078_1
-  ThreadSanitizer:Race
-  fun:talk_base::Thread::~Thread
-  fun:cricket::RtpSenderReceiver::~RtpSenderReceiver
-  fun:cricket::RtpSenderReceiver::~RtpSenderReceiver
-  fun:talk_base::scoped_ptr::~scoped_ptr
   ...
 }
 {
@@ -519,8 +303,7 @@
   ThreadSanitizer:Race
   ...
   fun:talk_base::MemoryStreamBase::Read
-  fun:talk_base::StreamInterface::ReadLine
-  fun:cricket::RtpDumpReader::ReadFileHeader
+  ...
   fun:cricket::RtpDumpReader::ReadPacket
   ...
 }
@@ -574,49 +357,6 @@
   ...
 }
 {
-  bug_2078_9
-  ThreadSanitizer:Race
-  fun:talk_base::MemoryStreamBase::Read
-  fun:talk_base::StreamInterface::ReadLine
-  fun:cricket::RtpDumpReader::ReadFileHeader
-  fun:cricket::RtpDumpReader::ReadPacket
-  fun:cricket::RtpDumpLoopReader::ReadPacket
-  ...
-}
-{
-  bug_2078_10
-  ThreadSanitizer:Race
-  fun:Replace_memcpy
-  fun:memcpy
-  fun:talk_base::MemoryStreamBase::Read
-  fun:talk_base::StreamInterface::ReadLine
-  fun:cricket::RtpDumpReader::ReadFileHeader
-  fun:cricket::RtpDumpReader::ReadPacket
-  fun:cricket::RtpDumpLoopReader::ReadPacket
-  ...
-}
-{
-  bug_2078_11
-  ThreadSanitizer:Race
-  fun:Replace_memcpy
-  fun:memcpy
-  fun:talk_base::MemoryStreamBase::Read
-  fun:talk_base::StreamInterface::ReadAll
-  fun:cricket::RtpDumpReader::ReadFileHeader
-  fun:cricket::RtpDumpReader::ReadPacket
-  ...
-}
-{
-  bug_2078_12
-  ThreadSanitizer:Race
-  fun:Replace_memcpy
-  fun:memcpy
-  fun:talk_base::MemoryStreamBase::Read
-  fun:talk_base::StreamInterface::ReadAll
-  fun:cricket::RtpDumpReader::ReadPacket
-  ...
-}
-{
   bug_2078_13
   ThreadSanitizer:Race
   fun:std::_Vector_base::~_Vector_base
@@ -664,46 +404,16 @@
   ...
 }
 {
-  bug_2078_17
-  ThreadSanitizer:Race
-  fun:Replace_memcpy
-  fun:memcpy
-  fun:talk_base::MemoryStreamBase::Read
-  fun:talk_base::StreamInterface::ReadLine
-  fun:cricket::RtpDumpReader::ReadFileHeader
-  fun:cricket::RtpDumpReader::ReadPacket
-  fun:cricket::RtpDumpLoopReader::ReadPacket
-  ...
-}
-{
   bug_2078_18
   ThreadSanitizer:Race
   fun:talk_base::MemoryStream::~MemoryStream
   ...
 }
 {
-  bug_2078_19
-  ThreadSanitizer:Race
-  fun:cricket::FileVideoCapturer::ReadFrame
-  fun:cricket::FileVideoCapturer::FileReadThread::OnMessage
-  fun:talk_base::MessageQueue::Dispatch
-  fun:talk_base::Thread::ProcessMessages
-  fun:talk_base::Thread::Run
-  fun:cricket::FileVideoCapturer::FileReadThread::Run
-  fun:talk_base::Thread::PreRun
-}
-{
-  bug_2078_20
-  ThreadSanitizer:Race
-  fun:cricket::FileVideoCapturer::FileReadThread::Run
-  fun:talk_base::Thread::PreRun
-}
-{
   bug_2078_21
   ThreadSanitizer:Race
   fun:::FileVideoCapturerTest::VideoCapturerListener::frame_count
-  fun:::FileVideoCapturerTest_TestNoRepeat_Test::TestBody
-  fun:testing::internal::HandleSehExceptionsInMethodIfSupported
+  ...
 }
 {
   bug_2078_22
@@ -761,27 +471,10 @@
   ...
 }
 {
-  bug_2079_2
-  ThreadSanitizer:Race
-  fun:std::vector::_M_insert_aux
-  fun:std::vector::push_back
-  fun:talk_base::TestClient::OnPacket
-  ...
-}
-{
   bug_2079_3
   ThreadSanitizer:Race
   fun:ChannelTest::SendRtpToRtpOnThread
   ...
-}
-{
-  bug_2079_4
-  ThreadSanitizer:Race
-  fun:talk_base::Thread::ReceiveSends
-  fun:talk_base::MessageQueue::Get
-  fun:talk_base::Thread::ProcessMessages
-  fun:talk_base::Thread::Run
-  fun:talk_base::Thread::PreRun
 }
 {
   bug_2079_5
@@ -851,40 +544,6 @@
   ...
 }
 {
-  bug_2080_4
-  ThreadSanitizer:Race
-  fun:talk_base::Thread::~Thread
-  fun:talk_base::LogThread::~LogThread
-  ...
-}
-{
-  bug_2080_5
-  ThreadSanitizer:Race
-  fun:talk_base::Thread::ReceiveSends
-  fun:talk_base::MessageQueue::Get
-  fun:talk_base::Thread::ProcessMessages
-  fun:talk_base::Thread::Run
-  fun:talk_base::Thread::PreRun
-}
-{
-  bug_2080_6
-  ThreadSanitizer:Race
-  ...
-  fun:talk_base::SocketDispatcher::OnEvent
-  fun:talk_base::PhysicalSocketServer::Wait
-  fun:talk_base::MessageQueue::Get
-  ...
-}
-{
-  bug_2080_7
-  ThreadSanitizer:Race
-  fun:sigslot::_connection1::emit
-  ...
-  fun:talk_base::SocketDispatcher::OnEvent
-  fun:talk_base::PhysicalSocketServer::Wait
-  ...
-}
-{
   bug_2080_8
   ThreadSanitizer:Race
   ...
@@ -907,29 +566,6 @@
   ...
 }
 {
-  bug_2080_11
-  ThreadSanitizer:Race
-  fun:talk_base::NATServer::OnExternalPacket
-  ...
-}
-{
-  bug_2080_12
-  ThreadSanitizer:Race
-  fun:talk_base::NATServer::Filter
-  fun:talk_base::NATServer::OnExternalPacket
-  ...
-}
-{
-  bug_2080_13
-  ThreadSanitizer:Race
-  fun:std::_Rb_tree::_M_begin
-  fun:std::_Rb_tree::find
-  fun:std::set::find
-  fun:talk_base::NATServer::Filter
-  fun:talk_base::NATServer::OnExternalPacket
-  ...
-}
-{
   bug_2080_14
   ThreadSanitizer:Race
   fun:talk_base::IPAddress::IPAddress
@@ -940,30 +576,10 @@
   ...
 }
 {
-  bug_2080_15
-  ThreadSanitizer:Race
-  fun:talk_base::PhysicalSocket::UpdateLastError
-  fun:talk_base::PhysicalSocket::RecvFrom
-  fun:talk_base::NATSocket::RecvFrom
-  fun:talk_base::AsyncUDPSocket::OnReadEvent
-  ...
-}
-{
   bug_2080_16
   ThreadSanitizer:Race
   ...
   fun:talk_base::IPAddress::operator<
-  ...
-}
-{
-  bug_2080_17
-  ThreadSanitizer:Race
-  ...
-  fun:std::_Rb_tree::_M_lower_bound
-  fun:std::_Rb_tree::find
-  fun:std::set::find
-  fun:talk_base::NATServer::Filter
-  fun:talk_base::NATServer::OnExternalPacket
   ...
 }
 {
@@ -1052,16 +668,6 @@
   ...
 }
 {
-  bug_2080_28
-  ThreadSanitizer:Race
-  fun:talk_base::Thread::~Thread
-  fun:OwnerThread::~OwnerThread
-  fun:OwnerThread::~OwnerThread
-  fun:talk_base::scoped_ptr::~scoped_ptr
-  fun:SignalThreadTest_OwnerThreadGoesAway_Test::TestBody
-  fun:testing::internal::HandleSehExceptionsInMethodIfSupported
-}
-{
   bug_2080_29
   ThreadSanitizer:Race
   fun:talk_base::Thread::Release
@@ -1104,12 +710,4 @@
   fun:talk_base::Thread::ProcessMessages
   fun:talk_base::Thread::Run
   fun:talk_base::Thread::PreRun
-}
-{
-  bug_2080_35
-  ThreadSanitizer:Race
-  fun:std::vector::size
-  fun:talk_base::TestClient::NextPacket
-  fun:talk_base::TestClient::CheckNextPacket
-  ...
 }

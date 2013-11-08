@@ -73,9 +73,15 @@
 #include "talk/app/webrtc/mediaconstraintsinterface.h"
 #include "talk/media/webrtc/webrtcvideocapturer.h"
 #include "third_party/icu/source/common/unicode/unistr.h"
+#include "webrtc/system_wrappers/interface/compile_assert.h"
 #include "webrtc/system_wrappers/interface/trace.h"
 #include "webrtc/video_engine/include/vie_base.h"
 #include "webrtc/voice_engine/include/voe_base.h"
+
+#ifdef ANDROID
+#include "webrtc/system_wrappers/interface/logcat_trace_context.h"
+using webrtc::LogcatTraceContext;
+#endif
 
 using icu::UnicodeString;
 using webrtc::AudioSourceInterface;
@@ -103,7 +109,6 @@ using webrtc::VideoRendererInterface;
 using webrtc::VideoSourceInterface;
 using webrtc::VideoTrackInterface;
 using webrtc::VideoTrackVector;
-using webrtc::VideoRendererInterface;
 
 // Abort the process if |x| is false, emitting |msg|.
 #define CHECK(x, msg)                                                          \
@@ -132,12 +137,6 @@ using webrtc::VideoRendererInterface;
     }                                                             \
     CHECK(!count, "Unexpected refcount");                         \
   } while (0)
-
-// Lifted from chromium's base/basictypes.h.
-template <bool>
-struct CompileAssert {};
-#define COMPILE_ASSERT(expr, msg) \
-  typedef CompileAssert<(bool(expr))> msg[bool(expr) ? 1 : -1]
 
 namespace {
 
@@ -1333,9 +1332,19 @@ JOW(void, Logging_nativeEnableTracing)(
     jint nativeSeverity) {
   std::string path = JavaToStdString(jni, j_path);
   if (nativeLevels != webrtc::kTraceNone) {
-    CHECK(!webrtc::Trace::SetTraceFile(path.c_str(), false),
-          "SetTraceFile failed");
     webrtc::Trace::set_level_filter(nativeLevels);
+#ifdef ANDROID
+    if (path != "logcat:") {
+#endif
+      CHECK(webrtc::Trace::SetTraceFile(path.c_str(), false) == 0,
+            "SetTraceFile failed");
+#ifdef ANDROID
+    } else {
+      // Intentionally leak this to avoid needing to reason about its lifecycle.
+      // It keeps no state and functions only as a dispatch point.
+      static LogcatTraceContext* g_trace_callback = new LogcatTraceContext();
+    }
+#endif
   }
   talk_base::LogMessage::LogToDebug(nativeSeverity);
 }
@@ -1412,7 +1421,7 @@ JOW(jboolean, PeerConnectionFactory_initializeAndroidGlobals)(
     JNIEnv* jni, jclass, jobject context) {
   CHECK(g_jvm, "JNI_OnLoad failed to run?");
   bool failure = false;
-  failure |= webrtc::VideoEngine::SetAndroidObjects(g_jvm, context);
+  failure |= webrtc::VideoEngine::SetAndroidObjects(g_jvm);
   failure |= webrtc::VoiceEngine::SetAndroidObjects(g_jvm, jni, context);
   return !failure;
 }
@@ -1714,7 +1723,7 @@ JOW(jlong, VideoCapturer_nativeCreateVideoCapturer)(
   CHECK(device_manager->Init(), "DeviceManager::Init() failed");
   cricket::Device device;
   if (!device_manager->GetVideoCaptureDevice(device_name, &device)) {
-    LOG(LS_ERROR) << "GetVideoCaptureDevice failed";
+    LOG(LS_ERROR) << "GetVideoCaptureDevice failed for " << device_name;
     return 0;
   }
   talk_base::scoped_ptr<cricket::VideoCapturer> capturer(
@@ -1735,6 +1744,28 @@ JOW(jlong, VideoRenderer_nativeWrapVideoRenderer)(
   talk_base::scoped_ptr<JavaVideoRendererWrapper> renderer(
       new JavaVideoRendererWrapper(jni, j_callbacks));
   return (jlong)renderer.release();
+}
+
+JOW(jlong, VideoSource_stop)(JNIEnv* jni, jclass, jlong j_p) {
+  cricket::VideoCapturer* capturer =
+      reinterpret_cast<VideoSourceInterface*>(j_p)->GetVideoCapturer();
+  talk_base::scoped_ptr<cricket::VideoFormatPod> format(
+      new cricket::VideoFormatPod(*capturer->GetCaptureFormat()));
+  capturer->Stop();
+  return jlongFromPointer(format.release());
+}
+
+JOW(void, VideoSource_restart)(
+    JNIEnv* jni, jclass, jlong j_p_source, jlong j_p_format) {
+  talk_base::scoped_ptr<cricket::VideoFormatPod> format(
+      reinterpret_cast<cricket::VideoFormatPod*>(j_p_format));
+  reinterpret_cast<VideoSourceInterface*>(j_p_source)->GetVideoCapturer()->
+      StartCapturing(cricket::VideoFormat(*format));
+}
+
+JOW(void, VideoSource_freeNativeVideoFormat)(
+    JNIEnv* jni, jclass, jlong j_p) {
+  delete reinterpret_cast<cricket::VideoFormatPod*>(j_p);
 }
 
 JOW(jstring, MediaStreamTrack_nativeId)(JNIEnv* jni, jclass, jlong j_p) {

@@ -11,7 +11,7 @@ vars = {
   "googlecode_url": "http://%s.googlecode.com/svn",
   "sourceforge_url": "http://svn.code.sf.net/p/%(repo)s/code",
   "chromium_trunk" : "http://src.chromium.org/svn/trunk",
-  "chromium_revision": "217707",
+  "chromium_revision": "232627",
 
   # A small subset of WebKit is needed for the Android Python test framework.
   "webkit_trunk": "http://src.chromium.org/blink/trunk",
@@ -58,7 +58,7 @@ deps = {
 
   "third_party/junit/":
     (Var("googlecode_url") % "webrtc") + "/deps/third_party/junit@3367",
- 
+
   "third_party/libjpeg":
     Var("chromium_trunk") + "/src/third_party/libjpeg@" + Var("chromium_revision"),
 
@@ -69,10 +69,10 @@ deps = {
     From("chromium_deps", "src/third_party/libsrtp"),
 
   "third_party/libvpx":
-    Var("chromium_trunk") + "/deps/third_party/libvpx@212975",
+    Var("chromium_trunk") + "/deps/third_party/libvpx@225010",
 
   "third_party/libyuv":
-    (Var("googlecode_url") % "libyuv") + "/trunk@723",
+    (Var("googlecode_url") % "libyuv") + "/trunk@844",
 
   "third_party/opus":
     Var("chromium_trunk") + "/src/third_party/opus@185405",
@@ -104,6 +104,9 @@ deps = {
   "tools/python":
     Var("chromium_trunk") + "/src/tools/python@" + Var("chromium_revision"),
 
+  "tools/sharding_supervisor":
+    Var("chromium_trunk") + "/src/tools/sharding_supervisor@" + Var("chromium_revision"),
+
   "tools/swarm_client":
     Var("chromium_trunk") + "/tools/swarm_client@" + Var("chromium_revision"),
 
@@ -131,6 +134,10 @@ deps_os = {
     # NSS, for SSLClientSocketNSS.
     "third_party/nss":
       From("chromium_deps", "src/third_party/nss"),
+
+    # SyzyASan to make it possible to run tests under ASan on Windows.
+    "third_party/syzygy/binaries":
+      From("chromium_deps", "src/third_party/syzygy/binaries"),
   },
 
   "mac": {
@@ -175,9 +182,6 @@ deps_os = {
     "tools/android":
       (Var("googlecode_url") % "webrtc") + "/deps/tools/android@4258",
 
-    "tools/android-dummy-test":
-      (Var("googlecode_url") % "webrtc") + "/deps/tools/android-dummy-test@4244",
-
     "third_party/android_tools":
       From("chromium_deps", "src/third_party/android_tools"),
 
@@ -217,12 +221,14 @@ hooks = [
                "--win-only"],
   },
   {
-    # Download test resources, i.e. video and audio files. If the latest
-    # version is already downloaded, this takes zero seconds to run.
-    # If a newer version or no current download exists, it will download
-    # the resources and extract them.
-    "pattern": ".",
-    "action": ["python", Var("root_dir") + "/webrtc/tools/update_resources.py"],
+    # Download test resources, i.e. video and audio files from Google Storage.
+    "pattern": "\\.sha1",
+    "action": ["download_from_google_storage",
+               "--directory",
+               "--recursive",
+               "--num_threads=10",
+               "--bucket", "chromium-webrtc-resources",
+               Var("root_dir") + "/resources"],
   },
   {
     # A change to a .gyp, .gypi, or to GYP itself should run the generator.

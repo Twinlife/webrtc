@@ -145,7 +145,6 @@ class MockRtpRtcp : public RtpRtcp {
       int32_t(const uint32_t remoteSSRC, uint16_t* RTT, uint16_t* avgRTT, uint16_t* minRTT, uint16_t* maxRTT));
   MOCK_METHOD1(ResetRTT,
       int32_t(const uint32_t remoteSSRC));
-  MOCK_METHOD1(SetRtt, void(uint32_t rtt));
   MOCK_METHOD1(SendRTCP,
       int32_t(uint32_t rtcpPacketType));
   MOCK_METHOD1(SendRTCPReferencePictureSelection,
@@ -168,6 +167,8 @@ class MockRtpRtcp : public RtpRtcp {
       int32_t(const uint8_t subType, const uint32_t name, const uint8_t* data, const uint16_t length));
   MOCK_METHOD1(SetRTCPVoIPMetrics,
       int32_t(const RTCPVoIPMetric* VoIPMetric));
+  MOCK_METHOD1(SetRtcpXrRrtrStatus,
+      void(bool enable));
   MOCK_CONST_METHOD0(REMB,
       bool());
   MOCK_METHOD1(SetREMBStatus,

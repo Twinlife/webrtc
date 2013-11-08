@@ -70,8 +70,7 @@ Operations DecisionLogicNormal::GetDecisionSpecialized(
   // Check if the required packet is available.
   if (target_timestamp == available_timestamp) {
     return ExpectedPacketAvailable(prev_mode, play_dtmf);
-  } else if (available_timestamp > target_timestamp) {
-    // TODO(hlundin): Consider wrap-around too?
+  } else if (IsNewerTimestamp(available_timestamp, target_timestamp)) {
     return FuturePacketAvailable(sync_buffer, expand, decoder_frame_length,
                                  prev_mode, target_timestamp,
                                  available_timestamp, play_dtmf);
@@ -171,8 +170,8 @@ Operations DecisionLogicNormal::FuturePacketAvailable(
     }
   }
 
-  const int samples_left = sync_buffer.FutureLength() -
-      expand.overlap_length();
+  const int samples_left = static_cast<int>(sync_buffer.FutureLength() -
+      expand.overlap_length());
   const int cur_size_samples = samples_left +
       packet_buffer_.NumPacketsInBuffer() * decoder_frame_length;
 

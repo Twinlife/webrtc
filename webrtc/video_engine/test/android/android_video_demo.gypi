@@ -50,12 +50,16 @@
             '<(PRODUCT_DIR)/lib.java/video_render_module_java.jar',
             '<(PRODUCT_DIR)/libwebrtc-video-demo-jni.so',
             '<!@(find <(android_webrtc_demo_root)/src -name "*.java")',
+            '<!@(find <(android_webrtc_demo_root)/res -type f)',
           ],
           'outputs': ['<(PRODUCT_DIR)/WebRTCDemo-debug.apk'],
           'action': ['bash', '-ec',
                      'rm -f <(_outputs) && '
                      'mkdir -p <(android_webrtc_demo_root)/libs/<(android_app_abi) && '
                      '<(android_strip) -o <(android_webrtc_demo_root)/libs/<(android_app_abi)/libwebrtc-video-demo-jni.so <(PRODUCT_DIR)/libwebrtc-video-demo-jni.so && '
+                     'cp <(PRODUCT_DIR)/lib.java/audio_device_module_java.jar <(android_webrtc_demo_root)/libs/ &&'
+                     'cp <(PRODUCT_DIR)/lib.java/video_capture_module_java.jar <(android_webrtc_demo_root)/libs/ &&'
+                     'cp <(PRODUCT_DIR)/lib.java/video_render_module_java.jar <(android_webrtc_demo_root)/libs/ &&'
                      'cd <(android_webrtc_demo_root) && '
                      'ant debug && '
                      'cd - && '

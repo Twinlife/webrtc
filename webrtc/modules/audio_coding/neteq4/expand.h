@@ -61,7 +61,7 @@ class Expand {
 
   // The main method to produce concealment data. The data is appended to the
   // end of |output|.
-  int Process(AudioMultiVector<int16_t>* output);
+  int Process(AudioMultiVector* output);
 
   // Prepare the object to do extra expansion during normal operation following
   // a period of expands.
@@ -116,8 +116,8 @@ class Expand {
     int16_t ar_gain_scale;
     int16_t voice_mix_factor; /* Q14 */
     int16_t current_voice_mix_factor; /* Q14 */
-    AudioVector<int16_t> expand_vector0;
-    AudioVector<int16_t> expand_vector1;
+    AudioVector expand_vector0;
+    AudioVector expand_vector1;
     bool onset;
     int16_t mute_slope; /* Q20 */
   };
@@ -130,7 +130,7 @@ class Expand {
   // samples. The correlation is calculated from a downsampled version of
   // |input|, and is written to |output|. The scale factor is written to
   // |output_scale|. Returns the length of the correlation vector.
-  int16_t Correlation(const int16_t* input, int16_t input_length,
+  int16_t Correlation(const int16_t* input, size_t input_length,
                       int16_t* output, int16_t* output_scale) const;
 
   void UpdateLagIndex();

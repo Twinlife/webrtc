@@ -42,6 +42,7 @@
 #include "talk/base/logging.h"
 #include "talk/base/network.h"
 #include "talk/base/physicalsocketserver.h"
+#include "talk/base/ssladapter.h"
 #include "talk/base/sslstreamadapter.h"
 #include "talk/base/stringutils.h"
 #include "talk/base/thread.h"
@@ -80,12 +81,15 @@ using webrtc::FakeConstraints;
 using webrtc::IceCandidateCollection;
 using webrtc::JsepIceCandidate;
 using webrtc::JsepSessionDescription;
+using webrtc::PeerConnectionFactoryInterface;
 using webrtc::PeerConnectionInterface;
 using webrtc::SessionDescriptionInterface;
 using webrtc::StreamCollection;
 using webrtc::WebRtcSession;
 using webrtc::kMlineMismatch;
 using webrtc::kSdpWithoutCrypto;
+using webrtc::kSdpWithoutSdesAndDtlsDisabled;
+using webrtc::kSdpWithoutIceUfragPwd;
 using webrtc::kSessionError;
 using webrtc::kSetLocalSdpFailed;
 using webrtc::kSetRemoteSdpFailed;
@@ -113,6 +117,10 @@ static const cricket::AudioCodec
     kTelephoneEventCodec(106, "telephone-event", 8000, 0, 1, 0);
 static const cricket::AudioCodec kCNCodec1(102, "CN", 8000, 0, 1, 0);
 static const cricket::AudioCodec kCNCodec2(103, "CN", 16000, 0, 1, 0);
+
+static const char kFakeDtlsFingerprint[] =
+    "BB:CD:72:F7:2F:D0:BA:43:F3:68:B1:0C:23:72:B6:4A:"
+    "0F:DE:34:06:BC:E0:FE:01:BC:73:C8:6D:F4:65:D5:24";
 
 // Add some extra |newlines| to the |message| after |line|.
 static void InjectAfter(const std::string& line,
@@ -285,6 +293,14 @@ class WebRtcSessionTest : public testing::Test {
     desc_factory_->set_add_legacy_streams(false);
   }
 
+  static void SetUpTestCase() {
+    talk_base::InitializeSSL();
+  }
+
+  static void TearDownTestCase() {
+    talk_base::CleanupSSL();
+  }
+
   void AddInterface(const SocketAddress& addr) {
     network_manager_.AddInterface(addr);
   }
@@ -302,7 +318,8 @@ class WebRtcSessionTest : public testing::Test {
     EXPECT_EQ(PeerConnectionInterface::kIceGatheringNew,
         observer_.ice_gathering_state_);
 
-    EXPECT_TRUE(session_->Initialize(constraints_.get(), identity_service));
+    EXPECT_TRUE(session_->Initialize(options_, constraints_.get(),
+                                     identity_service));
   }
 
   void InitWithDtmfCodec() {
@@ -431,7 +448,6 @@ class WebRtcSessionTest : public testing::Test {
         talk_base::ToString(talk_base::CreateRandomId());
     identity_.reset(talk_base::SSLIdentity::Generate(identity_name));
     tdesc_factory_->set_identity(identity_.get());
-    tdesc_factory_->set_digest_algorithm(talk_base::DIGEST_SHA_256);
     tdesc_factory_->set_secure(cricket::SEC_REQUIRED);
   }
 
@@ -440,17 +456,9 @@ class WebRtcSessionTest : public testing::Test {
     const TransportInfo* audio = sdp->GetTransportInfoByName("audio");
     ASSERT_TRUE(audio != NULL);
     ASSERT_EQ(expected, audio->description.identity_fingerprint.get() != NULL);
-    if (expected) {
-      ASSERT_EQ(std::string(talk_base::DIGEST_SHA_256), audio->description.
-                identity_fingerprint->algorithm);
-    }
     const TransportInfo* video = sdp->GetTransportInfoByName("video");
     ASSERT_TRUE(video != NULL);
     ASSERT_EQ(expected, video->description.identity_fingerprint.get() != NULL);
-    if (expected) {
-      ASSERT_EQ(std::string(talk_base::DIGEST_SHA_256), video->description.
-                identity_fingerprint->algorithm);
-    }
   }
 
   void VerifyAnswerFromNonCryptoOffer() {
@@ -510,6 +518,31 @@ class WebRtcSessionTest : public testing::Test {
     }
     EXPECT_TRUE(expect_equal);
   }
+
+  void RemoveIceUfragPwdLines(const SessionDescriptionInterface* current_desc,
+                              std::string *sdp) {
+    const cricket::SessionDescription* desc = current_desc->description();
+    EXPECT_TRUE(current_desc->ToString(sdp));
+
+    const cricket::ContentInfos& contents = desc->contents();
+    cricket::ContentInfos::const_iterator it = contents.begin();
+    // Replace ufrag and pwd lines with empty strings.
+    for (; it != contents.end(); ++it) {
+      const cricket::TransportDescription* transport_desc =
+          desc->GetTransportDescriptionByName(it->name);
+      std::string ufrag_line = "a=ice-ufrag:" + transport_desc->ice_ufrag
+          + "\r\n";
+      std::string pwd_line = "a=ice-pwd:" + transport_desc->ice_pwd
+          + "\r\n";
+      talk_base::replace_substrs(ufrag_line.c_str(), ufrag_line.length(),
+                                 "", 0,
+                                 sdp);
+      talk_base::replace_substrs(pwd_line.c_str(), pwd_line.length(),
+                                 "", 0,
+                                 sdp);
+    }
+  }
+
   // Creates a remote offer and and applies it as a remote description,
   // creates a local answer and applies is as a local description.
   // Call mediastream_signaling_.UseOptionsWithStreamX() before this function
@@ -602,6 +635,35 @@ class WebRtcSessionTest : public testing::Test {
       const SessionDescriptionInterface* current_desc) {
     return CreateRemoteOfferWithVersion(options, cricket::SEC_ENABLED,
                                         kSessionVersion, current_desc);
+  }
+
+  JsepSessionDescription* CreateRemoteOfferWithSctpPort(
+      const char* sctp_stream_name, int new_port,
+      cricket::MediaSessionOptions options) {
+    options.data_channel_type = cricket::DCT_SCTP;
+    options.AddStream(cricket::MEDIA_TYPE_DATA, "datachannel",
+                      sctp_stream_name);
+    return ChangeSDPSctpPort(new_port, CreateRemoteOffer(options));
+  }
+
+  // Takes ownership of offer_basis (and deletes it).
+  JsepSessionDescription* ChangeSDPSctpPort(
+      int new_port, webrtc::SessionDescriptionInterface *offer_basis) {
+    // Stringify the input SDP, swap the 5000 for 'new_port' and create a new
+    // SessionDescription from the mutated string.
+    const char* default_port_str = "5000";
+    char new_port_str[16];
+    talk_base::sprintfn(new_port_str, sizeof(new_port_str), "%d", new_port);
+    std::string offer_str;
+    offer_basis->ToString(&offer_str);
+    talk_base::replace_substrs(default_port_str, strlen(default_port_str),
+                               new_port_str, strlen(new_port_str),
+                               &offer_str);
+    JsepSessionDescription* offer = new JsepSessionDescription(
+        offer_basis->type());
+    delete offer_basis;
+    offer->Initialize(offer_str, NULL);
+    return offer;
   }
 
   // Create a remote offer. Call mediastream_signaling_.UseOptionsWithStreamX()
@@ -859,6 +921,7 @@ class WebRtcSessionTest : public testing::Test {
   cricket::TestStunServer stun_server_;
   talk_base::FakeNetworkManager network_manager_;
   cricket::BasicPortAllocator allocator_;
+  PeerConnectionFactoryInterface::Options options_;
   talk_base::scoped_ptr<FakeConstraints> constraints_;
   FakeMediaStreamSignaling mediastream_signaling_;
   talk_base::scoped_ptr<WebRtcSessionForTest> session_;
@@ -1872,8 +1935,8 @@ TEST_F(WebRtcSessionTest, VerifyCryptoParamsInSDP) {
 }
 
 TEST_F(WebRtcSessionTest, VerifyNoCryptoParamsInSDP) {
+  options_.disable_encryption = true;
   Init(NULL);
-  session_->set_secure_policy(cricket::SEC_DISABLED);
   mediastream_signaling_.SendAudioVideoStream1();
   scoped_ptr<SessionDescriptionInterface> offer(
         CreateOffer(NULL));
@@ -1888,6 +1951,31 @@ TEST_F(WebRtcSessionTest, VerifyAnswerFromNonCryptoOffer) {
 TEST_F(WebRtcSessionTest, VerifyAnswerFromCryptoOffer) {
   Init(NULL);
   VerifyAnswerFromCryptoOffer();
+}
+
+// This test verifies that setLocalDescription fails if
+// no a=ice-ufrag and a=ice-pwd lines are present in the SDP.
+TEST_F(WebRtcSessionTest, TestSetLocalDescriptionWithoutIce) {
+  Init(NULL);
+  mediastream_signaling_.SendAudioVideoStream1();
+  talk_base::scoped_ptr<SessionDescriptionInterface> offer(CreateOffer(NULL));
+  std::string sdp;
+  RemoveIceUfragPwdLines(offer.get(), &sdp);
+  SessionDescriptionInterface* modified_offer =
+    CreateSessionDescription(JsepSessionDescription::kOffer, sdp, NULL);
+  SetLocalDescriptionExpectError(kSdpWithoutIceUfragPwd, modified_offer);
+}
+
+// This test verifies that setRemoteDescription fails if
+// no a=ice-ufrag and a=ice-pwd lines are present in the SDP.
+TEST_F(WebRtcSessionTest, TestSetRemoteDescriptionWithoutIce) {
+  Init(NULL);
+  talk_base::scoped_ptr<SessionDescriptionInterface> offer(CreateRemoteOffer());
+  std::string sdp;
+  RemoveIceUfragPwdLines(offer.get(), &sdp);
+  SessionDescriptionInterface* modified_offer =
+    CreateSessionDescription(JsepSessionDescription::kOffer, sdp, NULL);
+  SetRemoteDescriptionExpectError(kSdpWithoutIceUfragPwd, modified_offer);
 }
 
 TEST_F(WebRtcSessionTest, VerifyBundleFlagInPA) {
@@ -2337,9 +2425,9 @@ TEST_F(WebRtcSessionTest, TestCryptoAfterSetLocalDescription) {
 
 // This test verifies the crypto parameter when security is disabled.
 TEST_F(WebRtcSessionTest, TestCryptoAfterSetLocalDescriptionWithDisabled) {
+  options_.disable_encryption = true;
   Init(NULL);
   mediastream_signaling_.SendAudioVideoStream1();
-  session_->set_secure_policy(cricket::SEC_DISABLED);
   talk_base::scoped_ptr<SessionDescriptionInterface> offer(
       CreateOffer(NULL));
 
@@ -2478,8 +2566,8 @@ TEST_F(WebRtcSessionTest, TestRtpDataChannelConstraintTakesPrecedence) {
   constraints_.reset(new FakeConstraints());
   constraints_->AddOptional(
       webrtc::MediaConstraintsInterface::kEnableRtpDataChannels, true);
-  constraints_->AddOptional(
-    webrtc::MediaConstraintsInterface::kEnableSctpDataChannels, true);
+  options_.disable_sctp_data_channels = false;
+
   InitWithDtls(false);
 
   SetLocalDescriptionWithDataChannel();
@@ -2489,19 +2577,34 @@ TEST_F(WebRtcSessionTest, TestRtpDataChannelConstraintTakesPrecedence) {
 TEST_F(WebRtcSessionTest, TestCreateOfferWithSctpEnabledWithoutStreams) {
   MAYBE_SKIP_TEST(talk_base::SSLStreamAdapter::HaveDtlsSrtp);
 
-  constraints_.reset(new FakeConstraints());
-  constraints_->AddOptional(
-      webrtc::MediaConstraintsInterface::kEnableSctpDataChannels, true);
   InitWithDtls(false);
 
   talk_base::scoped_ptr<SessionDescriptionInterface> offer(CreateOffer(NULL));
   EXPECT_TRUE(offer->description()->GetContentByName("data") == NULL);
+  EXPECT_TRUE(offer->description()->GetTransportInfoByName("data") == NULL);
+}
+
+TEST_F(WebRtcSessionTest, TestCreateAnswerWithSctpInOfferAndNoStreams) {
+  MAYBE_SKIP_TEST(talk_base::SSLStreamAdapter::HaveDtlsSrtp);
+  SetFactoryDtlsSrtp();
+  InitWithDtls(false);
+
+  // Create remote offer with SCTP.
+  cricket::MediaSessionOptions options;
+  options.data_channel_type = cricket::DCT_SCTP;
+  JsepSessionDescription* offer =
+      CreateRemoteOffer(options, cricket::SEC_ENABLED);
+  SetRemoteDescriptionWithoutError(offer);
+
+  // Verifies the answer contains SCTP.
+  talk_base::scoped_ptr<SessionDescriptionInterface> answer(CreateAnswer(NULL));
+  EXPECT_TRUE(answer != NULL);
+  EXPECT_TRUE(answer->description()->GetContentByName("data") != NULL);
+  EXPECT_TRUE(answer->description()->GetTransportInfoByName("data") != NULL);
 }
 
 TEST_F(WebRtcSessionTest, TestSctpDataChannelWithoutDtls) {
   constraints_.reset(new FakeConstraints());
-  constraints_->AddOptional(
-      webrtc::MediaConstraintsInterface::kEnableSctpDataChannels, true);
   constraints_->AddOptional(
       webrtc::MediaConstraintsInterface::kEnableDtlsSrtp, false);
   InitWithDtls(false);
@@ -2513,13 +2616,73 @@ TEST_F(WebRtcSessionTest, TestSctpDataChannelWithoutDtls) {
 TEST_F(WebRtcSessionTest, TestSctpDataChannelWithDtls) {
   MAYBE_SKIP_TEST(talk_base::SSLStreamAdapter::HaveDtlsSrtp);
 
-  constraints_.reset(new FakeConstraints());
-  constraints_->AddOptional(
-      webrtc::MediaConstraintsInterface::kEnableSctpDataChannels, true);
   InitWithDtls(false);
 
   SetLocalDescriptionWithDataChannel();
   EXPECT_EQ(cricket::DCT_SCTP, data_engine_->last_channel_type());
+}
+
+TEST_F(WebRtcSessionTest, TestDisableSctpDataChannels) {
+  MAYBE_SKIP_TEST(talk_base::SSLStreamAdapter::HaveDtlsSrtp);
+  options_.disable_sctp_data_channels = true;
+  InitWithDtls(false);
+
+  SetLocalDescriptionWithDataChannel();
+  EXPECT_EQ(cricket::DCT_NONE, data_engine_->last_channel_type());
+}
+
+TEST_F(WebRtcSessionTest, TestSctpDataChannelSendPortParsing) {
+  MAYBE_SKIP_TEST(talk_base::SSLStreamAdapter::HaveDtlsSrtp);
+  const int new_send_port = 9998;
+  const int new_recv_port = 7775;
+
+  InitWithDtls(false);
+  SetFactoryDtlsSrtp();
+
+  // By default, don't actually add the codecs to desc_factory_; they don't
+  // actually get serialized for SCTP in BuildMediaDescription().  Instead,
+  // let the session description get parsed.  That'll get the proper codecs
+  // into the stream.
+  cricket::MediaSessionOptions options;
+  JsepSessionDescription* offer = CreateRemoteOfferWithSctpPort(
+      "stream1", new_send_port, options);
+
+  // SetRemoteDescription will take the ownership of the offer.
+  SetRemoteDescriptionWithoutError(offer);
+
+  SessionDescriptionInterface* answer = ChangeSDPSctpPort(
+      new_recv_port, CreateAnswer(NULL));
+  ASSERT_TRUE(answer != NULL);
+
+  // Now set the local description, which'll take ownership of the answer.
+  SetLocalDescriptionWithoutError(answer);
+
+  // TEST PLAN: Set the port number to something new, set it in the SDP,
+  // and pass it all the way down.
+  webrtc::DataChannelInit dci;
+  dci.reliable = true;
+  EXPECT_EQ(cricket::DCT_SCTP, data_engine_->last_channel_type());
+  talk_base::scoped_refptr<webrtc::DataChannel> dc =
+      session_->CreateDataChannel("datachannel", &dci);
+
+  cricket::FakeDataMediaChannel* ch = data_engine_->GetChannel(0);
+  int portnum = -1;
+  ASSERT_TRUE(ch != NULL);
+  ASSERT_EQ(1UL, ch->send_codecs().size());
+  EXPECT_EQ(cricket::kGoogleSctpDataCodecId, ch->send_codecs()[0].id);
+  EXPECT_TRUE(!strcmp(cricket::kGoogleSctpDataCodecName,
+                      ch->send_codecs()[0].name.c_str()));
+  EXPECT_TRUE(ch->send_codecs()[0].GetParam(cricket::kCodecParamPort,
+                                            &portnum));
+  EXPECT_EQ(new_send_port, portnum);
+
+  ASSERT_EQ(1UL, ch->recv_codecs().size());
+  EXPECT_EQ(cricket::kGoogleSctpDataCodecId, ch->recv_codecs()[0].id);
+  EXPECT_TRUE(!strcmp(cricket::kGoogleSctpDataCodecName,
+                      ch->recv_codecs()[0].name.c_str()));
+  EXPECT_TRUE(ch->recv_codecs()[0].GetParam(cricket::kCodecParamPort,
+                                            &portnum));
+  EXPECT_EQ(new_recv_port, portnum);
 }
 
 // Verifies that CreateOffer succeeds when CreateOffer is called before async
@@ -2606,6 +2769,54 @@ TEST_F(WebRtcSessionTest,
   VerifyMultipleAsyncCreateDescription(
       false, CreateSessionDescriptionRequest::kAnswer);
 }
+
+// Verifies that setRemoteDescription fails when DTLS is disabled and the remote
+// offer has no SDES crypto but only DTLS fingerprint.
+TEST_F(WebRtcSessionTest, TestSetRemoteOfferFailIfDtlsDisabledAndNoCrypto) {
+  // Init without DTLS.
+  Init(NULL);
+  // Create a remote offer with secured transport disabled.
+  cricket::MediaSessionOptions options;
+  JsepSessionDescription* offer(CreateRemoteOffer(
+      options, cricket::SEC_DISABLED));
+  // Adds a DTLS fingerprint to the remote offer.
+  cricket::SessionDescription* sdp = offer->description();
+  TransportInfo* audio = sdp->GetTransportInfoByName("audio");
+  ASSERT_TRUE(audio != NULL);
+  ASSERT_TRUE(audio->description.identity_fingerprint.get() == NULL);
+  audio->description.identity_fingerprint.reset(
+      talk_base::SSLFingerprint::CreateFromRfc4572(
+          talk_base::DIGEST_SHA_256, kFakeDtlsFingerprint));
+  SetRemoteDescriptionExpectError(kSdpWithoutSdesAndDtlsDisabled,
+                                  offer);
+}
+
+// This test verifies DSCP is properly applied on the media channels.
+TEST_F(WebRtcSessionTest, TestDscpConstraint) {
+  constraints_.reset(new FakeConstraints());
+  constraints_->AddOptional(
+      webrtc::MediaConstraintsInterface::kEnableDscp, true);
+  Init(NULL);
+  mediastream_signaling_.SendAudioVideoStream1();
+  SessionDescriptionInterface* offer = CreateOffer(NULL);
+
+  SetLocalDescriptionWithoutError(offer);
+
+  video_channel_ = media_engine_->GetVideoChannel(0);
+  voice_channel_ = media_engine_->GetVoiceChannel(0);
+
+  ASSERT_TRUE(video_channel_ != NULL);
+  ASSERT_TRUE(voice_channel_ != NULL);
+  cricket::AudioOptions audio_options;
+  EXPECT_TRUE(voice_channel_->GetOptions(&audio_options));
+  cricket::VideoOptions video_options;
+  EXPECT_TRUE(video_channel_->GetOptions(&video_options));
+  EXPECT_TRUE(audio_options.dscp.IsSet());
+  EXPECT_TRUE(audio_options.dscp.GetWithDefaultIfUnset(false));
+  EXPECT_TRUE(video_options.dscp.IsSet());
+  EXPECT_TRUE(video_options.dscp.GetWithDefaultIfUnset(false));
+}
+
 // TODO(bemasc): Add a TestIceStatesBundle with BUNDLE enabled.  That test
 // currently fails because upon disconnection and reconnection OnIceComplete is
 // called more than once without returning to IceGatheringGathering.

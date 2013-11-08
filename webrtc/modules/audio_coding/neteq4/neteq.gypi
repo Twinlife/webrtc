@@ -112,10 +112,6 @@
         'time_stretch.cc',
         'time_stretch.h',
       ],
-      # Disable warnings to enable Win64 build, issue 1323.
-      'msvs_disabled_warnings': [
-        4267,  # size_t to int truncation.
-      ],
     },
   ], # targets
   'conditions': [
@@ -156,10 +152,6 @@
               ],
             }],
           ],
-          # Disable warnings to enable Win64 build, issue 1323.
-          'msvs_disabled_warnings': [
-            4267,  # size_t to int truncation.
-          ],
         }, # audio_decoder_unittests
 
         {
@@ -186,10 +178,6 @@
             'tools/rtp_generator.cc',
             'tools/rtp_generator.h',
           ],
-          # Disable warnings to enable Win64 build, issue 1323.
-          'msvs_disabled_warnings': [
-            4267,  # size_t to int truncation.
-          ],
         }, # neteq_unittest_tools
       ], # targets
       'conditions': [
@@ -212,10 +200,10 @@
               'target_name': 'audio_decoder_unittests_run',
               'type': 'none',
               'dependencies': [
-                '<(import_isolate_path):import_isolate_gypi',
                 'audio_decoder_unittests',
               ],
               'includes': [
+                '../../../build/isolate.gypi',
                 'audio_decoder_unittests.isolate',
               ],
               'sources': [

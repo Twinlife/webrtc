@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "talk/base/basictypes.h"
+#include "talk/base/dscp.h"
 #include "talk/base/sigslot.h"
 #include "talk/base/socket.h"
 #include "talk/base/sslidentity.h"
@@ -80,7 +81,9 @@ class TransportChannel : public sigslot::has_slots<> {
 
   // Attempts to send the given packet.  The return value is < 0 on failure.
   // TODO: Remove the default argument once channel code is updated.
-  virtual int SendPacket(const char* data, size_t len, int flags = 0) = 0;
+  virtual int SendPacket(const char* data, size_t len,
+                         talk_base::DiffServCodePoint dscp,
+                         int flags = 0) = 0;
 
   // Sets a socket option on this channel.  Note that not all options are
   // supported by all transport types.
@@ -98,11 +101,17 @@ class TransportChannel : public sigslot::has_slots<> {
   // Default implementation.
   virtual bool GetSslRole(talk_base::SSLRole* role) const = 0;
 
-  // Set up the ciphers to use for DTLS-SRTP.
+  // Sets up the ciphers to use for DTLS-SRTP.
   virtual bool SetSrtpCiphers(const std::vector<std::string>& ciphers) = 0;
 
-  // Find out which DTLS-SRTP cipher was negotiated
+  // Finds out which DTLS-SRTP cipher was negotiated
   virtual bool GetSrtpCipher(std::string* cipher) = 0;
+
+  // Gets a copy of the local SSL identity, owned by the caller.
+  virtual bool GetLocalIdentity(talk_base::SSLIdentity** identity) const = 0;
+
+  // Gets a copy of the remote side's SSL certificate, owned by the caller.
+  virtual bool GetRemoteCertificate(talk_base::SSLCertificate** cert) const = 0;
 
   // Allows key material to be extracted for external encryption.
   virtual bool ExportKeyingMaterial(const std::string& label,

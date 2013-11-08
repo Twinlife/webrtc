@@ -243,8 +243,10 @@ void WebRtcSessionDescriptionFactory::CreateAnswer(
     PostCreateSessionDescriptionFailed(observer, error);
     return;
   }
-  if (data_channel_type_ == cricket::DCT_SCTP &&
-      mediastream_signaling_->HasDataChannels()) {
+  // RTP data channel is handled in MediaSessionOptions::AddStream. SCTP streams
+  // are not signaled in the SDP so does not go through that path and must be
+  // handled here.
+  if (data_channel_type_ == cricket::DCT_SCTP) {
     options.data_channel_type = cricket::DCT_SCTP;
   }
 
@@ -436,7 +438,6 @@ void WebRtcSessionDescriptionFactory::SetIdentity(
   SignalIdentityReady(identity);
 
   transport_desc_factory_.set_identity(identity);
-  transport_desc_factory_.set_digest_algorithm(talk_base::DIGEST_SHA_256);
   transport_desc_factory_.set_secure(cricket::SEC_ENABLED);
 
   while (!create_session_description_requests_.empty()) {
