@@ -94,7 +94,7 @@
     'mips_arch_variant%': 'mips32r1',
     'mips_dsp_rev%': 0,
     'mips_fpu%' : 1,
-    'enable_android_opensl%': 1,
+    'enable_android_opensl%': 0,
 
     'conditions': [
       ['build_with_chromium==1', {
