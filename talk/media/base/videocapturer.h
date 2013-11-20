@@ -236,6 +236,10 @@ class VideoCapturer
   virtual void SetCameraMute(bool mute) {};
   // -twinlife- switch camera
   virtual void SwitchCamera(int camera_id){};
+  // -twinlife- is zoom supported
+  virtual bool IsZoomSupported() {};
+  // -twinlife- set zoom
+  virtual void SetZoom(int progress) {};
 
   void set_enable_camera_list(bool enable_camera_list) {
     enable_camera_list_ = enable_camera_list;

@@ -74,6 +74,10 @@ public:
     virtual void SwitchCamera(int cameraId) {};
     // -twinlife- set camera mute
     virtual void SetCameraMute(bool mute) {};
+    // -twinlife- is zoom supported
+    virtual bool IsZoomSupported() {return false;};
+    // -twinlife- set zoom
+    virtual void SetZoom(int progress) {};
 
     virtual int32_t EnableFrameRateCallback(const bool enable);
     virtual int32_t EnableNoPictureAlarm(const bool enable);

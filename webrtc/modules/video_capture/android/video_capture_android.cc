@@ -201,7 +201,10 @@ int32_t VideoCaptureAndroid::SetCaptureRotation(
   return 0;
 }
 
-  // -twinlife- set camera mute
+  //
+  // twinlife extensions
+  //
+  // set camera mute
 void VideoCaptureAndroid::SetCameraMute(bool mute) {
   CriticalSectionScoped cs(&_apiCs);
 
@@ -218,12 +221,15 @@ void VideoCaptureAndroid::SetCameraMute(bool mute) {
     }
   }
 
-  jmethodID cid = env->GetMethodID(g_javaCmClass, "SetCameraMute", "(Z)V");
+  jmethodID cid = env->GetMethodID(g_java_capturer_class, "setCameraMute", "(Z)V");
 
-  env->CallVoidMethod(_javaCaptureObj, cid, mute);
+  env->CallVoidMethod(_jCapturer, cid, mute);
 }
 
-  // -twinlife- switch camera
+  //
+  // twinlife extensions
+  //
+  // switch camera
 void VideoCaptureAndroid::SwitchCamera(int cameraId) {
   CriticalSectionScoped cs(&_apiCs);
   // get the JNI env for this thread
@@ -239,9 +245,61 @@ void VideoCaptureAndroid::SwitchCamera(int cameraId) {
     }
   }
 
-  jmethodID cid = env->GetMethodID(g_javaCmClass, "SwitchCamera", "(I)V");
+  jmethodID cid = env->GetMethodID(g_java_capturer_class, "switchCamera", "(I)V");
   if (cid != NULL) {
-    env->CallVoidMethod(_javaCaptureObj, cid, cameraId);
+    env->CallVoidMethod(_jCapturer, cid, cameraId);
+  }
+}
+
+  //
+  // twinlife extensions
+  //
+  // is zoom supported
+bool VideoCaptureAndroid::IsZoomSupported() {
+  CriticalSectionScoped cs(&_apiCs);
+  // get the JNI env for this thread
+  JNIEnv *env = NULL;
+  if (g_jvm->GetEnv((void**) &env, JNI_VERSION_1_4) != JNI_OK) {
+    // try to attach the thread and get the env
+    // Attach this thread to JVM
+    jint res = g_jvm->AttachCurrentThread(&env, NULL);
+    if ((res < 0) || !env) {
+      WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceVideoCapture, _id,
+                   "%s: Could not attach thread to JVM (%d, %p)",
+                   __FUNCTION__, res, env);
+    }
+  }
+
+  jmethodID cid = env->GetMethodID(g_java_capturer_class, "isZoomSupported", "()Z");
+  if (cid != NULL) {
+    return env->CallBooleanMethod(_jCapturer, cid);
+  }
+
+  return false;
+}
+
+  //
+  // twinlife extensions
+  //
+  // switch camera
+void VideoCaptureAndroid::SetZoom(int progress) {
+  CriticalSectionScoped cs(&_apiCs);
+  // get the JNI env for this thread
+  JNIEnv *env = NULL;
+  if (g_jvm->GetEnv((void**) &env, JNI_VERSION_1_4) != JNI_OK) {
+    // try to attach the thread and get the env
+    // Attach this thread to JVM
+    jint res = g_jvm->AttachCurrentThread(&env, NULL);
+    if ((res < 0) || !env) {
+      WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceVideoCapture, _id,
+                   "%s: Could not attach thread to JVM (%d, %p)",
+                   __FUNCTION__, res, env);
+    }
+  }
+
+  jmethodID cid = env->GetMethodID(g_java_capturer_class, "setZoom", "(I)V");
+  if (cid != NULL) {
+    env->CallVoidMethod(_jCapturer, cid, progress);
   }
 }
 

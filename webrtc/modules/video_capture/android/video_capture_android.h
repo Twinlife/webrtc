@@ -33,6 +33,10 @@ class VideoCaptureAndroid : public VideoCaptureImpl {
   virtual void SwitchCamera(int cameraId);
   // -twinlife- set camera mute
   virtual void SetCameraMute(bool mute);
+  // -twinlife- is zoom supported
+  virtual bool IsZoomSupported();
+  // -twinlife- set zoom
+  virtual void SetZoom(int progress);
 
   int32_t OnIncomingFrame(uint8_t* videoFrame,
                           int32_t videoFrameLength,

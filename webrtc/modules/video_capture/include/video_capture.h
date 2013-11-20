@@ -148,6 +148,10 @@ class VideoCaptureModule: public RefCountedModule {
   virtual void SetCameraMute(bool mute) = 0;
   // -twinlife- switch camera
   virtual void SwitchCamera(int cameraId) = 0;
+  // -twinlife- is zoom supported
+  virtual bool IsZoomSupported() = 0;
+  // -twinlife- set zoom
+  virtual void SetZoom(int progress) = 0;
 
   // Gets a pointer to an encode interface if the capture device supports the
   // requested type and size.  NULL otherwise.

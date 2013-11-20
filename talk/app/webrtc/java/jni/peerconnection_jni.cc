@@ -1834,3 +1834,14 @@ JOW(void, VideoCapturer_nativeSwitchCamera)(
     JNIEnv* jni, jclass, jlong pointer, jint camera_id) {
   (reinterpret_cast<cricket::VideoCapturer*>(pointer))->SwitchCamera(camera_id);
 }
+
+// -twinlife- is zoom supported
+JOW(bool, VideoCapturer_nativeIsZoomSupported)(
+    JNIEnv* jni, jclass, jlong pointer) {
+  return (reinterpret_cast<cricket::VideoCapturer*>(pointer))->IsZoomSupported();
+}
+// -twinlife- set zoom
+JOW(void, VideoCapturer_nativeSetZoom)(
+    JNIEnv* jni, jclass, jlong pointer, jint progress) {
+  (reinterpret_cast<cricket::VideoCapturer*>(pointer))->SetZoom(progress);
+}

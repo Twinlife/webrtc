@@ -74,6 +74,10 @@ class WebRtcVideoCapturer : public VideoCapturer,
   virtual void SetCameraMute(bool mute);
   // -twinlife- switch camera
   virtual void SwitchCamera(int camera_id);
+  // -twinlife- is zoom supported
+  virtual bool IsZoomSupported();
+  // -twinlife- set zoom
+  virtual void SetZoom(int progress);
 
  protected:
   // Override virtual methods of the parent class VideoCapturer.
