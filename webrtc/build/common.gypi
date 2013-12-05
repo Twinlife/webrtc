@@ -144,20 +144,12 @@
   },
   'target_defaults': {
     'include_dirs': [
-      # TODO(andrew): Remove '..' when we've added webrtc/ to include paths.
-      '..',
       # Allow includes to be prefixed with webrtc/ in case it is not an
       # immediate subdirectory of <(DEPTH).
       '../..',
       # To include the top-level directory when building in Chrome, so we can
       # use full paths (e.g. headers inside testing/ or third_party/).
       '<(DEPTH)',
-    ],
-    'defines': [
-      # TODO(leozwang): Run this as a gclient hook rather than at build-time:
-      # http://code.google.com/p/webrtc/issues/detail?id=687
-      'WEBRTC_SVNREVISION="Unavailable(issue687)"',
-      #'WEBRTC_SVNREVISION="<!(python <(webrtc_root)/build/version.py)"',
     ],
     'conditions': [
       ['restrict_webrtc_logging==1', {
@@ -185,6 +177,7 @@
               '-Wno-missing-field-initializers',
             ],
             'cflags_cc': [
+              '-Wnon-virtual-dtor',
               # This is enabled for clang; enable for gcc as well.
               '-Woverloaded-virtual',
             ],

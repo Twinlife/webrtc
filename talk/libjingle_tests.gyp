@@ -375,7 +375,7 @@
       ],
       # TODO(ronghuawu): Reenable below unit tests that require gmock.
       'sources': [
-        'app/webrtc/datachannel_unittest.cc',
+        # 'app/webrtc/datachannel_unittest.cc',
         'app/webrtc/dtmfsender_unittest.cc',
         'app/webrtc/jsepsessiondescription_unittest.cc',
         'app/webrtc/localaudiosource_unittest.cc',
@@ -383,6 +383,7 @@
         # 'app/webrtc/mediastreamhandler_unittest.cc',
         'app/webrtc/mediastreamsignaling_unittest.cc',
         'app/webrtc/peerconnection_unittest.cc',
+        'app/webrtc/peerconnectionendtoend_unittest.cc',
         'app/webrtc/peerconnectionfactory_unittest.cc',
         'app/webrtc/peerconnectioninterface_unittest.cc',
         # 'app/webrtc/peerconnectionproxy_unittest.cc',
@@ -397,6 +398,8 @@
         'app/webrtc/test/fakeperiodicvideocapturer.h',
         'app/webrtc/test/fakevideotrackrenderer.h',
         'app/webrtc/test/mockpeerconnectionobservers.h',
+        'app/webrtc/test/peerconnectiontestwrapper.h',
+        'app/webrtc/test/peerconnectiontestwrapper.cc',
         'app/webrtc/test/testsdpstrings.h',
         'app/webrtc/videosource_unittest.cc',
         'app/webrtc/videotrack_unittest.cc',

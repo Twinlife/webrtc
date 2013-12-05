@@ -61,7 +61,9 @@
       'sources': [
         'call.cc',
         'call.h',
+        'config.cc',
         'config.h',
+        'experiments.h',
         'frame_callback.h',
         'transport.h',
         'video_receive_stream.h',

@@ -206,14 +206,6 @@ void TurnPort::PrepareAddress() {
     return;
   }
 
-  // If protocol family of server address doesn't match with local, return.
-  if (!IsCompatibleAddress(server_address_.address)) {
-    LOG(LS_ERROR) << "Server IP address family does not match with "
-                  << "local host address family type";
-    OnAllocateError();
-    return;
-  }
-
   if (!server_address_.address.port()) {
     // We will set default TURN port, if no port is set in the address.
     server_address_.address.SetPort(TURN_DEFAULT_PORT);
@@ -222,6 +214,14 @@ void TurnPort::PrepareAddress() {
   if (server_address_.address.IsUnresolved()) {
     ResolveTurnAddress(server_address_.address);
   } else {
+    // If protocol family of server address doesn't match with local, return.
+    if (!IsCompatibleAddress(server_address_.address)) {
+      LOG(LS_ERROR) << "Server IP address family does not match with "
+                    << "local host address family type";
+      OnAllocateError();
+      return;
+    }
+
     LOG_J(LS_INFO, this) << "Trying to connect to TURN server via "
                          << ProtoToString(server_address_.proto) << " @ "
                          << server_address_.address.ToSensitiveString();
@@ -399,22 +399,21 @@ void TurnPort::ResolveTurnAddress(const talk_base::SocketAddress& address) {
   if (resolver_)
     return;
 
-  resolver_ = new talk_base::AsyncResolver();
-  resolver_->SignalWorkDone.connect(this, &TurnPort::OnResolveResult);
-  resolver_->set_address(address);
-  resolver_->Start();
+  resolver_ = socket_factory()->CreateAsyncResolver();
+  resolver_->SignalDone.connect(this, &TurnPort::OnResolveResult);
+  resolver_->Start(address);
 }
 
-void TurnPort::OnResolveResult(talk_base::SignalThread* signal_thread) {
-  ASSERT(signal_thread == resolver_);
-  if (resolver_->error() != 0) {
+void TurnPort::OnResolveResult(talk_base::AsyncResolverInterface* resolver) {
+  ASSERT(resolver == resolver_);
+  if (resolver_->GetError() != 0 ||
+      !resolver_->GetResolvedAddress(ip().family(), &server_address_.address)) {
     LOG_J(LS_WARNING, this) << "TURN host lookup received error "
-                            << resolver_->error();
+                            << resolver_->GetError();
     OnAllocateError();
     return;
   }
 
-  server_address_.address = resolver_->address();
   PrepareAddress();
 }
 

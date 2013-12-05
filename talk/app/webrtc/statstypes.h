@@ -128,6 +128,8 @@ class StatsReport {
 
 
   // Internal StatsValue names
+  static const char kStatsValueNameAvgEncodeMs[];
+  static const char kStatsValueNameCaptureJitterMs[];
   static const char kStatsValueNameCodecName[];
   static const char kStatsValueNameEchoCancellationQualityMin[];
   static const char kStatsValueNameEchoDelayMedian[];
@@ -177,6 +179,8 @@ class StatsReport {
   static const char kStatsValueNameIssuerId[];
   static const char kStatsValueNameLocalCertificateId[];
   static const char kStatsValueNameRemoteCertificateId[];
+  static const char kStatsValueNameLocalCandidateType[];
+  static const char kStatsValueNameRemoteCandidateType[];
 };
 
 typedef std::vector<StatsReport> StatsReports;

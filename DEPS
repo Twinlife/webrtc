@@ -69,10 +69,10 @@ deps = {
     From("chromium_deps", "src/third_party/libsrtp"),
 
   "third_party/libvpx":
-    Var("chromium_trunk") + "/deps/third_party/libvpx@225010",
+    Var("chromium_trunk") + "/deps/third_party/libvpx@232686",
 
   "third_party/libyuv":
-    (Var("googlecode_url") % "libyuv") + "/trunk@844",
+    (Var("googlecode_url") % "libyuv") + "/trunk@874",
 
   "third_party/opus":
     Var("chromium_trunk") + "/src/third_party/opus@185405",

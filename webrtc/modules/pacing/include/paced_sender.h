@@ -43,13 +43,18 @@ class PacedSender : public Module {
     // module again.
     // Called when it's time to send a queued packet.
     // Returns false if packet cannot be sent.
-    virtual bool TimeToSendPacket(uint32_t ssrc, uint16_t sequence_number,
-                                  int64_t capture_time_ms) = 0;
+    virtual bool TimeToSendPacket(uint32_t ssrc,
+                                  uint16_t sequence_number,
+                                  int64_t capture_time_ms,
+                                  bool retransmission) = 0;
     // Called when it's a good time to send a padding data.
     virtual int TimeToSendPadding(int bytes) = 0;
    protected:
     virtual ~Callback() {}
   };
+
+  static const int kDefaultMaxQueueLengthMs = 2000;
+
   PacedSender(Callback* callback, int target_bitrate_kbps,
               float pace_multiplier);
 
@@ -80,7 +85,12 @@ class PacedSender : public Module {
                           uint32_t ssrc,
                           uint16_t sequence_number,
                           int64_t capture_time_ms,
-                          int bytes);
+                          int bytes,
+                          bool retransmission);
+
+  // Sets the max length of the pacer queue in milliseconds.
+  // A negative queue size is interpreted as infinite.
+  virtual void set_max_queue_length_ms(int max_queue_length_ms);
 
   // Returns the time since the oldest queued packet was captured.
   virtual int QueueInMs() const;
@@ -99,7 +109,10 @@ class PacedSender : public Module {
 
   // Local helper function to GetNextPacket.
   void GetNextPacketFromList(paced_sender::PacketList* packets,
-      uint32_t* ssrc, uint16_t* sequence_number, int64_t* capture_time_ms);
+      uint32_t* ssrc, uint16_t* sequence_number, int64_t* capture_time_ms,
+      bool* retransmission);
+
+  bool SendPacketFromList(paced_sender::PacketList* packet_list);
 
   // Updates the number of bytes that can be sent for the next time interval.
   void UpdateBytesPerInterval(uint32_t delta_time_in_ms);
@@ -111,6 +124,7 @@ class PacedSender : public Module {
   const float pace_multiplier_;
   bool enabled_;
   bool paused_;
+  int max_queue_length_ms_;
   scoped_ptr<CriticalSectionWrapper> critsect_;
   // This is the media budget, keeping track of how many bits of media
   // we can pace out during the current interval.

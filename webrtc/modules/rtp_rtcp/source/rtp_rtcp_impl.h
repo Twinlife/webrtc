@@ -19,6 +19,7 @@
 #include "webrtc/modules/rtp_rtcp/source/rtcp_sender.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_sender.h"
 #include "webrtc/system_wrappers/interface/scoped_ptr.h"
+#include "webrtc/test/testsupport/gtest_prod_util.h"
 
 #ifdef MATLAB
 class MatlabPlot;
@@ -94,11 +95,11 @@ class ModuleRtpRtcpImpl : public RtpRtcp {
 
   virtual uint32_t ByteCountSent() const;
 
-  virtual int32_t SetRTXSendStatus(const RtxMode mode,
+  virtual int32_t SetRTXSendStatus(const int mode,
                                    const bool set_ssrc,
                                    const uint32_t ssrc) OVERRIDE;
 
-  virtual int32_t RTXSendStatus(RtxMode* mode, uint32_t* ssrc,
+  virtual int32_t RTXSendStatus(int* mode, uint32_t* ssrc,
                                 int* payloadType) const OVERRIDE;
 
 
@@ -126,8 +127,10 @@ class ModuleRtpRtcpImpl : public RtpRtcp {
       const RTPFragmentationHeader* fragmentation = NULL,
       const RTPVideoHeader* rtp_video_hdr = NULL) OVERRIDE;
 
-  virtual bool TimeToSendPacket(uint32_t ssrc, uint16_t sequence_number,
-                                int64_t capture_time_ms) OVERRIDE;
+  virtual bool TimeToSendPacket(uint32_t ssrc,
+                                uint16_t sequence_number,
+                                int64_t capture_time_ms,
+                                bool retransmission) OVERRIDE;
   // Returns the number of padding bytes actually sent, which can be more or
   // less than |bytes|.
   virtual int TimeToSendPadding(int bytes) OVERRIDE;
@@ -256,6 +259,8 @@ class ModuleRtpRtcpImpl : public RtpRtcp {
   // (XR) Receiver reference time report.
   virtual void SetRtcpXrRrtrStatus(bool enable) OVERRIDE;
 
+  virtual bool RtcpXrRrtrStatus() const OVERRIDE;
+
   // Audio part.
 
   // Set audio packet size, used to determine when it's time to send a DTMF
@@ -358,6 +363,10 @@ class ModuleRtpRtcpImpl : public RtpRtcp {
 
   void OnRequestSendReport();
 
+  virtual void RegisterSendFrameCountObserver(
+      FrameCountObserver* observer) OVERRIDE;
+  virtual FrameCountObserver* GetSendFrameCountObserver() const OVERRIDE;
+
  protected:
   void RegisterChildModule(RtpRtcp* module);
 
@@ -381,8 +390,12 @@ class ModuleRtpRtcpImpl : public RtpRtcp {
   Clock*                    clock_;
 
  private:
+  FRIEND_TEST_ALL_PREFIXES(RtpRtcpImplTest, RttForReceiverOnly);
   int64_t RtcpReportInterval();
   void SetRtcpReceiverSsrcs(uint32_t main_ssrc);
+
+  void set_rtt_ms(uint32_t rtt_ms);
+  uint32_t rtt_ms() const;
 
   int32_t             id_;
   const bool                audio_;
@@ -412,7 +425,11 @@ class ModuleRtpRtcpImpl : public RtpRtcp {
   MatlabPlot*           plot1_;
 #endif
 
-  RtcpRttObserver* rtt_observer_;
+  RtcpRttStats* rtt_stats_;
+
+  // The processed RTT from RtcpRttStats.
+  scoped_ptr<CriticalSectionWrapper> critical_section_rtt_;
+  uint32_t rtt_ms_;
 };
 
 }  // namespace webrtc

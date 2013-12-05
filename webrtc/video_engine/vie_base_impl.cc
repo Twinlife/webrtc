@@ -117,6 +117,53 @@ int ViEBaseImpl::RegisterCpuOveruseObserver(int video_channel,
   return 0;
 }
 
+int ViEBaseImpl::CpuOveruseMeasures(int video_channel,
+                                    int* capture_jitter_ms,
+                                    int* avg_encode_time_ms) {
+  int encode_usage_percent;
+  int capture_queue_delay_ms_per_s;
+  return CpuOveruseMeasures(video_channel,
+                            capture_jitter_ms,
+                            avg_encode_time_ms,
+                            &encode_usage_percent,
+                            &capture_queue_delay_ms_per_s);
+}
+
+int ViEBaseImpl::CpuOveruseMeasures(int video_channel,
+                                    int* capture_jitter_ms,
+                                    int* avg_encode_time_ms,
+                                    int* encode_usage_percent,
+                                    int* capture_queue_delay_ms_per_s) {
+  ViEChannelManagerScoped cs(*(shared_data_.channel_manager()));
+  ViEChannel* vie_channel = cs.Channel(video_channel);
+  if (!vie_channel) {
+    WEBRTC_TRACE(kTraceError,
+                 kTraceVideo,
+                 ViEId(shared_data_.instance_id()),
+                 "%s: channel %d doesn't exist",
+                 __FUNCTION__,
+                 video_channel);
+    shared_data_.SetLastError(kViEBaseInvalidChannelId);
+    return -1;
+  }
+  ViEEncoder* vie_encoder = cs.Encoder(video_channel);
+  assert(vie_encoder);
+
+  ViEInputManagerScoped is(*(shared_data_.input_manager()));
+  ViEFrameProviderBase* provider = is.FrameProvider(vie_encoder);
+  if (provider) {
+    ViECapturer* capturer = is.Capture(provider->Id());
+    if (capturer) {
+      capturer->CpuOveruseMeasures(capture_jitter_ms,
+                                   avg_encode_time_ms,
+                                   encode_usage_percent,
+                                   capture_queue_delay_ms_per_s);
+      return 0;
+    }
+  }
+  return -1;
+}
+
 int ViEBaseImpl::CreateChannel(int& video_channel) {  // NOLINT
   WEBRTC_TRACE(kTraceApiCall, kTraceVideo, ViEId(shared_data_.instance_id()),
                "%s", __FUNCTION__);
@@ -347,11 +394,10 @@ int ViEBaseImpl::GetVersion(char version[1024]) {
 
   // Add WebRTC Version.
   std::stringstream version_stream;
-  version_stream << "VideoEngine 3.46.0" << std::endl;
+  version_stream << "VideoEngine 3.47.0" << std::endl;
 
   // Add build info.
-  version_stream << "Build: svn:" << WEBRTC_SVNREVISION << " " << BUILDINFO
-                 << std::endl;
+  version_stream << "Build: " << BUILDINFO << std::endl;
 
 #ifdef WEBRTC_EXTERNAL_TRANSPORT
   version_stream << "External transport build" << std::endl;

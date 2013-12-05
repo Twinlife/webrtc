@@ -36,16 +36,18 @@ namespace webrtc {
 namespace paced_sender {
 struct Packet {
   Packet(uint32_t ssrc, uint16_t seq_number, int64_t capture_time_ms,
-         int length_in_bytes)
+         int length_in_bytes, bool retransmission)
       : ssrc_(ssrc),
         sequence_number_(seq_number),
         capture_time_ms_(capture_time_ms),
-        bytes_(length_in_bytes) {
+        bytes_(length_in_bytes),
+        retransmission_(retransmission) {
   }
   uint32_t ssrc_;
   uint16_t sequence_number_;
   int64_t capture_time_ms_;
   int bytes_;
+  bool retransmission_;
 };
 
 // STL list style class which prevents duplicates in the list.
@@ -105,7 +107,7 @@ class IntervalBudget {
 
   void UseBudget(int bytes) {
     bytes_remaining_ = std::max(bytes_remaining_ - bytes,
-                                -100 * target_rate_kbps_ / 8);
+                                -500 * target_rate_kbps_ / 8);
   }
 
   int bytes_remaining() const { return bytes_remaining_; }
@@ -122,6 +124,7 @@ PacedSender::PacedSender(Callback* callback, int target_bitrate_kbps,
       pace_multiplier_(pace_multiplier),
       enabled_(false),
       paused_(false),
+      max_queue_length_ms_(kDefaultMaxQueueLengthMs),
       critsect_(CriticalSectionWrapper::CreateCriticalSection()),
       media_budget_(new paced_sender::IntervalBudget(
           pace_multiplier_ * target_bitrate_kbps)),
@@ -170,7 +173,8 @@ void PacedSender::UpdateBitrate(int target_bitrate_kbps,
 }
 
 bool PacedSender::SendPacket(Priority priority, uint32_t ssrc,
-    uint16_t sequence_number, int64_t capture_time_ms, int bytes) {
+    uint16_t sequence_number, int64_t capture_time_ms, int bytes,
+    bool retransmission) {
   CriticalSectionScoped cs(critsect_.get());
 
   if (!enabled_) {
@@ -198,8 +202,14 @@ bool PacedSender::SendPacket(Priority priority, uint32_t ssrc,
       break;
   }
   packet_list->push_back(paced_sender::Packet(ssrc, sequence_number,
-                                              capture_time_ms, bytes));
+                                              capture_time_ms, bytes,
+                                              retransmission));
   return false;
+}
+
+void PacedSender::set_max_queue_length_ms(int max_queue_length_ms) {
+  CriticalSectionScoped cs(critsect_.get());
+  max_queue_length_ms_ = max_queue_length_ms;
 }
 
 int PacedSender::QueueInMs() const {
@@ -250,34 +260,10 @@ int32_t PacedSender::Process() {
       uint32_t delta_time_ms = std::min(kMaxIntervalTimeMs, elapsed_time_ms);
       UpdateBytesPerInterval(delta_time_ms);
     }
-    uint32_t ssrc;
-    uint16_t sequence_number;
-    int64_t capture_time_ms;
     paced_sender::PacketList* packet_list;
     while (ShouldSendNextPacket(&packet_list)) {
-      GetNextPacketFromList(packet_list, &ssrc, &sequence_number,
-                            &capture_time_ms);
-      critsect_->Leave();
-
-      const bool success = callback_->TimeToSendPacket(ssrc, sequence_number,
-                                                       capture_time_ms);
-      critsect_->Enter();
-      // If packet cannot be sent then keep it in packet list and exit early.
-      // There's no need to send more packets.
-      if (!success) {
+      if (!SendPacketFromList(packet_list))
         return 0;
-      }
-      packet_list->pop_front();
-      const bool last_packet = packet_list->empty() ||
-          packet_list->front().capture_time_ms_ > capture_time_ms;
-      if (packet_list != high_priority_packets_.get()) {
-        if (capture_time_ms > capture_time_ms_last_sent_) {
-          capture_time_ms_last_sent_ = capture_time_ms;
-        } else if (capture_time_ms == capture_time_ms_last_sent_ &&
-                   last_packet) {
-          TRACE_EVENT_ASYNC_END0("webrtc_rtp", "PacedSend", capture_time_ms);
-        }
-      }
     }
     if (high_priority_packets_->empty() &&
         normal_priority_packets_->empty() &&
@@ -299,6 +285,39 @@ int32_t PacedSender::Process() {
 }
 
 // MUST have critsect_ when calling.
+bool PacedSender::SendPacketFromList(paced_sender::PacketList* packet_list) {
+  uint32_t ssrc;
+  uint16_t sequence_number;
+  int64_t capture_time_ms;
+  bool retransmission;
+  GetNextPacketFromList(packet_list, &ssrc, &sequence_number,
+                        &capture_time_ms, &retransmission);
+  critsect_->Leave();
+
+  const bool success = callback_->TimeToSendPacket(ssrc, sequence_number,
+                                                   capture_time_ms,
+                                                   retransmission);
+  critsect_->Enter();
+  // If packet cannot be sent then keep it in packet list and exit early.
+  // There's no need to send more packets.
+  if (!success) {
+    return false;
+  }
+  packet_list->pop_front();
+  const bool last_packet = packet_list->empty() ||
+      packet_list->front().capture_time_ms_ > capture_time_ms;
+  if (packet_list != high_priority_packets_.get()) {
+    if (capture_time_ms > capture_time_ms_last_sent_) {
+      capture_time_ms_last_sent_ = capture_time_ms;
+    } else if (capture_time_ms == capture_time_ms_last_sent_ &&
+               last_packet) {
+      TRACE_EVENT_ASYNC_END0("webrtc_rtp", "PacedSend", capture_time_ms);
+    }
+  }
+  return true;
+}
+
+// MUST have critsect_ when calling.
 void PacedSender::UpdateBytesPerInterval(uint32_t delta_time_ms) {
   media_budget_->IncreaseBudget(delta_time_ms);
   padding_budget_->IncreaseBudget(delta_time_ms);
@@ -307,6 +326,7 @@ void PacedSender::UpdateBytesPerInterval(uint32_t delta_time_ms) {
 
 // MUST have critsect_ when calling.
 bool PacedSender::ShouldSendNextPacket(paced_sender::PacketList** packet_list) {
+  *packet_list = NULL;
   if (media_budget_->bytes_remaining() <= 0) {
     // All bytes consumed for this interval.
     // Check if we have not sent in a too long time.
@@ -320,6 +340,22 @@ bool PacedSender::ShouldSendNextPacket(paced_sender::PacketList** packet_list) {
         *packet_list = normal_priority_packets_.get();
         return true;
       }
+    }
+    // Send any old packets to avoid queuing for too long.
+    if (max_queue_length_ms_ >= 0 && QueueInMs() > max_queue_length_ms_) {
+      int64_t high_priority_capture_time = -1;
+      if (!high_priority_packets_->empty()) {
+        high_priority_capture_time =
+            high_priority_packets_->front().capture_time_ms_;
+        *packet_list = high_priority_packets_.get();
+      }
+      if (!normal_priority_packets_->empty() &&
+          (high_priority_capture_time == -1 || high_priority_capture_time >
+          normal_priority_packets_->front().capture_time_ms_)) {
+        *packet_list = normal_priority_packets_.get();
+      }
+      if (*packet_list)
+        return true;
     }
     return false;
   }
@@ -339,12 +375,14 @@ bool PacedSender::ShouldSendNextPacket(paced_sender::PacketList** packet_list) {
 }
 
 void PacedSender::GetNextPacketFromList(paced_sender::PacketList* packets,
-    uint32_t* ssrc, uint16_t* sequence_number, int64_t* capture_time_ms) {
+    uint32_t* ssrc, uint16_t* sequence_number, int64_t* capture_time_ms,
+    bool* retransmission) {
   paced_sender::Packet packet = packets->front();
   UpdateMediaBytesSent(packet.bytes_);
   *sequence_number = packet.sequence_number_;
   *ssrc = packet.ssrc_;
   *capture_time_ms = packet.capture_time_ms_;
+  *retransmission = packet.retransmission_;
 }
 
 // MUST have critsect_ when calling.

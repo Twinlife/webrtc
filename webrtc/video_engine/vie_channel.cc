@@ -13,7 +13,9 @@
 #include <algorithm>
 #include <vector>
 
+#include "webrtc/common.h"
 #include "webrtc/common_video/libyuv/include/webrtc_libyuv.h"
+#include "webrtc/experiments.h"
 #include "webrtc/modules/pacing/include/paced_sender.h"
 #include "webrtc/modules/rtp_rtcp/interface/rtp_receiver.h"
 #include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp.h"
@@ -62,7 +64,7 @@ ViEChannel::ViEChannel(int32_t channel_id,
                        RtcpIntraFrameObserver* intra_frame_observer,
                        RtcpBandwidthObserver* bandwidth_observer,
                        RemoteBitrateEstimator* remote_bitrate_estimator,
-                       RtcpRttObserver* rtt_observer,
+                       RtcpRttStats* rtt_stats,
                        PacedSender* paced_sender,
                        RtpRtcp* default_rtp_rtcp,
                        bool sender)
@@ -85,7 +87,7 @@ ViEChannel::ViEChannel(int32_t channel_id,
       rtp_observer_(NULL),
       rtcp_observer_(NULL),
       intra_frame_observer_(intra_frame_observer),
-      rtt_observer_(rtt_observer),
+      rtt_stats_(rtt_stats),
       paced_sender_(paced_sender),
       bandwidth_observer_(bandwidth_observer),
       send_timestamp_extension_id_(kInvalidRtpExtensionId),
@@ -102,7 +104,8 @@ ViEChannel::ViEChannel(int32_t channel_id,
       sender_(sender),
       nack_history_size_sender_(kSendSidePacketHistorySize),
       max_nack_reordering_threshold_(kMaxPacketAgeToNack),
-      pre_render_callback_(NULL) {
+      pre_render_callback_(NULL),
+      config_(config) {
   WEBRTC_TRACE(kTraceMemory, kTraceVideo, ViEId(engine_id, channel_id),
                "ViEChannel::ViEChannel(channel_id: %d, engine_id: %d)",
                channel_id, engine_id);
@@ -115,7 +118,7 @@ ViEChannel::ViEChannel(int32_t channel_id,
   configuration.rtcp_feedback = this;
   configuration.intra_frame_callback = intra_frame_observer;
   configuration.bandwidth_callback = bandwidth_observer;
-  configuration.rtt_observer = rtt_observer;
+  configuration.rtt_stats = rtt_stats;
   configuration.remote_bitrate_estimator = remote_bitrate_estimator;
   configuration.paced_sender = paced_sender;
   configuration.receive_statistics = vie_receiver_.GetReceiveStatistics();
@@ -319,7 +322,7 @@ int32_t ViEChannel::SetSendCodec(const VideoCodec& video_codec,
       configuration.outgoing_transport = &vie_sender_;
       configuration.intra_frame_callback = intra_frame_observer_;
       configuration.bandwidth_callback = bandwidth_observer_.get();
-      configuration.rtt_observer = rtt_observer_;
+      configuration.rtt_stats = rtt_stats_;
       configuration.paced_sender = paced_sender_;
 
       RtpRtcp* rtp_rtcp = RtpRtcp::CreateRtpRtcp(configuration);
@@ -353,6 +356,7 @@ int32_t ViEChannel::SetSendCodec(const VideoCodec& video_codec,
       module_process_thread_.DeRegisterModule(rtp_rtcp);
       rtp_rtcp->SetSendingStatus(false);
       rtp_rtcp->SetSendingMediaStatus(false);
+      rtp_rtcp->RegisterSendFrameCountObserver(NULL);
       simulcast_rtp_rtcp_.pop_back();
       removed_rtp_rtcp_.push_front(rtp_rtcp);
     }
@@ -406,6 +410,9 @@ int32_t ViEChannel::SetSendCodec(const VideoCodec& video_codec,
         rtp_rtcp->DeregisterSendRtpHeaderExtension(
             kRtpExtensionAbsoluteSendTime);
       }
+      rtp_rtcp->SetRtcpXrRrtrStatus(rtp_rtcp_->RtcpXrRrtrStatus());
+      rtp_rtcp->RegisterSendFrameCountObserver(
+          rtp_rtcp_->GetSendFrameCountObserver());
     }
     // |RegisterSimulcastRtpRtcpModules| resets all old weak pointers and old
     // modules can be deleted after this step.
@@ -416,6 +423,7 @@ int32_t ViEChannel::SetSendCodec(const VideoCodec& video_codec,
       module_process_thread_.DeRegisterModule(rtp_rtcp);
       rtp_rtcp->SetSendingStatus(false);
       rtp_rtcp->SetSendingMediaStatus(false);
+      rtp_rtcp->RegisterSendFrameCountObserver(NULL);
       simulcast_rtp_rtcp_.pop_back();
       removed_rtp_rtcp_.push_front(rtp_rtcp);
     }
@@ -922,6 +930,15 @@ bool ViEChannel::GetReceiveAbsoluteSendTimeStatus() const {
   return receive_absolute_send_time_enabled_;
 }
 
+void ViEChannel::SetRtcpXrRrtrStatus(bool enable) {
+  CriticalSectionScoped cs(rtp_rtcp_cs_.get());
+  rtp_rtcp_->SetRtcpXrRrtrStatus(enable);
+  for (std::list<RtpRtcp*>::iterator it = simulcast_rtp_rtcp_.begin();
+       it != simulcast_rtp_rtcp_.end(); it++) {
+    (*it)->SetRtcpXrRrtrStatus(enable);
+  }
+}
+
 void ViEChannel::SetTransmissionSmoothingStatus(bool enable) {
   assert(paced_sender_ && "No paced sender registered.");
   paced_sender_->SetStatus(enable);
@@ -955,9 +972,12 @@ int32_t ViEChannel::SetSSRC(const uint32_t SSRC,
                ViEId(engine_id_, channel_id_),
                "%s(usage:%d, SSRC: 0x%x, idx:%u)",
                __FUNCTION__, usage, SSRC, simulcast_idx);
+  int rtx_settings = kRtxRetransmitted;
+  if (config_.Get<PaddingStrategy>().redundant_payloads)
+    rtx_settings |= kRtxRedundantPayloads;
   if (simulcast_idx == 0) {
     if (usage == kViEStreamTypeRtx) {
-      return rtp_rtcp_->SetRTXSendStatus(kRtxRetransmitted, true, SSRC);
+      return rtp_rtcp_->SetRTXSendStatus(rtx_settings, true, SSRC);
     }
     return rtp_rtcp_->SetSSRC(SSRC);
   }
@@ -973,7 +993,7 @@ int32_t ViEChannel::SetSSRC(const uint32_t SSRC,
   }
   RtpRtcp* rtp_rtcp_module = *it;
   if (usage == kViEStreamTypeRtx) {
-    return rtp_rtcp_module->SetRTXSendStatus(kRtxRetransmitted, true, SSRC);
+    return rtp_rtcp_module->SetRTXSendStatus(rtx_settings, true, SSRC);
   }
   return rtp_rtcp_module->SetSSRC(SSRC);
 }
@@ -1860,6 +1880,12 @@ void ViEChannel::RegisterPreRenderCallback(
   pre_render_callback_ = pre_render_callback;
 }
 
+void ViEChannel::RegisterPreDecodeImageCallback(
+    EncodedImageCallback* pre_decode_callback) {
+  CriticalSectionScoped cs(callback_cs_.get());
+  vcm_.RegisterPreDecodeImageCallback(pre_decode_callback);
+}
+
 void ViEChannel::OnApplicationDataReceived(const int32_t id,
                                            const uint8_t sub_type,
                                            const uint32_t name,
@@ -1947,6 +1973,17 @@ void ViEChannel::ResetStatistics(uint32_t ssrc) {
       vie_receiver_.GetReceiveStatistics()->GetStatistician(ssrc);
   if (statistician)
     statistician->ResetStatistics();
+}
+
+void ViEChannel::RegisterSendFrameCountObserver(
+    FrameCountObserver* observer) {
+  rtp_rtcp_->RegisterSendFrameCountObserver(observer);
+  CriticalSectionScoped cs(rtp_rtcp_cs_.get());
+  for (std::list<RtpRtcp*>::iterator it = simulcast_rtp_rtcp_.begin();
+       it != simulcast_rtp_rtcp_.end();
+       it++) {
+    (*it)->RegisterSendFrameCountObserver(observer);
+  }
 }
 
 }  // namespace webrtc
