@@ -235,19 +235,16 @@ protected:
 
 // Statistics for an RTCP channel
 struct RtcpStatistics {
- public:
   RtcpStatistics()
     : fraction_lost(0),
       cumulative_lost(0),
       extended_max_sequence_number(0),
-      jitter(0),
-      max_jitter(0) {}
+      jitter(0) {}
 
   uint8_t fraction_lost;
   uint32_t cumulative_lost;
   uint32_t extended_max_sequence_number;
   uint32_t jitter;
-  uint32_t max_jitter;
 };
 
 // Callback, called whenever a new rtcp report block is transmitted.
@@ -261,19 +258,20 @@ class RtcpStatisticsCallback {
 
 // Data usage statistics for a (rtp) stream
 struct StreamDataCounters {
- public:
   StreamDataCounters()
    : bytes(0),
+     header_bytes(0),
      padding_bytes(0),
      packets(0),
      retransmitted_packets(0),
      fec_packets(0) {}
 
-  uint32_t bytes;
-  uint32_t padding_bytes;
-  uint32_t packets;
-  uint32_t retransmitted_packets;
-  uint32_t fec_packets;
+  uint32_t bytes;  // Payload bytes, excluding RTP headers and padding.
+  uint32_t header_bytes;  // Number of bytes used by RTP headers.
+  uint32_t padding_bytes;  // Number of padding bytes.
+  uint32_t packets;  // Number of packets.
+  uint32_t retransmitted_packets;  // Number of retransmitted packets.
+  uint32_t fec_packets;  // Number of redundancy packets.
 };
 
 // Callback, called whenever byte/packet counts have been updated.
@@ -287,7 +285,6 @@ class StreamDataCountersCallback {
 
 // Rate statistics for a stream
 struct BitrateStatistics {
- public:
   BitrateStatistics()
     : bitrate_(0),
       packet_rate(0),
@@ -678,6 +675,22 @@ struct OverUseDetectorOptions {
   double initial_avg_noise;
   double initial_var_noise;
   double initial_threshold;
+};
+
+// This structure will have the information about when packet is actually
+// received by socket.
+struct PacketTime {
+  PacketTime() : timestamp(-1), max_error_us(-1) {}
+  PacketTime(int64_t timestamp, int64_t max_error_us)
+      : timestamp(timestamp), max_error_us(max_error_us) {
+  }
+
+  int64_t timestamp;    // Receive time after socket delivers the data.
+  int64_t max_error_us; // Earliest possible time the data could have arrived,
+                        // indicating the potential error in the |timestamp|
+                        // value,in case the system is busy.
+                        // For example, the time of the last select() call.
+                        // If unknown, this value will be set to zero.
 };
 
 }  // namespace webrtc

@@ -298,7 +298,6 @@ struct VideoOptions {
     adapt_view_switch.SetFrom(change.adapt_view_switch);
     video_adapt_third.SetFrom(change.video_adapt_third);
     video_noise_reduction.SetFrom(change.video_noise_reduction);
-    video_three_layers.SetFrom(change.video_three_layers);
     video_one_layer_screencast.SetFrom(change.video_one_layer_screencast);
     video_high_bitrate.SetFrom(change.video_high_bitrate);
     video_watermark.SetFrom(change.video_watermark);
@@ -327,7 +326,6 @@ struct VideoOptions {
         adapt_view_switch == o.adapt_view_switch &&
         video_adapt_third == o.video_adapt_third &&
         video_noise_reduction == o.video_noise_reduction &&
-        video_three_layers == o.video_three_layers &&
         video_one_layer_screencast == o.video_one_layer_screencast &&
         video_high_bitrate == o.video_high_bitrate &&
         video_watermark == o.video_watermark &&
@@ -356,7 +354,6 @@ struct VideoOptions {
     ost << ToStringIfSet("adapt view switch", adapt_view_switch);
     ost << ToStringIfSet("video adapt third", video_adapt_third);
     ost << ToStringIfSet("noise reduction", video_noise_reduction);
-    ost << ToStringIfSet("3 layers", video_three_layers);
     ost << ToStringIfSet("1 layer screencast", video_one_layer_screencast);
     ost << ToStringIfSet("high bitrate", video_high_bitrate);
     ost << ToStringIfSet("watermark", video_watermark);
@@ -391,8 +388,6 @@ struct VideoOptions {
   Settable<bool> video_adapt_third;
   // Enable denoising?
   Settable<bool> video_noise_reduction;
-  // Experimental: Enable multi layer?
-  Settable<bool> video_three_layers;
   // Experimental: Enable one layer screencast?
   Settable<bool> video_one_layer_screencast;
   // Experimental: Enable WebRtc higher bitrate?
@@ -514,9 +509,11 @@ class MediaChannel : public sigslot::has_slots<> {
   }
 
   // Called when a RTP packet is received.
-  virtual void OnPacketReceived(talk_base::Buffer* packet) = 0;
+  virtual void OnPacketReceived(talk_base::Buffer* packet,
+                                const talk_base::PacketTime& packet_time) = 0;
   // Called when a RTCP packet is received.
-  virtual void OnRtcpReceived(talk_base::Buffer* packet) = 0;
+  virtual void OnRtcpReceived(talk_base::Buffer* packet,
+                              const talk_base::PacketTime& packet_time) = 0;
   // Called when the socket's ability to send has changed.
   virtual void OnReadyToSend(bool ready) = 0;
   // Creates a new outgoing media stream with SSRCs and CNAME as described
@@ -776,7 +773,9 @@ struct VideoSenderInfo : public MediaSenderInfo {
         preferred_bitrate(0),
         adapt_reason(0),
         capture_jitter_ms(0),
-        avg_encode_ms(0) {
+        avg_encode_ms(0),
+        encode_usage_percent(0),
+        capture_queue_delay_ms_per_s(0) {
   }
 
   std::vector<SsrcGroup> ssrc_groups;
@@ -792,6 +791,8 @@ struct VideoSenderInfo : public MediaSenderInfo {
   int adapt_reason;
   int capture_jitter_ms;
   int avg_encode_ms;
+  int encode_usage_percent;
+  int capture_queue_delay_ms_per_s;
 };
 
 struct VideoReceiverInfo : public MediaReceiverInfo {
@@ -1132,25 +1133,15 @@ class DataMediaChannel : public MediaChannel {
 
   virtual ~DataMediaChannel() {}
 
-  virtual bool SetSendBandwidth(bool autobw, int bps) = 0;
   virtual bool SetSendCodecs(const std::vector<DataCodec>& codecs) = 0;
   virtual bool SetRecvCodecs(const std::vector<DataCodec>& codecs) = 0;
-  virtual bool SetRecvRtpHeaderExtensions(
-      const std::vector<RtpHeaderExtension>& extensions) = 0;
-  virtual bool SetSendRtpHeaderExtensions(
-      const std::vector<RtpHeaderExtension>& extensions) = 0;
-  virtual bool AddSendStream(const StreamParams& sp) = 0;
-  virtual bool RemoveSendStream(uint32 ssrc) = 0;
-  virtual bool AddRecvStream(const StreamParams& sp) = 0;
-  virtual bool RemoveRecvStream(uint32 ssrc) = 0;
+
   virtual bool MuteStream(uint32 ssrc, bool on) { return false; }
   // TODO(pthatcher): Implement this.
   virtual bool GetStats(DataMediaInfo* info) { return true; }
 
   virtual bool SetSend(bool send) = 0;
   virtual bool SetReceive(bool receive) = 0;
-  virtual void OnPacketReceived(talk_base::Buffer* packet) = 0;
-  virtual void OnRtcpReceived(talk_base::Buffer* packet) = 0;
 
   virtual bool SendData(
       const SendDataParams& params,

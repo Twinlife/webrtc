@@ -266,8 +266,10 @@ class WebRtcVideoMediaChannel : public talk_base::MessageHandler,
   virtual bool SendIntraFrame();
   virtual bool RequestIntraFrame();
 
-  virtual void OnPacketReceived(talk_base::Buffer* packet);
-  virtual void OnRtcpReceived(talk_base::Buffer* packet);
+  virtual void OnPacketReceived(talk_base::Buffer* packet,
+                                const talk_base::PacketTime& packet_time);
+  virtual void OnRtcpReceived(talk_base::Buffer* packet,
+                              const talk_base::PacketTime& packet_time);
   virtual void OnReadyToSend(bool ready);
   virtual bool MuteStream(uint32 ssrc, bool on);
   virtual bool SetRecvRtpHeaderExtensions(
@@ -289,8 +291,6 @@ class WebRtcVideoMediaChannel : public talk_base::MessageHandler,
   void SendFrame(VideoCapturer* capturer, const VideoFrame* frame);
   bool SendFrame(WebRtcVideoChannelSendInfo* channel_info,
                  const VideoFrame* frame, bool is_screencast);
-
-  void AdaptAndSendFrame(VideoCapturer* capturer, const VideoFrame* frame);
 
   // Thunk functions for use with HybridVideoEngine
   void OnLocalFrame(VideoCapturer* capturer, const VideoFrame* frame) {

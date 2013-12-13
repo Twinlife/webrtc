@@ -33,6 +33,7 @@
 #include <vector>
 
 #include "talk/base/basictypes.h"
+#include "talk/base/gunit.h"
 #include "talk/base/stringutils.h"
 #include "talk/media/base/codec.h"
 #include "talk/media/webrtc/fakewebrtccommon.h"
@@ -626,7 +627,7 @@ class FakeWebRtcVideoEngine
   WEBRTC_STUB(RegisterCpuOveruseObserver,
       (int channel, webrtc::CpuOveruseObserver* observer));
 #ifdef USE_WEBRTC_DEV_BRANCH
-  WEBRTC_STUB(CpuOveruseMeasures, (int, int*, int*));
+  WEBRTC_STUB(CpuOveruseMeasures, (int, int*, int*, int*, int*));
 #endif
   WEBRTC_STUB(ConnectAudioChannel, (const int, const int));
   WEBRTC_STUB(DisconnectAudioChannel, (const int));
@@ -745,9 +746,7 @@ class FakeWebRtcVideoEngine
   WEBRTC_STUB(WaitForFirstKeyFrame, (const int, const bool));
   WEBRTC_STUB(StartDebugRecording, (int, const char*));
   WEBRTC_STUB(StopDebugRecording, (int));
-#ifdef USE_WEBRTC_DEV_BRANCH
   WEBRTC_VOID_STUB(SuspendBelowMinBitrate, (int));
-#endif
 
   // webrtc::ViECapture
   WEBRTC_STUB(NumberOfCaptureDevices, ());
@@ -814,7 +813,12 @@ class FakeWebRtcVideoEngine
   }
   WEBRTC_STUB(RegisterSendTransport, (const int, webrtc::Transport&));
   WEBRTC_STUB(DeregisterSendTransport, (const int));
+#ifdef USE_WEBRTC_DEV_BRANCH
+  WEBRTC_STUB(ReceivedRTPPacket, (const int, const void*, const int,
+      const webrtc::PacketTime&));
+#else
   WEBRTC_STUB(ReceivedRTPPacket, (const int, const void*, const int));
+#endif
   WEBRTC_STUB(ReceivedRTCPPacket, (const int, const void*, const int));
   // Not using WEBRTC_STUB due to bool return value
   virtual bool IsIPv6Enabled(int channel) { return true; }
@@ -1022,6 +1026,9 @@ class FakeWebRtcVideoEngine
     channels_[channel]->rtp_absolute_send_time_receive_id_ = (enable) ? id : 0;
     return 0;
   }
+#ifdef USE_WEBRTC_DEV_BRANCH
+  WEBRTC_STUB(SetRtcpXrRrtrStatus, (int, bool));
+#endif
   WEBRTC_FUNC(SetTransmissionSmoothingStatus, (int channel, bool enable)) {
     WEBRTC_CHECK_CHANNEL(channel);
     channels_[channel]->transmission_smoothing_ = enable;
@@ -1033,14 +1040,12 @@ class FakeWebRtcVideoEngine
       unsigned int&, unsigned int&, unsigned int&, int&));
   WEBRTC_STUB_CONST(GetRTPStatistics, (const int, unsigned int&, unsigned int&,
       unsigned int&, unsigned int&));
-#ifdef USE_WEBRTC_DEV_BRANCH
   WEBRTC_STUB_CONST(GetReceiveChannelRtcpStatistics, (const int,
       webrtc::RtcpStatistics&, int&));
   WEBRTC_STUB_CONST(GetSendChannelRtcpStatistics, (const int,
       webrtc::RtcpStatistics&, int&));
   WEBRTC_STUB_CONST(GetRtpStatistics, (const int, webrtc::StreamDataCounters&,
       webrtc::StreamDataCounters&));
-#endif
   WEBRTC_FUNC_CONST(GetBandwidthUsage, (const int channel,
       unsigned int& total_bitrate, unsigned int& video_bitrate,
       unsigned int& fec_bitrate, unsigned int& nack_bitrate)) {
@@ -1083,7 +1088,6 @@ class FakeWebRtcVideoEngine
     }
     return 0;
   }
-#ifdef USE_WEBRTC_DEV_BRANCH
   WEBRTC_STUB(RegisterSendChannelRtcpStatisticsCallback,
                     (int, webrtc::RtcpStatisticsCallback*));
   WEBRTC_STUB(DeregisterSendChannelRtcpStatisticsCallback,
@@ -1108,7 +1112,6 @@ class FakeWebRtcVideoEngine
                     (int, webrtc::FrameCountObserver*));
   WEBRTC_STUB(DeregisterSendFrameCountObserver,
                     (int, webrtc::FrameCountObserver*));
-#endif
 
   WEBRTC_STUB(StartRTPDump, (const int, const char*, webrtc::RTPDirections));
   WEBRTC_STUB(StopRTPDump, (const int, webrtc::RTPDirections));
