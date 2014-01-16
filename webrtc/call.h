@@ -7,8 +7,8 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
-#ifndef WEBRTC_VIDEO_ENGINE_NEW_INCLUDE_CALL_H_
-#define WEBRTC_VIDEO_ENGINE_NEW_INCLUDE_CALL_H_
+#ifndef WEBRTC_CALL_H_
+#define WEBRTC_CALL_H_
 
 #include <string>
 #include <vector>
@@ -69,9 +69,6 @@ class Call {
   virtual VideoSendStream* CreateVideoSendStream(
       const VideoSendStream::Config& config) = 0;
 
-  // Returns the internal state of the send stream, for resume sending with a
-  // new stream with different settings.
-  // Note: Only the last returned send-stream state is valid.
   virtual void DestroyVideoSendStream(VideoSendStream* send_stream) = 0;
 
   virtual VideoReceiveStream::Config GetDefaultReceiveConfig() = 0;
@@ -98,4 +95,4 @@ class Call {
 };
 }  // namespace webrtc
 
-#endif  // WEBRTC_VIDEO_ENGINE_NEW_INCLUDE_CALL_H_
+#endif  // WEBRTC_CALL_H_

@@ -10,8 +10,6 @@
 
 #include "webrtc/video/video_send_stream.h"
 
-#include <string.h>
-
 #include <string>
 #include <vector>
 
@@ -81,14 +79,16 @@ class ResolutionAdaptor : public webrtc::CpuOveruseObserver {
 VideoSendStream::VideoSendStream(newapi::Transport* transport,
                                  bool overuse_detection,
                                  webrtc::VideoEngine* video_engine,
-                                 const VideoSendStream::Config& config)
+                                 const VideoSendStream::Config& config,
+                                 int base_channel)
     : transport_adapter_(transport),
       encoded_frame_proxy_(config.post_encode_callback),
       codec_lock_(CriticalSectionWrapper::CreateCriticalSection()),
       config_(config),
-      external_codec_(NULL) {
+      external_codec_(NULL),
+      channel_(-1) {
   video_engine_base_ = ViEBase::GetInterface(video_engine);
-  video_engine_base_->CreateChannel(channel_);
+  video_engine_base_->CreateChannel(channel_, base_channel);
   assert(channel_ != -1);
 
   rtp_rtcp_ = ViERTP_RTCP::GetInterface(video_engine);
@@ -112,6 +112,8 @@ VideoSendStream::VideoSendStream(newapi::Transport* transport,
       abort();  // Unsupported extension.
     }
   }
+
+  rtp_rtcp_->SetRembStatus(channel_, true, false);
 
   // Enable NACK, FEC or both.
   if (config_.rtp.fec.red_payload_type != -1) {
@@ -184,9 +186,32 @@ VideoSendStream::VideoSendStream(newapi::Transport* transport,
   if (config.suspend_below_min_bitrate) {
     codec_->SuspendBelowMinBitrate(channel_);
   }
+
+  stats_proxy_.reset(
+      new SendStatisticsProxy(config, this));
+
+  rtp_rtcp_->RegisterSendChannelRtcpStatisticsCallback(channel_,
+                                                       stats_proxy_.get());
+  rtp_rtcp_->RegisterSendChannelRtpStatisticsCallback(channel_,
+                                                      stats_proxy_.get());
+  rtp_rtcp_->RegisterSendBitrateObserver(channel_, stats_proxy_.get());
+  rtp_rtcp_->RegisterSendFrameCountObserver(channel_, stats_proxy_.get());
+
+  codec_->RegisterEncoderObserver(channel_, *stats_proxy_);
+  capture_->RegisterObserver(capture_id_, *stats_proxy_);
 }
 
 VideoSendStream::~VideoSendStream() {
+  capture_->DeregisterObserver(capture_id_);
+  codec_->DeregisterEncoderObserver(channel_);
+
+  rtp_rtcp_->DeregisterSendFrameCountObserver(channel_, stats_proxy_.get());
+  rtp_rtcp_->DeregisterSendBitrateObserver(channel_, stats_proxy_.get());
+  rtp_rtcp_->DeregisterSendChannelRtpStatisticsCallback(channel_,
+                                                        stats_proxy_.get());
+  rtp_rtcp_->DeregisterSendChannelRtcpStatisticsCallback(channel_,
+                                                         stats_proxy_.get());
+
   image_process_->DeRegisterPreEncodeCallback(channel_);
 
   network_->DeregisterSendTransport(channel_);
@@ -234,17 +259,13 @@ void VideoSendStream::SwapFrame(I420VideoFrame* frame) {
 VideoSendStreamInput* VideoSendStream::Input() { return this; }
 
 void VideoSendStream::StartSending() {
-  if (video_engine_base_->StartSend(channel_) != 0)
-    abort();
-  if (video_engine_base_->StartReceive(channel_) != 0)
-    abort();
+  video_engine_base_->StartSend(channel_);
+  video_engine_base_->StartReceive(channel_);
 }
 
 void VideoSendStream::StopSending() {
-  if (video_engine_base_->StopSend(channel_) != 0)
-    abort();
-  if (video_engine_base_->StopReceive(channel_) != 0)
-    abort();
+  video_engine_base_->StopSend(channel_);
+  video_engine_base_->StopReceive(channel_);
 }
 
 bool VideoSendStream::SetCodec(const VideoCodec& codec) {
@@ -291,5 +312,21 @@ bool VideoSendStream::DeliverRtcp(const uint8_t* packet, size_t length) {
   return network_->ReceivedRTCPPacket(
              channel_, packet, static_cast<int>(length)) == 0;
 }
+
+VideoSendStream::Stats VideoSendStream::GetStats() const {
+  return stats_proxy_->GetStats();
+}
+
+bool VideoSendStream::GetSendSideDelay(VideoSendStream::Stats* stats) {
+  return codec_->GetSendSideDelay(
+      channel_, &stats->avg_delay_ms, &stats->max_delay_ms);
+}
+
+std::string VideoSendStream::GetCName() {
+  char rtcp_cname[ViERTP_RTCP::KMaxRTCPCNameLength];
+  rtp_rtcp_->GetRTCPCName(channel_, rtcp_cname);
+  return rtcp_cname;
+}
+
 }  // namespace internal
 }  // namespace webrtc

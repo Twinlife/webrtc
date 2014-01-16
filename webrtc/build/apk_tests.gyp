@@ -61,20 +61,6 @@
       ],
     },
     {
-      'target_name': 'metrics_unittests_apk',
-      'type': 'none',
-      'variables': {
-        'test_suite_name': 'metrics_unittests',
-        'input_shlib_path': '<(SHARED_LIB_DIR)/<(SHARED_LIB_PREFIX)metrics_unittests<(SHARED_LIB_SUFFIX)',
-      },
-      'dependencies': [
-        '<(webrtc_root)/test/metrics.gyp:metrics_unittests',
-      ],
-      'includes': [
-        '../../../build/apk_test.gypi',
-      ],
-    },
-    {
       'target_name': 'modules_tests_apk',
       'type': 'none',
       'variables': {
@@ -200,6 +186,20 @@
         '../../../build/apk_test.gypi',
       ],
     },
+    {
+      'target_name': 'webrtc_perf_tests_apk',
+      'type': 'none',
+      'variables': {
+        'test_suite_name': 'webrtc_perf_tests',
+        'input_shlib_path': '<(SHARED_LIB_DIR)/<(SHARED_LIB_PREFIX)webrtc_perf_tests<(SHARED_LIB_SUFFIX)',
+      },
+      'dependencies': [
+        '<(webrtc_root)/webrtc.gyp:webrtc_perf_tests',
+      ],
+      'includes': [
+        '../../../build/apk_test.gypi',
+      ],
+     },
   ],
 }
 

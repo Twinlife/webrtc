@@ -31,6 +31,7 @@ class AudioRecordJni {
  public:
   static int32_t SetAndroidAudioDeviceObjects(void* javaVM, void* env,
                                               void* context);
+  static void ClearAndroidAudioDeviceObjects();
 
   AudioRecordJni(const int32_t id, PlayoutDelayProvider* delay_provider);
   ~AudioRecordJni();
@@ -110,13 +111,12 @@ class AudioRecordJni {
   int32_t SetRecordingSampleRate(const uint32_t samplesPerSec);
 
  private:
-  // Lock
-  void Lock() {
+  void Lock() EXCLUSIVE_LOCK_FUNCTION(_critSect) {
     _critSect.Enter();
-  };
-  void UnLock() {
+  }
+  void UnLock() UNLOCK_FUNCTION(_critSect) {
     _critSect.Leave();
-  };
+  }
 
   int32_t InitJavaResources();
   int32_t InitSampleRate();
@@ -133,7 +133,6 @@ class AudioRecordJni {
   static jclass globalScClass;
 
   JavaVM* _javaVM; // denotes a Java VM
-  JNIEnv* _jniEnvPlay; // The JNI env for playout thread
   JNIEnv* _jniEnvRec; // The JNI env for recording thread
   jclass _javaScClass; // AudioDeviceAndroid class
   jobject _javaScObj; // AudioDeviceAndroid object

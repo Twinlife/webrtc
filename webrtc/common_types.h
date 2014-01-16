@@ -69,27 +69,28 @@ protected:
 
 enum TraceModule
 {
-    kTraceUndefined          = 0,
+    kTraceUndefined              = 0,
     // not a module, triggered from the engine code
-    kTraceVoice              = 0x0001,
+    kTraceVoice                  = 0x0001,
     // not a module, triggered from the engine code
-    kTraceVideo              = 0x0002,
+    kTraceVideo                  = 0x0002,
     // not a module, triggered from the utility code
-    kTraceUtility            = 0x0003,
-    kTraceRtpRtcp            = 0x0004,
-    kTraceTransport          = 0x0005,
-    kTraceSrtp               = 0x0006,
-    kTraceAudioCoding        = 0x0007,
-    kTraceAudioMixerServer   = 0x0008,
-    kTraceAudioMixerClient   = 0x0009,
-    kTraceFile               = 0x000a,
-    kTraceAudioProcessing    = 0x000b,
-    kTraceVideoCoding        = 0x0010,
-    kTraceVideoMixer         = 0x0011,
-    kTraceAudioDevice        = 0x0012,
-    kTraceVideoRenderer      = 0x0014,
-    kTraceVideoCapture       = 0x0015,
-    kTraceVideoPreocessing   = 0x0016
+    kTraceUtility                = 0x0003,
+    kTraceRtpRtcp                = 0x0004,
+    kTraceTransport              = 0x0005,
+    kTraceSrtp                   = 0x0006,
+    kTraceAudioCoding            = 0x0007,
+    kTraceAudioMixerServer       = 0x0008,
+    kTraceAudioMixerClient       = 0x0009,
+    kTraceFile                   = 0x000a,
+    kTraceAudioProcessing        = 0x000b,
+    kTraceVideoCoding            = 0x0010,
+    kTraceVideoMixer             = 0x0011,
+    kTraceAudioDevice            = 0x0012,
+    kTraceVideoRenderer          = 0x0014,
+    kTraceVideoCapture           = 0x0015,
+    kTraceVideoPreocessing       = 0x0016,
+    kTraceRemoteBitrateEstimator = 0x0017,
 };
 
 enum TraceLevel
@@ -245,6 +246,13 @@ struct RtcpStatistics {
   uint32_t cumulative_lost;
   uint32_t extended_max_sequence_number;
   uint32_t jitter;
+
+  bool operator==(const RtcpStatistics& other) const {
+    return fraction_lost == other.fraction_lost &&
+           cumulative_lost == other.cumulative_lost &&
+           extended_max_sequence_number == other.extended_max_sequence_number &&
+           jitter == other.jitter;
+  }
 };
 
 // Callback, called whenever a new rtcp report block is transmitted.
@@ -272,6 +280,13 @@ struct StreamDataCounters {
   uint32_t packets;  // Number of packets.
   uint32_t retransmitted_packets;  // Number of retransmitted packets.
   uint32_t fec_packets;  // Number of redundancy packets.
+
+  bool operator==(const StreamDataCounters& other) const {
+    return bytes == other.bytes && header_bytes == other.header_bytes &&
+           padding_bytes == other.padding_bytes && packets == other.packets &&
+           retransmitted_packets == other.retransmitted_packets &&
+           fec_packets == other.fec_packets;
+  }
 };
 
 // Callback, called whenever byte/packet counts have been updated.
@@ -285,14 +300,11 @@ class StreamDataCountersCallback {
 
 // Rate statistics for a stream
 struct BitrateStatistics {
-  BitrateStatistics()
-    : bitrate_(0),
-      packet_rate(0),
-      now(0) {}
+  BitrateStatistics() : bitrate_bps(0), packet_rate(0), timestamp_ms(0) {}
 
-  uint32_t bitrate_;
-  uint32_t packet_rate;
-  uint64_t now;
+  uint32_t bitrate_bps;   // Bitrate in bits per second.
+  uint32_t packet_rate;   // Packet rate in packets per second.
+  uint64_t timestamp_ms;  // Ntp timestamp in ms at time of rate estimation.
 };
 
 // Callback, used to notify an observer whenever new rates have been estimated.
@@ -383,6 +395,25 @@ struct NetworkStatistics           // NETEQ statistics
     int maxWaitingTimeMs;
     // added samples in off mode due to packet loss
     int addedSamples;
+};
+
+// Statistics for calls to AudioCodingModule::PlayoutData10Ms().
+struct AudioDecodingCallStats {
+  AudioDecodingCallStats()
+      : calls_to_silence_generator(0),
+        calls_to_neteq(0),
+        decoded_normal(0),
+        decoded_plc(0),
+        decoded_cng(0),
+        decoded_plc_cng(0) {}
+
+  int calls_to_silence_generator;  // Number of calls where silence generated,
+                                   // and NetEq was disengaged from decoding.
+  int calls_to_neteq;  // Number of calls to NetEq.
+  int decoded_normal;  // Number of calls where audio RTP packet decoded.
+  int decoded_plc;  // Number of calls resulted in PLC.
+  int decoded_cng;  // Number of calls where comfort noise generated due to DTX.
+  int decoded_plc_cng;  // Number of calls resulted where PLC faded to CNG.
 };
 
 typedef struct

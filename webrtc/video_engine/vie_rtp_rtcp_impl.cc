@@ -796,8 +796,16 @@ int ViERTP_RTCPImpl::SetReceiveAbsoluteSendTimeStatus(int video_channel,
                ViEId(shared_data_->instance_id(), video_channel),
                "ViERTP_RTCPImpl::SetReceiveAbsoluteSendTimeStatus(%d, %d, %d)",
                video_channel, enable, id);
-  if (!shared_data_->channel_manager()->SetReceiveAbsoluteSendTimeStatus(
-      video_channel, enable, id)) {
+  ViEChannelManagerScoped cs(*(shared_data_->channel_manager()));
+  ViEChannel* vie_channel = cs.Channel(video_channel);
+  if (!vie_channel) {
+    WEBRTC_TRACE(kTraceError, kTraceVideo,
+                 ViEId(shared_data_->instance_id(), video_channel),
+                 "%s: Channel %d doesn't exist", __FUNCTION__, video_channel);
+    shared_data_->SetLastError(kViERtpRtcpInvalidChannelId);
+    return -1;
+  }
+  if (vie_channel->SetReceiveAbsoluteSendTimeStatus(enable, id) != 0) {
     shared_data_->SetLastError(kViERtpRtcpUnknownError);
     return -1;
   }
@@ -1160,15 +1168,35 @@ int ViERTP_RTCPImpl::DeregisterSendChannelRtcpStatisticsCallback(
 }
 
 int ViERTP_RTCPImpl::RegisterReceiveChannelRtcpStatisticsCallback(
-    int channel, RtcpStatisticsCallback* callback) {
-  // TODO(sprang): Implement
-  return -1;
+    const int video_channel,
+    RtcpStatisticsCallback* callback) {
+  WEBRTC_TRACE(kTraceApiCall,
+               kTraceVideo,
+               ViEId(shared_data_->instance_id(), video_channel),
+               "%s(channel: %d)",
+               __FUNCTION__,
+               video_channel);
+  ViEChannelManagerScoped cs(*(shared_data_->channel_manager()));
+  ViEChannel* vie_channel = cs.Channel(video_channel);
+  assert(vie_channel != NULL);
+  vie_channel->RegisterReceiveChannelRtcpStatisticsCallback(callback);
+  return 0;
 }
 
 int ViERTP_RTCPImpl::DeregisterReceiveChannelRtcpStatisticsCallback(
-    int channel, RtcpStatisticsCallback* callback) {
-  // TODO(sprang): Implement
-  return -1;
+    const int video_channel,
+    RtcpStatisticsCallback* callback) {
+  WEBRTC_TRACE(kTraceApiCall,
+               kTraceVideo,
+               ViEId(shared_data_->instance_id(), video_channel),
+               "%s(channel: %d)",
+               __FUNCTION__,
+               video_channel);
+  ViEChannelManagerScoped cs(*(shared_data_->channel_manager()));
+  ViEChannel* vie_channel = cs.Channel(video_channel);
+  assert(vie_channel != NULL);
+  vie_channel->RegisterReceiveChannelRtcpStatisticsCallback(NULL);
+  return 0;
 }
 
 int ViERTP_RTCPImpl::RegisterSendChannelRtpStatisticsCallback(
@@ -1206,16 +1234,38 @@ int ViERTP_RTCPImpl::DeregisterReceiveChannelRtpStatisticsCallback(
   // TODO(sprang): Implement
   return -1;
 }
+
+// Called whenever the send bitrate is updated.
 int ViERTP_RTCPImpl::RegisterSendBitrateObserver(
-    int channel, BitrateStatisticsObserver* callback) {
-  // TODO(sprang): Implement
-  return -1;
+    const int video_channel,
+    BitrateStatisticsObserver* observer) {
+  WEBRTC_TRACE(kTraceApiCall,
+               kTraceVideo,
+               ViEId(shared_data_->instance_id(), video_channel),
+               "%s(channel: %d)",
+               __FUNCTION__,
+               video_channel);
+  ViEChannelManagerScoped cs(*(shared_data_->channel_manager()));
+  ViEChannel* vie_channel = cs.Channel(video_channel);
+  assert(vie_channel != NULL);
+  vie_channel->RegisterSendBitrateObserver(observer);
+  return 0;
 }
 
 int ViERTP_RTCPImpl::DeregisterSendBitrateObserver(
-    int channel, BitrateStatisticsObserver* callback) {
-  // TODO(sprang): Implement
-  return -1;
+    const int video_channel,
+    BitrateStatisticsObserver* observer) {
+  WEBRTC_TRACE(kTraceApiCall,
+               kTraceVideo,
+               ViEId(shared_data_->instance_id(), video_channel),
+               "%s(channel: %d)",
+               __FUNCTION__,
+               video_channel);
+  ViEChannelManagerScoped cs(*(shared_data_->channel_manager()));
+  ViEChannel* vie_channel = cs.Channel(video_channel);
+  assert(vie_channel != NULL);
+  vie_channel->RegisterSendBitrateObserver(NULL);
+  return 0;
 }
 
 int ViERTP_RTCPImpl::RegisterSendFrameCountObserver(

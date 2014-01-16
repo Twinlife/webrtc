@@ -13,6 +13,8 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#include <string>
+
 #include "webrtc/common_video/libyuv/include/webrtc_libyuv.h"
 #include "webrtc/system_wrappers/interface/clock.h"
 #include "webrtc/video_engine/include/vie_base.h"
@@ -31,14 +33,14 @@ namespace internal {
 VideoReceiveStream::VideoReceiveStream(webrtc::VideoEngine* video_engine,
                                        const VideoReceiveStream::Config& config,
                                        newapi::Transport* transport,
-                                       webrtc::VoiceEngine* voice_engine)
+                                       webrtc::VoiceEngine* voice_engine,
+                                       int base_channel)
     : transport_adapter_(transport),
       encoded_frame_proxy_(config.pre_decode_callback),
       config_(config),
       channel_(-1) {
   video_engine_base_ = ViEBase::GetInterface(video_engine);
-  // TODO(mflodman): Use the other CreateChannel method.
-  video_engine_base_->CreateChannel(channel_);
+  video_engine_base_->CreateReceiveChannel(channel_, base_channel);
   assert(channel_ != -1);
 
   rtp_rtcp_ = ViERTP_RTCP::GetInterface(video_engine);
@@ -61,6 +63,21 @@ VideoReceiveStream::VideoReceiveStream(webrtc::VideoEngine* video_engine,
   assert(config_.rtp.remote_ssrc != config_.rtp.local_ssrc);
 
   rtp_rtcp_->SetLocalSSRC(channel_, config_.rtp.local_ssrc);
+  rtp_rtcp_->SetRembStatus(channel_, false, config_.rtp.remb);
+
+  for (size_t i = 0; i < config_.rtp.extensions.size(); ++i) {
+    const std::string& extension = config_.rtp.extensions[i].name;
+    int id = config_.rtp.extensions[i].id;
+    if (extension == RtpExtension::kTOffset) {
+      if (rtp_rtcp_->SetReceiveTimestampOffsetStatus(channel_, true, id) != 0)
+        abort();
+    } else if (extension == RtpExtension::kAbsSendTime) {
+      if (rtp_rtcp_->SetReceiveAbsoluteSendTimeStatus(channel_, true, id) != 0)
+        abort();
+    } else {
+      abort();  // Unsupported extension.
+    }
+  }
 
   network_ = ViENetwork::GetInterface(video_engine);
   assert(network_ != NULL);
@@ -174,5 +191,5 @@ int32_t VideoReceiveStream::RenderFrame(const uint32_t stream_id,
       video_frame, video_frame.render_time_ms() - clock_->TimeInMilliseconds());
   return 0;
 }
-}  // internal
-}  // webrtc
+}  // namespace internal
+}  // namespace webrtc

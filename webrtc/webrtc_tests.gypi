@@ -13,6 +13,7 @@
       'dependencies': [
         'video_engine_tests',
         'video_loopback',
+        'webrtc_perf_tests',
       ],
     },
     {
@@ -32,16 +33,37 @@
       'target_name': 'video_engine_tests',
       'type': '<(gtest_target_type)',
       'sources': [
+        'video/bitrate_estimator_tests.cc',
         'video/call_tests.cc',
-        'video/full_stack.cc',
-        'video/rampup_tests.cc',
+        'video/send_statistics_proxy_unittest.cc',
         'video/video_send_stream_tests.cc',
         'test/common_unittest.cc',
+        'test/testsupport/metrics/video_metrics_unittest.cc',
         'test/test_main.cc',
       ],
       'dependencies': [
         '<(DEPTH)/testing/gtest.gyp:gtest',
         '<(DEPTH)/third_party/gflags/gflags.gyp:gflags',
+        'modules/modules.gyp:rtp_rtcp',
+        'test/metrics.gyp:metrics',
+        'test/webrtc_test_common.gyp:webrtc_test_common',
+        'webrtc',
+      ],
+    },
+    {
+      'target_name': 'webrtc_perf_tests',
+      'type': '<(gtest_target_type)',
+      'sources': [
+        'modules/audio_coding/neteq4/test/neteq_performance_unittest.cc',
+        'test/test_main.cc',
+        'video/call_perf_tests.cc',
+        'video/full_stack.cc',
+        'video/rampup_tests.cc',
+      ],
+      'dependencies': [
+        '<(DEPTH)/testing/gtest.gyp:gtest',
+        '<(DEPTH)/third_party/gflags/gflags.gyp:gflags',
+        'modules/modules.gyp:neteq_unittest_tools',  # Needed by neteq_performance_unittest.
         'modules/modules.gyp:rtp_rtcp',
         'test/webrtc_test_common.gyp:webrtc_test_common',
         'webrtc',
@@ -60,6 +82,13 @@
             '<(apk_tests_path):video_engine_tests_apk',
           ],
         },
+        {
+          'target_name': 'webrtc_perf_tests_apk_target',
+          'type': 'none',
+          'dependencies': [
+            '<(apk_tests_path):webrtc_perf_tests_apk',
+          ],
+        },
       ],
     }],
     ['test_isolation_mode != "noop"', {
@@ -76,6 +105,20 @@
           ],
           'sources': [
             'video_engine_tests.isolate',
+          ],
+        },
+        {
+          'target_name': 'webrtc_perf_tests_run',
+          'type': 'none',
+          'dependencies': [
+            'webrtc_perf_tests',
+          ],
+          'includes': [
+            'build/isolate.gypi',
+            'webrtc_perf_tests.isolate',
+          ],
+          'sources': [
+            'webrtc_perf_tests.isolate',
           ],
         },
       ],
