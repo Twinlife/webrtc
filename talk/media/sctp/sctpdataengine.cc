@@ -32,14 +32,13 @@
 #include <sstream>
 #include <vector>
 
-#include "talk/app/webrtc/datachannelinterface.h"
 #include "talk/base/buffer.h"
 #include "talk/base/helpers.h"
 #include "talk/base/logging.h"
+#include "talk/base/safe_conversions.h"
 #include "talk/media/base/codec.h"
 #include "talk/media/base/constants.h"
 #include "talk/media/base/streamparams.h"
-#include "talk/media/sctp/sctputils.h"
 #include "usrsctplib/usrsctp.h"
 
 namespace {
@@ -288,6 +287,7 @@ SctpDataEngine::~SctpDataEngine() {
   // TODO(ldixon): There is currently a bug in teardown of usrsctp that blocks
   // indefintely if a finish call made too soon after close calls. So teardown
   // has been skipped. Once the bug is fixed, retest and enable teardown.
+  // Tracked in webrtc issue 2749.
   //
   // usrsctp_engines_count--;
   // LOG(LS_VERBOSE) << "usrsctp_engines_count:" << usrsctp_engines_count;
@@ -497,11 +497,17 @@ bool SctpDataMediaChannel::RemoveSendStream(uint32 ssrc) {
 }
 
 bool SctpDataMediaChannel::AddRecvStream(const StreamParams& stream) {
-  return AddStream(stream);
+  // SCTP DataChannels are always bi-directional and calling AddSendStream will
+  // enable both sending and receiving on the stream. So AddRecvStream is a
+  // no-op.
+  return true;
 }
 
 bool SctpDataMediaChannel::RemoveRecvStream(uint32 ssrc) {
-  return ResetStream(ssrc);
+  // SCTP DataChannels are always bi-directional and calling RemoveSendStream
+  // will disable both sending and receiving on the stream. So RemoveRecvStream
+  // is a no-op.
+  return true;
 }
 
 bool SctpDataMediaChannel::SendData(
@@ -556,7 +562,7 @@ bool SctpDataMediaChannel::SendData(
   send_res = usrsctp_sendv(sock_, payload.data(),
                            static_cast<size_t>(payload.length()),
                            NULL, 0, &spa,
-                           static_cast<socklen_t>(sizeof(spa)),
+                           talk_base::checked_cast<socklen_t>(sizeof(spa)),
                            SCTP_SENDV_SPA, 0);
   if (send_res < 0) {
     if (errno == EWOULDBLOCK) {
@@ -619,34 +625,12 @@ void SctpDataMediaChannel::OnInboundPacketFromSctpToChannel(
 
 void SctpDataMediaChannel::OnDataFromSctpToChannel(
     const ReceiveDataParams& params, talk_base::Buffer* buffer) {
-  if (open_streams_.find(params.ssrc) == open_streams_.end()) {
-    if (params.type == DMT_CONTROL) {
-      std::string label;
-      webrtc::DataChannelInit config;
-      if (ParseDataChannelOpenMessage(*buffer, &label, &config)) {
-        config.id = params.ssrc;
-        // Do not send the OPEN message for this data channel.
-        config.negotiated = true;
-        SignalNewStreamReceived(label, config);
-
-        // Add the stream immediately.
-        StreamParams sparams = StreamParams::CreateLegacy(params.ssrc);
-        AddSendStream(sparams);
-        AddRecvStream(sparams);
-      } else {
-        LOG(LS_ERROR) << debug_name_ << "->OnDataFromSctpToChannel(...): "
-                      << "Received malformed control message";
-      }
-    } else {
-      LOG(LS_WARNING) << debug_name_ << "->OnDataFromSctpToChannel(...): "
-                      << "Received packet for unknown ssrc: " << params.ssrc;
-    }
-    return;
-  }
-
   if (receiving_) {
     LOG(LS_VERBOSE) << debug_name_ << "->OnDataFromSctpToChannel(...): "
-                    << "Posting with length: " << buffer->length();
+                    << "Posting with length: " << buffer->length()
+                    << " on stream " << params.ssrc;
+    // Reports all received messages to upper layers, no matter whether the sid
+    // is known.
     SignalDataReceived(params, buffer->data(), buffer->length());
   } else {
     LOG(LS_WARNING) << debug_name_ << "->OnDataFromSctpToChannel(...): "
@@ -663,9 +647,7 @@ bool SctpDataMediaChannel::AddStream(const StreamParams& stream) {
 
   const uint32 ssrc = stream.first_ssrc();
   if (open_streams_.find(ssrc) != open_streams_.end()) {
-    // We usually get an AddSendStream and an AddRecvStream for each stream, so
-    // this is really unlikely to be a useful warning message.
-    LOG(LS_VERBOSE) << debug_name_ << "->Add(Send|Recv)Stream(...): "
+    LOG(LS_WARNING) << debug_name_ << "->Add(Send|Recv)Stream(...): "
                     << "Not adding data stream '" << stream.id
                     << "' with ssrc=" << ssrc
                     << " because stream is already open.";
@@ -939,15 +921,16 @@ bool SctpDataMediaChannel::SendQueuedStreamResets() {
       &reset_stream_buf[0]);
   resetp->srs_assoc_id = SCTP_ALL_ASSOC;
   resetp->srs_flags = SCTP_STREAM_RESET_INCOMING | SCTP_STREAM_RESET_OUTGOING;
-  resetp->srs_number_streams = num_streams;
+  resetp->srs_number_streams = talk_base::checked_cast<uint16_t>(num_streams);
   int result_idx = 0;
   for (StreamSet::iterator it = queued_reset_streams_.begin();
        it != queued_reset_streams_.end(); ++it) {
     resetp->srs_stream_list[result_idx++] = *it;
   }
 
-  int ret = usrsctp_setsockopt(sock_, IPPROTO_SCTP, SCTP_RESET_STREAMS, resetp,
-                               reset_stream_buf.size());
+  int ret = usrsctp_setsockopt(
+      sock_, IPPROTO_SCTP, SCTP_RESET_STREAMS, resetp,
+      talk_base::checked_cast<socklen_t>(reset_stream_buf.size()));
   if (ret < 0) {
     LOG_ERRNO(LS_ERROR) << debug_name_ << "Failed to send a stream reset for "
                         << num_streams << " streams";
@@ -976,5 +959,4 @@ void SctpDataMediaChannel::OnMessage(talk_base::Message* msg) {
     }
   }
 }
-
 }  // namespace cricket

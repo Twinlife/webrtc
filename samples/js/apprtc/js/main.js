@@ -1,6 +1,7 @@
 var localVideo;
 var miniVideo;
 var remoteVideo;
+var hasLocalStream;
 var localStream;
 var remoteStream;
 var channel;
@@ -43,9 +44,18 @@ function initialize() {
   // changing here.
   openChannel();
   maybeRequestTurn();
-  doGetUserMedia();
+
   // Caller is always ready to create peerConnection.
   signalingReady = initiator;
+
+  if (mediaConstraints.audio === false &&
+      mediaConstraints.video === false) {
+    hasLocalStream = false;
+    maybeStart();
+  } else {
+    hasLocalStream = true;
+    doGetUserMedia();
+  }
 }
 
 function openChannel() {
@@ -61,9 +71,7 @@ function openChannel() {
 }
 
 function maybeRequestTurn() {
-  // Skipping TURN Http request for Firefox version <=22.
-  // Firefox does not support TURN for version <=22.
-  if (webrtcDetectedBrowser === 'firefox' && webrtcDetectedVersion <=22) {
+  if (turnUrl == '') {
     turnDone = true;
     return;
   }
@@ -106,12 +114,9 @@ function onTurnResult() {
       }
     }
   } else {
-    var msg =
-        'No TURN server; unlikely that media will traverse networks.  ' +
-        'If this persists please report it to discuss-webrtc@googlegroups.com.';
-    console.log(msg);
-    infoDivErrors.push(msg);
-    updateInfoDiv();
+    messageError('No TURN server; unlikely that media will traverse networks.  '
+                 + 'If this persists please report it to '
+                 + 'discuss-webrtc@googlegroups.com.');
   }
   // If TURN request failed, continue the call with default STUN.
   turnDone = true;
@@ -136,7 +141,7 @@ function doGetUserMedia() {
                 '  \'' + JSON.stringify(mediaConstraints) + '\'');
   } catch (e) {
     alert('getUserMedia() failed. Is this a WebRTC capable browser?');
-    console.log('getUserMedia failed with exception: ' + e.message);
+    messageError('getUserMedia failed with exception: ' + e.message);
   }
 }
 
@@ -149,10 +154,10 @@ function createPeerConnection() {
                 '  config: \'' + JSON.stringify(pcConfig) + '\';\n' +
                 '  constraints: \'' + JSON.stringify(pcConstraints) + '\'.');
   } catch (e) {
-    console.log('Failed to create PeerConnection, exception: ' + e.message);
+    messageError('Failed to create PeerConnection, exception: ' + e.message);
     alert('Cannot create RTCPeerConnection object; \
           WebRTC is not supported by this browser.');
-      return;
+    return;
   }
   pc.onaddstream = onRemoteStreamAdded;
   pc.onremovestream = onRemoteStreamRemoved;
@@ -161,13 +166,18 @@ function createPeerConnection() {
 }
 
 function maybeStart() {
-  if (!started && signalingReady &&
-      localStream && channelReady && turnDone) {
+  if (!started && signalingReady && channelReady && turnDone &&
+      (localStream || !hasLocalStream)) {
     setStatus('Connecting...');
     console.log('Creating PeerConnection.');
     createPeerConnection();
-    console.log('Adding local stream.');
-    pc.addStream(localStream);
+
+    if (hasLocalStream) {
+      console.log('Adding local stream.');
+      pc.addStream(localStream);
+    } else {
+      console.log('Not sending any stream.');
+    }
     started = true;
 
     if (initiator)
@@ -224,7 +234,19 @@ function setRemote(message) {
     message.sdp = addStereo(message.sdp);
   message.sdp = maybePreferAudioSendCodec(message.sdp);
   pc.setRemoteDescription(new RTCSessionDescription(message),
-       onSetSessionDescriptionSuccess, onSetSessionDescriptionError);
+       onSetRemoteDescriptionSuccess, onSetSessionDescriptionError);
+
+  function onSetRemoteDescriptionSuccess() {
+    console.log("Set remote session description success.");
+    // By now all addstream events for the setRemoteDescription have fired.
+    // So we can know if the peer is sending any stream or is only receiving.
+    if (remoteStream) {
+      waitForRemoteVideo();
+    } else {
+      console.log("Not receiving any stream.");
+      transitionToActive();
+    }
+  }
 }
 
 function sendMessage(message) {
@@ -240,7 +262,7 @@ function sendMessage(message) {
 
 function processSignalingMessage(message) {
   if (!started) {
-    console.log('peerConnection has not been created yet!');
+    messageError('peerConnection has not been created yet!');
     return;
   }
 
@@ -264,6 +286,7 @@ function onChannelOpened() {
   channelReady = true;
   maybeStart();
 }
+
 function onChannelMessage(message) {
   console.log('S->C: ' + message.data);
   var msg = JSON.parse(message.data);
@@ -285,11 +308,19 @@ function onChannelMessage(message) {
     processSignalingMessage(msg);
   }
 }
+
 function onChannelError() {
-  console.log('Channel error.');
+  messageError('Channel error.');
 }
+
 function onChannelClosed() {
   console.log('Channel closed.');
+}
+
+function messageError(msg) {
+  console.log(msg);
+  infoDivErrors.push(msg);
+  updateInfoDiv();
 }
 
 function onUserMediaSuccess(stream) {
@@ -303,14 +334,17 @@ function onUserMediaSuccess(stream) {
 }
 
 function onUserMediaError(error) {
-  console.log('Failed to get access to local media. Error code was ' +
-              error.code);
+  messageError('Failed to get access to local media. Error code was ' +
+               error.code + '. Continuing without sending a stream.');
   alert('Failed to get access to local media. Error code was ' +
-        error.code + '.');
+        error.code + '. Continuing without sending a stream.');
+
+  hasLocalStream = false;
+  maybeStart();
 }
 
 function onCreateSessionDescriptionError(error) {
-  console.log('Failed to create session description: ' + error.toString());
+  messageError('Failed to create session description: ' + error.toString());
 }
 
 function onSetSessionDescriptionSuccess() {
@@ -318,7 +352,7 @@ function onSetSessionDescriptionSuccess() {
 }
 
 function onSetSessionDescriptionError(error) {
-  console.log('Failed to set session description: ' + error.toString());
+  messageError('Failed to set session description: ' + error.toString());
 }
 
 function iceCandidateType(candidateSDP) {
@@ -345,10 +379,8 @@ function onIceCandidate(event) {
 
 function onRemoteStreamAdded(event) {
   console.log('Remote stream added.');
-  reattachMediaStream(miniVideo, localVideo);
   attachMediaStream(remoteVideo, event.stream);
   remoteStream = event.stream;
-  waitForRemoteVideo();
 }
 
 function onRemoteStreamRemoved(event) {
@@ -386,6 +418,7 @@ function stop() {
   isVideoMuted = false;
   pc.close();
   pc = null;
+  remoteStream = null;
   msgQueue.length = 0;
 }
 
@@ -400,6 +433,7 @@ function waitForRemoteVideo() {
 }
 
 function transitionToActive() {
+  reattachMediaStream(miniVideo, localVideo);
   remoteVideo.style.opacity = 1;
   card.style.webkitTransform = 'rotateY(180deg)';
   setTimeout(function() { localVideo.src = ''; }, 500);

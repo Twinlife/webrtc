@@ -50,8 +50,15 @@ class VoiceDetection;
 //   except when really necessary.
 struct DelayCorrection {
   DelayCorrection() : enabled(false) {}
-  DelayCorrection(bool enabled) : enabled(enabled) {}
+  explicit DelayCorrection(bool enabled) : enabled(enabled) {}
+  bool enabled;
+};
 
+// Must be provided through AudioProcessing::Create(Confg&). It will have no
+// impact if used with AudioProcessing::SetExtraOptions().
+struct ExperimentalAgc {
+  ExperimentalAgc() : enabled(true) {}
+  explicit ExperimentalAgc(bool enabled) : enabled(enabled) {}
   bool enabled;
 };
 
@@ -134,6 +141,9 @@ class AudioProcessing : public Module {
   // typically be one instance for the near-end stream, and additional instances
   // for each far-end stream which requires processing. On the server-side,
   // this would typically be one instance for every incoming stream.
+  static AudioProcessing* Create();
+  static AudioProcessing* Create(const Config& config);
+  // TODO(ajm): Deprecated; remove all calls to it.
   static AudioProcessing* Create(int id);
   virtual ~AudioProcessing() {}
 

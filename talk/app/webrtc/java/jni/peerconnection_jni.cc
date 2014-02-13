@@ -673,7 +673,8 @@ class PCOJava : public PeerConnectionObserver {
   }
 
   virtual void OnError() OVERRIDE {
-    jmethodID m = GetMethodID(jni(), *j_observer_class_, "onError", "(V)V");
+    ScopedLocalRefFrame local_ref_frame(jni());
+    jmethodID m = GetMethodID(jni(), *j_observer_class_, "onError", "()V");
     jni()->CallVoidMethod(*j_observer_global_, m);
     CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
   }
@@ -812,12 +813,10 @@ class PCOJava : public PeerConnectionObserver {
     CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
   }
 
-  // -twinlife- support renegotiation
-
   virtual void OnRenegotiationNeeded() OVERRIDE {
-    jmethodID m = GetMethodID(
-        jni(), *j_observer_class_, "onRenegotiationNeeded",
-        "()V");
+    ScopedLocalRefFrame local_ref_frame(jni());
+    jmethodID m =
+        GetMethodID(jni(), *j_observer_class_, "onRenegotiationNeeded", "()V");
     jni()->CallVoidMethod(*j_observer_global_, m);
     CHECK_EXCEPTION(jni(), "error during CallVoidMethod");
   }

@@ -160,6 +160,8 @@ def GetPreferredTrySlaves(project, change):
 
   android_bots = [
       'android',
+      'android_apk',
+      'android_apk_rel',
       'android_rel',
       'android_clang',
   ]
@@ -170,6 +172,7 @@ def GetPreferredTrySlaves(project, change):
   linux_bots = [
       'linux',
       'linux_asan',
+      'linux_baremetal',
       'linux_memcheck',
       'linux_rel',
       'linux_tsan',
@@ -177,11 +180,13 @@ def GetPreferredTrySlaves(project, change):
   mac_bots = [
       'mac',
       'mac_asan',
+      'mac_baremetal',
       'mac_rel',
       'mac_x64_rel',
   ]
   win_bots = [
       'win',
+      'win_baremetal',
       'win_rel',
       'win_x64_rel',
   ]

@@ -33,6 +33,32 @@ const char* RtpExtension::kTOffset = "urn:ietf:params:rtp-hdrext:toffset";
 const char* RtpExtension::kAbsSendTime =
     "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time";
 namespace internal {
+
+class CpuOveruseObserverProxy : public webrtc::CpuOveruseObserver {
+ public:
+  CpuOveruseObserverProxy(OveruseCallback* overuse_callback)
+      : crit_(CriticalSectionWrapper::CreateCriticalSection()),
+        overuse_callback_(overuse_callback) {
+    assert(overuse_callback != NULL);
+  }
+
+  virtual ~CpuOveruseObserverProxy() {}
+
+  virtual void OveruseDetected() OVERRIDE {
+    CriticalSectionScoped cs(crit_.get());
+    overuse_callback_->OnOveruse();
+  }
+
+  virtual void NormalUsage() OVERRIDE {
+    CriticalSectionScoped cs(crit_.get());
+    overuse_callback_->OnNormalUse();
+  }
+
+ private:
+  scoped_ptr<CriticalSectionWrapper> crit_;
+  OveruseCallback* overuse_callback_;
+};
+
 class Call : public webrtc::Call, public PacketReceiver {
  public:
   Call(webrtc::VideoEngine* video_engine, const Call::Config& config);
@@ -78,6 +104,8 @@ class Call : public webrtc::Call, public PacketReceiver {
 
   scoped_ptr<RtpHeaderParser> rtp_header_parser_;
 
+  scoped_ptr<CpuOveruseObserverProxy> overuse_observer_proxy_;
+
   VideoEngine* video_engine_;
   ViERTP_RTCP* rtp_rtcp_;
   ViECodec* codec_;
@@ -91,21 +119,22 @@ class Call : public webrtc::Call, public PacketReceiver {
 class TraceDispatcher : public TraceCallback {
  public:
   TraceDispatcher()
-      : crit_(CriticalSectionWrapper::CreateCriticalSection()),
-        initialized_(false),
-        filter_(kTraceNone) {}
+      : lock_(CriticalSectionWrapper::CreateCriticalSection()),
+        filter_(kTraceNone) {
+    Trace::CreateTrace();
+    VideoEngine::SetTraceCallback(this);
+    VideoEngine::SetTraceFilter(kTraceNone);
+  }
 
   ~TraceDispatcher() {
-    if (initialized_) {
-      Trace::ReturnTrace();
-      VideoEngine::SetTraceCallback(NULL);
-    }
+    Trace::ReturnTrace();
+    VideoEngine::SetTraceCallback(NULL);
   }
 
   virtual void Print(TraceLevel level,
                      const char* message,
                      int length) OVERRIDE {
-    CriticalSectionScoped lock(crit_.get());
+    CriticalSectionScoped crit(lock_.get());
     for (std::map<Call*, Call::Config*>::iterator it = callbacks_.begin();
          it != callbacks_.end();
          ++it) {
@@ -118,20 +147,15 @@ class TraceDispatcher : public TraceCallback {
     if (config->trace_callback == NULL)
       return;
 
-    CriticalSectionScoped lock(crit_.get());
+    CriticalSectionScoped crit(lock_.get());
     callbacks_[call] = config;
 
     filter_ |= config->trace_filter;
-    if (filter_ != kTraceNone && !initialized_) {
-      initialized_ = true;
-      Trace::CreateTrace();
-      VideoEngine::SetTraceCallback(this);
-    }
     VideoEngine::SetTraceFilter(filter_);
   }
 
   void DeregisterCallback(Call* call) {
-    CriticalSectionScoped lock(crit_.get());
+    CriticalSectionScoped crit(lock_.get());
     callbacks_.erase(call);
 
     filter_ = kTraceNone;
@@ -145,8 +169,7 @@ class TraceDispatcher : public TraceCallback {
   }
 
  private:
-  scoped_ptr<CriticalSectionWrapper> crit_;
-  bool initialized_;
+  scoped_ptr<CriticalSectionWrapper> lock_;
   unsigned int filter_;
   std::map<Call*, Call::Config*> callbacks_;
 };
@@ -170,8 +193,9 @@ void CreateTraceDispatcher() {
 Call* Call::Create(const Call::Config& config) {
   CreateTraceDispatcher();
 
-  VideoEngine* video_engine = config.webrtc_config != NULL ?
-      VideoEngine::Create(*config.webrtc_config) : VideoEngine::Create();
+  VideoEngine* video_engine = config.webrtc_config != NULL
+                                  ? VideoEngine::Create(*config.webrtc_config)
+                                  : VideoEngine::Create();
   assert(video_engine != NULL);
 
   return new internal::Call(video_engine, config);
@@ -188,6 +212,11 @@ Call::Call(webrtc::VideoEngine* video_engine, const Call::Config& config)
       base_channel_id_(-1) {
   assert(video_engine != NULL);
   assert(config.send_transport != NULL);
+
+  if (config.overuse_callback) {
+    overuse_observer_proxy_.reset(
+        new CpuOveruseObserverProxy(config.overuse_callback));
+  }
 
   global_trace_dispatcher->RegisterCallback(this, &config_);
 
@@ -240,11 +269,12 @@ VideoSendStream* Call::CreateVideoSendStream(
   assert(config.rtp.ssrcs.size() > 0);
   assert(config.rtp.ssrcs.size() >= config.codec.numberOfSimulcastStreams);
 
-  VideoSendStream* send_stream = new VideoSendStream(config_.send_transport,
-                                                     config_.overuse_detection,
-                                                     video_engine_,
-                                                     config,
-                                                     base_channel_id_);
+  VideoSendStream* send_stream = new VideoSendStream(
+      config_.send_transport,
+      overuse_observer_proxy_.get(),
+      video_engine_,
+      config,
+      base_channel_id_);
 
   WriteLockScoped write_lock(*send_lock_);
   for (size_t i = 0; i < config.rtp.ssrcs.size(); ++i) {
@@ -294,6 +324,12 @@ VideoReceiveStream* Call::CreateVideoReceiveStream(
   WriteLockScoped write_lock(*receive_lock_);
   assert(receive_ssrcs_.find(config.rtp.remote_ssrc) == receive_ssrcs_.end());
   receive_ssrcs_[config.rtp.remote_ssrc] = receive_stream;
+  // TODO(pbos): Configure different RTX payloads per receive payload.
+  VideoReceiveStream::Config::Rtp::RtxMap::const_iterator it =
+      config.rtp.rtx.begin();
+  if (it != config.rtp.rtx.end())
+    receive_ssrcs_[it->second.ssrc] = receive_stream;
+
   return receive_stream;
 }
 
@@ -304,14 +340,18 @@ void Call::DestroyVideoReceiveStream(
   VideoReceiveStream* receive_stream_impl = NULL;
   {
     WriteLockScoped write_lock(*receive_lock_);
-    for (std::map<uint32_t, VideoReceiveStream*>::iterator it =
-             receive_ssrcs_.begin();
-         it != receive_ssrcs_.end();
-         ++it) {
+    // Remove all ssrcs pointing to a receive stream. As RTX retransmits on a
+    // separate SSRC there can be either one or two.
+    std::map<uint32_t, VideoReceiveStream*>::iterator it =
+        receive_ssrcs_.begin();
+    while (it != receive_ssrcs_.end()) {
       if (it->second == static_cast<VideoReceiveStream*>(receive_stream)) {
+        assert(receive_stream_impl == NULL ||
+            receive_stream_impl == it->second);
         receive_stream_impl = it->second;
-        receive_ssrcs_.erase(it);
-        break;
+        receive_ssrcs_.erase(it++);
+      } else {
+        ++it;
       }
     }
   }
@@ -361,19 +401,14 @@ bool Call::DeliverRtcp(const uint8_t* packet, size_t length) {
 bool Call::DeliverRtp(const RTPHeader& header,
                       const uint8_t* packet,
                       size_t length) {
-  VideoReceiveStream* receiver;
-  {
-    ReadLockScoped read_lock(*receive_lock_);
-    std::map<uint32_t, VideoReceiveStream*>::iterator it =
-        receive_ssrcs_.find(header.ssrc);
-    if (it == receive_ssrcs_.end()) {
-      // TODO(pbos): Log some warning, SSRC without receiver.
-      return false;
-    }
-
-    receiver = it->second;
+  ReadLockScoped read_lock(*receive_lock_);
+  std::map<uint32_t, VideoReceiveStream*>::iterator it =
+      receive_ssrcs_.find(header.ssrc);
+  if (it == receive_ssrcs_.end()) {
+    // TODO(pbos): Log some warning, SSRC without receiver.
+    return false;
   }
-  return receiver->DeliverRtp(static_cast<const uint8_t*>(packet), length);
+  return it->second->DeliverRtp(static_cast<const uint8_t*>(packet), length);
 }
 
 bool Call::DeliverPacket(const uint8_t* packet, size_t length) {

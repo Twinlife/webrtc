@@ -279,6 +279,9 @@
         'media/base/videoengine_unittest.h',
         'media/devices/dummydevicemanager_unittest.cc',
         'media/devices/filevideocapturer_unittest.cc',
+        # TODO(jiayl): Enable the SCTP test once the memcheck and tsan bots
+        # failures are fixed (issue 2846).
+        #'media/sctp/sctpdataengine_unittest.cc',
         'media/webrtc/webrtcpassthroughrender_unittest.cc',
         'media/webrtc/webrtcvideocapturer_unittest.cc',
         # Omitted because depends on non-open-source testdata files.
@@ -288,8 +291,8 @@
         # Disabled because some tests fail.
         # TODO(ronghuawu): Reenable these tests.
         # 'media/devices/devicemanager_unittest.cc',
-        # 'media/webrtc/webrtcvideoengine_unittest.cc',
-        # 'media/webrtc/webrtcvoiceengine_unittest.cc',
+        'media/webrtc/webrtcvideoengine_unittest.cc',
+        'media/webrtc/webrtcvoiceengine_unittest.cc',
       ],
       'conditions': [
         ['OS=="win"', {
@@ -303,6 +306,11 @@
               ],
             },
           },
+        }],
+        ['OS=="ios"', {
+          'sources!': [
+            'media/sctp/sctpdataengine_unittest.cc',
+          ],
         }],
       ],
     },  # target libjingle_media_unittest
@@ -389,6 +397,7 @@
         'app/webrtc/peerconnectioninterface_unittest.cc',
         # 'app/webrtc/peerconnectionproxy_unittest.cc',
         'app/webrtc/remotevideocapturer_unittest.cc',
+        'app/webrtc/sctputils.cc',
         'app/webrtc/test/fakeaudiocapturemodule.cc',
         'app/webrtc/test/fakeaudiocapturemodule.h',
         'app/webrtc/test/fakeaudiocapturemodule_unittest.cc',

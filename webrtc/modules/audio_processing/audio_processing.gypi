@@ -69,6 +69,8 @@
         'noise_suppression_impl.h',
         'processing_component.cc',
         'processing_component.h',
+        'typing_detection.cc',
+        'typing_detection.h',
         'utility/delay_estimator.c',
         'utility/delay_estimator.h',
         'utility/delay_estimator_internal.h',
@@ -100,6 +102,17 @@
             'ns/nsx_core.c',
             'ns/nsx_core.h',
             'ns/nsx_defines.h',
+          ],
+          'conditions': [
+            ['target_arch=="mipsel"', {
+              'sources': [
+                'ns/nsx_core_mips.c',
+              ],
+            }, {
+              'sources': [
+                'ns/nsx_core_c.c',
+              ],
+            }],
           ],
         }, {
           'defines': ['WEBRTC_NS_FLOAT'],

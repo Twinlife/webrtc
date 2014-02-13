@@ -26,58 +26,8 @@
 namespace webrtc {
 namespace internal {
 
-// Super simple and temporary overuse logic. This will move to the application
-// as soon as the new API allows changing send codec on the fly.
-class ResolutionAdaptor : public webrtc::CpuOveruseObserver {
- public:
-  ResolutionAdaptor(ViECodec* codec, int channel, size_t width, size_t height)
-      : codec_(codec),
-        channel_(channel),
-        max_width_(width),
-        max_height_(height) {}
-
-  virtual ~ResolutionAdaptor() {}
-
-  virtual void OveruseDetected() OVERRIDE {
-    VideoCodec codec;
-    if (codec_->GetSendCodec(channel_, codec) != 0)
-      return;
-
-    if (codec.width / 2 < min_width || codec.height / 2 < min_height)
-      return;
-
-    codec.width /= 2;
-    codec.height /= 2;
-    codec_->SetSendCodec(channel_, codec);
-  }
-
-  virtual void NormalUsage() OVERRIDE {
-    VideoCodec codec;
-    if (codec_->GetSendCodec(channel_, codec) != 0)
-      return;
-
-    if (codec.width * 2u > max_width_ || codec.height * 2u > max_height_)
-      return;
-
-    codec.width *= 2;
-    codec.height *= 2;
-    codec_->SetSendCodec(channel_, codec);
-  }
-
- private:
-  // Temporary and arbitrary chosen minimum resolution.
-  static const size_t min_width = 160;
-  static const size_t min_height = 120;
-
-  ViECodec* codec_;
-  const int channel_;
-
-  const size_t max_width_;
-  const size_t max_height_;
-};
-
 VideoSendStream::VideoSendStream(newapi::Transport* transport,
-                                 bool overuse_detection,
+                                 CpuOveruseObserver* overuse_observer,
                                  webrtc::VideoEngine* video_engine,
                                  const VideoSendStream::Config& config,
                                  int base_channel)
@@ -156,9 +106,11 @@ VideoSendStream::VideoSendStream(newapi::Transport* transport,
 
   if (config.encoder) {
     external_codec_ = ViEExternalCodec::GetInterface(video_engine);
-    if (external_codec_->RegisterExternalSendCodec(
-        channel_, config.codec.plType, config.encoder,
-        config.internal_source) != 0) {
+    if (external_codec_->RegisterExternalSendCodec(channel_,
+                                                   config.codec.plType,
+                                                   config.encoder,
+                                                   config.internal_source) !=
+        0) {
       abort();
     }
   }
@@ -167,12 +119,8 @@ VideoSendStream::VideoSendStream(newapi::Transport* transport,
   if (!SetCodec(config_.codec))
     abort();
 
-  if (overuse_detection) {
-    overuse_observer_.reset(
-        new ResolutionAdaptor(codec_, channel_, config_.codec.width,
-                              config_.codec.height));
-    video_engine_base_->RegisterCpuOveruseObserver(channel_,
-                                                   overuse_observer_.get());
+  if (overuse_observer) {
+    video_engine_base_->RegisterCpuOveruseObserver(channel_, overuse_observer);
   }
 
   image_process_ = ViEImageProcess::GetInterface(video_engine);
@@ -187,8 +135,7 @@ VideoSendStream::VideoSendStream(newapi::Transport* transport,
     codec_->SuspendBelowMinBitrate(channel_);
   }
 
-  stats_proxy_.reset(
-      new SendStatisticsProxy(config, this));
+  stats_proxy_.reset(new SendStatisticsProxy(config, this));
 
   rtp_rtcp_->RegisterSendChannelRtcpStatisticsCallback(channel_,
                                                        stats_proxy_.get());
@@ -259,6 +206,7 @@ void VideoSendStream::SwapFrame(I420VideoFrame* frame) {
 VideoSendStreamInput* VideoSendStream::Input() { return this; }
 
 void VideoSendStream::StartSending() {
+  transport_adapter_.Enable();
   video_engine_base_->StartSend(channel_);
   video_engine_base_->StartReceive(channel_);
 }
@@ -266,6 +214,7 @@ void VideoSendStream::StartSending() {
 void VideoSendStream::StopSending() {
   video_engine_base_->StopSend(channel_);
   video_engine_base_->StopReceive(channel_);
+  transport_adapter_.Disable();
 }
 
 bool VideoSendStream::SetCodec(const VideoCodec& codec) {
@@ -282,7 +231,9 @@ bool VideoSendStream::SetCodec(const VideoCodec& codec) {
                             static_cast<unsigned char>(i));
   }
 
-  config_.codec = codec;
+  if (&config_.codec != &codec)
+    config_.codec = codec;
+
   if (config_.rtp.rtx.ssrcs.empty())
     return true;
 
@@ -295,10 +246,8 @@ bool VideoSendStream::SetCodec(const VideoCodec& codec) {
                             static_cast<unsigned char>(i));
   }
 
-  if (config_.rtp.rtx.rtx_payload_type != 0) {
-    rtp_rtcp_->SetRtxSendPayloadType(channel_,
-                                     config_.rtp.rtx.rtx_payload_type);
-  }
+  if (config_.rtp.rtx.payload_type != 0)
+    rtp_rtcp_->SetRtxSendPayloadType(channel_, config_.rtp.rtx.payload_type);
 
   return true;
 }

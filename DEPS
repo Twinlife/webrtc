@@ -11,7 +11,7 @@ vars = {
   "googlecode_url": "http://%s.googlecode.com/svn",
   "sourceforge_url": "http://svn.code.sf.net/p/%(repo)s/code",
   "chromium_trunk" : "http://src.chromium.org/svn/trunk",
-  "chromium_revision": "238260",
+  "chromium_revision": "245382",
 
   # A small subset of WebKit is needed for the Android Python test framework.
   "webkit_trunk": "http://src.chromium.org/blink/trunk",
@@ -22,6 +22,9 @@ vars = {
 deps = {
   "../chromium_deps":
     File(Var("chromium_trunk") + "/src/DEPS@" + Var("chromium_revision")),
+
+  "../chromium_gn":
+    File(Var("chromium_trunk") + "/src/.gn@" + Var("chromium_revision")),
 
   "build":
     Var("chromium_trunk") + "/src/build@" + Var("chromium_revision"),
@@ -72,13 +75,13 @@ deps = {
     Var("chromium_trunk") + "/deps/third_party/libvpx@241571",
 
   "third_party/libyuv":
-    (Var("googlecode_url") % "libyuv") + "/trunk@949",
+    (Var("googlecode_url") % "libyuv") + "/trunk@976",
 
   "third_party/opus":
-    Var("chromium_trunk") + "/src/third_party/opus@185405",
+    Var("chromium_trunk") + "/src/third_party/opus@245176",
 
   "third_party/opus/src":
-    Var("chromium_trunk") + "/deps/third_party/opus@185324",
+    Var("chromium_trunk") + "/deps/third_party/opus@239448",
 
   "third_party/protobuf":
     Var("chromium_trunk") + "/src/third_party/protobuf@" + Var("chromium_revision"),
@@ -94,6 +97,9 @@ deps = {
 
   "tools/clang":
     Var("chromium_trunk") + "/src/tools/clang@" + Var("chromium_revision"),
+
+  "tools/gn":
+    Var("chromium_trunk") + "/src/tools/gn@" + Var("chromium_revision"),
 
   "tools/gyp":
     From("chromium_deps", "src/tools/gyp"),
@@ -113,6 +119,15 @@ deps = {
   # Needed by build/common.gypi.
   "tools/win/supalink":
     Var("chromium_trunk") + "/src/tools/win/supalink@" + Var("chromium_revision"),
+
+  "net/third_party/nss":
+      Var("chromium_trunk") + "/src/net/third_party/nss@" + Var("chromium_revision"),
+
+  "third_party/usrsctp/":
+    Var("chromium_trunk") + "/src/third_party/usrsctp@" + Var("chromium_revision"),
+
+  "third_party/usrsctp/usrsctplib":
+    (Var("googlecode_url") % "sctp-refimpl") + "/trunk/KERN/usrsctp/usrsctplib@8723",
 }
 
 deps_os = {
@@ -141,21 +156,12 @@ deps_os = {
     # NSS, for SSLClientSocketNSS.
     "third_party/nss":
       From("chromium_deps", "src/third_party/nss"),
-
-    # TODO(fischman): delete this in favor of the copy in "ios" below, once the
-    # webrtc iOS bots are fixed to target_os=['ios'] in their .gclient
-    # https://code.google.com/p/webrtc/issues/detail?id=2152
-    "net/third_party/nss":
-      Var("chromium_trunk") + "/src/net/third_party/nss@" + Var("chromium_revision"),
   },
 
   "ios": {
     # NSS, for SSLClientSocketNSS.
     "third_party/nss":
       From("chromium_deps", "src/third_party/nss"),
-
-    "net/third_party/nss":
-      Var("chromium_trunk") + "/src/net/third_party/nss@" + Var("chromium_revision"),
 
     # class-dump utility to generate header files for undocumented SDKs.
     "testing/iossim/third_party/class-dump":
@@ -169,10 +175,8 @@ deps_os = {
   "unix": {
     "third_party/gold":
       From("chromium_deps", "src/third_party/gold"),
-
-    "third_party/openssl":
-      From("chromium_deps", "src/third_party/openssl"),
   },
+
   "android": {
     # Precompiled tools needed for Android test execution. Needed since we can't
     # compile them from source in WebRTC since they depend on Chromium's base.
@@ -195,11 +199,57 @@ deps_os = {
 
 hooks = [
   {
-    # Create a supplement.gypi file under trunk/webrtc. This file will be picked
-    # up by gyp and used to enable the standalone build.
+    # Copy .gn from temporary place (../chromium_gn) to root_dir.
+    "name": "copy .gn",
     "pattern": ".",
-    "action": ["python", Var("root_dir") + "/tools/create_supplement_gypi.py",
-               Var("root_dir") + "/webrtc/supplement.gypi"],
+    "action": ["python", Var("root_dir") + "/build/cp.py",
+               Var("root_dir") + "/../chromium_gn/.gn",
+               Var("root_dir")],
+  },
+  # Pull GN binaries. This needs to be before running GYP below.
+  {
+    "name": "gn_win",
+    "pattern": "tools/gn/bin/win/gn.exe.sha1",
+    "action": [ "download_from_google_storage",
+                "--no_resume",
+                "--platform=win32",
+                "--no_auth",
+                "--bucket", "chromium-gn",
+                "-s", Var("root_dir") + "/tools/gn/bin/win/gn.exe.sha1",
+    ],
+  },
+  {
+    "name": "gn_mac",
+    "pattern": "tools/gn/bin/mac/gn.sha1",
+    "action": [ "download_from_google_storage",
+                "--no_resume",
+                "--platform=darwin",
+                "--no_auth",
+                "--bucket", "chromium-gn",
+                "-s", Var("root_dir") + "/tools/gn/bin/mac/gn.sha1",
+    ],
+  },
+  {
+    "name": "gn_linux",
+    "pattern": "tools/gn/bin/linux/gn.sha1",
+    "action": [ "download_from_google_storage",
+                "--no_resume",
+                "--platform=linux*",
+                "--no_auth",
+                "--bucket", "chromium-gn",
+                "-s", Var("root_dir") + "/tools/gn/bin/linux/gn.sha1",
+    ],
+  },
+  {
+    "name": "gn_linux32",
+    "pattern": "tools/gn/bin/linux/gn32.sha1",
+    "action": [ "download_from_google_storage",
+                "--no_resume",
+                "--platform=linux*",
+                "--no_auth",
+                "--bucket", "chromium-gn",
+                "-s", Var("root_dir") + "/tools/gn/bin/linux/gn32.sha1",
+    ],
   },
   {
     # Pull clang on mac. If nothing changed, or on non-mac platforms, this takes
@@ -224,14 +274,14 @@ hooks = [
                "--directory",
                "--recursive",
                "--num_threads=10",
+               "--no_auth",
                "--bucket", "chromium-webrtc-resources",
                Var("root_dir") + "/resources"],
   },
   {
     # A change to a .gyp, .gypi, or to GYP itself should run the generator.
     "pattern": ".",
-    "action": ["python", Var("root_dir") + "/build/gyp_chromium",
-               "--depth=" + Var("root_dir"), Var("root_dir") + "/all.gyp",
+    "action": ["python", Var("root_dir") + "/webrtc/build/gyp_webrtc",
                Var("extra_gyp_flag")],
   },
 ]
