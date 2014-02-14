@@ -230,12 +230,6 @@ int UDPPort::SendTo(const void* data, size_t size,
 }
 
 int UDPPort::SetOption(talk_base::Socket::Option opt, int value) {
-  // TODO(mallinath) - After we have the support on socket,
-  // remove this specialization.
-  if (opt == talk_base::Socket::OPT_DSCP) {
-    SetDefaultDscpValue(static_cast<talk_base::DiffServCodePoint>(value));
-    return 0;
-  }
   return socket_->SetOption(opt, value);
 }
 
@@ -334,7 +328,7 @@ void UDPPort::OnStunBindingRequestSucceeded(
     // related address is local socket address.
     set_related_address(socket_->GetLocalAddress());
     AddAddress(stun_addr, socket_->GetLocalAddress(), UDP_PROTOCOL_NAME,
-               STUN_PORT_TYPE, ICE_TYPE_PREFERENCE_PRFLX, false);
+               STUN_PORT_TYPE, ICE_TYPE_PREFERENCE_SRFLX, false);
   }
   SetResult(true);
 }

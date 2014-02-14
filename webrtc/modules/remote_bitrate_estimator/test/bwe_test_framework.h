@@ -21,10 +21,13 @@
 
 #include "webrtc/modules/interface/module_common_types.h"
 #include "webrtc/modules/remote_bitrate_estimator/test/bwe_test_logging.h"
+#include "webrtc/system_wrappers/interface/scoped_ptr.h"
 
 namespace webrtc {
 namespace testing {
 namespace bwe {
+
+class RateCounter;
 
 template<typename T> class Stats {
  public:
@@ -135,17 +138,19 @@ class Packet {
  public:
   Packet();
   Packet(int64_t send_time_us, uint32_t payload_size,
-            const RTPHeader& header);
+         const RTPHeader& header);
   Packet(int64_t send_time_us, uint32_t sequence_number);
 
   bool operator<(const Packet& rhs) const;
 
+  int64_t creation_time_us() const { return creation_time_us_; }
   void set_send_time_us(int64_t send_time_us);
   int64_t send_time_us() const { return send_time_us_; }
   uint32_t payload_size() const { return payload_size_; }
   const RTPHeader& header() const { return header_; }
 
  private:
+  int64_t creation_time_us_;  // Time when the packet was created.
   int64_t send_time_us_;   // Time the packet left last processor touching it.
   uint32_t payload_size_;  // Size of the (non-existent, simulated) payload.
   RTPHeader header_;       // Actual contents.
@@ -172,6 +177,10 @@ class PacketProcessor {
   explicit PacketProcessor(PacketProcessorListener* listener);
   virtual ~PacketProcessor();
 
+  // Called after each simulation batch to allow the processor to plot any
+  // internal data.
+  virtual void Plot(int64_t timestamp_ms) {}
+
   // Run simulation for |time_ms| micro seconds, consuming packets from, and
   // producing packets into in_out. The outgoing packet list must be sorted on
   // |send_time_us_|. The simulation time |time_ms| is optional to use.
@@ -186,22 +195,22 @@ class PacketProcessor {
 class RateCounterFilter : public PacketProcessor {
  public:
   explicit RateCounterFilter(PacketProcessorListener* listener);
+  RateCounterFilter(PacketProcessorListener* listener,
+                    const std::string& name);
   virtual ~RateCounterFilter();
 
-  uint32_t packets_per_second() const { return packets_per_second_; }
-  uint32_t bits_per_second() const { return bytes_per_second_ * 8; }
+  uint32_t packets_per_second() const;
+  uint32_t bits_per_second() const;
 
   void LogStats();
+  virtual void Plot(int64_t timestamp_ms);
   virtual void RunFor(int64_t time_ms, Packets* in_out);
 
  private:
-  const int64_t kWindowSizeUs;
-  uint32_t packets_per_second_;
-  uint32_t bytes_per_second_;
-  int64_t last_accumulated_us_;
-  Packets window_;
+  scoped_ptr<RateCounter> rate_counter_;
   Stats<double> pps_stats_;
   Stats<double> kbps_stats_;
+  std::string name_;
 
   DISALLOW_IMPLICIT_CONSTRUCTORS(RateCounterFilter);
 };
@@ -288,12 +297,15 @@ class ChokeFilter : public PacketProcessor {
 class TraceBasedDeliveryFilter : public PacketProcessor {
  public:
   explicit TraceBasedDeliveryFilter(PacketProcessorListener* listener);
-  virtual ~TraceBasedDeliveryFilter() {}
+  TraceBasedDeliveryFilter(PacketProcessorListener* listener,
+                           const std::string& name);
+  virtual ~TraceBasedDeliveryFilter();
 
   // The file should contain nanosecond timestamps corresponding to the time
   // when the network can accept another packet. The timestamps should be
   // separated by new lines, e.g., "100000000\n125000000\n321000000\n..."
   bool Init(const std::string& filename);
+  virtual void Plot(int64_t timestamp_ms);
   virtual void RunFor(int64_t time_ms, Packets* in_out);
 
  private:
@@ -303,6 +315,8 @@ class TraceBasedDeliveryFilter : public PacketProcessor {
   TimeList delivery_times_us_;
   TimeList::const_iterator next_delivery_it_;
   int64_t local_time_us_;
+  scoped_ptr<RateCounter> rate_counter_;
+  std::string name_;
 
   DISALLOW_COPY_AND_ASSIGN(TraceBasedDeliveryFilter);
 };
@@ -320,6 +334,9 @@ class PacketSender : public PacketProcessor {
 
   // Call GiveFeedback() with the returned interval in milliseconds, provided
   // there is a new estimate available.
+  // Note that changing the feedback interval affects the timing of when the
+  // output of the estimators is sampled and therefore the baseline files may
+  // have to be regenerated.
   virtual int64_t GetFeedbackIntervalMs() const { return 1000; }
   virtual void GiveFeedback(const Feedback& feedback) {}
 
@@ -344,22 +361,67 @@ class VideoSender : public PacketSender {
 
   virtual uint32_t GetCapacityKbps() const;
 
-  // TODO(solenberg): void SetFrameRate(float fps);
-  // TODO(solenberg): void SetRate(uint32_t kbps);
   virtual void RunFor(int64_t time_ms, Packets* in_out);
 
- private:
+ protected:
   const uint32_t kMaxPayloadSizeBytes;
   const uint32_t kTimestampBase;
-  double frame_period_ms_;
-  double next_frame_ms_;
-  double now_ms_;
+  const double frame_period_ms_;
   uint32_t bytes_per_second_;
   uint32_t frame_size_bytes_;
+
+ private:
+  double next_frame_ms_;
+  double now_ms_;
   RTPHeader prototype_header_;
 
   DISALLOW_IMPLICIT_CONSTRUCTORS(VideoSender);
 };
+
+class AdaptiveVideoSender : public VideoSender {
+ public:
+  AdaptiveVideoSender(PacketProcessorListener* listener, float fps,
+                      uint32_t kbps, uint32_t ssrc, float first_frame_offset);
+  virtual ~AdaptiveVideoSender() {}
+
+  virtual int64_t GetFeedbackIntervalMs() const { return 100; }
+  virtual void GiveFeedback(const Feedback& feedback);
+
+private:
+  DISALLOW_IMPLICIT_CONSTRUCTORS(AdaptiveVideoSender);
+};
+
+class VideoPacketSenderFactory : public PacketSenderFactory {
+ public:
+  VideoPacketSenderFactory(float fps, uint32_t kbps, uint32_t ssrc,
+                           float frame_offset)
+      : fps_(fps),
+        kbps_(kbps),
+        ssrc_(ssrc),
+        frame_offset_(frame_offset) {
+  }
+  virtual ~VideoPacketSenderFactory() {}
+  virtual PacketSender* Create() const {
+    return new VideoSender(NULL, fps_, kbps_, ssrc_, frame_offset_);
+  }
+ protected:
+  float fps_;
+  uint32_t kbps_;
+  uint32_t ssrc_;
+  float frame_offset_;
+};
+
+class AdaptiveVideoPacketSenderFactory : public VideoPacketSenderFactory {
+ public:
+  AdaptiveVideoPacketSenderFactory(float fps, uint32_t kbps, uint32_t ssrc,
+                                   float frame_offset)
+      : VideoPacketSenderFactory(fps, kbps, ssrc, frame_offset) {}
+  virtual ~AdaptiveVideoPacketSenderFactory() {}
+  virtual PacketSender* Create() const {
+    return new AdaptiveVideoSender(NULL, fps_, kbps_, ssrc_, frame_offset_);
+  }
+};
+
 }  // namespace bwe
 }  // namespace testing
 }  // namespace webrtc

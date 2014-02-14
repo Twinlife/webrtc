@@ -39,7 +39,11 @@
         '<(DEPTH)/testing/gtest/include',
         '<(DEPTH)/testing/gtest',
       ],
+      'defines': ['_VARIADIC_MAX=10'],
       'direct_dependent_settings': {
+        'defines': [
+          '_VARIADIC_MAX=10',
+        ],
         'include_dirs': [
           '<(DEPTH)/testing/gtest/include',
         ],
@@ -116,6 +120,7 @@
         'base/buffer_unittest.cc',
         'base/bytebuffer_unittest.cc',
         'base/byteorder_unittest.cc',
+        'base/callback_unittest.cc',
         'base/cpumonitor_unittest.cc',
         'base/crc32_unittest.cc',
         'base/event_unittest.cc',
@@ -144,6 +149,7 @@
         'base/ratetracker_unittest.cc',
         'base/referencecountedsingletonfactory_unittest.cc',
         'base/rollingaccumulator_unittest.cc',
+        'base/scopedptrcollection_unittest.cc',
         'base/sha1digest_unittest.cc',
         'base/sharedexclusivelock_unittest.cc',
         'base/signalthread_unittest.cc',

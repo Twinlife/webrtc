@@ -203,8 +203,8 @@ public class PeerConnectionTest extends TestCase {
       assertEquals(expectedAddStreamLabels.removeFirst(), stream.label());
       assertEquals(1, stream.videoTracks.size());
       assertEquals(1, stream.audioTracks.size());
-      assertTrue(stream.videoTracks.get(0).id().endsWith("LMSv0"));
-      assertTrue(stream.audioTracks.get(0).id().endsWith("LMSa0"));
+      assertTrue(stream.videoTracks.get(0).id().endsWith("VideoTrack"));
+      assertTrue(stream.audioTracks.get(0).id().endsWith("AudioTrack"));
       assertEquals("video", stream.videoTracks.get(0).kind());
       assertEquals("audio", stream.audioTracks.get(0).kind());
       VideoRenderer renderer = createVideoRenderer(this);
@@ -509,12 +509,6 @@ public class PeerConnectionTest extends TestCase {
     MediaConstraints pcConstraints = new MediaConstraints();
     pcConstraints.mandatory.add(
         new MediaConstraints.KeyValuePair("DtlsSrtpKeyAgreement", "true"));
-    pcConstraints.optional.add(
-        new MediaConstraints.KeyValuePair("RtpDataChannels", "true"));
-    // TODO(fischman): replace above with below to test SCTP channels when
-    // supported (https://code.google.com/p/webrtc/issues/detail?id=1408).
-    // pcConstraints.optional.add(new MediaConstraints.KeyValuePair(
-    //     "internalSctpDataChannels", "true"));
 
     LinkedList<PeerConnection.IceServer> iceServers =
         new LinkedList<PeerConnection.IceServer>();
@@ -539,16 +533,11 @@ public class PeerConnectionTest extends TestCase {
     VideoSource videoSource = factory.createVideoSource(
         VideoCapturer.create(""), new MediaConstraints());
 
-    // TODO(fischman): the track ids here and in the addTracksToPC() call
-    // below hard-code the <mediaStreamLabel>[av]<index> scheme used in the
-    // serialized SDP, because the C++ API doesn't auto-translate.
-    // Drop |label| params from {Audio,Video}Track-related APIs once
-    // https://code.google.com/p/webrtc/issues/detail?id=1253 is fixed.
     offeringExpectations.expectSetSize();
     offeringExpectations.expectRenegotiationNeeded();
     WeakReference<MediaStream> oLMS = addTracksToPC(
-        factory, offeringPC, videoSource, "oLMS", "oLMSv0", "oLMSa0",
-        offeringExpectations);
+        factory, offeringPC, videoSource, "offeredMediaStream",
+        "offeredVideoTrack", "offeredAudioTrack", offeringExpectations);
 
     offeringExpectations.expectRenegotiationNeeded();
     DataChannel offeringDC = offeringPC.createDataChannel(
@@ -566,8 +555,10 @@ public class PeerConnectionTest extends TestCase {
     sdpLatch = new SdpObserverLatch();
     answeringExpectations.expectSignalingChange(
         SignalingState.HAVE_REMOTE_OFFER);
-    answeringExpectations.expectAddStream("oLMS");
-    answeringExpectations.expectDataChannel("offeringDC");
+    answeringExpectations.expectAddStream("offeredMediaStream");
+    // SCTP DataChannels are announced via OPEN messages over the established
+    // connection (not via SDP), so answeringExpectations can only register
+    // expecting the channel during ICE, below.
     answeringPC.setRemoteDescription(sdpLatch, offerSdp);
     assertEquals(
         PeerConnection.SignalingState.STABLE, offeringPC.signalingState());
@@ -577,8 +568,8 @@ public class PeerConnectionTest extends TestCase {
     answeringExpectations.expectSetSize();
     answeringExpectations.expectRenegotiationNeeded();
     WeakReference<MediaStream> aLMS = addTracksToPC(
-        factory, answeringPC, videoSource, "aLMS", "aLMSv0", "aLMSa0",
-        answeringExpectations);
+        factory, answeringPC, videoSource, "answeredMediaStream",
+        "answeredVideoTrack", "answeredAudioTrack", answeringExpectations);
 
     sdpLatch = new SdpObserverLatch();
     answeringPC.createAnswer(sdpLatch, new MediaConstraints());
@@ -606,7 +597,7 @@ public class PeerConnectionTest extends TestCase {
     assertNull(sdpLatch.getSdp());
     sdpLatch = new SdpObserverLatch();
     offeringExpectations.expectSignalingChange(SignalingState.STABLE);
-    offeringExpectations.expectAddStream("aLMS");
+    offeringExpectations.expectAddStream("answeredMediaStream");
     offeringPC.setRemoteDescription(sdpLatch, answerSdp);
     assertTrue(sdpLatch.await());
     assertNull(sdpLatch.getSdp());
@@ -638,6 +629,8 @@ public class PeerConnectionTest extends TestCase {
         IceConnectionState.CONNECTED);
 
     offeringExpectations.expectStateChange(DataChannel.State.OPEN);
+    // See commentary about SCTP DataChannels above for why this is here.
+    answeringExpectations.expectDataChannel("offeringDC");
     answeringExpectations.expectStateChange(DataChannel.State.OPEN);
 
     for (IceCandidate candidate : offeringExpectations.gotIceCandidates) {
@@ -665,29 +658,25 @@ public class PeerConnectionTest extends TestCase {
     assertTrue(offeringExpectations.dataChannel.send(buffer));
     answeringExpectations.waitForAllExpectationsToBeSatisfied();
 
-    // TODO(fischman): add testing of binary messages when SCTP channels are
-    // supported (https://code.google.com/p/webrtc/issues/detail?id=1408).
-    // // Construct this binary message two different ways to ensure no
-    // // shortcuts are taken.
-    // ByteBuffer expectedBinaryMessage = ByteBuffer.allocateDirect(5);
-    // for (byte i = 1; i < 6; ++i) {
-    //   expectedBinaryMessage.put(i);
-    // }
-    // expectedBinaryMessage.flip();
-    // offeringExpectations.expectMessage(expectedBinaryMessage, true);
-    // assertTrue(answeringExpectations.dataChannel.send(
-    //     new DataChannel.Buffer(
-    //         ByteBuffer.wrap(new byte[] { 1, 2, 3, 4, 5 } ), true)));
-    // offeringExpectations.waitForAllExpectationsToBeSatisfied();
+    // Construct this binary message two different ways to ensure no
+    // shortcuts are taken.
+    ByteBuffer expectedBinaryMessage = ByteBuffer.allocateDirect(5);
+    for (byte i = 1; i < 6; ++i) {
+      expectedBinaryMessage.put(i);
+    }
+    expectedBinaryMessage.flip();
+    offeringExpectations.expectMessage(expectedBinaryMessage, true);
+    assertTrue(answeringExpectations.dataChannel.send(
+        new DataChannel.Buffer(
+            ByteBuffer.wrap(new byte[] { 1, 2, 3, 4, 5 }), true)));
+    offeringExpectations.waitForAllExpectationsToBeSatisfied();
 
     offeringExpectations.expectStateChange(DataChannel.State.CLOSING);
     answeringExpectations.expectStateChange(DataChannel.State.CLOSING);
+    offeringExpectations.expectStateChange(DataChannel.State.CLOSED);
+    answeringExpectations.expectStateChange(DataChannel.State.CLOSED);
     answeringExpectations.dataChannel.close();
     offeringExpectations.dataChannel.close();
-    // TODO(fischman): implement a new offer/answer exchange to finalize the
-    // closing of the channel in order to see the CLOSED state reached.
-    // offeringExpectations.expectStateChange(DataChannel.State.CLOSED);
-    // answeringExpectations.expectStateChange(DataChannel.State.CLOSED);
 
     if (RENDER_TO_GUI) {
       try {

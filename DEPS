@@ -11,7 +11,7 @@ vars = {
   "googlecode_url": "http://%s.googlecode.com/svn",
   "sourceforge_url": "http://svn.code.sf.net/p/%(repo)s/code",
   "chromium_trunk" : "http://src.chromium.org/svn/trunk",
-  "chromium_revision": "245382",
+  "chromium_revision": "249215",
 
   # A small subset of WebKit is needed for the Android Python test framework.
   "webkit_trunk": "http://src.chromium.org/blink/trunk",
@@ -41,6 +41,12 @@ deps = {
 
   "testing/gtest":
     From("chromium_deps", "src/testing/gtest"),
+
+  "third_party/clang_format":
+    Var("chromium_trunk") + "/src/third_party/clang_format@" + Var("chromium_revision"),
+
+  "third_party/clang_format/script":
+    From("chromium_deps", "src/third_party/clang_format/script"),
 
   "third_party/expat":
     Var("chromium_trunk") + "/src/third_party/expat@" + Var("chromium_revision"),
@@ -72,10 +78,10 @@ deps = {
     From("chromium_deps", "src/third_party/libsrtp"),
 
   "third_party/libvpx":
-    Var("chromium_trunk") + "/deps/third_party/libvpx@241571",
+    Var("chromium_trunk") + "/deps/third_party/libvpx@248011",
 
   "third_party/libyuv":
-    (Var("googlecode_url") % "libyuv") + "/trunk@976",
+    (Var("googlecode_url") % "libyuv") + "/trunk@979",
 
   "third_party/opus":
     Var("chromium_trunk") + "/src/third_party/opus@245176",
@@ -132,10 +138,6 @@ deps = {
 
 deps_os = {
   "win": {
-    # Use our own, stripped down, version of Cygwin (required by GYP).
-    "third_party/cygwin":
-      (Var("googlecode_url") % "webrtc") + "/deps/third_party/cygwin@2672",
-
     "third_party/winsdk_samples/src":
       (Var("googlecode_url") % "webrtc") + "/deps/third_party/winsdk_samples_v71@3145",
 
@@ -251,21 +253,46 @@ hooks = [
                 "-s", Var("root_dir") + "/tools/gn/bin/linux/gn32.sha1",
     ],
   },
+  # Pull clang-format binaries using checked-in hashes.
+  {
+    "name": "clang_format_win",
+    "pattern": "third_party/clang_format/bin/win/clang-format.exe.sha1",
+    "action": [ "download_from_google_storage",
+                "--no_resume",
+                "--platform=win32",
+                "--no_auth",
+                "--bucket", "chromium-clang-format",
+                "-s", Var("root_dir") + "/third_party/clang_format/bin/win/clang-format.exe.sha1",
+    ],
+  },
+  {
+    "name": "clang_format_mac",
+    "pattern": "third_party/clang_format/bin/mac/clang-format.sha1",
+    "action": [ "download_from_google_storage",
+                "--no_resume",
+                "--platform=darwin",
+                "--no_auth",
+                "--bucket", "chromium-clang-format",
+                "-s", Var("root_dir") + "/third_party/clang_format/bin/mac/clang-format.sha1",
+    ],
+  },
+  {
+    "name": "clang_format_linux",
+    "pattern": "third_party/clang_format/bin/linux/clang-format.sha1",
+    "action": [ "download_from_google_storage",
+                "--no_resume",
+                "--platform=linux*",
+                "--no_auth",
+                "--bucket", "chromium-clang-format",
+                "-s", Var("root_dir") + "/third_party/clang_format/bin/linux/clang-format.sha1",
+    ],
+  },
   {
     # Pull clang on mac. If nothing changed, or on non-mac platforms, this takes
     # zero seconds to run. If something changed, it downloads a prebuilt clang.
     "pattern": ".",
     "action": ["python", Var("root_dir") + "/tools/clang/scripts/update.py",
                "--mac-only"],
-  },
-  {
-    # Update the cygwin mount on Windows.
-    # This is necessary to get the correct mapping between e.g. /bin and the
-    # cygwin path on Windows. Without it we can't run bash scripts in actions.
-    # Ideally this should be solved in "pylib/gyp/msvs_emulation.py".
-    "pattern": ".",
-    "action": ["python", Var("root_dir") + "/build/win/setup_cygwin_mount.py",
-               "--win-only"],
   },
   {
     # Download test resources, i.e. video and audio files from Google Storage.

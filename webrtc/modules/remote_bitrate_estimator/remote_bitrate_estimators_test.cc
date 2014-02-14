@@ -15,28 +15,7 @@
 namespace webrtc {
 namespace testing {
 namespace bwe {
-
 std::vector<const PacketSenderFactory*> VideoSenderFactories(uint32_t count) {
-  class VideoPacketSenderFactory : public PacketSenderFactory {
-   public:
-    VideoPacketSenderFactory(float fps, uint32_t kbps, uint32_t ssrc,
-                             float frame_offset)
-        : fps_(fps),
-          kbps_(kbps),
-          ssrc_(ssrc),
-          frame_offset_(frame_offset) {
-    }
-    virtual ~VideoPacketSenderFactory() {}
-    virtual PacketSender* Create() const {
-      return new VideoSender(NULL, fps_, kbps_, ssrc_, frame_offset_);
-    }
-   private:
-    float fps_;
-    uint32_t kbps_;
-    uint32_t ssrc_;
-    float frame_offset_;
-  };
-
   static const VideoPacketSenderFactory factories[] = {
     VideoPacketSenderFactory(30.00f, 150, 0x1234, 0.13f),
     VideoPacketSenderFactory(15.00f, 500, 0x2345, 0.16f),
@@ -49,12 +28,14 @@ std::vector<const PacketSenderFactory*> VideoSenderFactories(uint32_t count) {
     VideoPacketSenderFactory(30.02f, 150, 0x9012, 0.39f),
     VideoPacketSenderFactory(30.03f, 150, 0x0123, 0.52f)
   };
+
   assert(count <= sizeof(factories) / sizeof(factories[0]));
 
   std::vector<const PacketSenderFactory*> result;
   for (uint32_t i = 0; i < count; ++i) {
     result.push_back(&factories[i]);
   }
+
   return result;
 }
 
@@ -227,18 +208,6 @@ TEST_P(BweTest, Multi2) {
   choke.SetCapacity(2000);
   jitter.SetJitter(120);
   RunFor(5 * 60 * 1000);
-}
-
-TEST_P(BweTest, SprintUplinkTest) {
-  TraceBasedDeliveryFilter filter(this);
-  ASSERT_TRUE(filter.Init(test::ResourcePath("sprint-uplink", "rx")));
-  RunFor(60 * 1000);
-}
-
-TEST_P(BweTest, Verizon4gDownlinkTest) {
-  TraceBasedDeliveryFilter filter(this);
-  ASSERT_TRUE(filter.Init(test::ResourcePath("verizon4g-downlink", "rx")));
-  RunFor(22 * 60 * 1000);
 }
 }  // namespace bwe
 }  // namespace testing
