@@ -70,12 +70,16 @@ class AudioProcessingImpl : public AudioProcessing {
   virtual int num_output_channels() const OVERRIDE;
   virtual int set_num_reverse_channels(int channels) OVERRIDE;
   virtual int num_reverse_channels() const OVERRIDE;
+  virtual void set_output_will_be_muted(bool muted) OVERRIDE;
+  virtual bool output_will_be_muted() const OVERRIDE;
   virtual int ProcessStream(AudioFrame* frame) OVERRIDE;
   virtual int AnalyzeReverseStream(AudioFrame* frame) OVERRIDE;
   virtual int set_stream_delay_ms(int delay) OVERRIDE;
   virtual int stream_delay_ms() const OVERRIDE;
   virtual void set_delay_offset_ms(int offset) OVERRIDE;
   virtual int delay_offset_ms() const OVERRIDE;
+  virtual void set_stream_key_pressed(bool key_pressed) OVERRIDE;
+  virtual bool stream_key_pressed() const OVERRIDE;
   virtual int StartDebugRecording(
       const char filename[kMaxFilenameSize]) OVERRIDE;
   virtual int StartDebugRecording(FILE* handle) OVERRIDE;
@@ -134,6 +138,9 @@ class AudioProcessingImpl : public AudioProcessing {
   int num_reverse_channels_;
   int num_input_channels_;
   int num_output_channels_;
+  bool output_will_be_muted_;
+
+  bool key_pressed_;
 };
 }  // namespace webrtc
 

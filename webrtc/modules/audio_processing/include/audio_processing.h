@@ -186,6 +186,13 @@ class AudioProcessing : public Module {
   virtual int set_num_reverse_channels(int channels) = 0;
   virtual int num_reverse_channels() const = 0;
 
+  // Set to true when the output of AudioProcessing will be muted or in some
+  // other way not used. Ideally, the captured audio would still be processed,
+  // but some components may change behavior based on this information.
+  // Default false.
+  virtual void set_output_will_be_muted(bool muted) = 0;
+  virtual bool output_will_be_muted() const = 0;
+
   // Processes a 10 ms |frame| of the primary audio stream. On the client-side,
   // this is the near-end (or captured) audio.
   //
@@ -230,6 +237,11 @@ class AudioProcessing : public Module {
   //     ProcessStream().
   virtual int set_stream_delay_ms(int delay) = 0;
   virtual int stream_delay_ms() const = 0;
+
+  // Call to signal that a key press occurred (true) or did not occur (false)
+  // with this chunk of audio.
+  virtual void set_stream_key_pressed(bool key_pressed) = 0;
+  virtual bool stream_key_pressed() const = 0;
 
   // Sets a delay |offset| in ms to add to the values passed in through
   // set_stream_delay_ms(). May be positive or negative.

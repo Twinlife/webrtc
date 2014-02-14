@@ -97,7 +97,8 @@ AudioProcessingImpl::AudioProcessingImpl(const Config& config)
       was_stream_delay_set_(false),
       num_reverse_channels_(1),
       num_input_channels_(1),
-      num_output_channels_(1) {
+      num_output_channels_(1),
+      key_pressed_(false) {
   echo_cancellation_ = EchoCancellationImplWrapper::Create(this);
   component_list_.push_back(echo_cancellation_);
 
@@ -296,6 +297,14 @@ int AudioProcessingImpl::num_output_channels() const {
   return num_output_channels_;
 }
 
+void AudioProcessingImpl::set_output_will_be_muted(bool muted) {
+  output_will_be_muted_ = muted;
+}
+
+bool AudioProcessingImpl::output_will_be_muted() const {
+  return output_will_be_muted_;
+}
+
 int AudioProcessingImpl::MaybeInitializeLocked(int sample_rate_hz,
     int num_input_channels, int num_output_channels, int num_reverse_channels) {
   if (sample_rate_hz == sample_rate_hz_ &&
@@ -365,6 +374,7 @@ int AudioProcessingImpl::ProcessStream(AudioFrame* frame) {
     msg->set_delay(stream_delay_ms_);
     msg->set_drift(echo_cancellation_->stream_drift_samples());
     msg->set_level(gain_control_->stream_analog_level());
+    msg->set_keypress(key_pressed_);
   }
 #endif
 
@@ -566,6 +576,14 @@ void AudioProcessingImpl::set_delay_offset_ms(int offset) {
 
 int AudioProcessingImpl::delay_offset_ms() const {
   return delay_offset_ms_;
+}
+
+void AudioProcessingImpl::set_stream_key_pressed(bool key_pressed) {
+  key_pressed_ = key_pressed;
+}
+
+bool AudioProcessingImpl::stream_key_pressed() const {
+  return key_pressed_;
 }
 
 int AudioProcessingImpl::StartDebugRecording(
