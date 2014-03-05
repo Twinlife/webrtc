@@ -71,9 +71,6 @@ AudioProcessing* AudioProcessing::Create(const Config& config) {
   return apm;
 }
 
-int32_t AudioProcessing::TimeUntilNextProcess() { return -1; }
-int32_t AudioProcessing::Process() { return -1; }
-
 AudioProcessingImpl::AudioProcessingImpl(const Config& config)
     : echo_cancellation_(NULL),
       echo_control_mobile_(NULL),
@@ -98,6 +95,7 @@ AudioProcessingImpl::AudioProcessingImpl(const Config& config)
       num_reverse_channels_(1),
       num_input_channels_(1),
       num_output_channels_(1),
+      output_will_be_muted_(false),
       key_pressed_(false) {
   echo_cancellation_ = EchoCancellationImplWrapper::Create(this);
   component_list_.push_back(echo_cancellation_);
@@ -689,10 +687,6 @@ NoiseSuppression* AudioProcessingImpl::noise_suppression() const {
 
 VoiceDetection* AudioProcessingImpl::voice_detection() const {
   return voice_detection_;
-}
-
-int32_t AudioProcessingImpl::ChangeUniqueId(const int32_t id) {
-  return kNoError;
 }
 
 bool AudioProcessingImpl::is_data_processed() const {

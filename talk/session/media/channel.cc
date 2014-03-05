@@ -511,7 +511,8 @@ bool BaseChannel::SendPacket(bool rtcp, talk_base::Buffer* packet,
   }
 
   // Bon voyage.
-  int ret = channel->SendPacket(packet->data(), packet->length(), dscp,
+  talk_base::PacketOptions options(dscp);
+  int ret = channel->SendPacket(packet->data(), packet->length(), options,
       (secure() && secure_dtls()) ? PF_SRTP_BYPASS : 0);
   if (ret != static_cast<int>(packet->length())) {
     if (channel->GetError() == EWOULDBLOCK) {
@@ -1744,9 +1745,10 @@ void VideoChannel::ChangeState() {
   LOG(LS_INFO) << "Changing video state, recv=" << recv << " send=" << send;
 }
 
-bool VideoChannel::GetStats(VideoMediaInfo* stats) {
+bool VideoChannel::GetStats(
+    const StatsOptions& options, VideoMediaInfo* stats) {
   return InvokeOnWorker(Bind(&VideoMediaChannel::GetStats,
-                             media_channel(), stats));
+                             media_channel(), options, stats));
 }
 
 void VideoChannel::StartMediaMonitor(int cms) {
