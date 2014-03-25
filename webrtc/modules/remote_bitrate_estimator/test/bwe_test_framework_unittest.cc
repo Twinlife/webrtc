@@ -41,12 +41,12 @@ TEST(BweTestFramework_RandomTest, Gaussian) {
   }
 
   const double kPi = 3.14159265358979323846;
-  const double kScale = kN / (kStddev * std::sqrt(2.0 * kPi));
+  const double kScale = kN / (kStddev * sqrt(2.0 * kPi));
   const double kDiv = -2.0 * kStddev * kStddev;
   double self_corr = 0.0;
   double bucket_corr = 0.0;
   for (int n = 0; n < kBuckets; ++n) {
-    double normal_dist = kScale * std::exp((n - kMean) * (n - kMean) / kDiv);
+    double normal_dist = kScale * exp((n - kMean) * (n - kMean) / kDiv);
     self_corr += normal_dist * normal_dist;
     bucket_corr += normal_dist * buckets[n];
   }
@@ -181,7 +181,7 @@ class BweTestFramework_RateCounterFilterTest : public ::testing::Test {
   void TestRateCounter(int64_t run_for_ms, uint32_t payload_bits,
                        uint32_t expected_pps, uint32_t expected_bps) {
     Packets packets;
-    RTPHeader header = {0};
+    RTPHeader header;
     // "Send" a packet every 10 ms.
     for (int64_t i = 0; i < run_for_ms; i += 10, now_ms_ += 10) {
       packets.push_back(Packet(now_ms_ * 1000, payload_bits / 8, header));
@@ -582,7 +582,7 @@ class BweTestFramework_ChokeFilterTest : public ::testing::Test {
                  uint32_t expected_kbit_transmitted) {
     // Generate a bunch of packets, apply choke, verify output is ordered.
     Packets packets;
-    RTPHeader header = {0};
+    RTPHeader header;
     for (uint32_t i = 0; i < packets_to_generate; ++i) {
       int64_t send_time_ms = now_ms_ + (i * run_for_ms) / packets_to_generate;
       header.sequenceNumber = sequence_number_++;
@@ -709,12 +709,24 @@ TEST_F(BweTestFramework_ChokeFilterTest, ShortTrace) {
   TestChoke(&filter, 100, 100, 6);
 }
 
-TEST_F(BweTestFramework_ChokeFilterTest, ShortTraceWrap) {
-  // According to the input file 10 packets should be transmitted within
-  // 140 milliseconds (at the wrapping point two packets are sent back to back).
+TEST_F(BweTestFramework_ChokeFilterTest, ShortTraceTwoWraps) {
+  // According to the input file 19 packets should be transmitted within
+  // 280 milliseconds (at the wrapping point two packets are sent back to back).
   TraceBasedDeliveryFilter filter(NULL);
   ASSERT_TRUE(filter.Init(test::ResourcePath("synthetic-trace", "rx")));
-  TestChoke(&filter, 140, 100, 10);
+  TestChoke(&filter, 280, 100, 19);
+}
+
+TEST_F(BweTestFramework_ChokeFilterTest, ShortTraceMaxDelay) {
+  TraceBasedDeliveryFilter filter(NULL);
+  filter.SetMaxDelay(25);
+  ASSERT_TRUE(filter.Init(test::ResourcePath("synthetic-trace", "rx")));
+  // Uses all slots up to 110 ms. Several packets are being dropped.
+  TestChoke(&filter, 110, 20, 9);
+  CheckMaxDelay(25);
+  // Simulate enough time for the next slot (at 135 ms) to be used. This makes
+  // sure that a slot isn't missed between runs.
+  TestChoke(&filter, 25, 1, 1);
 }
 
 void TestVideoSender(VideoSender* sender, int64_t run_for_ms,
@@ -754,7 +766,7 @@ void TestVideoSender(VideoSender* sender, int64_t run_for_ms,
   EXPECT_GE(1u, rtp_timestamp_wraps);
 }
 
-TEST(BweTestFramework_VideoSenderTest, Fps1Kpbs80_1s) {
+TEST(BweTestFramework_VideoSenderTest, Fps1Kbps80_1s) {
   // 1 fps, 80 kbps
   VideoSender sender(NULL, 1.0f, 80, 0x1234, 0);
   EXPECT_EQ(10000u, sender.bytes_per_second());

@@ -14,10 +14,10 @@
 
 #include "webrtc/modules/audio_coding/neteq4/interface/neteq.h"
 
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>  // memset
 
-#include <cmath>
 #include <set>
 #include <string>
 #include <vector>
@@ -219,7 +219,13 @@ class NetEqDecodingTest : public ::testing::Test {
                 const std::set<uint16_t>& drop_seq_numbers,
                 bool expect_seq_no_wrap, bool expect_timestamp_wrap);
 
-  void LongCngWithClockDrift(double drift_factor);
+  void LongCngWithClockDrift(double drift_factor,
+                             double network_freeze_ms,
+                             bool pull_audio_during_freeze,
+                             int delay_tolerance_ms,
+                             int max_time_to_speech_ms);
+
+  void DuplicateCng();
 
   NetEq* neteq_;
   FILE* rtp_fp_;
@@ -697,7 +703,11 @@ TEST_F(NetEqDecodingTest,
   EXPECT_EQ(110946, network_stats.clockdrift_ppm);
 }
 
-void NetEqDecodingTest::LongCngWithClockDrift(double drift_factor) {
+void NetEqDecodingTest::LongCngWithClockDrift(double drift_factor,
+                                              double network_freeze_ms,
+                                              bool pull_audio_during_freeze,
+                                              int delay_tolerance_ms,
+                                              int max_time_to_speech_ms) {
   uint16_t seq_no = 0;
   uint32_t timestamp = 0;
   const int kFrameSizeMs = 30;
@@ -705,6 +715,8 @@ void NetEqDecodingTest::LongCngWithClockDrift(double drift_factor) {
   const int kPayloadBytes = kSamples * 2;
   double next_input_time_ms = 0.0;
   double t_ms;
+  int out_len;
+  int num_channels;
   NetEqOutputType type;
 
   // Insert speech for 5 seconds.
@@ -722,8 +734,6 @@ void NetEqDecodingTest::LongCngWithClockDrift(double drift_factor) {
       next_input_time_ms += static_cast<double>(kFrameSizeMs) * drift_factor;
     }
     // Pull out data once.
-    int out_len;
-    int num_channels;
     ASSERT_EQ(0, neteq_->GetAudio(kMaxBlockSize, out_data_, &out_len,
                                   &num_channels, &type));
     ASSERT_EQ(kBlockSize16kHz, out_len);
@@ -750,8 +760,6 @@ void NetEqDecodingTest::LongCngWithClockDrift(double drift_factor) {
       next_input_time_ms += static_cast<double>(kCngPeriodMs) * drift_factor;
     }
     // Pull out data once.
-    int out_len;
-    int num_channels;
     ASSERT_EQ(0, neteq_->GetAudio(kMaxBlockSize, out_data_, &out_len,
                                   &num_channels, &type));
     ASSERT_EQ(kBlockSize16kHz, out_len);
@@ -759,7 +767,49 @@ void NetEqDecodingTest::LongCngWithClockDrift(double drift_factor) {
 
   EXPECT_EQ(kOutputCNG, type);
 
+  if (network_freeze_ms > 0) {
+    // First keep pulling audio for |network_freeze_ms| without inserting
+    // any data, then insert CNG data corresponding to |network_freeze_ms|
+    // without pulling any output audio.
+    const double loop_end_time = t_ms + network_freeze_ms;
+    for (; t_ms < loop_end_time; t_ms += 10) {
+      // Pull out data once.
+      ASSERT_EQ(0,
+                neteq_->GetAudio(
+                    kMaxBlockSize, out_data_, &out_len, &num_channels, &type));
+      ASSERT_EQ(kBlockSize16kHz, out_len);
+      EXPECT_EQ(kOutputCNG, type);
+    }
+    bool pull_once = pull_audio_during_freeze;
+    // If |pull_once| is true, GetAudio will be called once half-way through
+    // the network recovery period.
+    double pull_time_ms = (t_ms + next_input_time_ms) / 2;
+    while (next_input_time_ms <= t_ms) {
+      if (pull_once && next_input_time_ms >= pull_time_ms) {
+        pull_once = false;
+        // Pull out data once.
+        ASSERT_EQ(
+            0,
+            neteq_->GetAudio(
+                kMaxBlockSize, out_data_, &out_len, &num_channels, &type));
+        ASSERT_EQ(kBlockSize16kHz, out_len);
+        EXPECT_EQ(kOutputCNG, type);
+        t_ms += 10;
+      }
+      // Insert one CNG frame each 100 ms.
+      uint8_t payload[kPayloadBytes];
+      int payload_len;
+      WebRtcRTPHeader rtp_info;
+      PopulateCng(seq_no, timestamp, &rtp_info, payload, &payload_len);
+      ASSERT_EQ(0, neteq_->InsertPacket(rtp_info, payload, payload_len, 0));
+      ++seq_no;
+      timestamp += kCngPeriodSamples;
+      next_input_time_ms += kCngPeriodMs * drift_factor;
+    }
+  }
+
   // Insert speech again until output type is speech.
+  double speech_restart_time_ms = t_ms;
   while (type != kOutputNormal) {
     // Each turn in this for loop is 10 ms.
     while (next_input_time_ms <= t_ms) {
@@ -770,11 +820,9 @@ void NetEqDecodingTest::LongCngWithClockDrift(double drift_factor) {
       ASSERT_EQ(0, neteq_->InsertPacket(rtp_info, payload, kPayloadBytes, 0));
       ++seq_no;
       timestamp += kSamples;
-      next_input_time_ms += static_cast<double>(kFrameSizeMs) * drift_factor;
+      next_input_time_ms += kFrameSizeMs * drift_factor;
     }
     // Pull out data once.
-    int out_len;
-    int num_channels;
     ASSERT_EQ(0, neteq_->GetAudio(kMaxBlockSize, out_data_, &out_len,
                                   &num_channels, &type));
     ASSERT_EQ(kBlockSize16kHz, out_len);
@@ -782,24 +830,100 @@ void NetEqDecodingTest::LongCngWithClockDrift(double drift_factor) {
     t_ms += 10;
   }
 
+  // Check that the speech starts again within reasonable time.
+  double time_until_speech_returns_ms = t_ms - speech_restart_time_ms;
+  EXPECT_LT(time_until_speech_returns_ms, max_time_to_speech_ms);
   int32_t delay_after = timestamp - neteq_->PlayoutTimestamp();
   // Compare delay before and after, and make sure it differs less than 20 ms.
-  EXPECT_LE(delay_after, delay_before + 20 * 16);
-  EXPECT_GE(delay_after, delay_before - 20 * 16);
+  EXPECT_LE(delay_after, delay_before + delay_tolerance_ms * 16);
+  EXPECT_GE(delay_after, delay_before - delay_tolerance_ms * 16);
 }
 
-TEST_F(NetEqDecodingTest, DISABLED_ON_ANDROID(LongCngWithClockNegativeDrift)) {
+TEST_F(NetEqDecodingTest, DISABLED_ON_ANDROID(LongCngWithNegativeClockDrift)) {
   // Apply a clock drift of -25 ms / s (sender faster than receiver).
   const double kDriftFactor = 1000.0 / (1000.0 + 25.0);
-  LongCngWithClockDrift(kDriftFactor);
+  const double kNetworkFreezeTimeMs = 0.0;
+  const bool kGetAudioDuringFreezeRecovery = false;
+  const int kDelayToleranceMs = 20;
+  const int kMaxTimeToSpeechMs = 100;
+  LongCngWithClockDrift(kDriftFactor,
+                        kNetworkFreezeTimeMs,
+                        kGetAudioDuringFreezeRecovery,
+                        kDelayToleranceMs,
+                        kMaxTimeToSpeechMs);
 }
 
-// TODO(hlundin): Re-enable this test and fix the issues to make it pass.
-TEST_F(NetEqDecodingTest,
-       DISABLED_ON_ANDROID(DISABLED_LongCngWithClockPositiveDrift)) {
+TEST_F(NetEqDecodingTest, DISABLED_ON_ANDROID(LongCngWithPositiveClockDrift)) {
   // Apply a clock drift of +25 ms / s (sender slower than receiver).
   const double kDriftFactor = 1000.0 / (1000.0 - 25.0);
-  LongCngWithClockDrift(kDriftFactor);
+  const double kNetworkFreezeTimeMs = 0.0;
+  const bool kGetAudioDuringFreezeRecovery = false;
+  const int kDelayToleranceMs = 20;
+  const int kMaxTimeToSpeechMs = 100;
+  LongCngWithClockDrift(kDriftFactor,
+                        kNetworkFreezeTimeMs,
+                        kGetAudioDuringFreezeRecovery,
+                        kDelayToleranceMs,
+                        kMaxTimeToSpeechMs);
+}
+
+TEST_F(NetEqDecodingTest,
+       DISABLED_ON_ANDROID(LongCngWithNegativeClockDriftNetworkFreeze)) {
+  // Apply a clock drift of -25 ms / s (sender faster than receiver).
+  const double kDriftFactor = 1000.0 / (1000.0 + 25.0);
+  const double kNetworkFreezeTimeMs = 5000.0;
+  const bool kGetAudioDuringFreezeRecovery = false;
+  const int kDelayToleranceMs = 50;
+  const int kMaxTimeToSpeechMs = 200;
+  LongCngWithClockDrift(kDriftFactor,
+                        kNetworkFreezeTimeMs,
+                        kGetAudioDuringFreezeRecovery,
+                        kDelayToleranceMs,
+                        kMaxTimeToSpeechMs);
+}
+
+TEST_F(NetEqDecodingTest,
+       DISABLED_ON_ANDROID(LongCngWithPositiveClockDriftNetworkFreeze)) {
+  // Apply a clock drift of +25 ms / s (sender slower than receiver).
+  const double kDriftFactor = 1000.0 / (1000.0 - 25.0);
+  const double kNetworkFreezeTimeMs = 5000.0;
+  const bool kGetAudioDuringFreezeRecovery = false;
+  const int kDelayToleranceMs = 20;
+  const int kMaxTimeToSpeechMs = 100;
+  LongCngWithClockDrift(kDriftFactor,
+                        kNetworkFreezeTimeMs,
+                        kGetAudioDuringFreezeRecovery,
+                        kDelayToleranceMs,
+                        kMaxTimeToSpeechMs);
+}
+
+TEST_F(
+    NetEqDecodingTest,
+    DISABLED_ON_ANDROID(LongCngWithPositiveClockDriftNetworkFreezeExtraPull)) {
+  // Apply a clock drift of +25 ms / s (sender slower than receiver).
+  const double kDriftFactor = 1000.0 / (1000.0 - 25.0);
+  const double kNetworkFreezeTimeMs = 5000.0;
+  const bool kGetAudioDuringFreezeRecovery = true;
+  const int kDelayToleranceMs = 20;
+  const int kMaxTimeToSpeechMs = 100;
+  LongCngWithClockDrift(kDriftFactor,
+                        kNetworkFreezeTimeMs,
+                        kGetAudioDuringFreezeRecovery,
+                        kDelayToleranceMs,
+                        kMaxTimeToSpeechMs);
+}
+
+TEST_F(NetEqDecodingTest, DISABLED_ON_ANDROID(LongCngWithoutClockDrift)) {
+  const double kDriftFactor = 1.0;  // No drift.
+  const double kNetworkFreezeTimeMs = 0.0;
+  const bool kGetAudioDuringFreezeRecovery = false;
+  const int kDelayToleranceMs = 10;
+  const int kMaxTimeToSpeechMs = 50;
+  LongCngWithClockDrift(kDriftFactor,
+                        kNetworkFreezeTimeMs,
+                        kGetAudioDuringFreezeRecovery,
+                        kDelayToleranceMs,
+                        kMaxTimeToSpeechMs);
 }
 
 TEST_F(NetEqDecodingTest, DISABLED_ON_ANDROID(UnknownPayloadType)) {
@@ -1144,7 +1268,7 @@ void NetEqDecodingTest::WrapTest(uint16_t start_seq_no,
   NetEqOutputType output_type;
   uint32_t receive_timestamp = 0;
 
-  // Insert speech for 1 second.
+  // Insert speech for 2 seconds.
   const int kSpeechDurationMs = 2000;
   int packets_inserted = 0;
   uint16_t last_seq_no;
@@ -1230,4 +1354,81 @@ TEST_F(NetEqDecodingTest, TimestampAndSequenceNumberWrap) {
   WrapTest(0xFFFF - 10, 0xFFFFFFFF - 5000, drop_seq_numbers, true, true);
 }
 
+void NetEqDecodingTest::DuplicateCng() {
+  uint16_t seq_no = 0;
+  uint32_t timestamp = 0;
+  const int kFrameSizeMs = 10;
+  const int kSampleRateKhz = 16;
+  const int kSamples = kFrameSizeMs * kSampleRateKhz;
+  const int kPayloadBytes = kSamples * 2;
+
+  // Insert three speech packet. Three are needed to get the frame length
+  // correct.
+  int out_len;
+  int num_channels;
+  NetEqOutputType type;
+  uint8_t payload[kPayloadBytes] = {0};
+  WebRtcRTPHeader rtp_info;
+  for (int i = 0; i < 3; ++i) {
+    PopulateRtpInfo(seq_no, timestamp, &rtp_info);
+    ASSERT_EQ(0, neteq_->InsertPacket(rtp_info, payload, kPayloadBytes, 0));
+    ++seq_no;
+    timestamp += kSamples;
+
+    // Pull audio once.
+    ASSERT_EQ(0,
+              neteq_->GetAudio(
+                  kMaxBlockSize, out_data_, &out_len, &num_channels, &type));
+    ASSERT_EQ(kBlockSize16kHz, out_len);
+  }
+  // Verify speech output.
+  EXPECT_EQ(kOutputNormal, type);
+
+  // Insert same CNG packet twice.
+  const int kCngPeriodMs = 100;
+  const int kCngPeriodSamples = kCngPeriodMs * kSampleRateKhz;
+  int payload_len;
+  PopulateCng(seq_no, timestamp, &rtp_info, payload, &payload_len);
+  // This is the first time this CNG packet is inserted.
+  ASSERT_EQ(0, neteq_->InsertPacket(rtp_info, payload, payload_len, 0));
+
+  // Pull audio once and make sure CNG is played.
+  ASSERT_EQ(0,
+            neteq_->GetAudio(
+                kMaxBlockSize, out_data_, &out_len, &num_channels, &type));
+  ASSERT_EQ(kBlockSize16kHz, out_len);
+  EXPECT_EQ(kOutputCNG, type);
+  EXPECT_EQ(timestamp - 10, neteq_->PlayoutTimestamp());
+
+  // Insert the same CNG packet again. Note that at this point it is old, since
+  // we have already decoded the first copy of it.
+  ASSERT_EQ(0, neteq_->InsertPacket(rtp_info, payload, payload_len, 0));
+
+  // Pull audio until we have played |kCngPeriodMs| of CNG. Start at 10 ms since
+  // we have already pulled out CNG once.
+  for (int cng_time_ms = 10; cng_time_ms < kCngPeriodMs; cng_time_ms += 10) {
+    ASSERT_EQ(0,
+              neteq_->GetAudio(
+                  kMaxBlockSize, out_data_, &out_len, &num_channels, &type));
+    ASSERT_EQ(kBlockSize16kHz, out_len);
+    EXPECT_EQ(kOutputCNG, type);
+    EXPECT_EQ(timestamp - 10, neteq_->PlayoutTimestamp());
+  }
+
+  // Insert speech again.
+  ++seq_no;
+  timestamp += kCngPeriodSamples;
+  PopulateRtpInfo(seq_no, timestamp, &rtp_info);
+  ASSERT_EQ(0, neteq_->InsertPacket(rtp_info, payload, kPayloadBytes, 0));
+
+  // Pull audio once and verify that the output is speech again.
+  ASSERT_EQ(0,
+            neteq_->GetAudio(
+                kMaxBlockSize, out_data_, &out_len, &num_channels, &type));
+  ASSERT_EQ(kBlockSize16kHz, out_len);
+  EXPECT_EQ(kOutputNormal, type);
+  EXPECT_EQ(timestamp + kSamples - 10, neteq_->PlayoutTimestamp());
+}
+
+TEST_F(NetEqDecodingTest, DiscardDuplicateCng) { DuplicateCng(); }
 }  // namespace webrtc

@@ -90,6 +90,8 @@ class MediaConstraintsInterface {
   // googTemporalLayeredScreencast
   static const char kTemporalLayeredScreencast[];
   static const char kCpuOveruseDetection[];
+  static const char kCpuUnderuseThreshold[];
+  static const char kCpuOveruseThreshold[];
 
   // Constraint keys for CreateOffer / CreateAnswer
   // Specified by the W3C PeerConnection spec
@@ -112,6 +114,8 @@ class MediaConstraintsInterface {
   static const char kEnableDscp[];
   // Constraint to enable IPv6 through JS.
   static const char kEnableIPv6[];
+  // Temporary constraint to enable suspend below min bitrate feature.
+  static const char kEnableVideoSuspendBelowMinBitrate[];
 
   // The prefix of internal-only constraints whose JS set values should be
   // stripped by Chrome before passed down to Libjingle.

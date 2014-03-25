@@ -79,6 +79,7 @@ using webrtc::MockCreateSessionDescriptionObserver;
 using webrtc::MockDataChannelObserver;
 using webrtc::MockSetSessionDescriptionObserver;
 using webrtc::MockStatsObserver;
+using webrtc::PeerConnectionInterface;
 using webrtc::SessionDescriptionInterface;
 using webrtc::StreamCollectionInterface;
 
@@ -328,7 +329,8 @@ class PeerConnectionTestClientBase
   int GetAudioOutputLevelStats(webrtc::MediaStreamTrackInterface* track) {
     talk_base::scoped_refptr<MockStatsObserver>
         observer(new talk_base::RefCountedObject<MockStatsObserver>());
-    EXPECT_TRUE(peer_connection_->GetStats(observer, track));
+    EXPECT_TRUE(peer_connection_->GetStats(
+        observer, track, PeerConnectionInterface::kStatsOutputLevelStandard));
     EXPECT_TRUE_WAIT(observer->called(), kMaxWaitMs);
     return observer->AudioOutputLevel();
   }
@@ -336,7 +338,8 @@ class PeerConnectionTestClientBase
   int GetAudioInputLevelStats() {
     talk_base::scoped_refptr<MockStatsObserver>
         observer(new talk_base::RefCountedObject<MockStatsObserver>());
-    EXPECT_TRUE(peer_connection_->GetStats(observer, NULL));
+    EXPECT_TRUE(peer_connection_->GetStats(
+        observer, NULL, PeerConnectionInterface::kStatsOutputLevelStandard));
     EXPECT_TRUE_WAIT(observer->called(), kMaxWaitMs);
     return observer->AudioInputLevel();
   }
@@ -344,7 +347,8 @@ class PeerConnectionTestClientBase
   int GetBytesReceivedStats(webrtc::MediaStreamTrackInterface* track) {
     talk_base::scoped_refptr<MockStatsObserver>
     observer(new talk_base::RefCountedObject<MockStatsObserver>());
-    EXPECT_TRUE(peer_connection_->GetStats(observer, track));
+    EXPECT_TRUE(peer_connection_->GetStats(
+        observer, track, PeerConnectionInterface::kStatsOutputLevelStandard));
     EXPECT_TRUE_WAIT(observer->called(), kMaxWaitMs);
     return observer->BytesReceived();
   }
@@ -352,7 +356,8 @@ class PeerConnectionTestClientBase
   int GetBytesSentStats(webrtc::MediaStreamTrackInterface* track) {
     talk_base::scoped_refptr<MockStatsObserver>
     observer(new talk_base::RefCountedObject<MockStatsObserver>());
-    EXPECT_TRUE(peer_connection_->GetStats(observer, track));
+    EXPECT_TRUE(peer_connection_->GetStats(
+        observer, track, PeerConnectionInterface::kStatsOutputLevelStandard));
     EXPECT_TRUE_WAIT(observer->called(), kMaxWaitMs);
     return observer->BytesSent();
   }
@@ -1088,32 +1093,6 @@ TEST_F(JsepPeerConnectionP2PTestClient, LocalP2PTestDtlsRenegotiate) {
   LocalP2PTest();
   receiving_client()->SetReceiveAudioVideo(true, true);
   receiving_client()->Negotiate();
-}
-
-// This test sets up a call between an endpoint configured to use either SDES or
-// DTLS (the offerer) and just SDES (the answerer). As a result, SDES is used
-// instead of DTLS.
-TEST_F(JsepPeerConnectionP2PTestClient, LocalP2PTestOfferDtlsToSdes) {
-  MAYBE_SKIP_TEST(talk_base::SSLStreamAdapter::HaveDtlsSrtp);
-  FakeConstraints setup_constraints;
-  setup_constraints.AddMandatory(MediaConstraintsInterface::kEnableDtlsSrtp,
-                                 true);
-  ASSERT_TRUE(CreateTestClients(&setup_constraints, NULL));
-  LocalP2PTest();
-  VerifyRenderedSize(640, 480);
-}
-
-// This test sets up a call between an endpoint configured to use SDES
-// (the offerer) and either SDES or DTLS (the answerer). As a result, SDES is
-// used instead of DTLS.
-TEST_F(JsepPeerConnectionP2PTestClient, LocalP2PTestOfferSdesToDtls) {
-  MAYBE_SKIP_TEST(talk_base::SSLStreamAdapter::HaveDtlsSrtp);
-  FakeConstraints setup_constraints;
-  setup_constraints.AddMandatory(MediaConstraintsInterface::kEnableDtlsSrtp,
-                                 true);
-  ASSERT_TRUE(CreateTestClients(NULL, &setup_constraints));
-  LocalP2PTest();
-  VerifyRenderedSize(640, 480);
 }
 
 // This test sets up a call between two endpoints that are configured to use

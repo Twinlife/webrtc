@@ -11,7 +11,7 @@ vars = {
   "googlecode_url": "http://%s.googlecode.com/svn",
   "sourceforge_url": "http://svn.code.sf.net/p/%(repo)s/code",
   "chromium_trunk" : "http://src.chromium.org/svn/trunk",
-  "chromium_revision": "249215",
+  "chromium_revision": "255773",
 
   # A small subset of WebKit is needed for the Android Python test framework.
   "webkit_trunk": "http://src.chromium.org/blink/trunk",
@@ -78,19 +78,19 @@ deps = {
     From("chromium_deps", "src/third_party/libsrtp"),
 
   "third_party/libvpx":
-    Var("chromium_trunk") + "/deps/third_party/libvpx@248011",
+    Var("chromium_trunk") + "/deps/third_party/libvpx@258445",
 
   "third_party/libyuv":
-    (Var("googlecode_url") % "libyuv") + "/trunk@979",
+    (Var("googlecode_url") % "libyuv") + "/trunk@985",
 
   "third_party/opus":
-    Var("chromium_trunk") + "/src/third_party/opus@245176",
+    Var("chromium_trunk") + "/src/third_party/opus@258909",
 
   "third_party/opus/src":
-    Var("chromium_trunk") + "/deps/third_party/opus@239448",
+    Var("chromium_trunk") + "/deps/third_party/opus@256783",
 
   "third_party/protobuf":
-    Var("chromium_trunk") + "/src/third_party/protobuf@" + Var("chromium_revision"),
+    Var("chromium_trunk") + "/src/third_party/protobuf@251211",
 
   "third_party/sqlite/":
     Var("chromium_trunk") + "/src/third_party/sqlite@" + Var("chromium_revision"),
@@ -152,6 +152,9 @@ deps_os = {
     # SyzyASan to make it possible to run tests under ASan on Windows.
     "third_party/syzygy/binaries":
       From("chromium_deps", "src/third_party/syzygy/binaries"),
+
+    "tools/find_depot_tools":
+      File(Var("chromium_trunk") + "/src/tools/find_depot_tools.py@" + Var("chromium_revision")),
   },
 
   "mac": {
@@ -307,6 +310,7 @@ hooks = [
   },
   {
     # A change to a .gyp, .gypi, or to GYP itself should run the generator.
+    "name": "gyp",
     "pattern": ".",
     "action": ["python", Var("root_dir") + "/webrtc/build/gyp_webrtc",
                Var("extra_gyp_flag")],

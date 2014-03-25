@@ -11,9 +11,10 @@
 #ifndef WEBRTC_MODULES_REMOTE_BITRATE_ESTIMATOR_TEST_BWE_TEST_FRAMEWORK_H_
 #define WEBRTC_MODULES_REMOTE_BITRATE_ESTIMATOR_TEST_BWE_TEST_FRAMEWORK_H_
 
+#include <assert.h>
+#include <math.h>
+
 #include <algorithm>
-#include <cassert>
-#include <cmath>
 #include <list>
 #include <numeric>
 #include <string>
@@ -27,6 +28,7 @@ namespace webrtc {
 namespace testing {
 namespace bwe {
 
+class DelayCapHelper;
 class RateCounter;
 
 template<typename T> class Stats {
@@ -71,7 +73,7 @@ template<typename T> class Stats {
     return variance_;
   }
   T GetStdDev() {
-    return std::sqrt(static_cast<double>(GetVariance()));
+    return sqrt(static_cast<double>(GetVariance()));
   }
   T GetMin() {
     RefreshMinMax();
@@ -280,16 +282,18 @@ class ReorderFilter : public PacketProcessor {
 class ChokeFilter : public PacketProcessor {
  public:
   explicit ChokeFilter(PacketProcessorListener* listener);
-  virtual ~ChokeFilter() {}
+  virtual ~ChokeFilter();
 
   void SetCapacity(uint32_t kbps);
-  void SetMaxDelay(int64_t max_delay_ms);
+  void SetMaxDelay(int max_delay_ms);
   virtual void RunFor(int64_t time_ms, Packets* in_out);
+
+  Stats<double> GetDelayStats() const;
 
  private:
   uint32_t kbps_;
-  int64_t max_delay_us_;
   int64_t last_send_time_us_;
+  scoped_ptr<DelayCapHelper> delay_cap_helper_;
 
   DISALLOW_IMPLICIT_CONSTRUCTORS(ChokeFilter);
 };
@@ -308,15 +312,20 @@ class TraceBasedDeliveryFilter : public PacketProcessor {
   virtual void Plot(int64_t timestamp_ms);
   virtual void RunFor(int64_t time_ms, Packets* in_out);
 
+  void SetMaxDelay(int max_delay_ms);
+  Stats<double> GetDelayStats() const;
+
  private:
   void ProceedToNextSlot();
 
   typedef std::vector<int64_t> TimeList;
+  int64_t current_offset_us_;
   TimeList delivery_times_us_;
   TimeList::const_iterator next_delivery_it_;
   int64_t local_time_us_;
   scoped_ptr<RateCounter> rate_counter_;
   std::string name_;
+  scoped_ptr<DelayCapHelper> delay_cap_helper_;
 
   DISALLOW_COPY_AND_ASSIGN(TraceBasedDeliveryFilter);
 };

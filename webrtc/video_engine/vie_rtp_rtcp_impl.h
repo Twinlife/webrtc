@@ -90,6 +90,8 @@ class ViERTP_RTCPImpl
                                                int id);
   virtual int SetRtcpXrRrtrStatus(int video_channel, bool enable);
   virtual int SetTransmissionSmoothingStatus(int video_channel, bool enable);
+  virtual int SetMinTransmitBitrate(int video_channel,
+                                    int min_transmit_bitrate_kbps);
   virtual int GetReceiveChannelRtcpStatistics(const int video_channel,
                                               RtcpStatistics& basic_stats,
                                               int& rtt_ms) const;
@@ -116,6 +118,8 @@ class ViERTP_RTCPImpl
       unsigned int* estimated_bandwidth) const;
   virtual int GetReceiveBandwidthEstimatorStats(
       const int video_channel, ReceiveBandwidthEstimatorStats* output) const;
+  virtual int GetPacerQueuingDelayMs(const int video_channel,
+                                     int* delay_ms) const;
   virtual int StartRTPDump(const int video_channel,
                            const char file_nameUTF8[1024],
                            RTPDirections direction);
