@@ -179,7 +179,7 @@ public class AppRTCDemoActivity extends Activity
   private static void createDataChannelToRegressionTestBug2302(
       PeerConnection pc) {
     DataChannel dc = pc.createDataChannel("dcLabel", new DataChannel.Init());
-    abortUnless("dcLabel".equals(dc.label()), "WTF?");
+    abortUnless("dcLabel".equals(dc.label()), "Unexpected label corruption?");
     dc.close();
     dc.dispose();
   }
@@ -312,7 +312,7 @@ public class AppRTCDemoActivity extends Activity
 
   // Mangle SDP to prefer ISAC/16000 over any other audio codec.
   private String preferISAC(String sdpDescription) {
-    String[] lines = sdpDescription.split("\n");
+    String[] lines = sdpDescription.split("\r\n");
     int mLineIndex = -1;
     String isac16kRtpMap = null;
     Pattern isac16kPattern =
@@ -345,16 +345,16 @@ public class AppRTCDemoActivity extends Activity
     newMLine.append(origMLineParts[origPartIndex++]).append(" ");
     newMLine.append(origMLineParts[origPartIndex++]).append(" ");
     newMLine.append(origMLineParts[origPartIndex++]).append(" ");
-    newMLine.append(isac16kRtpMap).append(" ");
+    newMLine.append(isac16kRtpMap);
     for (; origPartIndex < origMLineParts.length; ++origPartIndex) {
       if (!origMLineParts[origPartIndex].equals(isac16kRtpMap)) {
-        newMLine.append(origMLineParts[origPartIndex]).append(" ");
+        newMLine.append(" ").append(origMLineParts[origPartIndex]);
       }
     }
     lines[mLineIndex] = newMLine.toString();
     StringBuilder newSdpDescription = new StringBuilder();
     for (String line : lines) {
-      newSdpDescription.append(line).append("\n");
+      newSdpDescription.append(line).append("\r\n");
     }
     return newSdpDescription.toString();
   }

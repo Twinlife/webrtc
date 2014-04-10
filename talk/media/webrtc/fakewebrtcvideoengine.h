@@ -244,10 +244,6 @@ class FakeWebRtcVideoEncoderFactory : public WebRtcVideoEncoderFactory {
       (*it)->OnCodecsAvailable();
   }
 
-  int GetNumCreatedEncoders() {
-    return num_created_encoders_;
-  }
-
   const std::vector<FakeWebRtcVideoEncoder*>& encoders() {
     return encoders_;
   }
@@ -304,6 +300,9 @@ class FakeWebRtcVideoEngine
           overuse_observer_(NULL) {
       ssrcs_[0] = 0;  // default ssrc.
       memset(&send_codec, 0, sizeof(send_codec));
+#ifdef USE_WEBRTC_DEV_BRANCH
+      memset(&overuse_options_, 0, sizeof(overuse_options_));
+#endif
     }
     int capture_id_;
     int original_channel_id_;
@@ -342,6 +341,9 @@ class FakeWebRtcVideoEngine
     unsigned int receive_bandwidth_;
     bool suspend_below_min_bitrate_;
     webrtc::CpuOveruseObserver* overuse_observer_;
+#ifdef USE_WEBRTC_DEV_BRANCH
+    webrtc::CpuOveruseOptions overuse_options_;
+#endif
   };
   class Capturer : public webrtc::ViEExternalCapture {
    public:
@@ -431,7 +433,7 @@ class FakeWebRtcVideoEngine
   void set_fail_alloc_capturer(bool fail_alloc_capturer) {
     fail_alloc_capturer_ = fail_alloc_capturer;
   }
-  int num_set_send_codecs() const { return num_set_send_codecs_; }
+  int GetNumSetSendCodecs() const { return num_set_send_codecs_; }
 
   int GetCaptureId(int channel) const {
     WEBRTC_ASSERT_CHANNEL(channel);
@@ -543,6 +545,12 @@ class FakeWebRtcVideoEngine
     WEBRTC_ASSERT_CHANNEL(channel);
     return channels_.find(channel)->second->overuse_observer_;
   }
+#ifdef USE_WEBRTC_DEV_BRANCH
+  webrtc::CpuOveruseOptions GetCpuOveruseOptions(int channel) const {
+    WEBRTC_ASSERT_CHANNEL(channel);
+    return channels_.find(channel)->second->overuse_options_;
+  }
+#endif
   int GetRtxSsrc(int channel, int simulcast_idx) const {
     WEBRTC_ASSERT_CHANNEL(channel);
     if (channels_.find(channel)->second->rtx_ssrcs_.find(simulcast_idx) ==
@@ -670,6 +678,14 @@ class FakeWebRtcVideoEngine
     return 0;
   }
   WEBRTC_STUB(CpuOveruseMeasures, (int, int*, int*, int*, int*));
+#ifdef USE_WEBRTC_DEV_BRANCH
+  WEBRTC_FUNC(SetCpuOveruseOptions,
+      (int channel, const webrtc::CpuOveruseOptions& options)) {
+    WEBRTC_CHECK_CHANNEL(channel);
+    channels_[channel]->overuse_options_ = options;
+    return 0;
+  }
+#endif
   WEBRTC_STUB(ConnectAudioChannel, (const int, const int));
   WEBRTC_STUB(DisconnectAudioChannel, (const int));
   WEBRTC_FUNC(StartSend, (const int channel)) {

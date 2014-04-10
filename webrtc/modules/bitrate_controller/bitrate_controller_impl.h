@@ -44,6 +44,7 @@ class BitrateControllerImpl : public BitrateController {
   virtual void RemoveBitrateObserver(BitrateObserver* observer) OVERRIDE;
 
   virtual void EnforceMinBitrate(bool enforce_min_bitrate) OVERRIDE;
+  virtual void SetReservedBitrate(uint32_t reserved_bitrate_bps) OVERRIDE;
 
   virtual int32_t TimeUntilNextProcess() OVERRIDE;
   virtual int32_t Process() OVERRIDE;
@@ -118,11 +119,16 @@ class BitrateControllerImpl : public BitrateController {
   SendSideBandwidthEstimation bandwidth_estimation_ GUARDED_BY(*critsect_);
   BitrateObserverConfList bitrate_observers_ GUARDED_BY(*critsect_);
   bool enforce_min_bitrate_ GUARDED_BY(*critsect_);
+  uint32_t reserved_bitrate_bps_ GUARDED_BY(*critsect_);
+
   uint32_t last_bitrate_bps_ GUARDED_BY(*critsect_);
   uint8_t last_fraction_loss_ GUARDED_BY(*critsect_);
   uint32_t last_rtt_ms_ GUARDED_BY(*critsect_);
   bool last_enforce_min_bitrate_ GUARDED_BY(*critsect_);
   bool bitrate_observers_modified_ GUARDED_BY(*critsect_);
+  uint32_t last_reserved_bitrate_bps_ GUARDED_BY(*critsect_);
+
+  DISALLOW_IMPLICIT_CONSTRUCTORS(BitrateControllerImpl);
 };
 }  // namespace webrtc
 #endif  // WEBRTC_MODULES_BITRATE_CONTROLLER_BITRATE_CONTROLLER_IMPL_H_

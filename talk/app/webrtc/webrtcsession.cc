@@ -359,6 +359,23 @@ static std::string MakeTdErrorString(const std::string& desc) {
   return MakeErrorString(kPushDownTDFailed, desc);
 }
 
+// Set |option| to the highest-priority value of |key| in the optional
+// constraints if the key is found and has a valid value.
+static void SetOptionFromOptionalConstraint(
+    const MediaConstraintsInterface* constraints,
+    const std::string& key, cricket::Settable<int>* option) {
+  if (!constraints) {
+    return;
+  }
+  std::string string_value;
+  int value;
+  if (constraints->GetOptional().FindFirst(key, &string_value)) {
+    if (talk_base::FromString(string_value, &value)) {
+      option->Set(value);
+    }
+  }
+}
+
 // Help class used to remember if a a remote peer has requested ice restart by
 // by sending a description with new ice ufrag and password.
 class IceRestartAnswerLatch {
@@ -515,6 +532,74 @@ bool WebRtcSession::Initialize(
           &value,
           NULL)) {
     video_options_.suspend_below_min_bitrate.Set(value);
+  }
+
+  if (FindConstraint(
+      constraints,
+      MediaConstraintsInterface::kSkipEncodingUnusedStreams,
+      &value,
+      NULL)) {
+    video_options_.skip_encoding_unused_streams.Set(value);
+  }
+
+  SetOptionFromOptionalConstraint(constraints,
+      MediaConstraintsInterface::kScreencastMinBitrate,
+      &video_options_.screencast_min_bitrate);
+
+  // Find constraints for cpu overuse detection.
+  SetOptionFromOptionalConstraint(constraints,
+      MediaConstraintsInterface::kCpuUnderuseThreshold,
+      &video_options_.cpu_underuse_threshold);
+  SetOptionFromOptionalConstraint(constraints,
+      MediaConstraintsInterface::kCpuOveruseThreshold,
+      &video_options_.cpu_overuse_threshold);
+
+  if (FindConstraint(
+      constraints,
+      MediaConstraintsInterface::kCpuOveruseDetection,
+      &value,
+      NULL)) {
+    video_options_.cpu_overuse_detection.Set(value);
+  }
+  if (FindConstraint(
+      constraints,
+      MediaConstraintsInterface::kCpuOveruseEncodeUsage,
+      &value,
+      NULL)) {
+    video_options_.cpu_overuse_encode_usage.Set(value);
+  }
+
+  // Find improved wifi bwe constraint.
+  if (FindConstraint(
+        constraints,
+        MediaConstraintsInterface::kImprovedWifiBwe,
+        &value,
+        NULL)) {
+    video_options_.use_improved_wifi_bandwidth_estimator.Set(value);
+  }
+
+  if (FindConstraint(
+        constraints,
+        MediaConstraintsInterface::kHighStartBitrate,
+        &value,
+        NULL)) {
+    video_options_.video_start_bitrate.Set(cricket::kHighStartBitrate);
+  }
+
+  if (FindConstraint(
+      constraints,
+      MediaConstraintsInterface::kVeryHighBitrate,
+      &value,
+      NULL)) {
+    video_options_.video_highest_bitrate.Set(
+        cricket::VideoOptions::VERY_HIGH);
+  } else if (FindConstraint(
+      constraints,
+      MediaConstraintsInterface::kHighBitrate,
+      &value,
+      NULL)) {
+    video_options_.video_highest_bitrate.Set(
+        cricket::VideoOptions::HIGH);
   }
 
   const cricket::VideoCodec default_codec(
@@ -1312,7 +1397,9 @@ bool WebRtcSession::UseCandidate(
     }
     // TODO(bemasc): If state is Completed, go back to Connected.
   } else {
-    LOG(LS_WARNING) << error;
+    if (!error.empty()) {
+      LOG(LS_WARNING) << error;
+    }
   }
   return true;
 }

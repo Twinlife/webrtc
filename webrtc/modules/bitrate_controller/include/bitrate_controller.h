@@ -75,6 +75,8 @@ class BitrateController : public Module {
 
   // Changes the mode that was set in the constructor.
   virtual void EnforceMinBitrate(bool enforce_min_bitrate) = 0;
+
+  virtual void SetReservedBitrate(uint32_t reserved_bitrate_bps) = 0;
 };
 }  // namespace webrtc
 #endif  // WEBRTC_MODULES_BITRATE_CONTROLLER_INCLUDE_BITRATE_CONTROLLER_H_
