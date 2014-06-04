@@ -11,7 +11,7 @@ vars = {
   "googlecode_url": "http://%s.googlecode.com/svn",
   "sourceforge_url": "http://svn.code.sf.net/p/%(repo)s/code",
   "chromium_trunk" : "http://src.chromium.org/svn/trunk",
-  "chromium_revision": "260462",
+  "chromium_revision": "266514",
 
   # A small subset of WebKit is needed for the Android Python test framework.
   "webkit_trunk": "http://src.chromium.org/blink/trunk",
@@ -42,6 +42,9 @@ deps = {
   "testing/gtest":
     From("chromium_deps", "src/testing/gtest"),
 
+  "third_party/binutils":
+    Var("chromium_trunk") + "/src/third_party/binutils@" + Var("chromium_revision"),
+
   "third_party/clang_format":
     Var("chromium_trunk") + "/src/third_party/clang_format@" + Var("chromium_revision"),
 
@@ -68,6 +71,21 @@ deps = {
   "third_party/junit/":
     (Var("googlecode_url") % "webrtc") + "/deps/third_party/junit@3367",
 
+  "third_party/libc++":
+    Var("chromium_trunk") + "/src/third_party/libc++@" + Var("chromium_revision"),
+
+  "third_party/libc++/trunk":
+    From("chromium_deps", "src/third_party/libc++/trunk"),
+
+  "third_party/libc++abi":
+    Var("chromium_trunk") + "/src/third_party/libc++abi@" + Var("chromium_revision"),
+
+  "third_party/libc++abi/trunk":
+    From("chromium_deps", "src/third_party/libc++abi/trunk"),
+
+  "third_party/openmax_dl/":
+    (Var("googlecode_url") % "webrtc") + "/deps/third_party/openmax@6096",
+
   "third_party/libjpeg":
     Var("chromium_trunk") + "/src/third_party/libjpeg@" + Var("chromium_revision"),
 
@@ -78,13 +96,13 @@ deps = {
     From("chromium_deps", "src/third_party/libsrtp"),
 
   "third_party/libvpx":
-    Var("chromium_trunk") + "/deps/third_party/libvpx@259973",
+    Var("chromium_trunk") + "/deps/third_party/libvpx@267596",
 
   "third_party/libyuv":
-    (Var("googlecode_url") % "libyuv") + "/trunk@994",
+    (Var("googlecode_url") % "libyuv") + "/trunk@1000",
 
   "third_party/opus":
-    Var("chromium_trunk") + "/src/third_party/opus@258909",
+    Var("chromium_trunk") + "/src/third_party/opus@266564",
 
   "third_party/opus/src":
     Var("chromium_trunk") + "/deps/third_party/opus@256783",
@@ -161,6 +179,12 @@ deps_os = {
     # NSS, for SSLClientSocketNSS.
     "third_party/nss":
       From("chromium_deps", "src/third_party/nss"),
+
+    # TODO(kjellander): remove once bug 2152 is fixed.
+    # This needs to specify the path directly (instead of using the
+    # chromium_deps version) because chromium_deps only defines this for ios.
+    "testing/iossim/third_party/class-dump":
+      Var("chromium_trunk") + "/deps/third_party/class-dump@199203",
   },
 
   "ios": {
@@ -175,11 +199,6 @@ deps_os = {
     # Helper for running under the simulator.
     "testing/iossim":
       Var("chromium_trunk") + "/src/testing/iossim@" + Var("chromium_revision"),
-  },
-
-  "unix": {
-    "third_party/gold":
-      From("chromium_deps", "src/third_party/gold"),
   },
 
   "android": {
@@ -295,6 +314,20 @@ hooks = [
     "pattern": ".",
     "action": ["python", Var("root_dir") + "/tools/clang/scripts/update.py",
                "--if-needed"],
+  },
+  {
+    # Update the Windows toolchain if necessary.
+    "name": "win_toolchain",
+    "pattern": ".",
+    "action": ["python",
+               Var("root_dir") + "/webrtc/build/download_vs_toolchain.py",
+               "update"],
+  },
+  {
+    # Pull binutils for gold.
+    "name": "binutils",
+    "pattern": ".",
+    "action": ["python", Var("root_dir") + "/third_party/binutils/download.py"],
   },
   {
     # Download test resources, i.e. video and audio files from Google Storage.

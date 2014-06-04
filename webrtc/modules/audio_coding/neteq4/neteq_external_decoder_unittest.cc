@@ -45,13 +45,15 @@ class NetEqExternalDecoderTest : public ::testing::Test {
         frame_size_ms_(10),
         frame_size_samples_(frame_size_ms_ * samples_per_ms_),
         output_size_samples_(frame_size_ms_ * samples_per_ms_),
-        neteq_external_(NetEq::Create(sample_rate_hz_)),
-        neteq_(NetEq::Create(sample_rate_hz_)),
         external_decoder_(new MockExternalPcm16B(kDecoderPCM16Bswb32kHz)),
         rtp_generator_(samples_per_ms_),
         payload_size_bytes_(0),
         last_send_time_(0),
         last_arrival_time_(0) {
+    NetEq::Config config;
+    config.sample_rate_hz = sample_rate_hz_;
+    neteq_external_ = NetEq::Create(config);
+    neteq_ = NetEq::Create(config);
     input_ = new int16_t[frame_size_samples_];
     encoded_ = new uint8_t[2 * frame_size_samples_];
   }
@@ -78,7 +80,6 @@ class NetEqExternalDecoderTest : public ::testing::Test {
     ASSERT_EQ(NetEq::kOK,
               neteq_external_->RegisterExternalDecoder(external_decoder_,
                                                        decoder,
-                                                       sample_rate_hz_,
                                                        kPayloadType));
     ASSERT_EQ(NetEq::kOK,
               neteq_->RegisterPayloadType(decoder, kPayloadType));
@@ -202,7 +203,7 @@ class NetEqExternalDecoderTest : public ::testing::Test {
   scoped_ptr<test::InputAudioFile> input_file_;
 };
 
-TEST_F(NetEqExternalDecoderTest, DISABLED_ON_ANDROID(RunTest)) {
+TEST_F(NetEqExternalDecoderTest, RunTest) {
   RunTest(100);  // Run 100 laps @ 10 ms each in the test loop.
 }
 

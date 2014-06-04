@@ -10,6 +10,7 @@
 
 #include "webrtc/video/video_send_stream.h"
 
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -25,8 +26,100 @@
 #include "webrtc/video_send_stream.h"
 
 namespace webrtc {
-namespace internal {
+std::string
+VideoSendStream::Config::EncoderSettings::ToString() const {
+  std::stringstream ss;
+  ss << "{payload_name: " << payload_name;
+  ss << ", payload_type: " << payload_type;
+  if (encoder != NULL)
+    ss << ", (encoder)";
+  if (encoder_settings != NULL)
+    ss << ", (encoder_settings)";
 
+  ss << ", streams: {";
+  for (size_t i = 0; i < streams.size(); ++i) {
+    ss << streams[i].ToString();
+    if (i != streams.size() - 1)
+      ss << "}, {";
+  }
+  ss << '}';
+
+  ss << '}';
+  return ss.str();
+}
+
+std::string VideoSendStream::Config::Rtp::Rtx::ToString()
+    const {
+  std::stringstream ss;
+  ss << "{ssrcs: {";
+  for (size_t i = 0; i < ssrcs.size(); ++i) {
+    ss << ssrcs[i];
+    if (i != ssrcs.size() - 1)
+      ss << "}, {";
+  }
+  ss << '}';
+
+  ss << ", payload_type: " << payload_type;
+  ss << '}';
+  return ss.str();
+}
+
+std::string VideoSendStream::Config::Rtp::ToString() const {
+  std::stringstream ss;
+  ss << "{ssrcs: {";
+  for (size_t i = 0; i < ssrcs.size(); ++i) {
+    ss << ssrcs[i];
+    if (i != ssrcs.size() - 1)
+      ss << "}, {";
+  }
+  ss << '}';
+
+  ss << ", max_packet_size: " << max_packet_size;
+  if (min_transmit_bitrate_bps != 0)
+    ss << ", min_transmit_bitrate_bps: " << min_transmit_bitrate_bps;
+
+  ss << ", extensions: {";
+  for (size_t i = 0; i < extensions.size(); ++i) {
+    ss << extensions[i].ToString();
+    if (i != extensions.size() - 1)
+      ss << "}, {";
+  }
+  ss << '}';
+
+  if (nack.rtp_history_ms != 0)
+    ss << ", nack.rtp_history_ms: " << nack.rtp_history_ms;
+  if (fec.ulpfec_payload_type != -1 || fec.red_payload_type != -1)
+    ss << ", fec: " << fec.ToString();
+  if (rtx.payload_type != 0 || !rtx.ssrcs.empty())
+    ss << ", rtx: " << rtx.ToString();
+  if (c_name != "")
+    ss << ", c_name: " << c_name;
+  ss << '}';
+  return ss.str();
+}
+
+std::string VideoSendStream::Config::ToString() const {
+  std::stringstream ss;
+  ss << "{encoder_settings: " << encoder_settings.ToString();
+  ss << ", rtp: " << rtp.ToString();
+  if (pre_encode_callback != NULL)
+    ss << ", (pre_encode_callback)";
+  if (post_encode_callback != NULL)
+    ss << ", (post_encode_callback)";
+  if (local_renderer != NULL) {
+    ss << ", (local_renderer, render_delay_ms: " << render_delay_ms << ")";
+  }
+  if (target_delay_ms > 0)
+    ss << ", target_delay_ms: " << target_delay_ms;
+  if (pacing)
+    ss << ", pacing: on";
+  if (suspend_below_min_bitrate)
+    ss << ", suspend_below_min_bitrate: on";
+  ss << '}';
+  return ss.str();
+}
+
+namespace internal {
 VideoSendStream::VideoSendStream(newapi::Transport* transport,
                                  CpuOveruseObserver* overuse_observer,
                                  webrtc::VideoEngine* video_engine,
@@ -37,7 +130,8 @@ VideoSendStream::VideoSendStream(newapi::Transport* transport,
       codec_lock_(CriticalSectionWrapper::CreateCriticalSection()),
       config_(config),
       external_codec_(NULL),
-      channel_(-1) {
+      channel_(-1),
+      stats_proxy_(new SendStatisticsProxy(config, this)) {
   video_engine_base_ = ViEBase::GetInterface(video_engine);
   video_engine_base_->CreateChannel(channel_, base_channel);
   assert(channel_ != -1);
@@ -142,8 +236,6 @@ VideoSendStream::VideoSendStream(newapi::Transport* transport,
     codec_->SuspendBelowMinBitrate(channel_);
   }
 
-  stats_proxy_.reset(new SendStatisticsProxy(config, this));
-
   rtp_rtcp_->RegisterSendChannelRtcpStatisticsCallback(channel_,
                                                        stats_proxy_.get());
   rtp_rtcp_->RegisterSendChannelRtpStatisticsCallback(channel_,
@@ -210,13 +302,13 @@ void VideoSendStream::SwapFrame(I420VideoFrame* frame) {
 
 VideoSendStreamInput* VideoSendStream::Input() { return this; }
 
-void VideoSendStream::StartSending() {
+void VideoSendStream::Start() {
   transport_adapter_.Enable();
   video_engine_base_->StartSend(channel_);
   video_engine_base_->StartReceive(channel_);
 }
 
-void VideoSendStream::StopSending() {
+void VideoSendStream::Stop() {
   video_engine_base_->StopSend(channel_);
   video_engine_base_->StopReceive(channel_);
   transport_adapter_.Disable();

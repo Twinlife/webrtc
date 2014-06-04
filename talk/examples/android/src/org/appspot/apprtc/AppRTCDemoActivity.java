@@ -31,13 +31,18 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.graphics.Color;
 import android.graphics.Point;
 import android.media.AudioManager;
 import android.os.Bundle;
 import android.util.Log;
+import android.util.TypedValue;
+import android.view.View;
+import android.view.ViewGroup.LayoutParams;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.widget.EditText;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import org.json.JSONException;
@@ -73,6 +78,7 @@ import java.util.regex.Pattern;
 public class AppRTCDemoActivity extends Activity
     implements AppRTCClient.IceServersObserver {
   private static final String TAG = "AppRTCDemoActivity";
+  private static boolean factoryStaticInitialized;
   private PeerConnectionFactory factory;
   private VideoSource videoSource;
   private boolean videoSourceStopped;
@@ -83,6 +89,9 @@ public class AppRTCDemoActivity extends Activity
   private AppRTCClient appRtcClient = new AppRTCClient(this, gaeHandler, this);
   private VideoStreamsView vsv;
   private Toast logToast;
+  private final LayoutParams hudLayout =
+      new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+  private TextView hudView;
   private LinkedList<IceCandidate> queuedRemoteCandidates =
       new LinkedList<IceCandidate>();
   // Synchronize on quit[0] to avoid teardown-related crashes.
@@ -102,10 +111,25 @@ public class AppRTCDemoActivity extends Activity
     Point displaySize = new Point();
     getWindowManager().getDefaultDisplay().getSize(displaySize);
     vsv = new VideoStreamsView(this, displaySize);
+    vsv.setOnClickListener(new View.OnClickListener() {
+        @Override public void onClick(View v) {
+          toggleHUD();
+        }
+      });
     setContentView(vsv);
+    hudView = new TextView(this);
+    hudView.setTextColor(Color.BLACK);
+    hudView.setBackgroundColor(Color.WHITE);
+    hudView.setAlpha(0.4f);
+    hudView.setTextSize(TypedValue.COMPLEX_UNIT_PT, 5);
+    addContentView(hudView, hudLayout);
 
-    abortUnless(PeerConnectionFactory.initializeAndroidGlobals(this),
+    if (!factoryStaticInitialized) {
+      abortUnless(PeerConnectionFactory.initializeAndroidGlobals(
+          this, true, true),
         "Failed to initializeAndroidGlobals");
+      factoryStaticInitialized = true;
+    }
 
     AudioManager audioManager =
         ((AudioManager) getSystemService(AUDIO_SERVICE));
@@ -152,6 +176,35 @@ public class AppRTCDemoActivity extends Activity
   private void connectToRoom(String roomUrl) {
     logAndToast("Connecting to room...");
     appRtcClient.connectToRoom(roomUrl);
+  }
+
+  // Toggle visibility of the heads-up display.
+  private void toggleHUD() {
+    if (hudView.getVisibility() == View.VISIBLE) {
+      hudView.setVisibility(View.INVISIBLE);
+    } else {
+      hudView.setVisibility(View.VISIBLE);
+    }
+  }
+
+  // Update the heads-up display with information from |reports|.
+  private void updateHUD(StatsReport[] reports) {
+    if (hudView.getText().length() == 0) {
+      logAndToast("Tap the screen to toggle stats visibility");
+    }
+    StringBuilder builder = new StringBuilder();
+    for (StatsReport report : reports) {
+      if (!report.id.equals("bweforvideo")) {
+        continue;
+      }
+      for (StatsReport.Value value : report.values) {
+        String name = value.name.replace("goog", "").replace("Available", "")
+            .replace("Bandwidth", "").replace("Bitrate", "").replace("Enc", "");
+        builder.append(name).append("=").append(value.value).append(" ");
+      }
+      builder.append("\n");
+    }
+    hudView.setText(builder.toString() + hudView.getText());
   }
 
   @Override
@@ -212,11 +265,16 @@ public class AppRTCDemoActivity extends Activity
               }
               final Runnable runnableThis = this;
               boolean success = finalPC.getStats(new StatsObserver() {
-                  public void onComplete(StatsReport[] reports) {
+                  public void onComplete(final StatsReport[] reports) {
+                    runOnUiThread(new Runnable() {
+                        public void run() {
+                          updateHUD(reports);
+                        }
+                      });
                     for (StatsReport report : reports) {
                       Log.d(TAG, "Stats: " + report.toString());
                     }
-                    vsv.postDelayed(runnableThis, 10000);
+                    vsv.postDelayed(runnableThis, 1000);
                   }
                 }, null);
               if (!success) {
@@ -225,7 +283,7 @@ public class AppRTCDemoActivity extends Activity
             }
           }
         };
-      vsv.postDelayed(repeatedStatsLogger, 10000);
+      vsv.postDelayed(repeatedStatsLogger, 1000);
     }
 
     {
@@ -311,7 +369,7 @@ public class AppRTCDemoActivity extends Activity
   }
 
   // Mangle SDP to prefer ISAC/16000 over any other audio codec.
-  private String preferISAC(String sdpDescription) {
+  private static String preferISAC(String sdpDescription) {
     String[] lines = sdpDescription.split("\r\n");
     int mLineIndex = -1;
     String isac16kRtpMap = null;
@@ -435,24 +493,30 @@ public class AppRTCDemoActivity extends Activity
   // Implementation detail: handle offer creation/signaling and answer setting,
   // as well as adding remote ICE candidates once the answer SDP is set.
   private class SDPObserver implements SdpObserver {
+    private SessionDescription localSdp;
+
     @Override public void onCreateSuccess(final SessionDescription origSdp) {
+      abortUnless(localSdp == null, "multiple SDP create?!?");
+      final SessionDescription sdp = new SessionDescription(
+          origSdp.type, preferISAC(origSdp.description));
+      localSdp = sdp;
       runOnUiThread(new Runnable() {
           public void run() {
-            SessionDescription sdp = new SessionDescription(
-                origSdp.type, preferISAC(origSdp.description));
             pc.setLocalDescription(sdpObserver, sdp);
           }
         });
     }
 
     // Helper for sending local SDP (offer or answer, depending on role) to the
-    // other participant.
-    private void sendLocalDescription(PeerConnection pc) {
-      SessionDescription sdp = pc.getLocalDescription();
-      logAndToast("Sending " + sdp.type);
+    // other participant.  Note that it is important to send the output of
+    // create{Offer,Answer} and not merely the current value of
+    // getLocalDescription() because the latter may include ICE candidates that
+    // we might want to filter elsewhere.
+    private void sendLocalDescription() {
+      logAndToast("Sending " + localSdp.type);
       JSONObject json = new JSONObject();
-      jsonPut(json, "type", sdp.type.canonicalForm());
-      jsonPut(json, "sdp", sdp.description);
+      jsonPut(json, "type", localSdp.type.canonicalForm());
+      jsonPut(json, "sdp", localSdp.description);
       sendMessage(json);
     }
 
@@ -466,7 +530,7 @@ public class AppRTCDemoActivity extends Activity
                 drainRemoteCandidates();
               } else {
                 // We've just set our local description so time to send it.
-                sendLocalDescription(pc);
+                sendLocalDescription();
               }
             } else {
               if (pc.getLocalDescription() == null) {
@@ -476,7 +540,7 @@ public class AppRTCDemoActivity extends Activity
               } else {
                 // Answer now set as local description; send it and drain
                 // candidates.
-                sendLocalDescription(pc);
+                sendLocalDescription();
                 drainRemoteCandidates();
               }
             }

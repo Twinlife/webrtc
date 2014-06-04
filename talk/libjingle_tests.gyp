@@ -104,6 +104,7 @@
     {
       'target_name': 'libjingle_unittest',
       'type': 'executable',
+      'includes': [ 'build/ios_tests.gypi', ],
       'dependencies': [
         'gunit',
         'libjingle.gyp:libjingle',
@@ -299,6 +300,7 @@
         # TODO(ronghuawu): Reenable these tests.
         # 'media/devices/devicemanager_unittest.cc',
         'media/webrtc/webrtcvideoengine_unittest.cc',
+        'media/webrtc/webrtcvideoengine2_unittest.cc',
         'media/webrtc/webrtcvoiceengine_unittest.cc',
       ],
       'conditions': [
@@ -356,6 +358,7 @@
         'p2p/client/connectivitychecker_unittest.cc',
         'p2p/client/fakeportallocator.h',
         'p2p/client/portallocator_unittest.cc',
+        'session/media/bundlefilter_unittest.cc',
         'session/media/channel_unittest.cc',
         'session/media/channelmanager_unittest.cc',
         'session/media/currentspeakermonitor_unittest.cc',
@@ -365,7 +368,6 @@
         'session/media/mediasessionclient_unittest.cc',
         'session/media/rtcpmuxfilter_unittest.cc',
         'session/media/srtpfilter_unittest.cc',
-        'session/media/ssrcmuxfilter_unittest.cc',
       ],
       'conditions': [
         ['OS=="win"', {
@@ -492,11 +494,37 @@
       # does just fine on 10.6 too).
       'targets': [
         {
-        'target_name': 'libjingle_peerconnection_objc_test',
-          'variables': {
-            'infoplist_file': './app/webrtc/objctests/Info.plist',
-          },
+          'target_name': 'libjingle_peerconnection_objc_test',
           'type': 'executable',
+          'includes': [ 'build/ios_tests.gypi', ],
+          'dependencies': [
+            'gunit',
+            'libjingle.gyp:libjingle_peerconnection_objc',
+          ],
+          'sources': [
+            'app/webrtc/objctests/RTCPeerConnectionSyncObserver.h',
+            'app/webrtc/objctests/RTCPeerConnectionSyncObserver.m',
+            'app/webrtc/objctests/RTCPeerConnectionTest.mm',
+            'app/webrtc/objctests/RTCSessionDescriptionSyncObserver.h',
+            'app/webrtc/objctests/RTCSessionDescriptionSyncObserver.m',
+            # TODO(fischman): figure out if this works for ios or if it
+            # needs a GUI driver.
+            'app/webrtc/objctests/mac/main.mm',
+          ],
+          'FRAMEWORK_SEARCH_PATHS': [
+            '$(inherited)',
+            '$(SDKROOT)/Developer/Library/Frameworks',
+            '$(DEVELOPER_LIBRARY_DIR)/Frameworks',
+          ],
+
+          # TODO(fischman): there is duplication here with
+          # build/ios_tests.gypi, because for historical reasons the
+          # mac x64 bots expect this unittest to be in a bundle
+          # directory (.app).  Once the bots don't expect this
+          # anymore, remove this duplication.
+          'variables': {
+            'infoplist_file': 'build/ios_test.plist',
+          },
           'mac_bundle': 1,
           'mac_bundle_resources': [
             '<(infoplist_file)',
@@ -508,31 +536,18 @@
           ],
           'xcode_settings': {
             'CLANG_ENABLE_OBJC_ARC': 'YES',
+            # common.gypi enables this for mac but we want this to be disabled
+            # like it is for ios.
+            'CLANG_WARN_OBJC_MISSING_PROPERTY_SYNTHESIS': 'NO',
             'INFOPLIST_FILE': '<(infoplist_file)',
           },
-          'dependencies': [
-            'gunit',
-            'libjingle.gyp:libjingle_peerconnection_objc',
-          ],
-          'FRAMEWORK_SEARCH_PATHS': [
-            '$(inherited)',
-            '$(SDKROOT)/Developer/Library/Frameworks',
-            '$(DEVELOPER_LIBRARY_DIR)/Frameworks',
-          ],
-          'sources': [
-            'app/webrtc/objctests/RTCPeerConnectionSyncObserver.h',
-            'app/webrtc/objctests/RTCPeerConnectionSyncObserver.m',
-            'app/webrtc/objctests/RTCPeerConnectionTest.mm',
-            'app/webrtc/objctests/RTCSessionDescriptionSyncObserver.h',
-            'app/webrtc/objctests/RTCSessionDescriptionSyncObserver.m',
-          ],
           'conditions': [
-            ['OS=="mac" or OS=="ios"', {
-              'sources': [
-                # TODO(fischman): figure out if this works for ios or if it
-                # needs a GUI driver.
-                'app/webrtc/objctests/mac/main.mm',
-              ],
+            ['OS=="mac"', {
+              'xcode_settings': {
+                # Need to build against 10.7 framework for full ARC support
+                # on OSX.
+                'MACOSX_DEPLOYMENT_TARGET' : '10.7',
+              },
             }],
           ],
         },  # target libjingle_peerconnection_objc_test

@@ -12,6 +12,7 @@ package org.webrtc.videoengine;
 
 import java.io.IOException;
 import java.util.Locale;
+import java.util.concurrent.Exchanger;
 import java.util.concurrent.locks.ReentrantLock;
 
 import android.graphics.ImageFormat;
@@ -19,11 +20,13 @@ import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.graphics.YuvImage;
-import android.hardware.Camera;
 import android.hardware.Camera.PreviewCallback;
+import android.hardware.Camera;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
-import android.view.SurfaceHolder;
 import android.view.SurfaceHolder.Callback;
+import android.view.SurfaceHolder;
 
 // Wrapper for android Camera, with support for direct local preview rendering.
 // Threading notes: this class is called from ViE C++ code, and from Camera &
@@ -37,38 +40,77 @@ import android.view.SurfaceHolder.Callback;
 public class VideoCaptureAndroid implements PreviewCallback, Callback {
   private final static String TAG = "WEBRTC-JC";
 
+  private static SurfaceHolder localPreview;
   private Camera camera;  // Only non-null while capturing.
+  private CameraThread cameraThread;
+  private Handler cameraThreadHandler;
   private final int id;
   private final Camera.CameraInfo info;
   private final long native_capturer;  // |VideoCaptureAndroid*| in C++.
-  private SurfaceHolder localPreview;
   private SurfaceTexture dummySurfaceTexture;
   // Arbitrary queue depth.  Higher number means more memory allocated & held,
   // lower number means more sensitivity to processing time in the client (and
   // potentially stalling the capturer if it runs out of buffers to write to).
   private final int numCaptureBuffers = 3;
 
+  // Requests future capturers to send their frames to |localPreview| directly.
+  public static void setLocalPreview(SurfaceHolder localPreview) {
+    // It is a gross hack that this is a class-static.  Doing it right would
+    // mean plumbing this through the C++ API and using it from
+    // webrtc/examples/android/media_demo's MediaEngine class.
+    VideoCaptureAndroid.localPreview = localPreview;
+  }
+
   public VideoCaptureAndroid(int id, long native_capturer) {
     this.id = id;
     this.native_capturer = native_capturer;
     this.info = new Camera.CameraInfo();
     Camera.getCameraInfo(id, info);
+    Exchanger<Handler> handlerExchanger = new Exchanger<Handler>();
+    cameraThread = new CameraThread(handlerExchanger);
+    cameraThread.start();
+    cameraThreadHandler = exchange(handlerExchanger, null);
+  }
+
+  private class CameraThread extends Thread {
+    private Exchanger<Handler> handlerExchanger;
+    public CameraThread(Exchanger<Handler> handlerExchanger) {
+      this.handlerExchanger = handlerExchanger;
+    }
+
+    @Override public void run() {
+      Looper.prepare();
+      exchange(handlerExchanger, new Handler());
+      Looper.loop();
+    }
   }
 
   // Called by native code.  Returns true if capturer is started.
   //
-  // Note that this actually opens the camera, which can be a slow operation and
-  // thus might be done on a background thread, but ViE API needs a
-  // synchronous success return value so we can't do that.
+  // Note that this actually opens the camera, and Camera callbacks run on the
+  // thread that calls open(), so this is done on the CameraThread.  Since ViE
+  // API needs a synchronous success return value we wait for the result.
   private synchronized boolean startCapture(
-      int width, int height, int min_mfps, int max_mfps) {
+      final int width, final int height,
+      final int min_mfps, final int max_mfps) {
+    final Exchanger<Boolean> result = new Exchanger<Boolean>();
+    cameraThreadHandler.post(new Runnable() {
+        @Override public void run() {
+          startCaptureOnCameraThread(width, height, min_mfps, max_mfps, result);
+        }
+      });
+    return exchange(result, false);  // |false| is a dummy value here.
+  }
+
+  private void startCaptureOnCameraThread(
+      int width, int height, int min_mfps, int max_mfps,
+      Exchanger<Boolean> result) {
     Log.d(TAG, "startCapture: " + width + "x" + height + "@" +
         min_mfps + ":" + max_mfps);
     Throwable error = null;
     try {
       camera = Camera.open(id);
 
-      localPreview = ViERenderer.GetLocalRenderer();
       if (localPreview != null) {
         localPreview.addCallback(this);
         if (localPreview.getSurface() != null &&
@@ -107,7 +149,8 @@ public class VideoCaptureAndroid implements PreviewCallback, Callback {
       }
       camera.setPreviewCallbackWithBuffer(this);
       camera.startPreview();
-      return true;
+      exchange(result, true);
+      return;
     } catch (IOException e) {
       error = e;
     } catch (RuntimeException e) {
@@ -115,13 +158,27 @@ public class VideoCaptureAndroid implements PreviewCallback, Callback {
     }
     Log.e(TAG, "startCapture failed", error);
     if (camera != null) {
-      stopCapture();
+      Exchanger<Boolean> resultDropper = new Exchanger<Boolean>();
+      stopCaptureOnCameraThread(resultDropper);
+      exchange(resultDropper, false);
     }
-    return false;
+    exchange(result, false);
+    return;
   }
 
   // Called by native code.  Returns true when camera is known to be stopped.
   private synchronized boolean stopCapture() {
+    final Exchanger<Boolean> result = new Exchanger<Boolean>();
+    cameraThreadHandler.post(new Runnable() {
+        @Override public void run() {
+          stopCaptureOnCameraThread(result);
+        }
+      });
+    return exchange(result, false);  // |false| is a dummy value here.
+  }
+
+  private void stopCaptureOnCameraThread(
+      Exchanger<Boolean> result) {
     Log.d(TAG, "stopCapture");
     if (camera == null) {
       throw new RuntimeException("Camera is already stopped!");
@@ -138,14 +195,16 @@ public class VideoCaptureAndroid implements PreviewCallback, Callback {
       }
       camera.release();
       camera = null;
-      return true;
+      exchange(result, true);
+      return;
     } catch (IOException e) {
       error = e;
     } catch (RuntimeException e) {
       error = e;
     }
     Log.e(TAG, "Failed to stop camera", error);
-    return false;
+    exchange(result, false);
+    return;
   }
 
   private native void ProvideCameraFrame(
@@ -165,7 +224,15 @@ public class VideoCaptureAndroid implements PreviewCallback, Callback {
   // Sets the rotation of the preview render window.
   // Does not affect the captured video image.
   // Called by native code.
-  private synchronized void setPreviewRotation(int rotation) {
+  private synchronized void setPreviewRotation(final int rotation) {
+    cameraThreadHandler.post(new Runnable() {
+        @Override public void run() {
+          setPreviewRotationOnCameraThread(rotation);
+        }
+      });
+  }
+
+  private void setPreviewRotationOnCameraThread(int rotation) {
     Log.v(TAG, "setPreviewRotation:" + rotation);
 
     if (camera == null) {
@@ -190,14 +257,19 @@ public class VideoCaptureAndroid implements PreviewCallback, Callback {
         format + ": " + width + "x" + height);
   }
 
-  public synchronized void surfaceCreated(SurfaceHolder holder) {
+  public synchronized void surfaceCreated(final SurfaceHolder holder) {
     Log.d(TAG, "VideoCaptureAndroid::surfaceCreated");
     if (camera == null) {
       return;
     }
-    try {
-      camera.setPreviewDisplay(holder);
-    } catch (IOException e) {
+    final Exchanger<IOException> result = new Exchanger<IOException>();
+    cameraThreadHandler.post(new Runnable() {
+        @Override public void run() {
+          setPreviewDisplayOnCameraThread(holder, result);
+        }
+      });
+    IOException e = exchange(result, null);  // |null| is a dummy value here.
+    if (e != null) {
       throw new RuntimeException(e);
     }
   }
@@ -207,9 +279,36 @@ public class VideoCaptureAndroid implements PreviewCallback, Callback {
     if (camera == null) {
       return;
     }
+    final Exchanger<IOException> result = new Exchanger<IOException>();
+    cameraThreadHandler.post(new Runnable() {
+        @Override public void run() {
+          setPreviewDisplayOnCameraThread(null, result);
+        }
+      });
+    IOException e = exchange(result, null);  // |null| is a dummy value here.
+    if (e != null) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  private void setPreviewDisplayOnCameraThread(
+      SurfaceHolder holder, Exchanger<IOException> result) {
     try {
-      camera.setPreviewDisplay(null);
+      camera.setPreviewDisplay(holder);
     } catch (IOException e) {
+      exchange(result, e);
+      return;
+    }
+    exchange(result, null);
+    return;
+  }
+
+  // Exchanges |value| with |exchanger|, converting InterruptedExceptions to
+  // RuntimeExceptions (since we expect never to see these).
+  private static <T> T exchange(Exchanger<T> exchanger, T value) {
+    try {
+      return exchanger.exchange(value);
+    } catch (InterruptedException e) {
       throw new RuntimeException(e);
     }
   }

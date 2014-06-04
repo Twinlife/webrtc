@@ -17,6 +17,8 @@
 #include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
 #include "webrtc/system_wrappers/interface/event_wrapper.h"
 #include "webrtc/system_wrappers/interface/scoped_ptr.h"
+#include "webrtc/system_wrappers/interface/thread_annotations.h"
+#include "webrtc/system_wrappers/interface/trace.h"
 #include "webrtc/test/direct_transport.h"
 #include "webrtc/test/encoder_settings.h"
 #include "webrtc/test/fake_decoder.h"
@@ -51,10 +53,12 @@ class BitrateEstimatorTest : public ::testing::Test {
   }
 
   virtual void SetUp() {
-    // Create receiver call first so that we are guaranteed to have a trace
-    // callback when sender call is created.
+    Trace::CreateTrace();
+    Trace::SetTraceCallback(&receiver_trace_);
+    // Reduce the chance that spurious traces will ruin the test.
+    Trace::set_level_filter(kTraceTerseInfo);
+
     Call::Config receiver_call_config(&receive_transport_);
-    receiver_call_config.trace_callback = &receiver_trace_;
     receiver_call_.reset(Call::Create(receiver_call_config));
 
     Call::Config sender_call_config(&send_transport_);
@@ -95,8 +99,10 @@ class BitrateEstimatorTest : public ::testing::Test {
       streams_.pop_back();
     }
 
-    // The TraceCallback instance MUST outlive Calls, destroy Calls explicitly.
     receiver_call_.reset();
+
+    Trace::SetTraceCallback(NULL);
+    Trace::ReturnTrace();
   }
 
  protected:
@@ -112,17 +118,14 @@ class BitrateEstimatorTest : public ::testing::Test {
     }
 
     void PushExpectedLogLine(const std::string& expected_log_line) {
-      CriticalSectionScoped cs(crit_sect_.get());
+      CriticalSectionScoped lock(crit_sect_.get());
       expected_log_lines_.push_back(expected_log_line);
     }
 
     virtual void Print(TraceLevel level,
                        const char* message,
                        int length) OVERRIDE {
-      CriticalSectionScoped cs(crit_sect_.get());
-      if (!(level & kTraceStateInfo)) {
-        return;
-      }
+      CriticalSectionScoped lock(crit_sect_.get());
       std::string msg(message);
       if (msg.find("BitrateEstimator") != std::string::npos) {
         received_log_lines_.push_back(msg);
@@ -148,9 +151,9 @@ class BitrateEstimatorTest : public ::testing::Test {
 
    private:
     typedef std::list<std::string> Strings;
-    scoped_ptr<CriticalSectionWrapper> crit_sect_;
-    Strings received_log_lines_;
-    Strings expected_log_lines_;
+    const scoped_ptr<CriticalSectionWrapper> crit_sect_;
+    Strings received_log_lines_ GUARDED_BY(crit_sect_);
+    Strings expected_log_lines_ GUARDED_BY(crit_sect_);
     scoped_ptr<EventWrapper> done_;
   };
 
@@ -175,7 +178,7 @@ class BitrateEstimatorTest : public ::testing::Test {
           test_->send_config_.encoder_settings.streams[0].height,
           30,
           Clock::GetRealTimeClock()));
-      send_stream_->StartSending();
+      send_stream_->Start();
       frame_generator_capturer_->Start();
 
       ExternalVideoDecoder decoder;
@@ -186,7 +189,7 @@ class BitrateEstimatorTest : public ::testing::Test {
       test_->receive_config_.external_decoders.push_back(decoder);
       receive_stream_ = test_->receiver_call_->CreateVideoReceiveStream(
           test_->receive_config_);
-      receive_stream_->StartReceiving();
+      receive_stream_->Start();
 
       is_sending_receiving_ = true;
     }
@@ -202,8 +205,8 @@ class BitrateEstimatorTest : public ::testing::Test {
     void StopSending() {
       if (is_sending_receiving_) {
         frame_generator_capturer_->Stop();
-        send_stream_->StopSending();
-        receive_stream_->StopReceiving();
+        send_stream_->Stop();
+        receive_stream_->Stop();
         is_sending_receiving_ = false;
       }
     }
@@ -228,7 +231,7 @@ class BitrateEstimatorTest : public ::testing::Test {
   std::vector<Stream*> streams_;
 };
 
-TEST_F(BitrateEstimatorTest, DISABLED_InstantiatesTOFPerDefault) {
+TEST_F(BitrateEstimatorTest, InstantiatesTOFPerDefault) {
   send_config_.rtp.extensions.push_back(
       RtpExtension(RtpExtension::kTOffset, kTOFExtensionId));
   receiver_trace_.PushExpectedLogLine(
@@ -239,7 +242,7 @@ TEST_F(BitrateEstimatorTest, DISABLED_InstantiatesTOFPerDefault) {
   EXPECT_EQ(kEventSignaled, receiver_trace_.Wait());
 }
 
-TEST_F(BitrateEstimatorTest, DISABLED_ImmediatelySwitchToAST) {
+TEST_F(BitrateEstimatorTest, ImmediatelySwitchToAST) {
   send_config_.rtp.extensions.push_back(
       RtpExtension(RtpExtension::kAbsSendTime, kASTExtensionId));
   receiver_trace_.PushExpectedLogLine(
@@ -253,7 +256,7 @@ TEST_F(BitrateEstimatorTest, DISABLED_ImmediatelySwitchToAST) {
   EXPECT_EQ(kEventSignaled, receiver_trace_.Wait());
 }
 
-TEST_F(BitrateEstimatorTest, DISABLED_SwitchesToAST) {
+TEST_F(BitrateEstimatorTest, SwitchesToAST) {
   send_config_.rtp.extensions.push_back(
       RtpExtension(RtpExtension::kTOffset, kTOFExtensionId));
   receiver_trace_.PushExpectedLogLine(
@@ -272,7 +275,7 @@ TEST_F(BitrateEstimatorTest, DISABLED_SwitchesToAST) {
   EXPECT_EQ(kEventSignaled, receiver_trace_.Wait());
 }
 
-TEST_F(BitrateEstimatorTest, DISABLED_SwitchesToASTThenBackToTOF) {
+TEST_F(BitrateEstimatorTest, SwitchesToASTThenBackToTOF) {
   send_config_.rtp.extensions.push_back(
       RtpExtension(RtpExtension::kTOffset, kTOFExtensionId));
   receiver_trace_.PushExpectedLogLine(

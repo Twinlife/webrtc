@@ -76,7 +76,7 @@ ViEChannel::ViEChannel(int32_t channel_id,
       callback_cs_(CriticalSectionWrapper::CreateCriticalSection()),
       rtp_rtcp_cs_(CriticalSectionWrapper::CreateCriticalSection()),
       default_rtp_rtcp_(default_rtp_rtcp),
-      vcm_(*VideoCodingModule::Create(ViEModuleId(engine_id, channel_id))),
+      vcm_(*VideoCodingModule::Create()),
       vie_receiver_(channel_id, &vcm_, remote_bitrate_estimator, this),
       vie_sender_(channel_id),
       vie_sync_(&vcm_, this),
@@ -643,11 +643,6 @@ int ViEChannel::SetSenderBufferingMode(int target_delay_ms) {
       nack_history_size_sender_ = kSendSidePacketHistorySize;
     }
   }
-  // Setting nack_history_size_.
-  // First disabling (forcing free) and then resetting to desired value.
-  if (rtp_rtcp_->SetStorePacketsStatus(false, 0) != 0) {
-    return -1;
-  }
   if (rtp_rtcp_->SetStorePacketsStatus(true, nack_history_size_sender_) != 0) {
     return -1;
   }
@@ -1080,8 +1075,17 @@ int32_t ViEChannel::GetRtpStatistics(uint32_t* bytes_sent,
     uint32_t packets_sent_temp = 0;
     RtpRtcp* rtp_rtcp = *it;
     rtp_rtcp->DataCountersRTP(&bytes_sent_temp, &packets_sent_temp);
-    bytes_sent += bytes_sent_temp;
-    packets_sent += packets_sent_temp;
+    *bytes_sent += bytes_sent_temp;
+    *packets_sent += packets_sent_temp;
+  }
+  for (std::list<RtpRtcp*>::const_iterator it = removed_rtp_rtcp_.begin();
+       it != removed_rtp_rtcp_.end(); ++it) {
+    uint32_t bytes_sent_temp = 0;
+    uint32_t packets_sent_temp = 0;
+    RtpRtcp* rtp_rtcp = *it;
+    rtp_rtcp->DataCountersRTP(&bytes_sent_temp, &packets_sent_temp);
+    *bytes_sent += bytes_sent_temp;
+    *packets_sent += packets_sent_temp;
   }
   return 0;
 }
@@ -1190,11 +1194,6 @@ void ViEChannel::RegisterSendBitrateObserver(
        it++) {
     (*it)->RegisterVideoBitrateObserver(observer);
   }
-}
-
-void ViEChannel::GetEstimatedReceiveBandwidth(
-    uint32_t* estimated_bandwidth) const {
-  vie_receiver_.EstimatedReceiveBandwidth(estimated_bandwidth);
 }
 
 void ViEChannel::GetReceiveBandwidthEstimatorStats(
@@ -1406,10 +1405,13 @@ int32_t ViEChannel::FrameToRender(
       unsigned int length = CalcBufferSize(kI420,
                                            video_frame.width(),
                                            video_frame.height());
-      scoped_array<uint8_t> video_buffer(new uint8_t[length]);
+      scoped_ptr<uint8_t[]> video_buffer(new uint8_t[length]);
       ExtractBuffer(video_frame, length, video_buffer.get());
-      effect_filter_->Transform(length, video_buffer.get(),
-                                video_frame.timestamp(), video_frame.width(),
+      effect_filter_->Transform(length,
+                                video_buffer.get(),
+                                video_frame.ntp_time_ms(),
+                                video_frame.timestamp(),
+                                video_frame.width(),
                                 video_frame.height());
     }
     if (color_enhancement_) {

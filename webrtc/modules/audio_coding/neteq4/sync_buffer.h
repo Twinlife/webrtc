@@ -11,8 +11,8 @@
 #ifndef WEBRTC_MODULES_AUDIO_CODING_NETEQ4_SYNC_BUFFER_H_
 #define WEBRTC_MODULES_AUDIO_CODING_NETEQ4_SYNC_BUFFER_H_
 
+#include "webrtc/base/constructormagic.h"
 #include "webrtc/modules/audio_coding/neteq4/audio_multi_vector.h"
-#include "webrtc/system_wrappers/interface/constructor_magic.h"
 #include "webrtc/typedefs.h"
 
 namespace webrtc {
@@ -78,7 +78,8 @@ class SyncBuffer : public AudioMultiVector {
   // created.
   void Flush();
 
-  const AudioVector& Channel(size_t n) { return *channels_[n]; }
+  const AudioVector& Channel(size_t n) const { return *channels_[n]; }
+  AudioVector& Channel(size_t n) { return *channels_[n]; }
 
   // Accessors and mutators.
   size_t next_index() const { return next_index_; }

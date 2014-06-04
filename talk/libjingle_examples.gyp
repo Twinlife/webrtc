@@ -248,8 +248,6 @@
             'examples/ios/AppRTCDemo/APPRTCAppDelegate.m',
             'examples/ios/AppRTCDemo/APPRTCViewController.h',
             'examples/ios/AppRTCDemo/APPRTCViewController.m',
-            'examples/ios/AppRTCDemo/APPRTCVideoView.h',
-            'examples/ios/AppRTCDemo/APPRTCVideoView.m',
             'examples/ios/AppRTCDemo/AppRTCDemo-Prefix.pch',
             'examples/ios/AppRTCDemo/GAEChannelClient.h',
             'examples/ios/AppRTCDemo/GAEChannelClient.m',
@@ -258,11 +256,6 @@
           'xcode_settings': {
             'CLANG_ENABLE_OBJC_ARC': 'YES',
             'INFOPLIST_FILE': 'examples/ios/AppRTCDemo/Info.plist',
-            'OTHER_LDFLAGS': [
-              '-framework CoreGraphics',
-              '-framework Foundation',
-              '-framework UIKit',
-            ],
           },
         },  # target AppRTCDemo
       ],  # targets
@@ -318,7 +311,8 @@
                 'cp <(PRODUCT_DIR)/libjingle_peerconnection.jar examples/android/libs/ &&'
                 '<(android_strip) -o examples/android/libs/<(android_app_abi)/libjingle_peerconnection_so.so  <(PRODUCT_DIR)/libjingle_peerconnection_so.so &&'
                 'cd examples/android && '
-                '{ ant debug > <(ant_log) 2>&1 || '
+                '{ ANDROID_SDK_ROOT=<(android_sdk_root) '
+                'ant debug > <(ant_log) 2>&1 || '
                 '  { cat <(ant_log) ; exit 1; } } && '
                 'cd - > /dev/null && '
                 'cp examples/android/bin/AppRTCDemo-debug.apk <(_outputs)'

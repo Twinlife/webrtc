@@ -11,9 +11,9 @@
 #ifndef WEBRTC_MODULES_AUDIO_CODING_NETEQ4_DECISION_LOGIC_H_
 #define WEBRTC_MODULES_AUDIO_CODING_NETEQ4_DECISION_LOGIC_H_
 
+#include "webrtc/base/constructormagic.h"
 #include "webrtc/modules/audio_coding/neteq4/defines.h"
 #include "webrtc/modules/audio_coding/neteq4/interface/neteq.h"
-#include "webrtc/system_wrappers/interface/constructor_magic.h"
 #include "webrtc/typedefs.h"
 
 namespace webrtc {
@@ -92,7 +92,7 @@ class DecisionLogic {
   // not. Note that this is necessary, since an expand decision can be changed
   // to kNormal in NetEqImpl::GetDecision if there is still enough data in the
   // sync buffer.
-  void ExpandDecision(bool is_expand_decision);
+  virtual void ExpandDecision(Operations operation);
 
   // Adds |value| to |sample_memory_|.
   void AddSampleMemory(int32_t value) {

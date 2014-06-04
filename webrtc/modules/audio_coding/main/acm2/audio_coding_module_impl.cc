@@ -114,9 +114,10 @@ static int TimestampLessThan(uint32_t t1, uint32_t t2) {
 
 }  // namespace
 
-AudioCodingModuleImpl::AudioCodingModuleImpl(int id)
+AudioCodingModuleImpl::AudioCodingModuleImpl(
+    const AudioCodingModule::Config& config)
     : packetization_callback_(NULL),
-      id_(id),
+      id_(config.id),
       expected_codec_ts_(0xD87F3F9F),
       expected_in_ts_(0xD87F3F9F),
       send_codec_inst_(),
@@ -131,6 +132,7 @@ AudioCodingModuleImpl::AudioCodingModuleImpl(int id)
       stereo_send_(false),
       current_send_codec_idx_(-1),
       send_codec_registered_(false),
+      receiver_(config),
       acm_crit_sect_(CriticalSectionWrapper::CreateCriticalSection()),
       vad_callback_(NULL),
       is_first_red_(true),
@@ -158,8 +160,6 @@ AudioCodingModuleImpl::AudioCodingModuleImpl(int id)
     codecs_[i] = NULL;
     mirror_codec_idx_[i] = -1;
   }
-
-  receiver_.set_id(id_);
 
   // Allocate memory for RED.
   red_buffer_ = new uint8_t[MAX_PAYLOAD_SIZE_BYTE];
@@ -201,7 +201,7 @@ AudioCodingModuleImpl::AudioCodingModuleImpl(int id)
     WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, id_,
                  "Cannot initialize receiver");
   }
-  WEBRTC_TRACE(webrtc::kTraceMemory, webrtc::kTraceAudioCoding, id, "Created");
+  WEBRTC_TRACE(webrtc::kTraceMemory, webrtc::kTraceAudioCoding, id_, "Created");
 }
 
 AudioCodingModuleImpl::~AudioCodingModuleImpl() {
@@ -1361,9 +1361,13 @@ int AudioCodingModuleImpl::PreprocessToAddData(const AudioFrame& in_frame,
     // The result of the resampler is written to output frame.
     dest_ptr_audio = preprocess_frame_.data_;
 
-    preprocess_frame_.samples_per_channel_ = resampler_.Resample10Msec(
-        src_ptr_audio, in_frame.sample_rate_hz_, send_codec_inst_.plfreq,
-        preprocess_frame_.num_channels_, dest_ptr_audio);
+    preprocess_frame_.samples_per_channel_ =
+        resampler_.Resample10Msec(src_ptr_audio,
+                                  in_frame.sample_rate_hz_,
+                                  send_codec_inst_.plfreq,
+                                  preprocess_frame_.num_channels_,
+                                  AudioFrame::kMaxDataSizeSamples,
+                                  dest_ptr_audio);
 
     if (preprocess_frame_.samples_per_channel_ < 0) {
       WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, id_,
@@ -1706,7 +1710,6 @@ int AudioCodingModuleImpl::PlayoutData10Ms(int desired_freq_hz,
   }
 
   audio_frame->id_ = id_;
-  audio_frame->energy_ = 0;
   audio_frame->timestamp_ = 0;
   return 0;
 }
@@ -1970,10 +1973,6 @@ std::vector<uint16_t> AudioCodingModuleImpl::GetNackList(
 
 int AudioCodingModuleImpl::LeastRequiredDelayMs() const {
   return receiver_.LeastRequiredDelayMs();
-}
-
-const char* AudioCodingModuleImpl::Version() const {
-  return kExperimentalAcmVersion;
 }
 
 void AudioCodingModuleImpl::GetDecodingCallStatistics(

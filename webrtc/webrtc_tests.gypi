@@ -21,11 +21,12 @@
       'type': 'executable',
       'sources': [
         'video/loopback.cc',
-        'test/test_main.cc',
       ],
       'dependencies': [
         '<(DEPTH)/testing/gtest.gyp:gtest',
+        '<(DEPTH)/third_party/gflags/gflags.gyp:gflags',
         'test/webrtc_test_common.gyp:webrtc_test_common',
+        '<(webrtc_root)/system_wrappers/source/system_wrappers.gyp:field_trial_default',
         'webrtc',
       ],
     },
@@ -39,14 +40,13 @@
         'video/video_send_stream_tests.cc',
         'test/common_unittest.cc',
         'test/testsupport/metrics/video_metrics_unittest.cc',
-        'test/test_main.cc',
       ],
       'dependencies': [
         '<(DEPTH)/testing/gtest.gyp:gtest',
-        '<(DEPTH)/third_party/gflags/gflags.gyp:gflags',
         'modules/modules.gyp:rtp_rtcp',
         'test/metrics.gyp:metrics',
         'test/webrtc_test_common.gyp:webrtc_test_common',
+        'test/test.gyp:test_main',
         'webrtc',
       ],
     },
@@ -55,17 +55,16 @@
       'type': '<(gtest_target_type)',
       'sources': [
         'modules/audio_coding/neteq4/test/neteq_performance_unittest.cc',
-        'test/test_main.cc',
         'video/call_perf_tests.cc',
         'video/full_stack.cc',
         'video/rampup_tests.cc',
       ],
       'dependencies': [
         '<(DEPTH)/testing/gtest.gyp:gtest',
-        '<(DEPTH)/third_party/gflags/gflags.gyp:gflags',
-        'modules/modules.gyp:neteq_unittest_tools',  # Needed by neteq_performance_unittest.
+        'modules/modules.gyp:neteq_test_support',  # Needed by neteq_performance_unittest.
         'modules/modules.gyp:rtp_rtcp',
         'test/webrtc_test_common.gyp:webrtc_test_common',
+        'test/test.gyp:test_main',
         'webrtc',
       ],
     },

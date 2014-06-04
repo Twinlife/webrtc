@@ -30,6 +30,7 @@
 #import "APPRTCAppDelegate.h"
 
 #import "APPRTCViewController.h"
+#import "RTCEAGLVideoView.h"
 #import "RTCICECandidate.h"
 #import "RTCICEServer.h"
 #import "RTCMediaConstraints.h"
@@ -39,16 +40,16 @@
 #import "RTCPeerConnectionDelegate.h"
 #import "RTCPeerConnectionFactory.h"
 #import "RTCSessionDescription.h"
+#import "RTCStatsDelegate.h"
 #import "RTCVideoRenderer.h"
 #import "RTCVideoCapturer.h"
 #import "RTCVideoTrack.h"
-#import "APPRTCVideoView.h"
 
 @interface PCObserver : NSObject<RTCPeerConnectionDelegate>
 
 - (id)initWithDelegate:(id<APPRTCSendMessage>)delegate;
 
-@property(nonatomic, strong) APPRTCVideoView* videoView;
+@property(nonatomic, strong) RTCEAGLVideoView* videoView;
 
 @end
 
@@ -62,6 +63,8 @@
   }
   return self;
 }
+
+#pragma mark - RTCPeerConnectionDelegate
 
 - (void)peerConnectionOnError:(RTCPeerConnection*)peerConnection {
   dispatch_async(dispatch_get_main_queue(), ^(void) {
@@ -86,8 +89,7 @@
       NSAssert([stream.videoTracks count] <= 1,
                @"Expected at most 1 video stream");
       if ([stream.videoTracks count] != 0) {
-        [self.videoView
-            renderVideoTrackInterface:[stream.videoTracks objectAtIndex:0]];
+        self.videoView.videoTrack = stream.videoTracks[0];
       }
   });
 }
@@ -147,13 +149,20 @@
   });
 }
 
+- (void)peerConnection:(RTCPeerConnection*)peerConnection
+    didOpenDataChannel:(RTCDataChannel*)dataChannel {
+  NSAssert(NO, @"AppRTC doesn't use DataChannels");
+}
+
+#pragma mark - Private
+
 - (void)displayLogMessage:(NSString*)message {
   [_delegate displayLogMessage:message];
 }
 
 @end
 
-@interface APPRTCAppDelegate ()
+@interface APPRTCAppDelegate () <RTCStatsDelegate>
 
 @property(nonatomic, strong) APPRTCAppClient* client;
 @property(nonatomic, strong) PCObserver* pcObserver;
@@ -163,7 +172,9 @@
 
 @end
 
-@implementation APPRTCAppDelegate
+@implementation APPRTCAppDelegate {
+  NSTimer* _statsTimer;
+}
 
 #pragma mark - UIApplicationDelegate methods
 
@@ -175,6 +186,12 @@
       [[APPRTCViewController alloc] initWithNibName:@"APPRTCViewController"
                                              bundle:nil];
   self.window.rootViewController = self.viewController;
+  _statsTimer =
+      [NSTimer scheduledTimerWithTimeInterval:10
+                                       target:self
+                                     selector:@selector(didFireStatsTimer:)
+                                     userInfo:nil
+                                      repeats:YES];
   [self.window makeKeyAndVisible];
   return YES;
 }
@@ -273,13 +290,12 @@
   if (localVideoTrack) {
     [lms addVideoTrack:localVideoTrack];
   }
+  self.viewController.localVideoView.videoTrack = localVideoTrack;
+#else
+  self.viewController.localVideoView.hidden = YES;
 #endif
 
-  [self.viewController.localVideoView
-      renderVideoTrackInterface:localVideoTrack];
-
   self.pcObserver.videoView = self.viewController.remoteVideoView;
-
   [lms addAudioTrack:[self.peerConnectionFactory audioTrackWithID:@"ARDAMSa0"]];
   [self.peerConnection addStream:lms constraints:constraints];
   [self displayLogMessage:@"onICEServers - added local stream."];
@@ -357,7 +373,7 @@
   [self closeVideoUI];
 }
 
-#pragma mark - RTCSessionDescriptonDelegate methods
+#pragma mark - RTCSessionDescriptionDelegate methods
 
 // Match |pattern| to |string| and return the first group of the first
 // match, or nil if no match was found.
@@ -488,6 +504,16 @@
   });
 }
 
+#pragma mark - RTCStatsDelegate methods
+
+- (void)peerConnection:(RTCPeerConnection*)peerConnection
+           didGetStats:(NSArray*)stats {
+  dispatch_async(dispatch_get_main_queue(), ^{
+      NSString* message = [NSString stringWithFormat:@"Stats:\n %@", stats];
+      [self displayLogMessage:message];
+  });
+}
+
 #pragma mark - internal methods
 
 - (void)disconnect {
@@ -529,6 +555,14 @@
       [removeEscapedQuotes stringByReplacingOccurrencesOfString:@"\\\\"
                                                      withString:@"\\"];
   return removeBackslash;
+}
+
+- (void)didFireStatsTimer:(NSTimer *)timer {
+  if (self.peerConnection) {
+    [self.peerConnection getStatsWithDelegate:self
+                             mediaStreamTrack:nil
+                             statsOutputLevel:RTCStatsOutputLevelDebug];
+  }
 }
 
 #pragma mark - public methods

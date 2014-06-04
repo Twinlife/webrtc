@@ -39,24 +39,37 @@ void JNICALL ProvideCameraFrame(
 }
 
 int32_t SetCaptureAndroidVM(JavaVM* javaVM) {
-  g_jvm = javaVM;
-  AttachThreadScoped ats(g_jvm);
+  if (javaVM) {
+    assert(!g_jvm);
+    g_jvm = javaVM;
+    AttachThreadScoped ats(g_jvm);
 
-  videocapturemodule::DeviceInfoAndroid::Initialize(ats.env());
+    videocapturemodule::DeviceInfoAndroid::Initialize(ats.env());
 
-  jclass j_capture_class =
-      ats.env()->FindClass("org/webrtc/videoengine/VideoCaptureAndroid");
-  assert(j_capture_class);
-  g_java_capturer_class =
-      reinterpret_cast<jclass>(ats.env()->NewGlobalRef(j_capture_class));
-  assert(g_java_capturer_class);
+    jclass j_capture_class =
+        ats.env()->FindClass("org/webrtc/videoengine/VideoCaptureAndroid");
+    assert(j_capture_class);
+    g_java_capturer_class =
+        reinterpret_cast<jclass>(ats.env()->NewGlobalRef(j_capture_class));
+    assert(g_java_capturer_class);
 
-  JNINativeMethod native_method = {
-    "ProvideCameraFrame", "([BIJ)V",
-    reinterpret_cast<void*>(&ProvideCameraFrame)
-  };
-  if (ats.env()->RegisterNatives(g_java_capturer_class, &native_method, 1) != 0)
-    assert(false);
+    JNINativeMethod native_method = {
+      "ProvideCameraFrame", "([BIJ)V",
+      reinterpret_cast<void*>(&ProvideCameraFrame)
+    };
+    if (ats.env()->RegisterNatives(g_java_capturer_class,
+                                   &native_method, 1) != 0)
+      assert(false);
+  } else {
+    if (g_jvm) {
+      AttachThreadScoped ats(g_jvm);
+      ats.env()->UnregisterNatives(g_java_capturer_class);
+      ats.env()->DeleteGlobalRef(g_java_capturer_class);
+      g_java_capturer_class = NULL;
+      videocapturemodule::DeviceInfoAndroid::DeInitialize();
+      g_jvm = NULL;
+    }
+  }
 
   return 0;
 }
@@ -143,7 +156,8 @@ int32_t VideoCaptureAndroid::StartCapture(
   assert(j_start);
   int min_mfps = 0;
   int max_mfps = 0;
-  _deviceInfo.GetFpsRange(_deviceUniqueId, &min_mfps, &max_mfps);
+  _deviceInfo.GetMFpsRange(_deviceUniqueId, _captureCapability.maxFPS,
+                           &min_mfps, &max_mfps);
   bool started = env->CallBooleanMethod(_jCapturer, j_start,
                                         _captureCapability.width,
                                         _captureCapability.height,
@@ -208,18 +222,8 @@ int32_t VideoCaptureAndroid::SetCaptureRotation(
 void VideoCaptureAndroid::SetCameraMute(bool mute) {
   CriticalSectionScoped cs(&_apiCs);
 
-  // get the JNI env for this thread
-  JNIEnv *env = NULL;
-  if (g_jvm->GetEnv((void**) &env, JNI_VERSION_1_4) != JNI_OK) {
-    // try to attach the thread and get the env
-    // Attach this thread to JVM
-    jint res = g_jvm->AttachCurrentThread(&env, NULL);
-    if ((res < 0) || !env) {
-      WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceVideoCapture, _id,
-                   "%s: Could not attach thread to JVM (%d, %p)",
-                   __FUNCTION__, res, env);
-    }
-  }
+  AttachThreadScoped ats(g_jvm);
+  JNIEnv* env = ats.env();
 
   jmethodID cid = env->GetMethodID(g_java_capturer_class, "setCameraMute", "(Z)V");
 
@@ -232,18 +236,9 @@ void VideoCaptureAndroid::SetCameraMute(bool mute) {
   // switch camera
 void VideoCaptureAndroid::SwitchCamera(int cameraId) {
   CriticalSectionScoped cs(&_apiCs);
-  // get the JNI env for this thread
-  JNIEnv *env = NULL;
-  if (g_jvm->GetEnv((void**) &env, JNI_VERSION_1_4) != JNI_OK) {
-    // try to attach the thread and get the env
-    // Attach this thread to JVM
-    jint res = g_jvm->AttachCurrentThread(&env, NULL);
-    if ((res < 0) || !env) {
-      WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceVideoCapture, _id,
-                   "%s: Could not attach thread to JVM (%d, %p)",
-                   __FUNCTION__, res, env);
-    }
-  }
+
+  AttachThreadScoped ats(g_jvm);
+  JNIEnv* env = ats.env();
 
   jmethodID cid = env->GetMethodID(g_java_capturer_class, "switchCamera", "(I)V");
   if (cid != NULL) {
@@ -257,18 +252,9 @@ void VideoCaptureAndroid::SwitchCamera(int cameraId) {
   // is zoom supported
 bool VideoCaptureAndroid::IsZoomSupported() {
   CriticalSectionScoped cs(&_apiCs);
-  // get the JNI env for this thread
-  JNIEnv *env = NULL;
-  if (g_jvm->GetEnv((void**) &env, JNI_VERSION_1_4) != JNI_OK) {
-    // try to attach the thread and get the env
-    // Attach this thread to JVM
-    jint res = g_jvm->AttachCurrentThread(&env, NULL);
-    if ((res < 0) || !env) {
-      WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceVideoCapture, _id,
-                   "%s: Could not attach thread to JVM (%d, %p)",
-                   __FUNCTION__, res, env);
-    }
-  }
+
+  AttachThreadScoped ats(g_jvm);
+  JNIEnv* env = ats.env();
 
   jmethodID cid = env->GetMethodID(g_java_capturer_class, "isZoomSupported", "()Z");
   if (cid != NULL) {
@@ -284,18 +270,9 @@ bool VideoCaptureAndroid::IsZoomSupported() {
   // switch camera
 void VideoCaptureAndroid::SetZoom(int progress) {
   CriticalSectionScoped cs(&_apiCs);
-  // get the JNI env for this thread
-  JNIEnv *env = NULL;
-  if (g_jvm->GetEnv((void**) &env, JNI_VERSION_1_4) != JNI_OK) {
-    // try to attach the thread and get the env
-    // Attach this thread to JVM
-    jint res = g_jvm->AttachCurrentThread(&env, NULL);
-    if ((res < 0) || !env) {
-      WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceVideoCapture, _id,
-                   "%s: Could not attach thread to JVM (%d, %p)",
-                   __FUNCTION__, res, env);
-    }
-  }
+
+  AttachThreadScoped ats(g_jvm);
+  JNIEnv* env = ats.env();
 
   jmethodID cid = env->GetMethodID(g_java_capturer_class, "setZoom", "(I)V");
   if (cid != NULL) {

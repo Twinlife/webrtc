@@ -83,9 +83,9 @@ using webrtc::PeerConnectionInterface;
 using webrtc::SessionDescriptionInterface;
 using webrtc::StreamCollectionInterface;
 
-static const int kMaxWaitMs = 1000;
+static const int kMaxWaitMs = 2000;
 static const int kMaxWaitForStatsMs = 3000;
-static const int kMaxWaitForFramesMs = 5000;
+static const int kMaxWaitForFramesMs = 10000;
 static const int kEndAudioFrameCount = 3;
 static const int kEndVideoFrameCount = 3;
 
@@ -726,16 +726,9 @@ class JsepTestClient
     ice_server.uri = "stun:stun.l.google.com:19302";
     ice_servers.push_back(ice_server);
 
-    // TODO(jiayl): we should always pass a FakeIdentityService so that DTLS
-    // is enabled by default like in Chrome (issue 2838).
-    FakeIdentityService* dtls_service = NULL;
-    bool dtls;
-    if (FindConstraint(constraints,
-                       MediaConstraintsInterface::kEnableDtlsSrtp,
-                       &dtls,
-                       NULL) && dtls) {
-      dtls_service = new FakeIdentityService();
-    }
+    FakeIdentityService* dtls_service =
+        talk_base::SSLStreamAdapter::HaveDtlsSrtp() ?
+            new FakeIdentityService() : NULL;
     return peer_connection_factory()->CreatePeerConnection(
         ice_servers, constraints, factory, dtls_service, this);
   }
@@ -1138,7 +1131,9 @@ TEST_F(JsepPeerConnectionP2PTestClient, LocalP2PTestAnswerNone) {
 // runs for a while (10 frames), the caller sends an update offer with video
 // being rejected. Once the re-negotiation is done, the video flow should stop
 // and the audio flow should continue.
-TEST_F(JsepPeerConnectionP2PTestClient, UpdateOfferWithRejectedContent) {
+// Disabled due to b/14955157.
+TEST_F(JsepPeerConnectionP2PTestClient,
+       DISABLED_UpdateOfferWithRejectedContent) {
   ASSERT_TRUE(CreateTestClients());
   LocalP2PTest();
   TestUpdateOfferWithRejectedContent();
@@ -1146,7 +1141,8 @@ TEST_F(JsepPeerConnectionP2PTestClient, UpdateOfferWithRejectedContent) {
 
 // This test sets up a Jsep call between two parties. The MSID is removed from
 // the SDP strings from the caller.
-TEST_F(JsepPeerConnectionP2PTestClient, LocalP2PTestWithoutMsid) {
+// Disabled due to b/14955157.
+TEST_F(JsepPeerConnectionP2PTestClient, DISABLED_LocalP2PTestWithoutMsid) {
   ASSERT_TRUE(CreateTestClients());
   receiving_client()->RemoveMsidFromReceivedSdp(true);
   // TODO(perkj): Currently there is a bug that cause audio to stop playing if
@@ -1318,9 +1314,15 @@ TEST_F(JsepPeerConnectionP2PTestClient, RegisterDataChannelObserver) {
 // This test sets up a call between two parties with audio, video and but only
 // the initiating client support data.
 TEST_F(JsepPeerConnectionP2PTestClient, LocalP2PTestReceiverDoesntSupportData) {
-  FakeConstraints setup_constraints;
-  setup_constraints.SetAllowRtpDataChannels();
-  ASSERT_TRUE(CreateTestClients(&setup_constraints, NULL));
+  FakeConstraints setup_constraints_1;
+  setup_constraints_1.SetAllowRtpDataChannels();
+  // Must disable DTLS to make negotiation succeed.
+  setup_constraints_1.SetMandatory(
+      MediaConstraintsInterface::kEnableDtlsSrtp, false);
+  FakeConstraints setup_constraints_2;
+  setup_constraints_2.SetMandatory(
+      MediaConstraintsInterface::kEnableDtlsSrtp, false);
+  ASSERT_TRUE(CreateTestClients(&setup_constraints_1, &setup_constraints_2));
   initializing_client()->CreateDataChannel();
   LocalP2PTest();
   EXPECT_TRUE(initializing_client()->data_channel() != NULL);
@@ -1345,6 +1347,20 @@ TEST_F(JsepPeerConnectionP2PTestClient, AddDataChannelAfterRenegotiation) {
   EXPECT_TRUE_WAIT(receiving_client()->data_observer()->IsOpen(),
                    kMaxWaitMs);
 }
+
+// This test sets up a Jsep call with SCTP DataChannel and verifies the
+// negotiation is completed without error.
+#ifdef HAVE_SCTP
+TEST_F(JsepPeerConnectionP2PTestClient, CreateOfferWithSctpDataChannel) {
+  MAYBE_SKIP_TEST(talk_base::SSLStreamAdapter::HaveDtlsSrtp);
+  FakeConstraints constraints;
+  constraints.SetMandatory(
+      MediaConstraintsInterface::kEnableDtlsSrtp, true);
+  ASSERT_TRUE(CreateTestClients(&constraints, &constraints));
+  initializing_client()->CreateDataChannel();
+  initializing_client()->Negotiate(false, false);
+}
+#endif
 
 // This test sets up a call between two parties with audio, and video.
 // During the call, the initializing side restart ice and the test verifies that
@@ -1407,6 +1423,4 @@ TEST_F(JsepPeerConnectionP2PTestClient,
   EnableVideoDecoderFactory();
   LocalP2PTest();
 }
-
 #endif // if !defined(THREAD_SANITIZER)
-

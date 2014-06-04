@@ -50,6 +50,9 @@
 
 // Tests for the WebRtcVideoEngine/VideoChannel code.
 
+using cricket::kRtpTimestampOffsetHeaderExtension;
+using cricket::kRtpAbsoluteSenderTimeHeaderExtension;
+
 static const cricket::VideoCodec kVP8Codec720p(100, "VP8", 1280, 720, 30, 0);
 static const cricket::VideoCodec kVP8Codec360p(100, "VP8", 640, 360, 30, 0);
 static const cricket::VideoCodec kVP8Codec270p(100, "VP8", 480, 270, 30, 0);
@@ -147,6 +150,76 @@ class WebRtcVideoEngineTestFake : public testing::Test,
     capturer.SetScreencast(true);
     channel_->SendFrame(&capturer, &frame);
     return true;
+  }
+  void TestSetSendRtpHeaderExtensions(const std::string& ext) {
+    EXPECT_TRUE(SetupEngine());
+    int channel_num = vie_.GetLastChannel();
+
+    // Verify extensions are off by default.
+    EXPECT_EQ(-1, vie_.GetSendRtpExtensionId(channel_num, ext));
+
+    // Enable extension.
+    const int id = 1;
+    std::vector<cricket::RtpHeaderExtension> extensions;
+    extensions.push_back(cricket::RtpHeaderExtension(ext, id));
+
+    // Verify the send extension id.
+    EXPECT_TRUE(channel_->SetSendRtpHeaderExtensions(extensions));
+    EXPECT_EQ(id, vie_.GetSendRtpExtensionId(channel_num, ext));
+    // Verify call with same set of extensions returns true.
+    EXPECT_TRUE(channel_->SetSendRtpHeaderExtensions(extensions));
+    EXPECT_EQ(id, vie_.GetSendRtpExtensionId(channel_num, ext));
+
+    // Add a new send stream and verify the extension is set.
+    // The first send stream to occupy the default channel.
+    EXPECT_TRUE(
+        channel_->AddSendStream(cricket::StreamParams::CreateLegacy(123)));
+    EXPECT_TRUE(
+        channel_->AddSendStream(cricket::StreamParams::CreateLegacy(234)));
+    int new_send_channel_num = vie_.GetLastChannel();
+    EXPECT_NE(channel_num, new_send_channel_num);
+    EXPECT_EQ(id, vie_.GetSendRtpExtensionId(new_send_channel_num, ext));
+
+    // Remove the extension id.
+    std::vector<cricket::RtpHeaderExtension> empty_extensions;
+    EXPECT_TRUE(channel_->SetSendRtpHeaderExtensions(empty_extensions));
+    EXPECT_EQ(-1, vie_.GetSendRtpExtensionId(channel_num, ext));
+    EXPECT_EQ(-1, vie_.GetSendRtpExtensionId(new_send_channel_num, ext));
+  }
+  void TestSetRecvRtpHeaderExtensions(const std::string& ext) {
+    EXPECT_TRUE(SetupEngine());
+    int channel_num = vie_.GetLastChannel();
+
+    // Verify extensions are off by default.
+    EXPECT_EQ(-1, vie_.GetReceiveRtpExtensionId(channel_num, ext));
+
+    // Enable extension.
+    const int id = 2;
+    std::vector<cricket::RtpHeaderExtension> extensions;
+    extensions.push_back(cricket::RtpHeaderExtension(ext, id));
+
+    // Verify receive extension id.
+    EXPECT_TRUE(channel_->SetRecvRtpHeaderExtensions(extensions));
+    EXPECT_EQ(id, vie_.GetReceiveRtpExtensionId(channel_num, ext));
+    // Verify call with same set of extensions returns true.
+    EXPECT_TRUE(channel_->SetRecvRtpHeaderExtensions(extensions));
+    EXPECT_EQ(id, vie_.GetReceiveRtpExtensionId(channel_num, ext));
+
+    // Add a new receive stream and verify the extension is set.
+    // The first send stream to occupy the default channel.
+    EXPECT_TRUE(
+        channel_->AddRecvStream(cricket::StreamParams::CreateLegacy(345)));
+    EXPECT_TRUE(
+        channel_->AddRecvStream(cricket::StreamParams::CreateLegacy(456)));
+    int new_recv_channel_num = vie_.GetLastChannel();
+    EXPECT_NE(channel_num, new_recv_channel_num);
+    EXPECT_EQ(id, vie_.GetReceiveRtpExtensionId(new_recv_channel_num, ext));
+
+    // Remove the extension id.
+    std::vector<cricket::RtpHeaderExtension> empty_extensions;
+    EXPECT_TRUE(channel_->SetRecvRtpHeaderExtensions(empty_extensions));
+    EXPECT_EQ(-1, vie_.GetReceiveRtpExtensionId(channel_num, ext));
+    EXPECT_EQ(-1, vie_.GetReceiveRtpExtensionId(new_recv_channel_num, ext));
   }
   void VerifyCodecFeedbackParams(const cricket::VideoCodec& codec) {
     EXPECT_TRUE(codec.HasFeedbackParam(
@@ -352,6 +425,40 @@ TEST_F(WebRtcVideoEngineTestFake, SetSendCodecsWithMinMaxBitrate) {
   EXPECT_EQ("20", codec.params[cricket::kCodecParamMaxBitrate]);
 }
 
+TEST_F(WebRtcVideoEngineTestFake, SetSendCodecsWithStartBitrate) {
+  EXPECT_TRUE(SetupEngine());
+  int channel_num = vie_.GetLastChannel();
+  std::vector<cricket::VideoCodec> codecs(engine_.codecs());
+  codecs[0].params[cricket::kCodecParamStartBitrate] = "450";
+  EXPECT_TRUE(channel_->SetSendCodecs(codecs));
+
+  VerifyVP8SendCodec(
+      channel_num, kVP8Codec.width, kVP8Codec.height, 0, 2000, 50, 450);
+
+  cricket::VideoCodec codec;
+  EXPECT_TRUE(channel_->GetSendCodec(&codec));
+  EXPECT_EQ("450", codec.params[cricket::kCodecParamStartBitrate]);
+}
+
+TEST_F(WebRtcVideoEngineTestFake, SetSendCodecsWithMinMaxStartBitrate) {
+  EXPECT_TRUE(SetupEngine());
+  int channel_num = vie_.GetLastChannel();
+  std::vector<cricket::VideoCodec> codecs(engine_.codecs());
+  codecs[0].params[cricket::kCodecParamMinBitrate] = "10";
+  codecs[0].params[cricket::kCodecParamMaxBitrate] = "20";
+  codecs[0].params[cricket::kCodecParamStartBitrate] = "14";
+  EXPECT_TRUE(channel_->SetSendCodecs(codecs));
+
+  VerifyVP8SendCodec(
+      channel_num, kVP8Codec.width, kVP8Codec.height, 0, 20, 10, 14);
+
+  cricket::VideoCodec codec;
+  EXPECT_TRUE(channel_->GetSendCodec(&codec));
+  EXPECT_EQ("10", codec.params[cricket::kCodecParamMinBitrate]);
+  EXPECT_EQ("20", codec.params[cricket::kCodecParamMaxBitrate]);
+  EXPECT_EQ("14", codec.params[cricket::kCodecParamStartBitrate]);
+}
+
 TEST_F(WebRtcVideoEngineTestFake, SetSendCodecsWithMinMaxBitrateInvalid) {
   EXPECT_TRUE(SetupEngine());
   std::vector<cricket::VideoCodec> codecs(engine_.codecs());
@@ -451,7 +558,7 @@ TEST_F(WebRtcVideoEngineTestFake, MaxBitrateResetWithConferenceMode) {
   EXPECT_TRUE(channel_->SetOptions(options));
   VerifyVP8SendCodec(
       channel_num, kVP8Codec.width, kVP8Codec.height, 0,
-      kMaxBandwidthKbps, 10, 20);
+      kMaxBandwidthKbps, 10, kStartBandwidthKbps);
 }
 
 // Verify the current send bitrate is used as start bitrate when reconfiguring
@@ -612,6 +719,76 @@ TEST_F(WebRtcVideoEngineTestFake, SetRecvCodecs) {
   EXPECT_TRUE(vie_.ReceiveCodecRegistered(channel_num, wcodec));
 }
 
+// Test that we set our inbound RTX codecs properly.
+TEST_F(WebRtcVideoEngineTestFake, SetRecvCodecsWithRtx) {
+  EXPECT_TRUE(SetupEngine());
+  int channel_num = vie_.GetLastChannel();
+
+  std::vector<cricket::VideoCodec> codecs;
+  cricket::VideoCodec rtx_codec(96, "rtx", 0, 0, 0, 0);
+  codecs.push_back(rtx_codec);
+  // Should fail since there's no associated payload type set.
+  EXPECT_FALSE(channel_->SetRecvCodecs(codecs));
+
+  codecs[0].SetParam("apt", 97);
+  // Should still fail since the we don't support RTX on this APT.
+  EXPECT_FALSE(channel_->SetRecvCodecs(codecs));
+
+  codecs[0].SetParam("apt", kVP8Codec.id);
+  // Should still fail since the associated payload type is unknown.
+  EXPECT_FALSE(channel_->SetRecvCodecs(codecs));
+
+  codecs.push_back(kVP8Codec);
+  EXPECT_TRUE(channel_->SetRecvCodecs(codecs));
+
+  webrtc::VideoCodec wcodec;
+  // Should not have been registered as a WebRTC codec.
+  EXPECT_TRUE(engine_.ConvertFromCricketVideoCodec(rtx_codec, &wcodec));
+  EXPECT_STREQ("rtx", wcodec.plName);
+  EXPECT_FALSE(vie_.ReceiveCodecRegistered(channel_num, wcodec));
+
+  // The RTX payload type should have been set.
+  EXPECT_EQ(rtx_codec.id, vie_.GetRtxRecvPayloadType(channel_num));
+}
+
+// Test that RTX packets are routed to the correct video channel.
+TEST_F(WebRtcVideoEngineTestFake, TestReceiveRtx) {
+  EXPECT_TRUE(SetupEngine());
+
+  // Setup three channels with associated RTX streams.
+  int channel_num[ARRAY_SIZE(kSsrcs3)];
+  for (size_t i = 0; i < ARRAY_SIZE(kSsrcs3); ++i) {
+    cricket::StreamParams params =
+      cricket::StreamParams::CreateLegacy(kSsrcs3[i]);
+    params.AddFidSsrc(kSsrcs3[i], kRtxSsrcs3[i]);
+    EXPECT_TRUE(channel_->AddRecvStream(params));
+    channel_num[i] = vie_.GetLastChannel();
+  }
+
+  // Register codecs.
+  std::vector<cricket::VideoCodec> codec_list;
+  codec_list.push_back(kVP8Codec720p);
+  cricket::VideoCodec rtx_codec(96, "rtx", 0, 0, 0, 0);
+  rtx_codec.SetParam("apt", kVP8Codec.id);
+  codec_list.push_back(rtx_codec);
+  EXPECT_TRUE(channel_->SetRecvCodecs(codec_list));
+
+  // Construct a fake RTX packet and verify that it is passed to the
+  // right WebRTC channel.
+  const size_t kDataLength = 12;
+  uint8_t data[kDataLength];
+  memset(data, 0, sizeof(data));
+  data[0] = 0x80;
+  data[1] = rtx_codec.id;
+  talk_base::SetBE32(&data[8], kRtxSsrcs3[1]);
+  talk_base::Buffer packet(data, kDataLength);
+  talk_base::PacketTime packet_time;
+  channel_->OnPacketReceived(&packet, packet_time);
+  EXPECT_NE(rtx_codec.id, vie_.GetLastRecvdPayloadType(channel_num[0]));
+  EXPECT_EQ(rtx_codec.id, vie_.GetLastRecvdPayloadType(channel_num[1]));
+  EXPECT_NE(rtx_codec.id, vie_.GetLastRecvdPayloadType(channel_num[2]));
+}
+
 // Test that channel connects and disconnects external capturer correctly.
 TEST_F(WebRtcVideoEngineTestFake, HasExternalCapturer) {
   EXPECT_TRUE(SetupEngine());
@@ -730,89 +907,19 @@ TEST_F(WebRtcVideoEngineTestFake, RecvStreamNoRtx) {
 }
 
 // Test support for RTP timestamp offset header extension.
-TEST_F(WebRtcVideoEngineTestFake, RtpTimestampOffsetHeaderExtensions) {
-  EXPECT_TRUE(SetupEngine());
-  int channel_num = vie_.GetLastChannel();
-  cricket::VideoOptions options;
-  options.conference_mode.Set(true);
-  EXPECT_TRUE(channel_->SetOptions(options));
-
-  // Verify extensions are off by default.
-  EXPECT_EQ(0, vie_.GetSendRtpTimestampOffsetExtensionId(channel_num));
-  EXPECT_EQ(0, vie_.GetReceiveRtpTimestampOffsetExtensionId(channel_num));
-
-  // Enable RTP timestamp extension.
-  const int id = 14;
-  std::vector<cricket::RtpHeaderExtension> extensions;
-  extensions.push_back(cricket::RtpHeaderExtension(
-      "urn:ietf:params:rtp-hdrext:toffset", id));
-
-  // Verify the send extension id.
-  EXPECT_TRUE(channel_->SetSendRtpHeaderExtensions(extensions));
-  EXPECT_EQ(id, vie_.GetSendRtpTimestampOffsetExtensionId(channel_num));
-
-  // Remove the extension id.
-  std::vector<cricket::RtpHeaderExtension> empty_extensions;
-  EXPECT_TRUE(channel_->SetSendRtpHeaderExtensions(empty_extensions));
-  EXPECT_EQ(0, vie_.GetSendRtpTimestampOffsetExtensionId(channel_num));
-
-  // Verify receive extension id.
-  EXPECT_TRUE(channel_->SetRecvRtpHeaderExtensions(extensions));
-  EXPECT_EQ(id, vie_.GetReceiveRtpTimestampOffsetExtensionId(channel_num));
-
-  // Add a new receive stream and verify the extension is set.
-  EXPECT_TRUE(channel_->AddRecvStream(cricket::StreamParams::CreateLegacy(2)));
-  int new_channel_num = vie_.GetLastChannel();
-  EXPECT_NE(channel_num, new_channel_num);
-  EXPECT_EQ(id, vie_.GetReceiveRtpTimestampOffsetExtensionId(new_channel_num));
-
-  // Remove the extension id.
-  EXPECT_TRUE(channel_->SetRecvRtpHeaderExtensions(empty_extensions));
-  EXPECT_EQ(0, vie_.GetReceiveRtpTimestampOffsetExtensionId(channel_num));
-  EXPECT_EQ(0, vie_.GetReceiveRtpTimestampOffsetExtensionId(new_channel_num));
+TEST_F(WebRtcVideoEngineTestFake, SendRtpTimestampOffsetHeaderExtensions) {
+  TestSetSendRtpHeaderExtensions(kRtpTimestampOffsetHeaderExtension);
+}
+TEST_F(WebRtcVideoEngineTestFake, RecvRtpTimestampOffsetHeaderExtensions) {
+  TestSetRecvRtpHeaderExtensions(kRtpTimestampOffsetHeaderExtension);
 }
 
 // Test support for absolute send time header extension.
-TEST_F(WebRtcVideoEngineTestFake, AbsoluteSendTimeHeaderExtensions) {
-  EXPECT_TRUE(SetupEngine());
-  int channel_num = vie_.GetLastChannel();
-  cricket::VideoOptions options;
-  options.conference_mode.Set(true);
-  EXPECT_TRUE(channel_->SetOptions(options));
-
-  // Verify extensions are off by default.
-  EXPECT_EQ(0, vie_.GetSendAbsoluteSendTimeExtensionId(channel_num));
-  EXPECT_EQ(0, vie_.GetReceiveAbsoluteSendTimeExtensionId(channel_num));
-
-  // Enable RTP timestamp extension.
-  const int id = 12;
-  std::vector<cricket::RtpHeaderExtension> extensions;
-  extensions.push_back(cricket::RtpHeaderExtension(
-      "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time", id));
-
-  // Verify the send extension id.
-  EXPECT_TRUE(channel_->SetSendRtpHeaderExtensions(extensions));
-  EXPECT_EQ(id, vie_.GetSendAbsoluteSendTimeExtensionId(channel_num));
-
-  // Remove the extension id.
-  std::vector<cricket::RtpHeaderExtension> empty_extensions;
-  EXPECT_TRUE(channel_->SetSendRtpHeaderExtensions(empty_extensions));
-  EXPECT_EQ(0, vie_.GetSendAbsoluteSendTimeExtensionId(channel_num));
-
-  // Verify receive extension id.
-  EXPECT_TRUE(channel_->SetRecvRtpHeaderExtensions(extensions));
-  EXPECT_EQ(id, vie_.GetReceiveAbsoluteSendTimeExtensionId(channel_num));
-
-  // Add a new receive stream and verify the extension is set.
-  EXPECT_TRUE(channel_->AddRecvStream(cricket::StreamParams::CreateLegacy(2)));
-  int new_channel_num = vie_.GetLastChannel();
-  EXPECT_NE(channel_num, new_channel_num);
-  EXPECT_EQ(id, vie_.GetReceiveAbsoluteSendTimeExtensionId(new_channel_num));
-
-  // Remove the extension id.
-  EXPECT_TRUE(channel_->SetRecvRtpHeaderExtensions(empty_extensions));
-  EXPECT_EQ(0, vie_.GetReceiveAbsoluteSendTimeExtensionId(channel_num));
-  EXPECT_EQ(0, vie_.GetReceiveAbsoluteSendTimeExtensionId(new_channel_num));
+TEST_F(WebRtcVideoEngineTestFake, SendAbsoluteSendTimeHeaderExtensions) {
+  TestSetSendRtpHeaderExtensions(kRtpAbsoluteSenderTimeHeaderExtension);
+}
+TEST_F(WebRtcVideoEngineTestFake, RecvAbsoluteSendTimeHeaderExtensions) {
+  TestSetRecvRtpHeaderExtensions(kRtpAbsoluteSenderTimeHeaderExtension);
 }
 
 TEST_F(WebRtcVideoEngineTestFake, LeakyBucketTest) {
@@ -939,7 +1046,6 @@ TEST_F(WebRtcVideoEngineTestFake, AdditiveVideoOptions) {
   EXPECT_TRUE(vie_.GetTransmissionSmoothingStatus(first_send_channel));
 }
 
-#ifdef USE_WEBRTC_DEV_BRANCH
 TEST_F(WebRtcVideoEngineTestFake, SetCpuOveruseOptionsWithCaptureJitterMethod) {
   EXPECT_TRUE(SetupEngine());
 
@@ -1051,7 +1157,6 @@ TEST_F(WebRtcVideoEngineTestFake, SetCpuOveruseOptionsWithEncodeUsageMethod) {
   EXPECT_FALSE(cpu_option.enable_capture_jitter_method);
   EXPECT_TRUE(cpu_option.enable_encode_usage_method);
 }
-#endif
 
 // Test that AddRecvStream doesn't create new channel for 1:1 call.
 TEST_F(WebRtcVideoEngineTestFake, AddRecvStream1On1) {
@@ -1353,7 +1458,7 @@ TEST_F(WebRtcVideoEngineTestFake, SetStartBandwidthOption) {
       kMaxBandwidthKbps, kMinBandwidthKbps, start_bandwidth_kbps);
 }
 
-// Test that SetMaxSendBandwidth is ignored in conference mode.
+// Test that SetMaxSendBandwidth works as expected in conference mode.
 TEST_F(WebRtcVideoEngineTestFake, SetBandwidthInConference) {
   EXPECT_TRUE(SetupEngine());
   int channel_num = vie_.GetLastChannel();
@@ -1366,16 +1471,11 @@ TEST_F(WebRtcVideoEngineTestFake, SetBandwidthInConference) {
   // Set send bandwidth.
   EXPECT_TRUE(channel_->SetMaxSendBandwidth(768000));
 
-  // Verify bitrate not changed.
-  webrtc::VideoCodec gcodec;
-  EXPECT_EQ(0, vie_.GetSendCodec(channel_num, gcodec));
-  EXPECT_EQ(kMinBandwidthKbps, gcodec.minBitrate);
-  EXPECT_EQ(kStartBandwidthKbps, gcodec.startBitrate);
-  EXPECT_EQ(kMaxBandwidthKbps, gcodec.maxBitrate);
-  EXPECT_NE(768U, gcodec.minBitrate);
-  EXPECT_NE(768U, gcodec.startBitrate);
-  EXPECT_NE(768U, gcodec.maxBitrate);
+  // Verify that the max bitrate has changed.
+  VerifyVP8SendCodec(channel_num, kVP8Codec.width, kVP8Codec.height, 0,
+                     768, kMinBandwidthKbps, kStartBandwidthKbps);
 }
+
 
 // Test that sending screencast frames doesn't change bitrate.
 TEST_F(WebRtcVideoEngineTestFake, SetBandwidthScreencast) {
@@ -1528,26 +1628,28 @@ TEST_F(WebRtcVideoEngineTestFake, MultipleSendStreamsWithOneCapturer) {
 }
 
 
-// Disabled since its flaky: b/11288120
-TEST_F(WebRtcVideoEngineTestFake, DISABLED_SendReceiveBitratesStats) {
+TEST_F(WebRtcVideoEngineTestFake, SendReceiveBitratesStats) {
   EXPECT_TRUE(SetupEngine());
   cricket::VideoOptions options;
   options.conference_mode.Set(true);
   EXPECT_TRUE(channel_->SetOptions(options));
   EXPECT_TRUE(channel_->AddSendStream(
       cricket::StreamParams::CreateLegacy(1)));
-  int send_channel = vie_.GetLastChannel();
+  int first_send_channel = vie_.GetLastChannel();
+  EXPECT_TRUE(channel_->AddSendStream(
+      cricket::StreamParams::CreateLegacy(2)));
+  int second_send_channel = vie_.GetLastChannel();
   cricket::VideoCodec codec(kVP8Codec720p);
   std::vector<cricket::VideoCodec> codec_list;
   codec_list.push_back(codec);
   EXPECT_TRUE(channel_->SetSendCodecs(codec_list));
 
   EXPECT_TRUE(channel_->AddRecvStream(
-      cricket::StreamParams::CreateLegacy(2)));
-  int first_receive_channel = vie_.GetLastChannel();
-  EXPECT_NE(send_channel, first_receive_channel);
-  EXPECT_TRUE(channel_->AddRecvStream(
       cricket::StreamParams::CreateLegacy(3)));
+  int first_receive_channel = vie_.GetLastChannel();
+  EXPECT_NE(first_send_channel, first_receive_channel);
+  EXPECT_TRUE(channel_->AddRecvStream(
+      cricket::StreamParams::CreateLegacy(4)));
   int second_receive_channel = vie_.GetLastChannel();
   EXPECT_NE(first_receive_channel, second_receive_channel);
 
@@ -1562,21 +1664,20 @@ TEST_F(WebRtcVideoEngineTestFake, DISABLED_SendReceiveBitratesStats) {
   ASSERT_EQ(0, info.bw_estimations[0].target_enc_bitrate);
 
   // Start sending and receiving on one of the channels and verify bitrates.
-  EXPECT_EQ(0, vie_.StartSend(send_channel));
+  EXPECT_EQ(0, vie_.StartSend(first_send_channel));
   int send_video_bitrate = 800;
   int send_fec_bitrate = 100;
   int send_nack_bitrate = 20;
   int send_total_bitrate = send_video_bitrate + send_fec_bitrate +
       send_nack_bitrate;
-  int send_bandwidth = 950;
-  vie_.SetSendBitrates(send_channel, send_video_bitrate, send_fec_bitrate,
+  int send_bandwidth = 1900;
+  vie_.SetSendBitrates(first_send_channel, send_video_bitrate, send_fec_bitrate,
                        send_nack_bitrate);
-  vie_.SetSendBandwidthEstimate(send_channel, send_bandwidth);
+  vie_.SetSendBandwidthEstimate(first_send_channel, send_bandwidth);
 
   EXPECT_EQ(0, vie_.StartReceive(first_receive_channel));
-  int first_channel_receive_bandwidth = 600;
-  vie_.SetReceiveBandwidthEstimate(first_receive_channel,
-                                   first_channel_receive_bandwidth);
+  int receive_bandwidth = 600;
+  vie_.SetReceiveBandwidthEstimate(first_receive_channel, receive_bandwidth);
 
   info.Clear();
   EXPECT_TRUE(channel_->GetStats(cricket::StatsOptions(), &info));
@@ -1585,26 +1686,26 @@ TEST_F(WebRtcVideoEngineTestFake, DISABLED_SendReceiveBitratesStats) {
   ASSERT_EQ(send_total_bitrate, info.bw_estimations[0].transmit_bitrate);
   ASSERT_EQ(send_nack_bitrate, info.bw_estimations[0].retransmit_bitrate);
   ASSERT_EQ(send_bandwidth, info.bw_estimations[0].available_send_bandwidth);
-  ASSERT_EQ(first_channel_receive_bandwidth,
-            info.bw_estimations[0].available_recv_bandwidth);
+  ASSERT_EQ(receive_bandwidth, info.bw_estimations[0].available_recv_bandwidth);
   ASSERT_EQ(send_video_bitrate, info.bw_estimations[0].target_enc_bitrate);
 
   // Start receiving on the second channel and verify received rate.
+  EXPECT_EQ(0, vie_.StartSend(second_send_channel));
+  vie_.SetSendBitrates(second_send_channel,
+                       send_video_bitrate,
+                       send_fec_bitrate,
+                       send_nack_bitrate);
   EXPECT_EQ(0, vie_.StartReceive(second_receive_channel));
-  int second_channel_receive_bandwidth = 100;
-  vie_.SetReceiveBandwidthEstimate(second_receive_channel,
-                                   second_channel_receive_bandwidth);
 
   info.Clear();
   EXPECT_TRUE(channel_->GetStats(cricket::StatsOptions(), &info));
   ASSERT_EQ(1U, info.bw_estimations.size());
-  ASSERT_EQ(send_video_bitrate, info.bw_estimations[0].actual_enc_bitrate);
-  ASSERT_EQ(send_total_bitrate, info.bw_estimations[0].transmit_bitrate);
-  ASSERT_EQ(send_nack_bitrate, info.bw_estimations[0].retransmit_bitrate);
+  ASSERT_EQ(2 * send_video_bitrate, info.bw_estimations[0].actual_enc_bitrate);
+  ASSERT_EQ(2 * send_total_bitrate, info.bw_estimations[0].transmit_bitrate);
+  ASSERT_EQ(2 * send_nack_bitrate, info.bw_estimations[0].retransmit_bitrate);
   ASSERT_EQ(send_bandwidth, info.bw_estimations[0].available_send_bandwidth);
-  ASSERT_EQ(first_channel_receive_bandwidth + second_channel_receive_bandwidth,
-            info.bw_estimations[0].available_recv_bandwidth);
-  ASSERT_EQ(send_video_bitrate, info.bw_estimations[0].target_enc_bitrate);
+  ASSERT_EQ(receive_bandwidth, info.bw_estimations[0].available_recv_bandwidth);
+  ASSERT_EQ(2 * send_video_bitrate, info.bw_estimations[0].target_enc_bitrate);
 }
 
 TEST_F(WebRtcVideoEngineTestFake, TestSetAdaptInputToCpuUsage) {
@@ -2017,6 +2118,7 @@ TEST_F(WebRtcVideoEngineTest, FindCodec) {
   EXPECT_TRUE(engine_.FindCodec(fec));
 
   cricket::VideoCodec rtx(96, "rtx", 0, 0, 30, 0);
+  rtx.SetParam("apt", kVP8Codec.id);
   EXPECT_TRUE(engine_.FindCodec(rtx));
 }
 
@@ -2113,7 +2215,7 @@ TEST_F(WebRtcVideoMediaChannelTest, SendManyResizeOnce) {
   SendManyResizeOnce();
 }
 
-TEST_F(WebRtcVideoMediaChannelTest, SendVp8HdAndReceiveAdaptedVp8Vga) {
+TEST_F(WebRtcVideoMediaChannelTest, DISABLED_SendVp8HdAndReceiveAdaptedVp8Vga) {
   EXPECT_TRUE(channel_->SetCapturer(kSsrc, NULL));
   channel_->UpdateAspectRatio(1280, 720);
   video_capturer_.reset(new cricket::FakeVideoCapturer);
@@ -2287,7 +2389,7 @@ TEST_F(WebRtcVideoMediaChannelTest, TwoStreamsReUseFirstStream) {
                                                        0));
 }
 
-TEST_F(WebRtcVideoMediaChannelTest, TwoStreamsSendAndUnsignalledRecv) {
+TEST_F(WebRtcVideoMediaChannelTest, DISABLED_TwoStreamsSendAndUnsignalledRecv) {
   Base::TwoStreamsSendAndUnsignalledRecv(cricket::VideoCodec(100, "VP8", 640,
                                                              400, 30, 0));
 }

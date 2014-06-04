@@ -16,8 +16,8 @@
 
 #include <algorithm>
 
+#include "webrtc/base/constructormagic.h"
 #include "webrtc/common_types.h"
-#include "webrtc/system_wrappers/interface/constructor_magic.h"
 #include "webrtc/typedefs.h"
 
 #ifdef _WIN32
@@ -103,6 +103,8 @@ struct WebRtcRTPHeader {
   RTPHeader header;
   FrameType frameType;
   RTPTypeHeader type;
+  // NTP time of the capture time in local timebase in milliseconds.
+  int64_t ntp_time_ms;
 };
 
 class RTPFragmentationHeader {
@@ -682,13 +684,20 @@ class AudioFrame {
   AudioFrame& operator-=(const AudioFrame& rhs);
 
   int id_;
+  // RTP timestamp of the first sample in the AudioFrame.
   uint32_t timestamp_;
+  // NTP time of the estimated capture time in local timebase in milliseconds.
+  int64_t ntp_time_ms_;
   int16_t data_[kMaxDataSizeSamples];
   int samples_per_channel_;
   int sample_rate_hz_;
   int num_channels_;
   SpeechType speech_type_;
   VADActivity vad_activity_;
+  // Note that there is no guarantee that |energy_| is correct. Any user of this
+  // member must verify that the value is correct.
+  // TODO(henrike) Remove |energy_|.
+  // See https://code.google.com/p/webrtc/issues/detail?id=3315.
   uint32_t energy_;
   bool interleaved_;
 
@@ -699,6 +708,7 @@ class AudioFrame {
 inline AudioFrame::AudioFrame()
     : id_(-1),
       timestamp_(0),
+      ntp_time_ms_(0),
       data_(),
       samples_per_channel_(0),
       sample_rate_hz_(0),

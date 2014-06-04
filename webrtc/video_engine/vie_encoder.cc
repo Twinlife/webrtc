@@ -139,8 +139,7 @@ ViEEncoder::ViEEncoder(int32_t engine_id,
   : engine_id_(engine_id),
     channel_id_(channel_id),
     number_of_cores_(number_of_cores),
-    vcm_(*webrtc::VideoCodingModule::Create(ViEModuleId(engine_id,
-                                                        channel_id))),
+    vcm_(*webrtc::VideoCodingModule::Create()),
     vpm_(*webrtc::VideoProcessingModule::Create(ViEModuleId(engine_id,
                                                             channel_id))),
     callback_cs_(CriticalSectionWrapper::CreateCriticalSection()),
@@ -504,10 +503,11 @@ void ViEEncoder::DeliverFrame(int id,
       unsigned int length = CalcBufferSize(kI420,
                                            video_frame->width(),
                                            video_frame->height());
-      scoped_array<uint8_t> video_buffer(new uint8_t[length]);
+      scoped_ptr<uint8_t[]> video_buffer(new uint8_t[length]);
       ExtractBuffer(*video_frame, length, video_buffer.get());
       effect_filter_->Transform(length,
                                 video_buffer.get(),
+                                video_frame->ntp_time_ms(),
                                 video_frame->timestamp(),
                                 video_frame->width(),
                                 video_frame->height());
@@ -606,14 +606,6 @@ int32_t ViEEncoder::SendCodecStatistics(
 
 int32_t ViEEncoder::PacerQueuingDelayMs() const {
   return paced_sender_->QueueInMs();
-}
-
-int32_t ViEEncoder::EstimatedSendBandwidth(
-    uint32_t* available_bandwidth) const {
-  if (!bitrate_controller_->AvailableBandwidth(available_bandwidth)) {
-    return -1;
-  }
-  return 0;
 }
 
 int ViEEncoder::CodecTargetBitrate(uint32_t* bitrate) const {

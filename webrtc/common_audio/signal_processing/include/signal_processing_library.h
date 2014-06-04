@@ -27,7 +27,6 @@
 #define WEBRTC_SPL_WORD32_MAX       (int32_t)0x7fffffff
 #define WEBRTC_SPL_WORD32_MIN       (int32_t)0x80000000
 #define WEBRTC_SPL_MAX_LPC_ORDER    14
-#define WEBRTC_SPL_MAX_SEED_USED    0x80000000L
 #define WEBRTC_SPL_MIN(A, B)        (A < B ? A : B)  // Get min value
 #define WEBRTC_SPL_MAX(A, B)        (A > B ? A : B)  // Get max value
 // TODO(kma/bjorn): For the next two macros, investigate how to correct the code
@@ -54,8 +53,6 @@
     ((int32_t) ((int32_t)(a) * (int32_t)(b)))
 #define WEBRTC_SPL_UMUL(a, b) \
     ((uint32_t) ((uint32_t)(a) * (uint32_t)(b)))
-#define WEBRTC_SPL_UMUL_RSFT16(a, b) \
-    ((uint32_t) ((uint32_t)(a) * (uint32_t)(b)) >> 16)
 #define WEBRTC_SPL_UMUL_16_16(a, b) \
     ((uint32_t) (uint16_t)(a) * (uint16_t)(b))
 #define WEBRTC_SPL_UMUL_16_16_RSFT16(a, b) \
@@ -83,11 +80,6 @@
 #define WEBRTC_SPL_MUL_32_32_RSFT32(a32a, a32b, b32) \
     ((int32_t)(WEBRTC_SPL_MUL_16_32_RSFT16(a32a, b32) \
     + (WEBRTC_SPL_MUL_16_32_RSFT16(a32b, b32) >> 16)))
-#define WEBRTC_SPL_MUL_32_32_RSFT32BI(a32, b32) \
-    ((int32_t)(WEBRTC_SPL_MUL_16_32_RSFT16(( \
-    (int16_t)(a32 >> 16)), b32) + \
-    (WEBRTC_SPL_MUL_16_32_RSFT16(( \
-    (int16_t)((a32 & 0x0000FFFF) >> 1)), b32) >> 15)))
 #endif
 #endif
 
@@ -120,10 +112,7 @@
 
 #define WEBRTC_SPL_SUB_SAT_W32(a, b)    WebRtcSpl_SubSatW32(a, b)
 #define WEBRTC_SPL_ADD_SAT_W16(a, b)    WebRtcSpl_AddSatW16(a, b)
-#define WEBRTC_SPL_SUB_SAT_W16(a, b)    WebRtcSpl_SubSatW16(a, b)
 
-// We cannot do casting here due to signed/unsigned problem
-#define WEBRTC_SPL_IS_NEG(a)            ((a) & 0x80000000)
 // Shifting with negative numbers allowed
 // Positive means left shift
 #define WEBRTC_SPL_SHIFT_W16(x, c) \
@@ -672,7 +661,6 @@ void WebRtcSpl_SqrtOfOneMinusXSquared(int16_t* in_vector,
 
 // Randomization functions. Implementations collected in
 // randomization_functions.c and descriptions at bottom of this file.
-uint32_t WebRtcSpl_IncreaseSeed(uint32_t* seed);
 int16_t WebRtcSpl_RandU(uint32_t* seed);
 int16_t WebRtcSpl_RandN(uint32_t* seed);
 int16_t WebRtcSpl_RandUArray(int16_t* vector,

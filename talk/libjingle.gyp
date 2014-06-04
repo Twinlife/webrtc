@@ -158,7 +158,8 @@
         },
       ],
     }],
-    ['OS=="ios" or (OS=="mac" and target_arch!="ia32")', {
+    ['OS=="ios" or (OS=="mac" and target_arch!="ia32" and mac_sdk>="10.7")', {
+      # The >= 10.7 above is required for ARC.
       'targets': [
         {
           'target_name': 'libjingle_peerconnection_objc',
@@ -169,8 +170,11 @@
           'sources': [
             'app/webrtc/objc/RTCAudioTrack+Internal.h',
             'app/webrtc/objc/RTCAudioTrack.mm',
+            'app/webrtc/objc/RTCDataChannel+Internal.h',
+            'app/webrtc/objc/RTCDataChannel.mm',
             'app/webrtc/objc/RTCEnumConverter.h',
             'app/webrtc/objc/RTCEnumConverter.mm',
+            'app/webrtc/objc/RTCI420Frame+Internal.h',
             'app/webrtc/objc/RTCI420Frame.mm',
             'app/webrtc/objc/RTCICECandidate+Internal.h',
             'app/webrtc/objc/RTCICECandidate.mm',
@@ -194,6 +198,8 @@
             'app/webrtc/objc/RTCPeerConnectionObserver.mm',
             'app/webrtc/objc/RTCSessionDescription+Internal.h',
             'app/webrtc/objc/RTCSessionDescription.mm',
+            'app/webrtc/objc/RTCStatsReport+Internal.h',
+            'app/webrtc/objc/RTCStatsReport.mm',
             'app/webrtc/objc/RTCVideoCapturer+Internal.h',
             'app/webrtc/objc/RTCVideoCapturer.mm',
             'app/webrtc/objc/RTCVideoRenderer+Internal.h',
@@ -204,6 +210,7 @@
             'app/webrtc/objc/RTCVideoTrack.mm',
             'app/webrtc/objc/public/RTCAudioSource.h',
             'app/webrtc/objc/public/RTCAudioTrack.h',
+            'app/webrtc/objc/public/RTCDataChannel.h',
             'app/webrtc/objc/public/RTCI420Frame.h',
             'app/webrtc/objc/public/RTCICECandidate.h',
             'app/webrtc/objc/public/RTCICEServer.h',
@@ -216,11 +223,12 @@
             'app/webrtc/objc/public/RTCPeerConnectionDelegate.h',
             'app/webrtc/objc/public/RTCPeerConnectionFactory.h',
             'app/webrtc/objc/public/RTCSessionDescription.h',
-            'app/webrtc/objc/public/RTCSessionDescriptonDelegate.h',
+            'app/webrtc/objc/public/RTCSessionDescriptionDelegate.h',
+            'app/webrtc/objc/public/RTCStatsDelegate.h',
+            'app/webrtc/objc/public/RTCStatsReport.h',
             'app/webrtc/objc/public/RTCTypes.h',
             'app/webrtc/objc/public/RTCVideoCapturer.h',
             'app/webrtc/objc/public/RTCVideoRenderer.h',
-            'app/webrtc/objc/public/RTCVideoRendererDelegate.h',
             'app/webrtc/objc/public/RTCVideoSource.h',
             'app/webrtc/objc/public/RTCVideoTrack.h',
           ],
@@ -236,13 +244,41 @@
           ],
           'link_settings': {
             'libraries': [
-              '$(SDKROOT)/System/Library/Frameworks/Foundation.framework',
               '-lstdc++',
             ],
           },
           'xcode_settings': {
             'CLANG_ENABLE_OBJC_ARC': 'YES',
+            # common.gypi enables this for mac but we want this to be disabled
+            # like it is for ios.
+            'CLANG_WARN_OBJC_MISSING_PROPERTY_SYNTHESIS': 'NO',
           },
+          'conditions': [
+            ['OS=="ios"', {
+              'sources': [
+                'app/webrtc/objc/RTCEAGLVideoRenderer.mm',
+                'app/webrtc/objc/RTCEAGLVideoView+Internal.h',
+                'app/webrtc/objc/RTCEAGLVideoView.m',
+                'app/webrtc/objc/public/RTCEAGLVideoRenderer.h',
+                'app/webrtc/objc/public/RTCEAGLVideoView.h',
+              ],
+              'link_settings': {
+                'xcode_settings': {
+                  'OTHER_LDFLAGS': [
+                    '-framework CoreGraphics',
+                    '-framework GLKit',
+                  ],
+                },
+              },
+            }],
+            ['OS=="mac"', {
+              'xcode_settings': {
+                # Need to build against 10.7 framework for full ARC support
+                # on OSX.
+                'MACOSX_DEPLOYMENT_TARGET' : '10.7',
+              },
+            }],
+          ],
         },  # target libjingle_peerconnection_objc
       ],
     }],
@@ -651,6 +687,7 @@
         }],
         ['OS=="ios"', {
           'sources': [
+            'base/iosfilesystem.mm',
             'base/scoped_autorelease_pool.mm',
           ],
           'dependencies': [
@@ -660,7 +697,6 @@
             'xcode_settings': {
               'OTHER_LDFLAGS': [
                 '-framework Foundation',
-                '-framework IOKit',
                 '-framework Security',
                 '-framework SystemConfiguration',
                 '-framework UIKit',
@@ -786,9 +822,10 @@
         '<(DEPTH)/third_party/usrsctp/usrsctp.gyp:usrsctplib',
         '<(webrtc_root)/modules/modules.gyp:video_capture_module',
         '<(webrtc_root)/modules/modules.gyp:video_render_module',
-        '<(webrtc_root)/video_engine/video_engine.gyp:video_engine_core',
+        '<(webrtc_root)/webrtc.gyp:webrtc',
         '<(webrtc_root)/voice_engine/voice_engine.gyp:voice_engine',
         '<(webrtc_root)/system_wrappers/source/system_wrappers.gyp:system_wrappers',
+        '<(webrtc_root)/system_wrappers/source/system_wrappers.gyp:field_trial_default',
         'libjingle',
         'libjingle_sound',
       ],
@@ -869,6 +906,8 @@
         'media/webrtc/webrtcvideoencoderfactory.h',
         'media/webrtc/webrtcvideoengine.cc',
         'media/webrtc/webrtcvideoengine.h',
+        'media/webrtc/webrtcvideoengine2.cc',
+        'media/webrtc/webrtcvideoengine2.h',
         'media/webrtc/webrtcvideoframe.cc',
         'media/webrtc/webrtcvideoframe.h',
         'media/webrtc/webrtcvie.h',
@@ -963,7 +1002,6 @@
         }],
         ['OS=="ios"', {
           'sources': [
-            'media/devices/iosdeviceinfo.cc',
             'media/devices/mobiledevicemanager.cc',
           ],
           'include_dirs': [
@@ -1095,6 +1133,8 @@
         'session/tunnel/securetunnelsessionclient.h',
         'session/media/audiomonitor.cc',
         'session/media/audiomonitor.h',
+        'session/media/bundlefilter.cc',
+        'session/media/bundlefilter.h',
         'session/media/call.cc',
         'session/media/call.h',
         'session/media/channel.cc',
@@ -1120,8 +1160,6 @@
         'session/media/soundclip.h',
         'session/media/srtpfilter.cc',
         'session/media/srtpfilter.h',
-        'session/media/ssrcmuxfilter.cc',
-        'session/media/ssrcmuxfilter.h',
         'session/media/typingmonitor.cc',
         'session/media/typingmonitor.h',
         'session/media/voicechannel.h',
