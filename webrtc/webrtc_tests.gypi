@@ -20,12 +20,23 @@
       'target_name': 'video_loopback',
       'type': 'executable',
       'sources': [
+        'test/mac/run_test.mm',
+        'test/run_test.cc',
+        'test/run_test.h',
         'video/loopback.cc',
+      ],
+      'conditions': [
+        ['OS=="mac"', {
+          'sources!': [
+            'test/run_test.cc',
+          ],
+        }],
       ],
       'dependencies': [
         '<(DEPTH)/testing/gtest.gyp:gtest',
         '<(DEPTH)/third_party/gflags/gflags.gyp:gflags',
         'test/webrtc_test_common.gyp:webrtc_test_common',
+        'test/webrtc_test_common.gyp:webrtc_test_renderer',
         '<(webrtc_root)/system_wrappers/source/system_wrappers.gyp:field_trial_default',
         'webrtc',
       ],
@@ -47,14 +58,24 @@
         'test/metrics.gyp:metrics',
         'test/webrtc_test_common.gyp:webrtc_test_common',
         'test/test.gyp:test_main',
+        'test/webrtc_test_common.gyp:webrtc_test_video_render_dependencies',
         'webrtc',
+      ],
+      'conditions': [
+        # TODO(henrike): remove build_with_chromium==1 when the bots are
+        # using Chromium's buildbots.
+        ['build_with_chromium==1 and OS=="android"', {
+          'dependencies': [
+            '<(DEPTH)/testing/android/native_test.gyp:native_test_native_code',
+          ],
+        }],
       ],
     },
     {
       'target_name': 'webrtc_perf_tests',
       'type': '<(gtest_target_type)',
       'sources': [
-        'modules/audio_coding/neteq4/test/neteq_performance_unittest.cc',
+        'modules/audio_coding/neteq/test/neteq_performance_unittest.cc',
         'video/call_perf_tests.cc',
         'video/full_stack.cc',
         'video/rampup_tests.cc',
@@ -65,14 +86,24 @@
         'modules/modules.gyp:rtp_rtcp',
         'test/webrtc_test_common.gyp:webrtc_test_common',
         'test/test.gyp:test_main',
+        'test/webrtc_test_common.gyp:webrtc_test_video_render_dependencies',
         'webrtc',
+      ],
+      'conditions': [
+        # TODO(henrike): remove build_with_chromium==1 when the bots are
+        # using Chromium's buildbots.
+        ['build_with_chromium==1 and OS=="android"', {
+          'dependencies': [
+            '<(DEPTH)/testing/android/native_test.gyp:native_test_native_code',
+          ],
+        }],
       ],
     },
   ],
   'conditions': [
     # TODO(henrike): remove build_with_chromium==1 when the bots are using
     # Chromium's buildbots.
-    ['build_with_chromium==1 and OS=="android" and gtest_target_type=="shared_library"', {
+    ['build_with_chromium==1 and OS=="android"', {
       'targets': [
         {
           'target_name': 'video_engine_tests_apk_target',

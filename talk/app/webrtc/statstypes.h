@@ -133,6 +133,7 @@ class StatsReport {
 
   // Internal StatsValue names
   static const char kStatsValueNameAvgEncodeMs[];
+  static const char kStatsValueNameEncodeRelStdDev[];
   static const char kStatsValueNameEncodeUsagePercent[];
   static const char kStatsValueNameCaptureJitterMs[];
   static const char kStatsValueNameCaptureQueueDelayMsPerS[];
@@ -140,6 +141,7 @@ class StatsReport {
   static const char kStatsValueNameBandwidthLimitedResolution[];
   static const char kStatsValueNameCpuLimitedResolution[];
   static const char kStatsValueNameViewLimitedResolution[];
+  static const char kStatsValueNameAdaptationChanges[];
   static const char kStatsValueNameEchoCancellationQualityMin[];
   static const char kStatsValueNameEchoDelayMedian[];
   static const char kStatsValueNameEchoDelayStdDev[];

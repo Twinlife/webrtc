@@ -45,7 +45,6 @@
 #error "Bogus include."
 #endif
 
-
 namespace webrtc {
 class VideoCaptureModule;
 class VideoDecoder;
@@ -345,6 +344,7 @@ class WebRtcVideoMediaChannel : public talk_base::MessageHandler,
   bool SetReceiveCodecs(WebRtcVideoChannelRecvInfo* info);
   // Returns the channel number that receives the stream with SSRC |ssrc|.
   int GetRecvChannelNum(uint32 ssrc);
+  bool MaybeSetRtxSsrc(const StreamParams& sp, int channel_id);
   // Given captured video frame size, checks if we need to reset vie send codec.
   // |reset| is set to whether resetting has happened on vie or not.
   // Returns false on error.
@@ -388,7 +388,6 @@ class WebRtcVideoMediaChannel : public talk_base::MessageHandler,
     return options_.conference_mode.GetWithDefaultIfUnset(false);
   }
   bool RemoveCapturer(uint32 ssrc);
-
 
   talk_base::MessageQueue* worker_thread() { return engine_->worker_thread(); }
   void QueueBlackFrame(uint32 ssrc, int64 timestamp, int framerate);

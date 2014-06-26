@@ -38,6 +38,7 @@
 namespace cricket {
 
 static const int kMaxStaticPayloadId = 95;
+const int kMaxPayloadId = 127;
 
 bool FeedbackParam::operator==(const FeedbackParam& other) const {
   return _stricmp(other.id().c_str(), id().c_str()) == 0 &&
@@ -116,6 +117,10 @@ void Codec::SetParam(const std::string& name, const std::string& value) {
 
 void Codec::SetParam(const std::string& name, int value)  {
   params[name] = talk_base::ToString(value);
+}
+
+bool Codec::RemoveParam(const std::string& name) {
+  return params.erase(name) == 1;
 }
 
 void Codec::AddFeedbackParam(const FeedbackParam& param) {

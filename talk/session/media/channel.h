@@ -324,6 +324,13 @@ class BaseChannel
   void MaybeCacheRtpAbsSendTimeHeaderExtension(
     const std::vector<RtpHeaderExtension>& extensions);
 
+  bool SetRecvRtpHeaderExtensions_w(const MediaContentDescription* content,
+                                    MediaChannel* media_channel,
+                                    std::string* error_desc);
+  bool SetSendRtpHeaderExtensions_w(const MediaContentDescription* content,
+                                    MediaChannel* media_channel,
+                                    std::string* error_desc);
+
   bool CheckSrtpConfig(const std::vector<CryptoParams>& cryptos,
                        bool* dtls,
                        std::string* error_desc);
@@ -640,6 +647,8 @@ class DataChannel : public BaseChannel {
   // That occurs when the channel is enabled, the transport is writable,
   // both local and remote descriptions are set, and the channel is unblocked.
   sigslot::signal1<bool> SignalReadyToSendData;
+  // Signal for notifying that the remote side has closed the DataChannel.
+  sigslot::signal1<uint32> SignalStreamClosedRemotely;
 
  protected:
   // downcasts a MediaChannel.
@@ -711,6 +720,7 @@ class DataChannel : public BaseChannel {
   void OnDataChannelError(uint32 ssrc, DataMediaChannel::Error error);
   void OnDataChannelReadyToSend(bool writable);
   void OnSrtpError(uint32 ssrc, SrtpFilter::Mode mode, SrtpFilter::Error error);
+  void OnStreamClosedRemotely(uint32 sid);
 
   talk_base::scoped_ptr<DataMediaMonitor> media_monitor_;
   // TODO(pthatcher): Make a separate SctpDataChannel and

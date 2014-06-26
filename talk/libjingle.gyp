@@ -109,6 +109,7 @@
                 # included here, or better yet, build a proper .jar in webrtc
                 # and include it here.
                 'android_java_files': [
+                  'app/webrtc/java/android/org/webrtc/VideoRendererGui.java',
                   'app/webrtc/java/src/org/webrtc/MediaCodecVideoEncoder.java',
                   '<(webrtc_modules_dir)/audio_device/android/java/src/org/webrtc/voiceengine/AudioManagerAndroid.java',
                   '<(webrtc_modules_dir)/video_capture/android/java/src/org/webrtc/videoengine/VideoCaptureAndroid.java',
@@ -190,6 +191,7 @@
             'app/webrtc/objc/RTCMediaStream.mm',
             'app/webrtc/objc/RTCMediaStreamTrack+Internal.h',
             'app/webrtc/objc/RTCMediaStreamTrack.mm',
+            'app/webrtc/objc/RTCOpenGLVideoRenderer.mm',
             'app/webrtc/objc/RTCPair.m',
             'app/webrtc/objc/RTCPeerConnection+Internal.h',
             'app/webrtc/objc/RTCPeerConnection.mm',
@@ -218,6 +220,7 @@
             'app/webrtc/objc/public/RTCMediaSource.h',
             'app/webrtc/objc/public/RTCMediaStream.h',
             'app/webrtc/objc/public/RTCMediaStreamTrack.h',
+            'app/webrtc/objc/public/RTCOpenGLVideoRenderer.h',
             'app/webrtc/objc/public/RTCPair.h',
             'app/webrtc/objc/public/RTCPeerConnection.h',
             'app/webrtc/objc/public/RTCPeerConnectionDelegate.h',
@@ -256,10 +259,8 @@
           'conditions': [
             ['OS=="ios"', {
               'sources': [
-                'app/webrtc/objc/RTCEAGLVideoRenderer.mm',
                 'app/webrtc/objc/RTCEAGLVideoView+Internal.h',
                 'app/webrtc/objc/RTCEAGLVideoView.m',
-                'app/webrtc/objc/public/RTCEAGLVideoRenderer.h',
                 'app/webrtc/objc/public/RTCEAGLVideoView.h',
               ],
               'link_settings': {
@@ -272,10 +273,21 @@
               },
             }],
             ['OS=="mac"', {
+              'sources': [
+                'app/webrtc/objc/RTCNSGLVideoView.m',
+                'app/webrtc/objc/public/RTCNSGLVideoView.h',
+              ],
               'xcode_settings': {
                 # Need to build against 10.7 framework for full ARC support
                 # on OSX.
                 'MACOSX_DEPLOYMENT_TARGET' : '10.7',
+              },
+              'link_settings': {
+                'xcode_settings': {
+                  'OTHER_LDFLAGS': [
+                    '-framework Cocoa',
+                  ],
+                },
               },
             }],
           ],
@@ -691,7 +703,7 @@
             'base/scoped_autorelease_pool.mm',
           ],
           'dependencies': [
-            '../net/third_party/nss/ssl.gyp:libssl',
+            '<(DEPTH)/net/third_party/nss/ssl.gyp:libssl',
           ],
           'all_dependent_settings': {
             'xcode_settings': {
@@ -895,6 +907,7 @@
         'media/sctp/sctpdataengine.h',
         'media/webrtc/webrtccommon.h',
         'media/webrtc/webrtcexport.h',
+        'media/webrtc/webrtcmediaengine.cc',
         'media/webrtc/webrtcmediaengine.h',
         'media/webrtc/webrtcpassthroughrender.cc',
         'media/webrtc/webrtcpassthroughrender.h',

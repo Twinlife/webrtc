@@ -71,6 +71,7 @@ using cricket::kCodecParamUseInbandFec;
 using cricket::kCodecParamSctpProtocol;
 using cricket::kCodecParamSctpStreams;
 using cricket::kCodecParamMaxAverageBitrate;
+using cricket::kCodecParamAssociatedPayloadType;
 using cricket::kWildcardPayloadType;
 using cricket::MediaContentDescription;
 using cricket::MediaType;
@@ -912,6 +913,12 @@ std::string SdpSerializeCandidate(
   std::vector<cricket::Candidate> candidates;
   candidates.push_back(candidate.candidate());
   BuildCandidate(candidates, &message);
+  // From WebRTC draft section 4.8.1.1 candidate-attribute will be
+  // just candidate:<candidate> not a=candidate:<blah>CRLF
+  ASSERT(message.find("a=") == 0);
+  message.erase(0, 2);
+  ASSERT(message.find(kLineBreak) == message.size() - 2);
+  message.resize(message.size() - 2);
   return message;
 }
 
@@ -1512,7 +1519,7 @@ bool IsFmtpParam(const std::string& name) {
     kCodecParamStereo, kCodecParamUseInbandFec, kCodecParamStartBitrate,
     kCodecParamMaxBitrate, kCodecParamMinBitrate, kCodecParamMaxQuantization,
     kCodecParamSctpProtocol, kCodecParamSctpStreams,
-    kCodecParamMaxAverageBitrate
+    kCodecParamMaxAverageBitrate, kCodecParamAssociatedPayloadType
   };
   for (size_t i = 0; i < ARRAY_SIZE(kFmtpParams); ++i) {
     if (_stricmp(name.c_str(), kFmtpParams[i]) == 0) {

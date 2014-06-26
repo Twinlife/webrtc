@@ -23,7 +23,7 @@
 #include "webrtc/test/encoder_settings.h"
 #include "webrtc/test/fake_encoder.h"
 #include "webrtc/test/run_loop.h"
-#include "webrtc/test/run_tests.h"
+#include "webrtc/test/run_test.h"
 #include "webrtc/test/video_capturer.h"
 #include "webrtc/test/video_renderer.h"
 #include "webrtc/typedefs.h"
@@ -61,6 +61,8 @@ void Loopback() {
 
   test::DirectTransport transport;
   Call::Config call_config(&transport);
+  call_config.start_bitrate_bps =
+      static_cast<int>(flags::StartBitrate()) * 1000;
   scoped_ptr<Call> call(Call::Create(call_config));
 
   // Loopback, call sends to itself.
@@ -72,19 +74,21 @@ void Loopback() {
   send_config.local_renderer = local_preview.get();
 
   scoped_ptr<VP8Encoder> encoder(VP8Encoder::Create());
-  send_config.encoder_settings =
-      test::CreateEncoderSettings(encoder.get(), "VP8", 124, 1);
-  VideoStream* stream = &send_config.encoder_settings.streams[0];
+  send_config.encoder_settings.encoder = encoder.get();
+  send_config.encoder_settings.payload_name = "VP8";
+  send_config.encoder_settings.payload_type = 124;
+  std::vector<VideoStream> video_streams = test::CreateVideoStreams(1);
+  VideoStream* stream = &video_streams[0];
   stream->width = flags::Width();
   stream->height = flags::Height();
   stream->min_bitrate_bps = static_cast<int>(flags::MinBitrate()) * 1000;
-  stream->target_bitrate_bps =
-      static_cast<int>(flags::MaxBitrate()) * 1000;
+  stream->target_bitrate_bps = static_cast<int>(flags::MaxBitrate()) * 1000;
   stream->max_bitrate_bps = static_cast<int>(flags::MaxBitrate()) * 1000;
   stream->max_framerate = 30;
   stream->max_qp = 56;
 
-  VideoSendStream* send_stream = call->CreateVideoSendStream(send_config);
+  VideoSendStream* send_stream =
+      call->CreateVideoSendStream(send_config, video_streams, NULL);
 
   Clock* test_clock = Clock::GetRealTimeClock();
 
@@ -127,6 +131,6 @@ int main(int argc, char* argv[]) {
   ::testing::InitGoogleTest(&argc, argv);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  webrtc::Loopback();
+  webrtc::test::RunTest(webrtc::Loopback);
   return 0;
 }

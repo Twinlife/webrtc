@@ -20,6 +20,7 @@
         '<(webrtc_root)/modules/modules.gyp:audio_conference_mixer',
         '<(webrtc_root)/modules/modules.gyp:audio_device',
         '<(webrtc_root)/modules/modules.gyp:audio_processing',
+        '<(webrtc_root)/modules/modules.gyp:bitrate_controller',
         '<(webrtc_root)/modules/modules.gyp:media_file',
         '<(webrtc_root)/modules/modules.gyp:rtp_rtcp',
         '<(webrtc_root)/modules/modules.gyp:webrtc_utility',
@@ -130,7 +131,7 @@
           'conditions': [
             # TODO(henrike): remove build_with_chromium==1 when the bots are
             # using Chromium's buildbots.
-            ['build_with_chromium==1 and OS=="android" and gtest_target_type=="shared_library"', {
+            ['build_with_chromium==1 and OS=="android"', {
               'dependencies': [
                 '<(DEPTH)/testing/android/native_test.gyp:native_test_native_code',
               ],
@@ -272,7 +273,7 @@
         }],
         # TODO(henrike): remove build_with_chromium==1 when the bots are using
         # Chromium's buildbots.
-        ['build_with_chromium==1 and OS=="android" and gtest_target_type=="shared_library"', {
+        ['build_with_chromium==1 and OS=="android"', {
           'targets': [
             {
               'target_name': 'voice_engine_unittests_apk_target',

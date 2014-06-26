@@ -11,7 +11,7 @@ vars = {
   "googlecode_url": "http://%s.googlecode.com/svn",
   "sourceforge_url": "http://svn.code.sf.net/p/%(repo)s/code",
   "chromium_trunk" : "http://src.chromium.org/svn/trunk",
-  "chromium_revision": "266514",
+  "chromium_revision": "277350",
 
   # A small subset of WebKit is needed for the Android Python test framework.
   "webkit_trunk": "http://src.chromium.org/blink/trunk",
@@ -50,6 +50,9 @@ deps = {
 
   "third_party/clang_format/script":
     From("chromium_deps", "src/third_party/clang_format/script"),
+
+  "third_party/colorama/src":
+    From("chromium_deps", "src/third_party/colorama/src"),
 
   "third_party/expat":
     Var("chromium_trunk") + "/src/third_party/expat@" + Var("chromium_revision"),
@@ -96,19 +99,19 @@ deps = {
     From("chromium_deps", "src/third_party/libsrtp"),
 
   "third_party/libvpx":
-    Var("chromium_trunk") + "/deps/third_party/libvpx@267596",
+    Var("chromium_trunk") + "/deps/third_party/libvpx@278497",
 
   "third_party/libyuv":
     (Var("googlecode_url") % "libyuv") + "/trunk@1000",
 
   "third_party/opus":
-    Var("chromium_trunk") + "/src/third_party/opus@266564",
+    Var("chromium_trunk") + "/src/third_party/opus@277414",
 
   "third_party/opus/src":
     Var("chromium_trunk") + "/deps/third_party/opus@256783",
 
   "third_party/protobuf":
-    Var("chromium_trunk") + "/src/third_party/protobuf@251211",
+    Var("chromium_trunk") + "/src/third_party/protobuf@" + Var("chromium_revision"),
 
   "third_party/sqlite/":
     Var("chromium_trunk") + "/src/third_party/sqlite@" + Var("chromium_revision"),
@@ -122,6 +125,9 @@ deps = {
   "tools/clang":
     Var("chromium_trunk") + "/src/tools/clang@" + Var("chromium_revision"),
 
+  "tools/generate_library_loader":
+    Var("chromium_trunk") + "/src/tools/generate_library_loader@" + Var("chromium_revision"),
+
   "tools/gn":
     Var("chromium_trunk") + "/src/tools/gn@" + Var("chromium_revision"),
 
@@ -134,8 +140,14 @@ deps = {
   "tools/python":
     Var("chromium_trunk") + "/src/tools/python@" + Var("chromium_revision"),
 
+  "tools/sanitizer_options":
+    File(Var("chromium_trunk") + "/src/base/debug/sanitizer_options.cc@" + Var("chromium_revision")),
+
   "tools/swarming_client":
     From("chromium_deps", "src/tools/swarming_client"),
+
+  "tools/tsan_suppressions":
+    File(Var("chromium_trunk") + "/src/base/debug/tsan_suppressions.cc@" + Var("chromium_revision")),
 
   "tools/valgrind":
     Var("chromium_trunk") + "/src/tools/valgrind@" + Var("chromium_revision"),
@@ -151,11 +163,14 @@ deps = {
     Var("chromium_trunk") + "/src/third_party/usrsctp@" + Var("chromium_revision"),
 
   "third_party/usrsctp/usrsctplib":
-    (Var("googlecode_url") % "sctp-refimpl") + "/trunk/KERN/usrsctp/usrsctplib@8723",
+    (Var("googlecode_url") % "sctp-refimpl") + "/trunk/KERN/usrsctp/usrsctplib@8875",
 }
 
 deps_os = {
   "win": {
+    "third_party/drmemory":
+      Var("chromium_trunk") + "/src/third_party/drmemory@" + Var("chromium_revision"),
+
     "third_party/winsdk_samples/src":
       (Var("googlecode_url") % "webrtc") + "/deps/third_party/winsdk_samples_v71@3145",
 
@@ -166,10 +181,6 @@ deps_os = {
     # NSS, for SSLClientSocketNSS.
     "third_party/nss":
       From("chromium_deps", "src/third_party/nss"),
-
-    # SyzyASan to make it possible to run tests under ASan on Windows.
-    "third_party/syzygy/binaries":
-      From("chromium_deps", "src/third_party/syzygy/binaries"),
 
     "tools/find_depot_tools":
       File(Var("chromium_trunk") + "/src/tools/find_depot_tools.py@" + Var("chromium_revision")),
@@ -205,7 +216,7 @@ deps_os = {
     # Precompiled tools needed for Android test execution. Needed since we can't
     # compile them from source in WebRTC since they depend on Chromium's base.
     "tools/android":
-      (Var("googlecode_url") % "webrtc") + "/deps/tools/android@4258",
+      (Var("googlecode_url") % "webrtc") + "/deps/tools/android@6306",
 
     "third_party/android_tools":
       From("chromium_deps", "src/third_party/android_tools"),
@@ -328,6 +339,28 @@ hooks = [
     "name": "binutils",
     "pattern": ".",
     "action": ["python", Var("root_dir") + "/third_party/binutils/download.py"],
+  },
+  {
+    "name": "drmemory",
+    "pattern": ".",
+    "action": [ "download_from_google_storage",
+                "--no_resume",
+                "--platform=win32",
+                "--no_auth",
+                "--bucket", "chromium-drmemory",
+                "-s", Var("root_dir") + "/third_party/drmemory/drmemory-windows-sfx.exe.sha1",
+    ],
+  },
+  {
+    # Pull the Syzygy binaries, used for optimization and instrumentation.
+    "name": "syzygy-binaries",
+    "pattern": ".",
+    "action": ["python",
+               Var("root_dir") + "/build/get_syzygy_binaries.py",
+               "--output-dir=%s/third_party/syzygy/binaries" % Var("root_dir"),
+               "--revision=b08fb72610963d31cc3eae33f746a04e263bd860",
+               "--overwrite",
+    ],
   },
   {
     # Download test resources, i.e. video and audio files from Google Storage.

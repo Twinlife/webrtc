@@ -667,6 +667,10 @@ class AudioFrame {
   AudioFrame();
   virtual ~AudioFrame() {}
 
+  // Resets all members to their default state (except does not modify the
+  // contents of |data_|).
+  void Reset();
+
   // |interleaved_| is not changed by this method.
   void UpdateFrame(int id, uint32_t timestamp, const int16_t* data,
                    int samples_per_channel, int sample_rate_hz,
@@ -686,7 +690,11 @@ class AudioFrame {
   int id_;
   // RTP timestamp of the first sample in the AudioFrame.
   uint32_t timestamp_;
+  // Time since the first frame in milliseconds.
+  // -1 represents an uninitialized value.
+  int64_t elapsed_time_ms_;
   // NTP time of the estimated capture time in local timebase in milliseconds.
+  // -1 represents an uninitialized value.
   int64_t ntp_time_ms_;
   int16_t data_[kMaxDataSizeSamples];
   int samples_per_channel_;
@@ -706,17 +714,25 @@ class AudioFrame {
 };
 
 inline AudioFrame::AudioFrame()
-    : id_(-1),
-      timestamp_(0),
-      ntp_time_ms_(0),
-      data_(),
-      samples_per_channel_(0),
-      sample_rate_hz_(0),
-      num_channels_(1),
-      speech_type_(kUndefined),
-      vad_activity_(kVadUnknown),
-      energy_(0xffffffff),
-      interleaved_(true) {}
+    : data_() {
+  Reset();
+}
+
+inline void AudioFrame::Reset() {
+  id_ = -1;
+  // TODO(wu): Zero is a valid value for |timestamp_|. We should initialize
+  // to an invalid value, or add a new member to indicate invalidity.
+  timestamp_ = 0;
+  elapsed_time_ms_ = -1;
+  ntp_time_ms_ = -1;
+  samples_per_channel_ = 0;
+  sample_rate_hz_ = 0;
+  num_channels_ = 0;
+  speech_type_ = kUndefined;
+  vad_activity_ = kVadUnknown;
+  energy_ = 0xffffffff;
+  interleaved_ = true;
+}
 
 inline void AudioFrame::UpdateFrame(int id, uint32_t timestamp,
                                     const int16_t* data,
@@ -747,6 +763,8 @@ inline void AudioFrame::CopyFrom(const AudioFrame& src) {
 
   id_ = src.id_;
   timestamp_ = src.timestamp_;
+  elapsed_time_ms_ = src.elapsed_time_ms_;
+  ntp_time_ms_ = src.ntp_time_ms_;
   samples_per_channel_ = src.samples_per_channel_;
   sample_rate_hz_ = src.sample_rate_hz_;
   speech_type_ = src.speech_type_;

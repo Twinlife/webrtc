@@ -54,6 +54,7 @@ enum {
   MSG_READYTOSENDDATA,
   MSG_DATARECEIVED,
   MSG_FIRSTPACKETRECEIVED,
+  MSG_STREAMCLOSEDREMOTELY,
 };
 
 // Value specified in RFC 5764.
@@ -897,6 +898,42 @@ bool BaseChannel::CheckSrtpConfig(const std::vector<CryptoParams>& cryptos,
   return true;
 }
 
+bool BaseChannel::SetRecvRtpHeaderExtensions_w(
+    const MediaContentDescription* content,
+    MediaChannel* media_channel,
+    std::string* error_desc) {
+  if (content->rtp_header_extensions_set()) {
+    if (!media_channel->SetRecvRtpHeaderExtensions(
+            content->rtp_header_extensions())) {
+      std::ostringstream desc;
+      desc << "Failed to set receive rtp header extensions for "
+           << MediaTypeToString(content->type()) << " content.";
+      SafeSetError(desc.str(), error_desc);
+      return false;
+    }
+  }
+  return true;
+}
+
+bool BaseChannel::SetSendRtpHeaderExtensions_w(
+    const MediaContentDescription* content,
+    MediaChannel* media_channel,
+    std::string* error_desc) {
+  if (content->rtp_header_extensions_set()) {
+    if (!media_channel->SetSendRtpHeaderExtensions(
+            content->rtp_header_extensions())) {
+      std::ostringstream desc;
+      desc << "Failed to set send rtp header extensions for "
+           << MediaTypeToString(content->type()) << " content.";
+      SafeSetError(desc.str(), error_desc);
+      return false;
+    } else {
+      MaybeCacheRtpAbsSendTimeHeaderExtension(content->rtp_header_extensions());
+    }
+  }
+  return true;
+}
+
 bool BaseChannel::SetSrtp_w(const std::vector<CryptoParams>& cryptos,
                             ContentAction action,
                             ContentSource src,
@@ -1153,22 +1190,16 @@ bool BaseChannel::SetBaseLocalContent_w(const MediaContentDescription* content,
                                         std::string* error_desc) {
   // Cache secure_required_ for belt and suspenders check on SendPacket
   secure_required_ = content->crypto_required() != CT_NONE;
-  bool ret = UpdateLocalStreams_w(content->streams(), action, error_desc);
+  // Set local RTP header extensions.
+  bool ret = SetRecvRtpHeaderExtensions_w(content, media_channel(), error_desc);
   // Set local SRTP parameters (what we will encrypt with).
   ret &= SetSrtp_w(content->cryptos(), action, CS_LOCAL, error_desc);
   // Set local RTCP mux parameters.
   ret &= SetRtcpMux_w(content->rtcp_mux(), action, CS_LOCAL, error_desc);
-  // Set local RTP header extensions.
-  if (content->rtp_header_extensions_set()) {
-    if (!media_channel()->SetRecvRtpHeaderExtensions(
-            content->rtp_header_extensions())) {
-      std::ostringstream desc;
-      desc << "Failed to set receive rtp header extensions for "
-           << MediaTypeToString(content->type()) << " content.";
-      SafeSetError(desc.str(), error_desc);
-      ret = false;
-    }
-  }
+
+  // Call UpdateLocalStreams_w last to make sure as many settings as possible
+  // are already set when creating streams.
+  ret &= UpdateLocalStreams_w(content->streams(), action, error_desc);
   set_local_content_direction(content->direction());
   return ret;
 }
@@ -1176,25 +1207,12 @@ bool BaseChannel::SetBaseLocalContent_w(const MediaContentDescription* content,
 bool BaseChannel::SetBaseRemoteContent_w(const MediaContentDescription* content,
                                          ContentAction action,
                                          std::string* error_desc) {
-  bool ret = UpdateRemoteStreams_w(content->streams(), action, error_desc);
+  // Set remote RTP header extensions.
+  bool ret = SetSendRtpHeaderExtensions_w(content, media_channel(), error_desc);
   // Set remote SRTP parameters (what the other side will encrypt with).
   ret &= SetSrtp_w(content->cryptos(), action, CS_REMOTE, error_desc);
   // Set remote RTCP mux parameters.
   ret &= SetRtcpMux_w(content->rtcp_mux(), action, CS_REMOTE, error_desc);
-  // Set remote RTP header extensions.
-  if (content->rtp_header_extensions_set()) {
-    if (!media_channel()->SetSendRtpHeaderExtensions(
-            content->rtp_header_extensions())) {
-      std::ostringstream desc;
-      desc << "Failed to set send rtp header extensions for "
-           << MediaTypeToString(content->type()) << " content.";
-      SafeSetError(desc.str(), error_desc);
-      ret = false;
-    } else {
-      MaybeCacheRtpAbsSendTimeHeaderExtension(content->rtp_header_extensions());
-    }
-  }
-
   if (!media_channel()->SetMaxSendBandwidth(content->bandwidth())) {
     std::ostringstream desc;
     desc << "Failed to set max send bandwidth for "
@@ -1202,6 +1220,10 @@ bool BaseChannel::SetBaseRemoteContent_w(const MediaContentDescription* content,
     SafeSetError(desc.str(), error_desc);
     ret = false;
   }
+
+  // Call UpdateRemoteStreams_w last to make sure as many settings as possible
+  // are already set when creating streams.
+  ret &= UpdateRemoteStreams_w(content->streams(), action, error_desc);
   set_remote_content_direction(content->direction());
   return ret;
 }
@@ -2148,6 +2170,8 @@ bool DataChannel::Init() {
       this, &DataChannel::OnDataChannelError);
   media_channel()->SignalReadyToSend.connect(
       this, &DataChannel::OnDataChannelReadyToSend);
+  media_channel()->SignalStreamClosedRemotely.connect(
+      this, &DataChannel::OnStreamClosedRemotely);
   srtp_filter()->SignalSrtpError.connect(
       this, &DataChannel::OnSrtpError);
   return true;
@@ -2165,21 +2189,11 @@ const ContentInfo* DataChannel::GetFirstContent(
   return GetFirstDataContent(sdesc);
 }
 
-
-static bool IsRtpPacket(const talk_base::Buffer* packet) {
-  int version;
-  if (!GetRtpVersion(packet->data(), packet->length(), &version)) {
-    return false;
-  }
-
-  return version == 2;
-}
-
 bool DataChannel::WantsPacket(bool rtcp, talk_base::Buffer* packet) {
   if (data_channel_type_ == DCT_SCTP) {
     // TODO(pthatcher): Do this in a more robust way by checking for
     // SCTP or DTLS.
-    return !IsRtpPacket(packet);
+    return !IsRtpPacket(packet->data(), packet->length());
   } else if (data_channel_type_ == DCT_RTP) {
     return BaseChannel::WantsPacket(rtcp, packet);
   }
@@ -2387,6 +2401,13 @@ void DataChannel::OnMessage(talk_base::Message *pmsg) {
       delete data;
       break;
     }
+    case MSG_STREAMCLOSEDREMOTELY: {
+      talk_base::TypedMessageData<uint32>* data =
+          static_cast<talk_base::TypedMessageData<uint32>*>(pmsg->pdata);
+      SignalStreamClosedRemotely(data->data());
+      delete data;
+      break;
+    }
     default:
       BaseChannel::OnMessage(pmsg);
       break;
@@ -2471,6 +2492,12 @@ void DataChannel::GetSrtpCiphers(std::vector<std::string>* ciphers) const {
 
 bool DataChannel::ShouldSetupDtlsSrtp() const {
   return (data_channel_type_ == DCT_RTP);
+}
+
+void DataChannel::OnStreamClosedRemotely(uint32 sid) {
+  talk_base::TypedMessageData<uint32>* message =
+      new talk_base::TypedMessageData<uint32>(sid);
+  signaling_thread()->Post(this, MSG_STREAMCLOSEDREMOTELY, message);
 }
 
 }  // namespace cricket

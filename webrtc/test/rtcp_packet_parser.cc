@@ -30,12 +30,39 @@ void RtcpPacketParser::Parse(const void *data, int len) {
       case RTCPUtility::kRtcpRrCode:
         receiver_report_.Set(parser.Packet().RR);
         break;
-      case RTCPUtility::kRtcpByeCode:
-        bye_.Set(parser.Packet().BYE);
-        break;
       case RTCPUtility::kRtcpReportBlockItemCode:
         report_block_.Set(parser.Packet().ReportBlockItem);
         ++report_blocks_per_ssrc_[parser.Packet().ReportBlockItem.SSRC];
+        break;
+      case RTCPUtility::kRtcpSdesCode:
+        sdes_.Set();
+        break;
+      case RTCPUtility::kRtcpSdesChunkCode:
+        sdes_chunk_.Set(parser.Packet().CName);
+        break;
+      case RTCPUtility::kRtcpByeCode:
+        bye_.Set(parser.Packet().BYE);
+        break;
+      case RTCPUtility::kRtcpAppCode:
+        app_.Set(parser.Packet().APP);
+        break;
+      case RTCPUtility::kRtcpAppItemCode:
+        app_item_.Set(parser.Packet().APP);
+        break;
+      case RTCPUtility::kRtcpExtendedIjCode:
+        ij_.Set();
+        break;
+      case RTCPUtility::kRtcpExtendedIjItemCode:
+        ij_item_.Set(parser.Packet().ExtendedJitterReportItem);
+        break;
+      case RTCPUtility::kRtcpPsfbPliCode:
+        pli_.Set(parser.Packet().PLI);
+        break;
+      case RTCPUtility::kRtcpPsfbSliCode:
+        sli_.Set(parser.Packet().SLI);
+        break;
+      case RTCPUtility::kRtcpPsfbSliItemCode:
+        sli_item_.Set(parser.Packet().SLIItem);
         break;
       case RTCPUtility::kRtcpPsfbRpsiCode:
         rpsi_.Set(parser.Packet().RPSI);
@@ -52,6 +79,41 @@ void RtcpPacketParser::Parse(const void *data, int len) {
         break;
       case RTCPUtility::kRtcpRtpfbNackItemCode:
         nack_item_.Set(parser.Packet().NACKItem);
+        break;
+      case RTCPUtility::kRtcpPsfbAppCode:
+        psfb_app_.Set(parser.Packet().PSFBAPP);
+        break;
+      case RTCPUtility::kRtcpPsfbRembItemCode:
+        remb_item_.Set(parser.Packet().REMBItem);
+        break;
+      case RTCPUtility::kRtcpRtpfbTmmbrCode:
+        tmmbr_.Set(parser.Packet().TMMBR);
+        break;
+      case RTCPUtility::kRtcpRtpfbTmmbrItemCode:
+        tmmbr_item_.Set(parser.Packet().TMMBRItem);
+        break;
+      case RTCPUtility::kRtcpRtpfbTmmbnCode:
+        tmmbn_.Set(parser.Packet().TMMBN);
+        tmmbn_items_.Clear();
+        break;
+      case RTCPUtility::kRtcpRtpfbTmmbnItemCode:
+        tmmbn_items_.Set(parser.Packet().TMMBNItem);
+        break;
+      case RTCPUtility::kRtcpXrHeaderCode:
+        xr_header_.Set(parser.Packet().XR);
+        dlrr_items_.Clear();
+        break;
+      case RTCPUtility::kRtcpXrReceiverReferenceTimeCode:
+        rrtr_.Set(parser.Packet().XRReceiverReferenceTimeItem);
+        break;
+      case RTCPUtility::kRtcpXrDlrrReportBlockCode:
+        dlrr_.Set();
+        break;
+      case RTCPUtility::kRtcpXrDlrrReportBlockItemCode:
+        dlrr_items_.Set(parser.Packet().XRDLRRReportBlockItem);
+        break;
+      case RTCPUtility::kRtcpXrVoipMetricCode:
+        voip_metric_.Set(parser.Packet().XRVOIPMetricItem);
         break;
       default:
         break;
