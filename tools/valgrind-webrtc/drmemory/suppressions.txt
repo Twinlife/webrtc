@@ -2,7 +2,6 @@
 # It acts as a place holder for future additions for WebRTC.
 # It must exist for the Python wrapper script to work properly.
 
-
 INVALID HEAP ARGUMENT
 name=https://code.google.com/p/webrtc/issues/detail?id=2321 (1)
 drmemorylib.dll!replace_operator_delete_array
@@ -121,6 +120,67 @@ system call NtUserGetThreadDesktop parameter value #1
 *!testing::internal::HandleSehExceptionsInMethodIfSupported<testing::Test,void>
 
 # libjingle_media_unittest fails on Win DrMemory Full
+UNADDRESSABLE ACCESS
+name=https://code.google.com/p/webrtc/issues/detail?id=3655 (1)
+*!cricket::VideoFrame::~VideoFrame
+*!cricket::VideoFrame::`scalar deleting destructor'
+*!rtc::DefaultDeleter<>::operator()
+*!rtc::internal::scoped_ptr_impl<>::reset
+*!rtc::scoped_ptr<>::reset
+*!cricket::VideoAdapterTest::VideoCapturerListener::OnFrameCaptured
+*!sigslot::_connection2<>::emit
+*!sigslot::signal2<>::operator()
+*!cricket::FileVideoCapturer::ReadFrame
+*!cricket::FileVideoCapturer::FileReadThread::OnMessage
+*!rtc::MessageQueue::Dispatch
+*!rtc::Thread::ProcessMessages
+*!rtc::Thread::Run
+*!cricket::FileVideoCapturer::FileReadThread::Run
+*!rtc::Thread::PreRun
+KERNEL32.dll!BaseThreadInitThunk
+
+UNADDRESSABLE ACCESS
+name=https://code.google.com/p/webrtc/issues/detail?id=3655 (2)
+*!rtc::DefaultDeleter<>::operator()
+*!rtc::internal::scoped_ptr_impl<>::reset
+*!rtc::scoped_ptr<>::reset
+*!cricket::VideoAdapterTest::VideoCapturerListener::OnFrameCaptured
+*!sigslot::_connection2<>::emit
+*!sigslot::signal2<>::operator()
+*!cricket::FileVideoCapturer::ReadFrame
+*!cricket::FileVideoCapturer::FileReadThread::OnMessage
+*!rtc::MessageQueue::Dispatch
+*!rtc::Thread::ProcessMessages
+*!rtc::Thread::Run
+*!cricket::FileVideoCapturer::FileReadThread::Run
+*!rtc::Thread::PreRun
+KERNEL32.dll!BaseThreadInitThunk
+
+INVALID HEAP ARGUMENT
+name=https://code.google.com/p/webrtc/issues/detail?id=3655 (3)
+drmemorylib.dll!replace_operator_delete
+*!cricket::VideoFrame::`scalar deleting destructor'
+*!rtc::DefaultDeleter<>::operator()
+*!rtc::internal::scoped_ptr_impl<>::reset
+*!rtc::scoped_ptr<>::reset
+*!cricket::VideoAdapterTest::VideoCapturerListener::OnFrameCaptured
+*!sigslot::_connection2<>::emit
+*!sigslot::signal2<>::operator()
+*!cricket::FileVideoCapturer::ReadFrame
+*!cricket::FileVideoCapturer::FileReadThread::OnMessage
+*!rtc::MessageQueue::Dispatch
+*!rtc::Thread::ProcessMessages
+*!rtc::Thread::Run
+*!cricket::FileVideoCapturer::FileReadThread::Run
+*!rtc::Thread::PreRun
+KERNEL32.dll!BaseThreadInitThunk
+
+UNINITIALIZED READ
+name=https://code.google.com/p/webrtc/issues/detail?id=3655 (4)
+*!testing::internal::CmpHelperNE<>
+*!cricket::VideoAdapterTest_BlackOutput_Test::TestBody
+*!testing::internal::HandleSehExceptionsInMethodIfSupported<>
+
 UNINITIALIZED READ
 name=https://code.google.com/p/webrtc/issues/detail?id=3158 (1)
 *!_output_l
@@ -927,4 +987,17 @@ name=https://code.google.com/p/webrtc/issues/detail?id=3490 (2)
 *!testing::internal::CmpHelperEQ<>
 *!testing::internal::EqHelper<>::Compare<>
 *!talk_base::AsyncWriteTest_TestWrite_Test::TestBody
+*!testing::internal::HandleSehExceptionsInMethodIfSupported<>
+
+UNINITIALIZED READ
+name=https://code.google.com/p/webrtc/issues/detail?id=3490 (3)
+drmemorylib.dll!replace_memcmp
+*!rtc::AsyncWriteTest_TestWrite_Test::TestBody
+*!testing::internal::HandleSehExceptionsInMethodIfSupported<>
+
+UNINITIALIZED READ
+name=https://code.google.com/p/webrtc/issues/detail?id=3490 (4)
+*!testing::internal::CmpHelperEQ<>
+*!testing::internal::EqHelper<>::Compare<>
+*!rtc::AsyncWriteTest_TestWrite_Test::TestBody
 *!testing::internal::HandleSehExceptionsInMethodIfSupported<>

@@ -85,6 +85,8 @@
         'diskcache_win32.h',
         'event.cc',
         'event.h',
+        'exp_filter.cc',
+        'exp_filter.h',
         'filelock.cc',
         'filelock.h',
         'fileutils.cc',
@@ -341,7 +343,7 @@
         ['build_with_chromium==1', {
           'include_dirs': [
             '../overrides',
-            '../../openssl/openssl/include',
+            '../../boringssl/src/include',
           ],
           'sources!': [
             'asyncinvoker.cc',
@@ -491,7 +493,7 @@
           'conditions': [
             ['build_ssl==1', {
               'dependencies': [
-                '<(DEPTH)/third_party/openssl/openssl.gyp:openssl',
+                '<(DEPTH)/third_party/boringssl/boringssl.gyp:boringssl',
               ],
             }, {
               'include_dirs': [
@@ -570,7 +572,6 @@
         ['OS=="linux"', {
           'link_settings': {
             'libraries': [
-              '-lcrypto',
               '-ldl',
               '-lrt',
               '-lXext',
@@ -711,7 +712,7 @@
             'scoped_autorelease_pool.mm',
           ],
         }],
-        ['OS=="ios" or os_posix==0', {
+        ['OS=="ios"', {
           'sources!': [
             'openssl.h',
             'openssladapter.cc',

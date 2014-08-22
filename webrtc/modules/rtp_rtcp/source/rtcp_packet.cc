@@ -61,15 +61,15 @@ void AssignUWord8(uint8_t* buffer, size_t* offset, uint8_t value) {
   buffer[(*offset)++] = value;
 }
 void AssignUWord16(uint8_t* buffer, size_t* offset, uint16_t value) {
-  ModuleRTPUtility::AssignUWord16ToBuffer(buffer + *offset, value);
+  RtpUtility::AssignUWord16ToBuffer(buffer + *offset, value);
   *offset += 2;
 }
 void AssignUWord24(uint8_t* buffer, size_t* offset, uint32_t value) {
-  ModuleRTPUtility::AssignUWord24ToBuffer(buffer + *offset, value);
+  RtpUtility::AssignUWord24ToBuffer(buffer + *offset, value);
   *offset += 3;
 }
 void AssignUWord32(uint8_t* buffer, size_t* offset, uint32_t value) {
-  ModuleRTPUtility::AssignUWord32ToBuffer(buffer + *offset, value);
+  RtpUtility::AssignUWord32ToBuffer(buffer + *offset, value);
   *offset += 4;
 }
 
@@ -938,7 +938,7 @@ void Rpsi::Create(uint8_t* packet, size_t* length, size_t max_length) const {
 
 void Rpsi::WithPictureId(uint64_t picture_id) {
   const uint32_t kPidBits = 7;
-  const uint64_t k7MsbZeroMask = 0x1ffffffffffffff;
+  const uint64_t k7MsbZeroMask = 0x1ffffffffffffffULL;
   uint8_t required_bytes = 0;
   uint64_t shifted_pid = picture_id;
   do {
