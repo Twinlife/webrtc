@@ -2087,9 +2087,7 @@ JOW(void, PeerConnection_freeObserver)(JNIEnv*, jclass, jlong j_p) {
 }
 
 JOW(void, MediaSource_free)(JNIEnv*, jclass, jlong j_p) {
-  // -CJ- TBD
-  //CHECK_RELEASE(reinterpret_cast<MediaSourceInterface*>(j_p));
-  (reinterpret_cast<MediaSourceInterface*>(j_p))->Release();
+  CHECK_RELEASE(reinterpret_cast<MediaSourceInterface*>(j_p));
 }
 
 JOW(void, VideoCapturer_free)(JNIEnv*, jclass, jlong j_p) {
@@ -2101,9 +2099,7 @@ JOW(void, VideoRenderer_free)(JNIEnv*, jclass, jlong j_p) {
 }
 
 JOW(void, MediaStreamTrack_free)(JNIEnv*, jclass, jlong j_p) {
-  // -CJ- TBD
-  //  CHECK_RELEASE(reinterpret_cast<MediaStreamTrackInterface*>(j_p));
-  (reinterpret_cast<MediaStreamTrackInterface*>(j_p))->Release();
+  CHECK_RELEASE(reinterpret_cast<MediaStreamTrackInterface*>(j_p));
 }
 
 JOW(jboolean, MediaStream_nativeAddAudioTrack)(
