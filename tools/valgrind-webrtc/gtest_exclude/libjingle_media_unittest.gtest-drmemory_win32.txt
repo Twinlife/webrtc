@@ -14,6 +14,6 @@ WebRtcVideoChannel2BaseTest.GetStats
 #TODO(jiayl): https://code.google.com/p/webrtc/issues/detail?id=3492
 SctpDataMediaChannelTest.*
 
-#https://code.google.com/p/webrtc/issues/detail?id=3655
-VideoAdapterTest.AdaptResolutionNarrow
+# https://code.google.com/p/webrtc/issues/detail?id=3771
 VideoAdapterTest.AdaptResolutionWide
+VideoAdapterTest.AdaptResolutionNarrow
