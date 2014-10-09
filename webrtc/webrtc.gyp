@@ -54,11 +54,6 @@
             'webrtc_tests',
           ],
         }],
-        ['build_with_chromium==0 and OS=="android"', {
-          'dependencies': [
-            '<(DEPTH)/tools/android/android_tools_precompiled.gyp:*',
-          ],
-        }],
       ],
     },
     {
