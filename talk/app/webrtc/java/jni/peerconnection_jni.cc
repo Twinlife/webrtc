@@ -275,7 +275,6 @@ class ClassReferenceHolder {
     LoadClass(jni, "org/webrtc/IceCandidate");
 #if defined(ANDROID) && !defined(WEBRTC_CHROMIUM_BUILD)
     LoadClass(jni, "android/graphics/SurfaceTexture");
-    LoadClass(jni, "android/opengl/EGLContext");
     LoadClass(jni, "org/webrtc/MediaCodecVideoEncoder");
     LoadClass(jni, "org/webrtc/MediaCodecVideoEncoder$OutputBufferInfo");
     LoadClass(jni, "org/webrtc/MediaCodecVideoDecoder");
@@ -2245,7 +2244,7 @@ MediaCodecVideoDecoder::MediaCodecVideoDecoder(JNIEnv* jni)
 
   j_init_decode_method_ = GetMethodID(
       jni, *j_media_codec_video_decoder_class_, "initDecode",
-      "(IIZLandroid/opengl/EGLContext;)Z");
+      "(IIZLjava/lang/Object;)Z");
   j_release_method_ =
       GetMethodID(jni, *j_media_codec_video_decoder_class_, "release", "()V");
   j_dequeue_input_buffer_method_ = GetMethodID(
