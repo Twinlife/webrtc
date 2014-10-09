@@ -30,6 +30,8 @@
 #include <vector>
 #include <cstdlib>
 
+#include <limits.h>  // For INT_MAX
+
 #include "talk/app/webrtc/mediaconstraintsinterface.h"
 #include "talk/session/media/channelmanager.h"
 
@@ -192,6 +194,21 @@ bool NewFormatWithConstraints(
   return false;
 }
 
+// Returns true if |constraint| is fulfilled. |format_out| can differ from
+// |format_in| if the format is changed by the constraint. Ie - the frame rate
+// can be changed by setting maxFrameRate.
+bool NewFormatWithConstraints2(
+    int max_width,
+    int max_height,
+    const cricket::VideoFormat& format_in,
+    bool mandatory,
+    cricket::VideoFormat* format_out) {
+  ASSERT(format_out != NULL);
+  *format_out = format_in;
+
+  return format_in.width * format_in.height <= max_width * max_height;
+}
+
 // Removes cricket::VideoFormats from |formats| that don't meet |constraint|.
 void FilterFormatsByConstraint(
     const MediaConstraintsInterface::Constraint& constraint,
@@ -205,6 +222,40 @@ void FilterFormatsByConstraint(
     if (!NewFormatWithConstraints(constraint, (*format_it),
                                   mandatory, &(*format_it))) {
       format_it = formats->erase(format_it);
+    } else {
+      ++format_it;
+    }
+  }
+}
+
+// Removes cricket::VideoFormats from |formats| that don't meet |constraint|.
+void FilterFormatsByConstraint2(
+    int max_width,
+    int max_height,
+    bool mandatory,
+    std::vector<cricket::VideoFormat>* formats) {
+  std::vector<cricket::VideoFormat>::iterator format_it =
+      formats->begin();
+  int min_pixels = INT_MAX;
+  cricket::VideoFormat* min_format = NULL;
+  while (format_it != formats->end()) {
+      if (format_it->width * format_it->height < min_pixels) {
+	min_format = format_it;
+	min_pixels = min_format->width * min_format->height;
+      }
+      ++format_it;
+  }
+  format_it = formats->begin();
+  while (format_it != formats->end()) {
+    // Modify the format_it to fulfill the constraint if possible.
+    // Delete it otherwise.
+    if (!NewFormatWithConstraints2(max_width, max_height, (*format_it),
+                                  mandatory, &(*format_it))) {
+      if (format_it != min_format) {
+	format_it = formats->erase(format_it);
+      } else {
+	++format_it;
+      }
     } else {
       ++format_it;
     }
@@ -242,6 +293,59 @@ std::vector<cricket::VideoFormat> FilterFormats(
   return candidates;
 }
 
+// Returns a vector of cricket::VideoFormat that best match |constraints|.
+// if (maxWidth * maxHeight != 0) width * height < maxWidth * maxHeight
+std::vector<cricket::VideoFormat> FilterFormats2(
+    const MediaConstraintsInterface::Constraints& mandatory,
+    const MediaConstraintsInterface::Constraints& optional,
+    const std::vector<cricket::VideoFormat>& supported_formats,
+    int& max_width,
+    int& max_height,
+    int& max_frame_rate) {
+  typedef MediaConstraintsInterface::Constraints::const_iterator
+      ConstraintsIterator;
+  std::vector<cricket::VideoFormat> candidates = supported_formats;
+
+  for (ConstraintsIterator constraints_it = mandatory.begin();
+       constraints_it != mandatory.end(); ++constraints_it) {
+    if (constraints_it->key == MediaConstraintsInterface::kMaxWidth) {
+      max_width = rtc::FromString<int>(constraints_it->value);
+    } else if (constraints_it->key == MediaConstraintsInterface::kMaxHeight) {
+      max_height = rtc::FromString<int>(constraints_it->value);
+    } else if (constraints_it->key == MediaConstraintsInterface::kMaxFrameRate) {
+      max_frame_rate = rtc::FromString<int>(constraints_it->value);
+    }
+  }
+
+  for (ConstraintsIterator constraints_it = mandatory.begin();
+       constraints_it != mandatory.end(); ++constraints_it) {
+    if (max_width != 0 && max_height != 0 &&
+	(constraints_it->key == MediaConstraintsInterface::kMaxWidth ||
+	 constraints_it->key == MediaConstraintsInterface::kMaxHeight)) {
+      FilterFormatsByConstraint2(max_width, max_height, true, &candidates);
+    } else {
+      FilterFormatsByConstraint(*constraints_it, true, &candidates);
+    }
+  }
+
+  if (candidates.size() == 0)
+    return candidates;
+
+  // Ok - all mandatory checked and we still have a candidate.
+  // Let's try filtering using the optional constraints.
+  for (ConstraintsIterator  constraints_it = optional.begin();
+       constraints_it != optional.end(); ++constraints_it) {
+    std::vector<cricket::VideoFormat> current_candidates = candidates;
+    FilterFormatsByConstraint(*constraints_it, false, &current_candidates);
+    if (current_candidates.size() > 0) {
+      candidates = current_candidates;
+    }
+  }
+
+  // We have done as good as we can to filter the supported resolutions.
+  return candidates;
+}
+
 // Find the format that best matches the default video size.
 // Constraints are optional and since the performance of a video call
 // might be bad due to bitrate limitations, CPU, and camera performance,
@@ -260,6 +364,35 @@ const cricket::VideoFormat& GetBestCaptureFormat(
   for (; it != formats.end(); ++it) {
     int diff_area = std::abs(default_area - it->width * it->height);
     int64 diff_interval = std::abs(kDefaultFormat.interval - it->interval);
+    if (diff_area < best_diff_area ||
+        (diff_area == best_diff_area && diff_interval < best_diff_interval)) {
+      best_diff_area = diff_area;
+      best_diff_interval = diff_interval;
+      best_it = it;
+    }
+  }
+  return *best_it;
+}
+
+// Find the format that best matches the default video size.
+// Constraints are optional and since the performance of a video call
+// might be bad due to bitrate limitations, CPU, and camera performance,
+// it is better to select a resolution that is as close as possible to our
+// default and still meets the contraints.
+const cricket::VideoFormat& GetBestCaptureFormat2(
+    const std::vector<cricket::VideoFormat>& formats,
+    const cricket::VideoFormat& format) {
+  ASSERT(formats.size() > 0);
+
+  int default_area = format.width * format.height;
+
+  std::vector<cricket::VideoFormat>::const_iterator it = formats.begin();
+  std::vector<cricket::VideoFormat>::const_iterator best_it = formats.begin();
+  int best_diff_area = std::abs(default_area - it->width * it->height);
+  int64 best_diff_interval = format.interval;
+  for (; it != formats.end(); ++it) {
+    int diff_area = std::abs(default_area - it->width * it->height);
+    int64 diff_interval = std::abs(format.interval - it->interval);
     if (diff_area < best_diff_area ||
         (diff_area == best_diff_area && diff_interval < best_diff_interval)) {
       best_diff_area = diff_area;
@@ -390,6 +523,9 @@ void VideoSource::Initialize(
     }
   }
 
+  int max_width = 0;
+  int max_height = 0;
+  int max_frame_rate = 0;
   if (constraints) {
     MediaConstraintsInterface::Constraints mandatory_constraints =
         constraints->GetMandatory();
@@ -401,8 +537,8 @@ void VideoSource::Initialize(
       FromConstraintsForScreencast(mandatory_constraints, &(formats[0]));
     }
 
-    formats = FilterFormats(mandatory_constraints, optional_constraints,
-                            formats);
+    formats = FilterFormats2(mandatory_constraints, optional_constraints,
+			     formats, max_width, max_height, max_frame_rate);
   }
 
   if (formats.size() == 0) {
@@ -419,7 +555,14 @@ void VideoSource::Initialize(
   }
   options_.SetAll(options);
 
-  format_ = GetBestCaptureFormat(formats);
+  if (max_width != 0 && max_height != 0) {
+    cricket::VideoFormat maxVideoFormat(max_width, max_height, cricket::VideoFormat::FpsToInterval(max_frame_rate), cricket::FOURCC_ANY);
+    format_ = GetBestCaptureFormat2(formats, maxVideoFormat);
+    video_capturer_.get()->video_adapter()->OnOutputFormatRequest(maxVideoFormat);
+  } else {
+    format_ = GetBestCaptureFormat(formats);
+  }
+
   // Start the camera with our best guess.
   // TODO(perkj): Should we try again with another format it it turns out that
   // the camera doesn't produce frames with the correct format? Or will
