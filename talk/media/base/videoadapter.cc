@@ -86,6 +86,7 @@ float VideoAdapter::FindScale(const float* scale_factors,
                               const float upbias,
                               int width, int height,
                               int target_num_pixels) {
+  // -twinlife- 2014/10/10
   const float kMinNumPixels = 80 * 60;
   if (!target_num_pixels) {
     return 0.f;

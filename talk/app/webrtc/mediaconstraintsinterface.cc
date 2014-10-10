@@ -44,6 +44,9 @@ const char MediaConstraintsInterface::kMaxHeight[] = "maxHeight";
 const char MediaConstraintsInterface::kMinHeight[] = "minHeight";
 const char MediaConstraintsInterface::kMaxFrameRate[] = "maxFrameRate";
 const char MediaConstraintsInterface::kMinFrameRate[] = "minFrameRate";
+// -twinlife- 2014/10/10
+const char MediaConstraintsInterface::kMaxNumPixels[] = "maxNumPixels";
+const char MediaConstraintsInterface::kMinNumPixels[] = "mimNumPixels";
 
 // Audio constraints.
 const char MediaConstraintsInterface::kEchoCancellation[] =
