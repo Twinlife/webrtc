@@ -434,7 +434,8 @@ void VideoSource::Initialize(
   options_.SetAll(options);
 
   format_ = GetBestCaptureFormat(formats);
-  video_capturer_.get()->video_adapter()->OnOutputFormatRequest(format_);
+  // -twinlife- 2014/10/10
+  video_capturer_.get()->video_adapter()->set_view_desired_interval(format_.interval);
   // Start the camera with our best guess.
   // TODO(perkj): Should we try again with another format it it turns out that
   // the camera doesn't produce frames with the correct format? Or will
