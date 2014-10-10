@@ -85,6 +85,8 @@ class MediaConstraintsInterface {
   static const char kHighpassFilter[];  // googHighpassFilter
   static const char kTypingNoiseDetection[];  // googTypingNoiseDetection
   static const char kAudioMirroring[];  // googAudioMirroring
+  // -twinlife- 2014/10/10
+  static const char kDoNotUseOpusCodec[];  // do not use Opus audio codec
 
   // Google-specific constraint keys for a local video source
   static const char kNoiseReduction[];  // googNoiseReduction

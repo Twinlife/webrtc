@@ -387,6 +387,23 @@ static void SetOptionFromOptionalConstraint(
   }
 }
 
+// -twinlife- 2014/10/10
+template<typename T>
+static void SetOptionFromMandatoryConstraint(
+    const MediaConstraintsInterface* constraints,
+    const std::string& key, cricket::Settable<T>* option) {
+  if (!constraints) {
+    return;
+  }
+  std::string string_value;
+  T value;
+  if (constraints->GetMandatory().FindFirst(key, &string_value)) {
+    if (rtc::FromString(string_value, &value)) {
+      option->Set(value);
+    }
+  }
+}
+
 uint32 ConvertIceTransportTypeToCandidateFilter(
     PeerConnectionInterface::IceTransportsType type) {
   switch (type) {
@@ -629,6 +646,11 @@ bool WebRtcSession::Initialize(
   SetOptionFromOptionalConstraint(constraints,
       MediaConstraintsInterface::kCombinedAudioVideoBwe,
       &audio_options_.combined_audio_video_bwe);
+
+  // -twinlife- 2014/10/10
+  SetOptionFromMandatoryConstraint(constraints,
+      MediaConstraintsInterface::kDoNotUseOpusCodec,
+      &audio_options_.do_not_use_opus_codec);
 
   const cricket::VideoCodec default_codec(
       JsepSessionDescription::kDefaultVideoCodecId,

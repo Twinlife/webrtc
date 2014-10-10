@@ -66,6 +66,8 @@ const char MediaConstraintsInterface::kHighpassFilter[] =
 const char MediaConstraintsInterface::kTypingNoiseDetection[] =
     "googTypingNoiseDetection";
 const char MediaConstraintsInterface::kAudioMirroring[] = "googAudioMirroring";
+// -twinlife- 2014/10/10
+const char MediaConstraintsInterface::kDoNotUseOpusCodec[] = "doNotUseOpusCodec";
 
 // Google-specific constraint keys for a local video source (getUserMedia).
 const char MediaConstraintsInterface::kNoiseReduction[] = "googNoiseReduction";

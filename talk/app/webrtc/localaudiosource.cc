@@ -76,6 +76,9 @@ void FromConstraints(const MediaConstraintsInterface::Constraints& constraints,
       options->typing_detection.Set(value);
     else if (iter->key == MediaConstraintsInterface::kAudioMirroring)
       options->stereo_swapping.Set(value);
+    // -twinlife- 2014/10/10
+    else if (iter->key == MediaConstraintsInterface::kDoNotUseOpusCodec)
+      options->do_not_use_opus_codec.Set(value);
   }
 }
 
