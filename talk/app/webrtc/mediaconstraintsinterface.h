@@ -70,7 +70,7 @@ class MediaConstraintsInterface {
   static const char kMinHeight[];  // minHeight
   static const char kMaxFrameRate[];  // maxFrameRate
   static const char kMinFrameRate[];  // minFrameRate
-  // -twinlife- 2014/10/10
+  // -twinlife-
   static const char kMaxNumPixels[];  // maxNumPixels
   static const char kMinNumPixels[];  // minNumPixels
 
@@ -85,8 +85,9 @@ class MediaConstraintsInterface {
   static const char kHighpassFilter[];  // googHighpassFilter
   static const char kTypingNoiseDetection[];  // googTypingNoiseDetection
   static const char kAudioMirroring[];  // googAudioMirroring
-  // -twinlife- 2014/10/10
-  static const char kDoNotUseOpusCodec[];  // do not use Opus audio codec
+  // -twinlife-
+  static const char kExcludeOpusCodec[];  // Exclude Opus audio codec
+  static const char kExcludeIsacCodec[];  // Exclude Isac audio codec
 
   // Google-specific constraint keys for a local video source
   static const char kNoiseReduction[];  // googNoiseReduction

@@ -44,7 +44,7 @@ const char MediaConstraintsInterface::kMaxHeight[] = "maxHeight";
 const char MediaConstraintsInterface::kMinHeight[] = "minHeight";
 const char MediaConstraintsInterface::kMaxFrameRate[] = "maxFrameRate";
 const char MediaConstraintsInterface::kMinFrameRate[] = "minFrameRate";
-// -twinlife- 2014/10/10
+// -twinlife-
 const char MediaConstraintsInterface::kMaxNumPixels[] = "maxNumPixels";
 const char MediaConstraintsInterface::kMinNumPixels[] = "mimNumPixels";
 
@@ -66,8 +66,9 @@ const char MediaConstraintsInterface::kHighpassFilter[] =
 const char MediaConstraintsInterface::kTypingNoiseDetection[] =
     "googTypingNoiseDetection";
 const char MediaConstraintsInterface::kAudioMirroring[] = "googAudioMirroring";
-// -twinlife- 2014/10/10
-const char MediaConstraintsInterface::kDoNotUseOpusCodec[] = "doNotUseOpusCodec";
+// -twinlife-
+const char MediaConstraintsInterface::kExcludeOpusCodec[] = "excludeOpusCodec";
+const char MediaConstraintsInterface::kExcludeIsacCodec[] = "excludeIsacCodec";
 
 // Google-specific constraint keys for a local video source (getUserMedia).
 const char MediaConstraintsInterface::kNoiseReduction[] = "googNoiseReduction";

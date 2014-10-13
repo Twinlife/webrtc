@@ -1982,8 +1982,11 @@ bool WebRtcVoiceMediaChannel::SetRecvCodecs(
   bool ret = true;
   for (std::vector<AudioCodec>::const_iterator it = new_codecs.begin();
        it != new_codecs.end() && ret; ++it) {
-    // -twinlife- 2014/10/10
-    if (IsOpus(*it) && options_.do_not_use_opus_codec.IsSet()) {
+    // -twinlife-
+    if (IsOpus(*it) && options_.exclude_opus_codec.IsSet()) {
+      continue;
+    }
+    if (IsIsac(*it) && options_.exclude_isac_codec.IsSet()) {
       continue;
     }
 
@@ -2067,8 +2070,11 @@ bool WebRtcVoiceMediaChannel::SetSendCodecs(
       continue;
     }
 
-    // -twinlife- 2014/10/10
-    if (IsOpus(*it) && options_.do_not_use_opus_codec.IsSet()) {
+    // -twinlife-
+    if (IsOpus(*it) && options_.exclude_opus_codec.IsSet()) {
+      continue;
+    }
+    if (IsIsac(*it) && options_.exclude_isac_codec.IsSet()) {
       continue;
     }
 

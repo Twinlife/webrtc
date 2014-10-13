@@ -183,8 +183,9 @@ struct AudioOptions {
     playout_sample_rate.SetFrom(change.playout_sample_rate);
     dscp.SetFrom(change.dscp);
     combined_audio_video_bwe.SetFrom(change.combined_audio_video_bwe);
-    // -twinlife- 2014/10/10
-    do_not_use_opus_codec.SetFrom(change.do_not_use_opus_codec);
+    // -twinlife-
+    exclude_opus_codec.SetFrom(change.exclude_opus_codec);
+    exclude_isac_codec.SetFrom(change.exclude_isac_codec);
   }
 
   bool operator==(const AudioOptions& o) const {
@@ -212,8 +213,9 @@ struct AudioOptions {
         playout_sample_rate == o.playout_sample_rate &&
         dscp == o.dscp &&
         combined_audio_video_bwe == o.combined_audio_video_bwe &&
-        // -twinlife- 2014/10/10
-        do_not_use_opus_codec == o.do_not_use_opus_codec;
+        // -twinlife-
+        exclude_opus_codec == o.exclude_opus_codec;
+        exclude_isac_codec == o.exclude_isac_codec;
   }
 
   std::string ToString() const {
@@ -245,8 +247,9 @@ struct AudioOptions {
     ost << ToStringIfSet("playout_sample_rate", playout_sample_rate);
     ost << ToStringIfSet("dscp", dscp);
     ost << ToStringIfSet("combined_audio_video_bwe", combined_audio_video_bwe);
-    // -twinlife- 2014/10/10
-    ost << ToStringIfSet("do_not_use_opus_codec", do_not_use_opus_codec);
+    // -twinlife-
+    ost << ToStringIfSet("exclude_opus_codec", exclude_opus_codec);
+    ost << ToStringIfSet("exclude_isac_codec", exclude_isac_codec);
     ost << "}";
     return ost.str();
   }
@@ -286,8 +289,9 @@ struct AudioOptions {
   Settable<bool> dscp;
   // Enable combined audio+bandwidth BWE.
   Settable<bool> combined_audio_video_bwe;
-  // -twinlife- 2014/10/10
-  Settable<bool> do_not_use_opus_codec;
+  // -twinlife-
+  Settable<bool> exclude_opus_codec;
+  Settable<bool> exclude_isac_codec;
 };
 
 // Options that can be applied to a VideoMediaChannel or a VideoMediaEngine.

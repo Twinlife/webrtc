@@ -387,7 +387,7 @@ static void SetOptionFromOptionalConstraint(
   }
 }
 
-// -twinlife- 2014/10/10
+// -twinlife-
 template<typename T>
 static void SetOptionFromMandatoryConstraint(
     const MediaConstraintsInterface* constraints,
@@ -647,10 +647,13 @@ bool WebRtcSession::Initialize(
       MediaConstraintsInterface::kCombinedAudioVideoBwe,
       &audio_options_.combined_audio_video_bwe);
 
-  // -twinlife- 2014/10/10
+  // -twinlife-
   SetOptionFromMandatoryConstraint(constraints,
-      MediaConstraintsInterface::kDoNotUseOpusCodec,
-      &audio_options_.do_not_use_opus_codec);
+      MediaConstraintsInterface::kExcludeOpusCodec,
+      &audio_options_.exclude_opus_codec);
+  SetOptionFromMandatoryConstraint(constraints,
+      MediaConstraintsInterface::kExcludeIsacCodec,
+      &audio_options_.exclude_isac_codec);
 
   const cricket::VideoCodec default_codec(
       JsepSessionDescription::kDefaultVideoCodecId,
