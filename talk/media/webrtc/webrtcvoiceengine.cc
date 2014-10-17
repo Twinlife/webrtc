@@ -1982,14 +1982,6 @@ bool WebRtcVoiceMediaChannel::SetRecvCodecs(
   bool ret = true;
   for (std::vector<AudioCodec>::const_iterator it = new_codecs.begin();
        it != new_codecs.end() && ret; ++it) {
-    // -twinlife-
-    if (IsOpus(*it) && options_.exclude_opus_codec.IsSet()) {
-      continue;
-    }
-    if (IsIsac(*it) && options_.exclude_isac_codec.IsSet()) {
-      continue;
-    }
-
     webrtc::CodecInst voe_codec;
     if (engine()->FindWebRtcCodec(*it, &voe_codec)) {
       LOG(LS_INFO) << ToString(*it);
@@ -2067,14 +2059,6 @@ bool WebRtcVoiceMediaChannel::SetSendCodecs(
     webrtc::CodecInst voe_codec;
     if (!engine()->FindWebRtcCodec(*it, &voe_codec)) {
       LOG(LS_WARNING) << "Unknown codec " << ToString(*it);
-      continue;
-    }
-
-    // -twinlife-
-    if (IsOpus(*it) && options_.exclude_opus_codec.IsSet()) {
-      continue;
-    }
-    if (IsIsac(*it) && options_.exclude_isac_codec.IsSet()) {
       continue;
     }
 

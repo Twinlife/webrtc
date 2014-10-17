@@ -143,7 +143,7 @@ class CoordinatedVideoAdapter
   // Enable or disable video adaptation to fast switch View
   void set_view_switch(bool enable) { view_switch_ = enable; }
   bool view_switch() const { return view_switch_; }
-  // -twinlife- 2014/10/10
+  // -twinlife-
   void set_view_desired_interval(int interval) { view_desired_interval_ = interval; }
 
   CoordinatedVideoAdapter::AdaptReason adapt_reason() const {

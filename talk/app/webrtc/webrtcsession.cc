@@ -387,23 +387,6 @@ static void SetOptionFromOptionalConstraint(
   }
 }
 
-// -twinlife-
-template<typename T>
-static void SetOptionFromMandatoryConstraint(
-    const MediaConstraintsInterface* constraints,
-    const std::string& key, cricket::Settable<T>* option) {
-  if (!constraints) {
-    return;
-  }
-  std::string string_value;
-  T value;
-  if (constraints->GetMandatory().FindFirst(key, &string_value)) {
-    if (rtc::FromString(string_value, &value)) {
-      option->Set(value);
-    }
-  }
-}
-
 uint32 ConvertIceTransportTypeToCandidateFilter(
     PeerConnectionInterface::IceTransportsType type) {
   switch (type) {
@@ -648,12 +631,13 @@ bool WebRtcSession::Initialize(
       &audio_options_.combined_audio_video_bwe);
 
   // -twinlife-
-  SetOptionFromMandatoryConstraint(constraints,
+  SetOptionFromOptionalConstraint(constraints,
       MediaConstraintsInterface::kExcludeOpusCodec,
       &audio_options_.exclude_opus_codec);
-  SetOptionFromMandatoryConstraint(constraints,
+  SetOptionFromOptionalConstraint(constraints,
       MediaConstraintsInterface::kExcludeIsacCodec,
       &audio_options_.exclude_isac_codec);
+  channel_manager_->SetEngineAudioOptions(audio_options_);
 
   const cricket::VideoCodec default_codec(
       JsepSessionDescription::kDefaultVideoCodecId,

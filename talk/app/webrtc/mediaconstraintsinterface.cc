@@ -66,9 +66,6 @@ const char MediaConstraintsInterface::kHighpassFilter[] =
 const char MediaConstraintsInterface::kTypingNoiseDetection[] =
     "googTypingNoiseDetection";
 const char MediaConstraintsInterface::kAudioMirroring[] = "googAudioMirroring";
-// -twinlife-
-const char MediaConstraintsInterface::kExcludeOpusCodec[] = "excludeOpusCodec";
-const char MediaConstraintsInterface::kExcludeIsacCodec[] = "excludeIsacCodec";
 
 // Google-specific constraint keys for a local video source (getUserMedia).
 const char MediaConstraintsInterface::kNoiseReduction[] = "googNoiseReduction";
@@ -125,7 +122,9 @@ const char MediaConstraintsInterface::kHighBitrate[] =
 const char MediaConstraintsInterface::kVeryHighBitrate[] =
     "googVeryHighBitrate";
 const char MediaConstraintsInterface::kPayloadPadding[] = "googPayloadPadding";
-
+// -twinlife-
+const char MediaConstraintsInterface::kExcludeOpusCodec[] = "excludeOpusCodec";
+const char MediaConstraintsInterface::kExcludeIsacCodec[] = "excludeIsacCodec";
 
 // Set |value| to the value associated with the first appearance of |key|, or
 // return false if |key| is not found.

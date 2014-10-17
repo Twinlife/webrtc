@@ -85,9 +85,6 @@ class MediaConstraintsInterface {
   static const char kHighpassFilter[];  // googHighpassFilter
   static const char kTypingNoiseDetection[];  // googTypingNoiseDetection
   static const char kAudioMirroring[];  // googAudioMirroring
-  // -twinlife-
-  static const char kExcludeOpusCodec[];  // Exclude Opus audio codec
-  static const char kExcludeIsacCodec[];  // Exclude Isac audio codec
 
   // Google-specific constraint keys for a local video source
   static const char kNoiseReduction[];  // googNoiseReduction
@@ -144,6 +141,10 @@ class MediaConstraintsInterface {
   // The prefix of internal-only constraints whose JS set values should be
   // stripped by Chrome before passed down to Libjingle.
   static const char kInternalConstraintPrefix[];
+
+  // -twinlife-
+  static const char kExcludeOpusCodec[];  // Exclude Opus audio codec
+  static const char kExcludeIsacCodec[];  // Exclude Isac audio codec
 
  protected:
   // Dtor protected as objects shouldn't be deleted via this interface

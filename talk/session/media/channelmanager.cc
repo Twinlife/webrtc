@@ -60,6 +60,17 @@ using rtc::Bind;
 
 static const int kNotSetOutputVolume = -1;
 
+  // -twinlife-
+static const char kIsacCodecName[] = "ISAC";
+
+static bool IsOpus(const AudioCodec& codec) {
+  return (_stricmp(codec.name.c_str(), kOpusCodecName) == 0);
+}
+
+static bool IsIsac(const AudioCodec& codec) {
+  return (_stricmp(codec.name.c_str(), kIsacCodecName) == 0);
+}
+
 struct CaptureStateParams : public rtc::MessageData {
   CaptureStateParams(cricket::VideoCapturer* c, cricket::CaptureState s)
       : capturer(c),
@@ -179,10 +190,16 @@ int ChannelManager::GetCapabilities() {
 void ChannelManager::GetSupportedAudioCodecs(
     std::vector<AudioCodec>* codecs) const {
   codecs->clear();
-
   for (std::vector<AudioCodec>::const_iterator it =
            media_engine_->audio_codecs().begin();
       it != media_engine_->audio_codecs().end(); ++it) {
+    // -twinlife-
+    if (IsOpus(*it) && audio_options_.exclude_opus_codec.IsSet()) {
+      continue;
+    }
+    if (IsIsac(*it) && audio_options_.exclude_isac_codec.IsSet()) {
+      continue;
+    }
     codecs->push_back(*it);
   }
 }
