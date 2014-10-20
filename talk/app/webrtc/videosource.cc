@@ -168,11 +168,11 @@ bool NewFormatWithConstraints(
     } else {
       return false;
     }
-    // -twinlife- 2014/10/10
-  } else if (constraint.key == MediaConstraintsInterface::kMinNumPixels) {
+    // -twinlife-
+  } else if (constraint.key == MediaConstraintsInterface::kMinFrameSize) {
     int value = rtc::FromString<int>(constraint.value);
     return (value <= format_in.width * format_in.height);
-  } else if (constraint.key == MediaConstraintsInterface::kMaxNumPixels) {
+  } else if (constraint.key == MediaConstraintsInterface::kMaxFrameSize) {
     int value = rtc::FromString<int>(constraint.value);
     return (value >= format_in.width * format_in.height);
   } else if (constraint.key == MediaConstraintsInterface::kMinAspectRatio) {

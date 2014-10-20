@@ -71,8 +71,8 @@ class MediaConstraintsInterface {
   static const char kMaxFrameRate[];  // maxFrameRate
   static const char kMinFrameRate[];  // minFrameRate
   // -twinlife-
-  static const char kMaxNumPixels[];  // maxNumPixels
-  static const char kMinNumPixels[];  // minNumPixels
+  static const char kMaxFrameSize[];  // maxFrameSize
+  static const char kMinFrameSize[];  // minFrameSize
 
   // Constraint keys used by a local audio source.
   // These keys are google specific.
