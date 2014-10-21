@@ -3422,31 +3422,42 @@ JOW(void, VideoTrack_nativeRemoveRenderer)(
       reinterpret_cast<VideoRendererInterface*>(j_renderer_pointer));
 }
 
-// -twinlife- set capture rotation
+// -twinlife-
 JOW(void, VideoCapturer_nativeSetCaptureRotation)(
     JNIEnv* jni, jclass, jlong pointer, jint rotation) {
   (reinterpret_cast<cricket::VideoCapturer*>(pointer))->SetCaptureRotation(rotation);
 }
 
-// -twinlife- set camera mute
+// -twinlife-
 JOW(void, VideoCapturer_nativeSetCameraMute)(
     JNIEnv* jni, jclass, jlong pointer, jboolean mute) {
   (reinterpret_cast<cricket::VideoCapturer*>(pointer))->SetCameraMute(mute);
 }
 
-// -twinlife- switch camera
+// -twinlife-
 JOW(void, VideoCapturer_nativeSwitchCamera)(
     JNIEnv* jni, jclass, jlong pointer, jint camera_id) {
   (reinterpret_cast<cricket::VideoCapturer*>(pointer))->SwitchCamera(camera_id);
 }
 
-// -twinlife- is zoom supported
+// -twinlife-
 JOW(bool, VideoCapturer_nativeIsZoomSupported)(
     JNIEnv* jni, jclass, jlong pointer) {
   return (reinterpret_cast<cricket::VideoCapturer*>(pointer))->IsZoomSupported();
 }
-// -twinlife- set zoom
+
+// -twinlife-
 JOW(void, VideoCapturer_nativeSetZoom)(
     JNIEnv* jni, jclass, jlong pointer, jint progress) {
   (reinterpret_cast<cricket::VideoCapturer*>(pointer))->SetZoom(progress);
+}
+
+// -twinlife-
+JOW(void, VideoSource_nativeUpdateConstraints)(
+    JNIEnv* jni, jclass, jlong j_p_source, jobject j_constraints) {
+  CHECK(j_p_source);
+  scoped_ptr<ConstraintsWrapper> constraints(
+      new ConstraintsWrapper(jni, j_constraints));
+  reinterpret_cast<VideoSourceInterface*>(j_p_source)->
+    UpdateConstraints(constraints.get());
 }

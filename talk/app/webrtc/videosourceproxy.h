@@ -45,6 +45,8 @@ BEGIN_PROXY_MAP(VideoSource)
   PROXY_METHOD0(cricket::VideoRenderer*, FrameInput)
   PROXY_METHOD1(void, RegisterObserver, ObserverInterface*)
   PROXY_METHOD1(void, UnregisterObserver, ObserverInterface*)
+  // -twinlife-
+  PROXY_METHOD1(void, UpdateConstraints, const webrtc::MediaConstraintsInterface*)
 END_PROXY()
 
 }  // namespace webrtc

@@ -465,6 +465,51 @@ void VideoSource::RemoveSink(cricket::VideoRenderer* output) {
   channel_manager_->RemoveVideoRenderer(video_capturer_.get(), output);
 }
 
+// -twinlife-
+void VideoSource::UpdateConstraints(const webrtc::MediaConstraintsInterface* constraints) {
+  std::vector<cricket::VideoFormat> formats;
+  if (video_capturer_->GetSupportedFormats() &&
+      video_capturer_->GetSupportedFormats()->size() > 0) {
+    formats = *video_capturer_->GetSupportedFormats();
+  } else if (video_capturer_->IsScreencast()) {
+    // The screen capturer can accept any resolution and we will derive the
+    // format from the constraints if any.
+    // Note that this only affects tab capturing, not desktop capturing,
+    // since desktop capturer does not respect the VideoFormat passed in.
+    formats.push_back(cricket::VideoFormat(kDefaultFormat));
+  } else {
+    // The VideoCapturer implementation doesn't support capability enumeration.
+    // We need to guess what the camera support.
+    for (int i = 0; i < ARRAY_SIZE(kVideoFormats); ++i) {
+      formats.push_back(cricket::VideoFormat(kVideoFormats[i]));
+    }
+  }
+  formats.push_back(cricket::VideoFormat(kMinimumFormat));
+
+  MediaConstraintsInterface::Constraints mandatory_constraints =
+    constraints->GetMandatory();
+  MediaConstraintsInterface::Constraints optional_constraints;
+  optional_constraints = constraints->GetOptional();
+
+  if (video_capturer_->IsScreencast()) {
+    // Use the maxWidth and maxHeight allowed by constraints for screencast.
+    FromConstraintsForScreencast(mandatory_constraints, &(formats[0]));
+  }
+
+  formats = FilterFormats(mandatory_constraints, optional_constraints,
+                            formats);
+
+  if (formats.size() == 0) {
+    LOG(LS_WARNING) << "Failed to find a suitable video format.";
+    return;
+  }
+
+  format_ = GetBestCaptureFormat(formats);
+
+  video_capturer_.get()->video_adapter()->set_view_desired_interval(format_.interval);
+  video_capturer_.get()->Restart(format_);
+}
+
 // OnStateChange listens to the ChannelManager::SignalVideoCaptureStateChange.
 // This signal is triggered for all video capturers. Not only the one we are
 // interested in.

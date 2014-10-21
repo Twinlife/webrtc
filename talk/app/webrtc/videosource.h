@@ -77,6 +77,8 @@ class VideoSource : public Notifier<VideoSourceInterface>,
   // is running video frames.
   virtual void AddSink(cricket::VideoRenderer* output);
   virtual void RemoveSink(cricket::VideoRenderer* output);
+  // -twinlife-
+  virtual void UpdateConstraints(const webrtc::MediaConstraintsInterface* constraints);
 
  protected:
   VideoSource(cricket::ChannelManager* channel_manager,

@@ -33,6 +33,8 @@
 
 namespace webrtc {
 
+class MediaConstraintsInterface;
+
 // VideoSourceInterface is a reference counted source used for VideoTracks.
 // The same source can be used in multiple VideoTracks.
 // The methods are only supposed to be called by the PeerConnection
@@ -48,6 +50,8 @@ class VideoSourceInterface : public MediaSourceInterface {
   virtual void RemoveSink(cricket::VideoRenderer* output) = 0;
   virtual const cricket::VideoOptions* options() const = 0;
   virtual cricket::VideoRenderer* FrameInput() = 0;
+  // -twinlife-
+  virtual void UpdateConstraints(const webrtc::MediaConstraintsInterface* constraints) = 0;
 
  protected:
   virtual ~VideoSourceInterface() {}
