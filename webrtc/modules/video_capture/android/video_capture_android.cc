@@ -259,35 +259,37 @@ int32_t VideoCaptureAndroid::SetCaptureRotation(
   return 0;
 }
 
-  //
-  // twinlife extensions
-  //
-  // set camera mute
+  // -twinlife-
 void VideoCaptureAndroid::SetCameraMute(bool mute) {
-  CriticalSectionScoped cs(&_apiCs);
+  _apiCs.Enter();
 
   AttachThreadScoped ats(g_jvm);
   JNIEnv* env = ats.env();
 
-  jmethodID cid = env->GetMethodID(g_java_capturer_class, "setCameraMute", "(Z)V");
+  // Exit critical section to avoid blocking camera thread inside
+  // onIncomingFrame() call.
+  _apiCs.Leave();
+
+  jmethodID cid =
+      env->GetMethodID(g_java_capturer_class, "setCameraMute", "(Z)V");
 
   env->CallVoidMethod(_jCapturer, cid, mute);
 }
 
-  //
-  // twinlife extensions
-  //
-  // switch camera
+  // -twinlife-
 void VideoCaptureAndroid::SwitchCamera(int cameraId) {
-  CriticalSectionScoped cs(&_apiCs);
+  _apiCs.Enter();
 
   AttachThreadScoped ats(g_jvm);
   JNIEnv* env = ats.env();
 
-  jmethodID cid = env->GetMethodID(g_java_capturer_class, "switchCamera", "(I)V");
-  if (cid != NULL) {
-    env->CallVoidMethod(_jCapturer, cid, cameraId);
-  }
+  // Exit critical section to avoid blocking camera thread inside
+  // onIncomingFrame() call.
+  _apiCs.Leave();
+
+  jmethodID cid =
+      env->GetMethodID(g_java_capturer_class, "switchCamera", "(I)V");
+  env->CallVoidMethod(_jCapturer, cid, cameraId);
 }
 
   //
@@ -295,17 +297,19 @@ void VideoCaptureAndroid::SwitchCamera(int cameraId) {
   //
   // is zoom supported
 bool VideoCaptureAndroid::IsZoomSupported() {
-  CriticalSectionScoped cs(&_apiCs);
+  _apiCs.Enter();
 
   AttachThreadScoped ats(g_jvm);
   JNIEnv* env = ats.env();
 
-  jmethodID cid = env->GetMethodID(g_java_capturer_class, "isZoomSupported", "()Z");
-  if (cid != NULL) {
-    return env->CallBooleanMethod(_jCapturer, cid);
-  }
+  // Exit critical section to avoid blocking camera thread inside
+  // onIncomingFrame() call.
+  _apiCs.Leave();
 
-  return false;
+  jmethodID cid =
+      env->GetMethodID(g_java_capturer_class, "isZoomSupported", "()Z");
+
+  return env->CallBooleanMethod(_jCapturer, cid);
 }
 
   //
@@ -313,15 +317,18 @@ bool VideoCaptureAndroid::IsZoomSupported() {
   //
   // switch camera
 void VideoCaptureAndroid::SetZoom(int progress) {
-  CriticalSectionScoped cs(&_apiCs);
+  _apiCs.Enter();
 
   AttachThreadScoped ats(g_jvm);
   JNIEnv* env = ats.env();
 
+  // Exit critical section to avoid blocking camera thread inside
+  // onIncomingFrame() call.
+  _apiCs.Leave();
+
   jmethodID cid = env->GetMethodID(g_java_capturer_class, "setZoom", "(I)V");
-  if (cid != NULL) {
-    env->CallVoidMethod(_jCapturer, cid, progress);
-  }
+
+  env->CallVoidMethod(_jCapturer, cid, progress);
 }
 
 }  // namespace videocapturemodule
