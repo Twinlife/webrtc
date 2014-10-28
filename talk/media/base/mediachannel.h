@@ -214,7 +214,7 @@ struct AudioOptions {
         dscp == o.dscp &&
         combined_audio_video_bwe == o.combined_audio_video_bwe &&
         // -twinlife-
-        exclude_opus_codec == o.exclude_opus_codec;
+        exclude_opus_codec == o.exclude_opus_codec &&
         exclude_isac_codec == o.exclude_isac_codec;
   }
 

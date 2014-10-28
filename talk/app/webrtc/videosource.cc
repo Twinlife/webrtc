@@ -505,7 +505,9 @@ void VideoSource::UpdateConstraints(const webrtc::MediaConstraintsInterface* con
   }
 
   format_ = GetBestCaptureFormat(formats);
-
+  if (format_.fourcc == cricket::FOURCC_ANY) {
+    format_.fourcc = cricket::FOURCC_I420;
+  }
   video_capturer_.get()->video_adapter()->set_view_desired_interval(format_.interval);
   video_capturer_.get()->Restart(format_);
 }
