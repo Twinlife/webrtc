@@ -96,6 +96,31 @@ def _CheckApprovedFilesLintClean(input_api, output_api,
 
   return result
 
+def _CheckNoRtcBaseDeps(input_api, gyp_files, output_api):
+  pattern = input_api.re.compile(r"base.gyp:rtc_base\s*'")
+  violating_files = []
+  for f in gyp_files:
+    gyp_exceptions = (
+        'base_tests.gyp',
+        'desktop_capture.gypi',
+        'libjingle.gyp',
+        'libjingle_tests.gyp',
+        'sound.gyp',
+        'webrtc_test_common.gyp',
+        'webrtc_tests.gypi',
+    )
+    if f.LocalPath().endswith(gyp_exceptions):
+      continue
+    contents = input_api.ReadFile(f)
+    if pattern.search(contents):
+      violating_files.append(f)
+  if violating_files:
+    return [output_api.PresubmitError(
+        'Depending on rtc_base is not allowed. Change your dependency to '
+        'rtc_base_approved and possibly sanitize and move the desired source '
+        'file(s) to rtc_base_approved.\nChanged GYP files:',
+        items=violating_files)]
+  return []
 
 def _CheckGypChanges(input_api, output_api):
   source_file_filter = lambda x: input_api.FilterSourceFile(
@@ -103,7 +128,7 @@ def _CheckGypChanges(input_api, output_api):
 
   gyp_files = []
   for f in input_api.AffectedSourceFiles(source_file_filter):
-    gyp_files.append(f.LocalPath())
+    gyp_files.append(f)
 
   result = []
   if gyp_files:
@@ -111,6 +136,7 @@ def _CheckGypChanges(input_api, output_api):
         'As you\'re changing GYP files: please make sure corresponding '
         'BUILD.gn files are also updated.\nChanged GYP files:',
         items=gyp_files))
+    result.extend(_CheckNoRtcBaseDeps(input_api, gyp_files, output_api))
   return result
 
 def _CheckUnwantedDependencies(input_api, output_api):
@@ -278,6 +304,7 @@ def GetPreferredTryMasters(project, change):
       'linux',
       'linux_asan',
       'linux_baremetal',
+      'linux_msan',
       'linux_rel',
       'linux_tsan2',
   ] + linux_gn_bots

@@ -43,6 +43,7 @@
       'modules_java_gyp_path%': '<(modules_java_gyp_path)',
       'gen_core_neon_offsets_gyp%': '<(gen_core_neon_offsets_gyp)',
       'webrtc_vp8_dir%': '<(webrtc_root)/modules/video_coding/codecs/vp8',
+      'webrtc_vp9_dir%': '<(webrtc_root)/modules/video_coding/codecs/vp9',
       'rbe_components_path%': '<(webrtc_root)/modules/remote_bitrate_estimator',
       'include_opus%': 1,
     },
@@ -53,6 +54,7 @@
     'modules_java_gyp_path%': '<(modules_java_gyp_path)',
     'gen_core_neon_offsets_gyp%': '<(gen_core_neon_offsets_gyp)',
     'webrtc_vp8_dir%': '<(webrtc_vp8_dir)',
+    'webrtc_vp9_dir%': '<(webrtc_vp9_dir)',
     'include_opus%': '<(include_opus)',
     'rtc_relative_path%': 1,
     'rbe_components_path%': '<(rbe_components_path)',
@@ -109,7 +111,7 @@
 
     # Define MIPS architecture variant, MIPS DSP variant and MIPS FPU
     # This may be subject to change in accordance to Chromium's MIPS flags
-    'mips_arch_variant%': 'mips32r1',
+    'mips_arch_variant%': 'r1',
     'mips_dsp_rev%': 0,
     'mips_fpu%' : 1,
     'enable_android_opensl%': 0,
@@ -155,6 +157,11 @@
       }],
       ['target_arch=="arm" or target_arch=="armv7"', {
         'prefer_fixed_point%': 1,
+      }],
+      ['OS!="ios" and (target_arch!="arm" or arm_version>=7)', {
+        'rtc_use_openmax_dl%': 1,
+      }, {
+        'rtc_use_openmax_dl%': 0,
       }],
     ], # conditions
   },
@@ -206,6 +213,16 @@
       }, {
         'conditions': [
           ['os_posix==1', {
+	    'configurations': {
+              'Debug_Base': {
+                'defines': [
+                  # Chromium's build/common.gypi defines this for all posix
+                  # _except_ for ios & mac.  We want it there as well, e.g.
+                  # because ASSERT and friends trigger off of it.
+                  '_DEBUG',
+                ],
+              },
+            },
             'conditions': [
               # -Wextra is currently disabled in Chromium's common.gypi. Enable
               # for targets that can handle it. For Android/arm64 right now
@@ -237,6 +254,11 @@
           }],
         ],
       }],
+      ['target_arch=="arm64"', {
+        'defines': [
+          'WEBRTC_ARCH_ARM',
+        ],
+      }],
       ['target_arch=="arm" or target_arch=="armv7"', {
         'defines': [
           'WEBRTC_ARCH_ARM',
@@ -254,7 +276,7 @@
           }],
         ],
       }],
-      ['target_arch=="mipsel"', {
+      ['target_arch=="mipsel" and mips_arch_variant!="r6"', {
         'defines': [
           'MIPS32_LE',
         ],
@@ -271,7 +293,7 @@
               '-msoft-float',
             ],
           }],
-          ['mips_arch_variant=="mips32r2"', {
+          ['mips_arch_variant=="r2"', {
             'defines': [
               'MIPS32_R2_LE',
             ],

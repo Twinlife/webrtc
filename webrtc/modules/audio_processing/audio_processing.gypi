@@ -9,6 +9,7 @@
 {
   'variables': {
     'audio_processing_dependencies': [
+      '<(webrtc_root)/base/base.gyp:rtc_base_approved',
       '<(webrtc_root)/common_audio/common_audio.gyp:common_audio',
       '<(webrtc_root)/system_wrappers/source/system_wrappers.gyp:system_wrappers',
     ],
@@ -111,7 +112,7 @@
             'ns/nsx_defines.h',
           ],
           'conditions': [
-            ['target_arch=="mipsel"', {
+            ['target_arch=="mipsel" and mips_arch_variant!="r6"', {
               'sources': [
                 'ns/nsx_core_mips.c',
               ],
@@ -138,7 +139,7 @@
         ['(target_arch=="arm" and arm_version==7) or target_arch=="armv7"', {
           'dependencies': ['audio_processing_neon',],
         }],
-        ['target_arch=="mipsel"', {
+        ['target_arch=="mipsel" and mips_arch_variant!="r6"', {
           'sources': [
             'aecm/aecm_core_mips.c',
           ],
