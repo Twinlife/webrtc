@@ -262,7 +262,7 @@ class Port : public PortInterface, public rtc::MessageHandler,
 
   // Debugging description of this port
   virtual std::string ToString() const;
-  rtc::IPAddress& ip() { return ip_; }
+  const rtc::IPAddress& ip() const { return ip_; }
   uint16 min_port() { return min_port_; }
   uint16 max_port() { return max_port_; }
 
@@ -453,6 +453,10 @@ class Connection : public rtc::MessageHandler,
 
   size_t sent_total_bytes();
   size_t sent_bytes_second();
+  // Used to track how many packets are discarded in the application socket due
+  // to errors.
+  size_t sent_discarded_packets();
+  size_t sent_total_packets();
   size_t recv_total_bytes();
   size_t recv_bytes_second();
   sigslot::signal1<Connection*> SignalStateChange;
@@ -513,6 +517,7 @@ class Connection : public rtc::MessageHandler,
   void ReceivedPing();
 
   // Debugging description of this connection
+  std::string ToDebugId() const;
   std::string ToString() const;
   std::string ToSensitiveString() const;
 
@@ -529,6 +534,16 @@ class Connection : public rtc::MessageHandler,
   State state() const { return state_; }
 
   IceMode remote_ice_mode() const { return remote_ice_mode_; }
+
+  // Update the ICE password of the remote candidate if |ice_ufrag| matches
+  // the candidate's ufrag, and the candidate's passwrod has not been set.
+  void MaybeSetRemoteIceCredentials(const std::string& ice_ufrag,
+                                    const std::string& ice_pwd);
+
+  // If |remote_candidate_| is peer reflexive and is equivalent to
+  // |new_candidate| except the type, update |remote_candidate_| to
+  // |new_candidate|.
+  void MaybeUpdatePeerReflexiveCandidate(const Candidate& new_candidate);
 
  protected:
   // Constructs a new connection to the given remote port.
@@ -579,6 +594,8 @@ class Connection : public rtc::MessageHandler,
 
   rtc::RateTracker recv_rate_tracker_;
   rtc::RateTracker send_rate_tracker_;
+  uint32 sent_packets_discarded_;
+  uint32 sent_packets_total_;
 
  private:
   void MaybeAddPrflxCandidate(ConnectionRequest* request,

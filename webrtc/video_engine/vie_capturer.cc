@@ -49,6 +49,7 @@ ViECapturer::ViECapturer(int capture_id,
                                                    "ViECaptureThread")),
       capture_event_(*EventWrapper::Create()),
       deliver_event_(*EventWrapper::Create()),
+      stop_(false),
       effect_filter_(NULL),
       image_proc_module_(NULL),
       image_proc_module_ref_counter_(0),
@@ -70,12 +71,8 @@ ViECapturer::~ViECapturer() {
   module_process_thread_.DeRegisterModule(overuse_detector_.get());
 
   // Stop the thread.
-  deliver_cs_->Enter();
-  capture_cs_->Enter();
-  capture_thread_.SetNotAlive();
+  stop_ = true;
   capture_event_.Set();
-  capture_cs_->Leave();
-  deliver_cs_->Leave();
 
   // Stop the camera input.
   if (capture_module_) {
@@ -258,28 +255,12 @@ int32_t ViECapturer::SetCaptureDelay(int32_t delay_ms) {
   return 0;
 }
 
-int32_t ViECapturer::SetRotateCapturedFrames(
-  const RotateCapturedFrame rotation) {
-  VideoCaptureRotation converted_rotation = kCameraRotate0;
-  switch (rotation) {
-    case RotateCapturedFrame_0:
-      converted_rotation = kCameraRotate0;
-      break;
-    case RotateCapturedFrame_90:
-      converted_rotation = kCameraRotate90;
-      break;
-    case RotateCapturedFrame_180:
-      converted_rotation = kCameraRotate180;
-      break;
-    case RotateCapturedFrame_270:
-      converted_rotation = kCameraRotate270;
-      break;
-  }
-  return capture_module_->SetCaptureRotation(converted_rotation);
+int32_t ViECapturer::SetVideoRotation(const VideoRotation rotation) {
+  return capture_module_->SetCaptureRotation(rotation);
 }
 
 int ViECapturer::IncomingFrame(unsigned char* video_frame,
-                               unsigned int video_frame_length,
+                               size_t video_frame_length,
                                uint16_t width,
                                uint16_t height,
                                RawVideoType video_type,
@@ -454,6 +435,9 @@ bool ViECapturer::ViECaptureThreadFunction(void* obj) {
 bool ViECapturer::ViECaptureProcess() {
   int64_t capture_time = -1;
   if (capture_event_.Wait(kThreadWaitTimeMs) == kEventSignaled) {
+    if (stop_)
+      return false;
+
     overuse_detector_->FrameProcessingStarted();
     int64_t encode_start_time = -1;
     deliver_cs_->Enter();
@@ -487,7 +471,7 @@ bool ViECapturer::ViECaptureProcess() {
 
 void ViECapturer::DeliverI420Frame(I420VideoFrame* video_frame) {
   if (video_frame->native_handle() != NULL) {
-    ViEFrameProviderBase::DeliverFrame(video_frame);
+    ViEFrameProviderBase::DeliverFrame(video_frame, std::vector<uint32_t>());
     return;
   }
 
@@ -522,9 +506,8 @@ void ViECapturer::DeliverI420Frame(I420VideoFrame* video_frame) {
     }
   }
   if (effect_filter_) {
-    unsigned int length = CalcBufferSize(kI420,
-                                         video_frame->width(),
-                                         video_frame->height());
+    size_t length =
+        CalcBufferSize(kI420, video_frame->width(), video_frame->height());
     scoped_ptr<uint8_t[]> video_buffer(new uint8_t[length]);
     ExtractBuffer(*video_frame, length, video_buffer.get());
     effect_filter_->Transform(length,
@@ -535,7 +518,7 @@ void ViECapturer::DeliverI420Frame(I420VideoFrame* video_frame) {
                               video_frame->height());
   }
   // Deliver the captured frame to all observers (channels, renderer or file).
-  ViEFrameProviderBase::DeliverFrame(video_frame);
+  ViEFrameProviderBase::DeliverFrame(video_frame, std::vector<uint32_t>());
 }
 
 int ViECapturer::DeregisterFrameCallback(
@@ -616,7 +599,6 @@ bool ViECapturer::SwapCapturedAndDeliverFrameIfAvailable() {
   if (deliver_frame_ == NULL)
     deliver_frame_.reset(new I420VideoFrame());
   deliver_frame_->SwapFrame(captured_frame_.get());
-  captured_frame_->ResetSize();
   return true;
 }
 

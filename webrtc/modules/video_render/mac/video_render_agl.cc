@@ -49,7 +49,7 @@ VideoChannelAGL::VideoChannelAGL(AGLContext& aglContext, int iId, VideoRenderAGL
     _oldStretchedWidth( 0),
     _buffer( 0),
     _bufferSize( 0),
-    _incommingBufferSize(0),
+    _incomingBufferSize(0),
     _bufferIsUpdated( false),
     _sizeInitialized( false),
     _numberOfStreams( 0),
@@ -138,7 +138,7 @@ int VideoChannelAGL::FrameSizeChange(int width, int height, int numberOfStreams)
         _bufferSize = 0;
     }
 
-    _incommingBufferSize = CalcBufferSize(kI420, _width, _height);
+    _incomingBufferSize = CalcBufferSize(kI420, _width, _height);
     _bufferSize = CalcBufferSize(kARGB, _width, _height);//_width * _height * bytesPerPixel;
     _buffer = new unsigned char [_bufferSize];
     memset(_buffer, 0, _bufferSize * sizeof(unsigned char));
@@ -228,8 +228,8 @@ int VideoChannelAGL::DeliverFrame(const I420VideoFrame& videoFrame) {
     return 0;
   }
 
-  int length = CalcBufferSize(kI420, videoFrame.width(), videoFrame.height());
-  if (length != _incommingBufferSize) {
+  if (CalcBufferSize(kI420, videoFrame.width(), videoFrame.height()) !=
+      _incomingBufferSize) {
     _owner->UnlockAGLCntx();
     return -1;
   }
@@ -554,7 +554,7 @@ _threadID( )
 
 #endif
 
-#ifdef NEW_HIVIEW_EVENT_HANDLER	
+#ifdef NEW_HIVIEW_EVENT_HANDLER
     //WEBRTC_TRACE(kTraceDebug, "%s:%d Installing Eventhandler for hiviewRef", __FUNCTION__, __LINE__);
 
     static const EventTypeSpec hiviewEventTypes[] =
@@ -668,7 +668,7 @@ VideoRenderAGL::~VideoRenderAGL()
     }
 #endif
 
-#ifdef NEW_HIVIEW_EVENT_HANDLER	
+#ifdef NEW_HIVIEW_EVENT_HANDLER
     if(_hiviewEventHandlerRef)
     {
         status = RemoveEventHandler(_hiviewEventHandlerRef);
@@ -685,7 +685,6 @@ VideoRenderAGL::~VideoRenderAGL()
 
     if (tmpPtr)
     {
-        tmpPtr->SetNotAlive();
         _screenUpdateEvent->Set();
         _screenUpdateEvent->StopTimer();
 
@@ -868,7 +867,6 @@ int VideoRenderAGL::StopThread()
 
     if (tmpPtr)
     {
-        tmpPtr->SetNotAlive();
         _screenUpdateEvent->Set();
         if (tmpPtr->Stop())
         {
@@ -1278,7 +1276,7 @@ int VideoRenderAGL::CreateMixingContext()
 
     //WEBRTC_LOG(kTraceDebug, "Entering CreateMixingContext()");
 
-    // Use both AGL_ACCELERATED and AGL_NO_RECOVERY to make sure 
+    // Use both AGL_ACCELERATED and AGL_NO_RECOVERY to make sure
     // a hardware renderer is used and not a software renderer.
 
     GLint attributes[] =
@@ -1867,13 +1865,6 @@ bool VideoRenderAGL::CheckValidRegion(RgnHandle rHandle)
 int VideoRenderAGL::ChangeWindow(void* newWindowRef)
 {
 
-    LockAGLCntx();
-
-    UnlockAGLCntx();
-    return -1;
-}
-int32_t VideoRenderAGL::ChangeUniqueID(int32_t id)
-{
     LockAGLCntx();
 
     UnlockAGLCntx();

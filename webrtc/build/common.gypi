@@ -26,13 +26,11 @@
             'webrtc_root%': '<(DEPTH)/third_party/webrtc',
             'apk_tests_path%': '<(DEPTH)/third_party/webrtc/build/apk_tests_noop.gyp',
             'modules_java_gyp_path%': '<(DEPTH)/third_party/webrtc/modules/modules_java_chromium.gyp',
-            'gen_core_neon_offsets_gyp%': '<(DEPTH)/third_party/webrtc/modules/audio_processing/gen_core_neon_offsets_chromium.gyp',
           }, {
             'build_with_libjingle%': 1,
             'webrtc_root%': '<(DEPTH)/third_party/webrtc',
             'apk_tests_path%': '<(DEPTH)/webrtc/build/apk_test_noop.gyp',
             'modules_java_gyp_path%': '<(DEPTH)/webrtc/modules/modules_java.gyp',
-            'gen_core_neon_offsets_gyp%':'<(DEPTH)/third_party/webrtc/modules/audio_processing/gen_core_neon_offsets.gyp',
           }],
         ],
       },
@@ -41,23 +39,20 @@
       'webrtc_root%': '<(webrtc_root)',
       'apk_tests_path%': '<(apk_tests_path)',
       'modules_java_gyp_path%': '<(modules_java_gyp_path)',
-      'gen_core_neon_offsets_gyp%': '<(gen_core_neon_offsets_gyp)',
       'webrtc_vp8_dir%': '<(webrtc_root)/modules/video_coding/codecs/vp8',
       'webrtc_vp9_dir%': '<(webrtc_root)/modules/video_coding/codecs/vp9',
-      'rbe_components_path%': '<(webrtc_root)/modules/remote_bitrate_estimator',
       'include_opus%': 1,
+      'opus_dir%': '<(DEPTH)/third_party/opus',
     },
     'build_with_chromium%': '<(build_with_chromium)',
     'build_with_libjingle%': '<(build_with_libjingle)',
     'webrtc_root%': '<(webrtc_root)',
     'apk_tests_path%': '<(apk_tests_path)',
     'modules_java_gyp_path%': '<(modules_java_gyp_path)',
-    'gen_core_neon_offsets_gyp%': '<(gen_core_neon_offsets_gyp)',
     'webrtc_vp8_dir%': '<(webrtc_vp8_dir)',
     'webrtc_vp9_dir%': '<(webrtc_vp9_dir)',
     'include_opus%': '<(include_opus)',
     'rtc_relative_path%': 1,
-    'rbe_components_path%': '<(rbe_components_path)',
     'external_libraries%': '0',
     'json_root%': '<(DEPTH)/third_party/jsoncpp/source/include/',
     # openssl needs to be defined or gyp will complain. Is is only used when
@@ -99,6 +94,7 @@
     'build_libjpeg%': 1,
     'build_libyuv%': 1,
     'build_libvpx%': 1,
+    'build_vp9%': 1,
     'build_ssl%': 1,
 
     # Disable by default
@@ -107,13 +103,18 @@
     # Enable to use the Mozilla internal settings.
     'build_with_mozilla%': 0,
 
+    # Make it possible to provide custom locations for some libraries.
+    'libvpx_dir%': '<(DEPTH)/third_party/libvpx',
     'libyuv_dir%': '<(DEPTH)/third_party/libyuv',
+    'opus_dir%': '<(opus_dir)',
 
     # Define MIPS architecture variant, MIPS DSP variant and MIPS FPU
     # This may be subject to change in accordance to Chromium's MIPS flags
-    'mips_arch_variant%': 'r1',
     'mips_dsp_rev%': 0,
     'mips_fpu%' : 1,
+    # Use Java based audio layer as default for Android.
+    # Change this setting to 1 to use Open SL audio instead.
+    # TODO(henrika): add support for Open SL ES.
     'enable_android_opensl%': 0,
 
     # Link-Time Optimizations
@@ -125,6 +126,10 @@
     # choosing openssl or nss directly.  In practice, this can be used to
     # enable schannel on windows.
     'use_legacy_ssl_defaults%': 0,
+
+    # Directly call the trace callback instead of passing it to a logging
+    # thread. Used for components that provide their own threaded logging.
+    'rtc_use_direct_trace%': 0,
 
     'conditions': [
       ['build_with_chromium==1', {
@@ -155,10 +160,10 @@
         'build_libjpeg%': 0,
         'enable_protobuf%': 0,
       }],
-      ['target_arch=="arm" or target_arch=="armv7"', {
+      ['target_arch=="arm" or target_arch=="arm64"', {
         'prefer_fixed_point%': 1,
       }],
-      ['OS!="ios" and (target_arch!="arm" or arm_version>=7)', {
+      ['OS!="ios" and (target_arch!="arm" or arm_version>=7) and target_arch!="mips64el"', {
         'rtc_use_openmax_dl%': 1,
       }, {
         'rtc_use_openmax_dl%': 0,
@@ -203,17 +208,24 @@
           'LOGGING_INSIDE_WEBRTC',
         ],
         'include_dirs': [
-          # overrides must be included first as that is the mechanism for
-          # selecting the override headers in Chromium.
+          # Include the top-level directory when building in Chrome, so we can
+          # use full paths (e.g. headers inside testing/ or third_party/).
+          '<(DEPTH)',
+          # The overrides must be included before the WebRTC root as that's the
+          # mechanism for selecting the override headers in Chromium.
           '../overrides',
-          # Allow includes to be prefixed with webrtc/ in case it is not an
-          # immediate subdirectory of <(DEPTH).
+          # The WebRTC root is needed to allow includes in the WebRTC code base
+          # to be prefixed with webrtc/.
           '../..',
         ],
       }, {
+         # Include the top-level dir so the WebRTC code can use full paths.
+        'include_dirs': [
+          '../..',
+        ],
         'conditions': [
           ['os_posix==1', {
-	    'configurations': {
+            'configurations': {
               'Debug_Base': {
                 'defines': [
                   # Chromium's build/common.gypi defines this for all posix
@@ -249,6 +261,7 @@
           }],
           ['clang==1', {
             'cflags': [
+              '-Wimplicit-fallthrough',
               '-Wthread-safety',
             ],
           }],
@@ -257,26 +270,33 @@
       ['target_arch=="arm64"', {
         'defines': [
           'WEBRTC_ARCH_ARM',
+          # TODO(zhongwei) Defining an unique WEBRTC_NEON and
+          # distinguishing ARMv7 NEON and ARM64 NEON by
+          # WEBRTC_ARCH_ARM_V7 and WEBRTC_ARCH_ARM64 should be better.
+
+          # This macro is used to distinguish ARMv7 NEON and ARM64 NEON
+          'WEBRTC_ARCH_ARM64_NEON',
         ],
       }],
-      ['target_arch=="arm" or target_arch=="armv7"', {
+      ['target_arch=="arm"', {
         'defines': [
           'WEBRTC_ARCH_ARM',
         ],
         'conditions': [
-          ['arm_version==7', {
+          ['arm_version>=7', {
             'defines': ['WEBRTC_ARCH_ARM_V7',],
             'conditions': [
               ['arm_neon==1', {
                 'defines': ['WEBRTC_ARCH_ARM_NEON',],
-              }, {
+              }],
+              ['arm_neon==0 and OS=="android"', {
                 'defines': ['WEBRTC_DETECT_ARM_NEON',],
               }],
             ],
           }],
         ],
       }],
-      ['target_arch=="mipsel" and mips_arch_variant!="r6"', {
+      ['target_arch=="mipsel" and mips_arch_variant!="r6" and android_webview_build==0', {
         'defines': [
           'MIPS32_LE',
         ],

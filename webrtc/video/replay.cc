@@ -174,6 +174,8 @@ class FileRenderPassthrough : public VideoRenderer {
     PrintI420VideoFrame(video_frame, file_);
   }
 
+  virtual bool IsTextureSupported() const override { return false; }
+
   const std::string basename_;
   VideoRenderer* const renderer_;
   FILE* file_;
@@ -238,7 +240,7 @@ void RtpReplay() {
   int num_packets = 0;
   std::map<uint32_t, int> unknown_packets;
   while (true) {
-    test::RtpFileReader::Packet packet;
+    test::RtpPacket packet;
     if (!rtp_reader->NextPacket(&packet))
       break;
     ++num_packets;

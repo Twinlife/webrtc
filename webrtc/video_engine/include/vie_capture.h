@@ -20,6 +20,7 @@
 
 #include "webrtc/common_types.h"
 #include "webrtc/common_video/interface/i420_video_frame.h"
+#include "webrtc/common_video/rotation.h"
 
 namespace webrtc {
 
@@ -58,13 +59,6 @@ enum Brightness {
 enum CaptureAlarm {
   AlarmRaised = 0,
   AlarmCleared = 1
-};
-
-enum RotateCapturedFrame {
-  RotateCapturedFrame_0 = 0,
-  RotateCapturedFrame_90 = 90,
-  RotateCapturedFrame_180 = 180,
-  RotateCapturedFrame_270 = 270
 };
 
 struct ViEVideoFrameI420 {
@@ -106,7 +100,7 @@ class WEBRTC_DLLEXPORT ViEExternalCapture {
   // VideoEngine.
   // |capture_time| must be specified in the NTP time format in milliseconds.
   virtual int IncomingFrame(unsigned char* video_frame,
-                            unsigned int video_frame_length,
+                            size_t video_frame_length,
                             unsigned short width,
                             unsigned short height,
                             RawVideoType video_type,
@@ -203,8 +197,8 @@ class WEBRTC_DLLEXPORT ViECapture {
 
   // Rotates captured frames before encoding and sending.
   // Used on mobile devices with rotates cameras.
-  virtual int SetRotateCapturedFrames(const int capture_id,
-                                      const RotateCapturedFrame rotation) = 0;
+  virtual int SetVideoRotation(const int capture_id,
+                               const VideoRotation rotation) = 0;
 
   // This function sets the expected delay from when a video frame is captured
   // to when that frame is delivered to VideoEngine.
@@ -237,7 +231,7 @@ class WEBRTC_DLLEXPORT ViECapture {
   // order to display the frames correctly if the display is rotated in its
   // natural orientation.
   virtual int GetOrientation(const char* unique_id_utf8,
-                             RotateCapturedFrame& orientation) = 0;
+                             VideoRotation& orientation) = 0;
 
   // Enables brightness alarm detection and the brightness alarm callback.
   virtual int EnableBrightnessAlarm(const int capture_id,

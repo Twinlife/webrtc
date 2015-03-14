@@ -36,13 +36,12 @@ class AudioPacketizationCallback {
  public:
   virtual ~AudioPacketizationCallback() {}
 
-  virtual int32_t SendData(
-      FrameType frame_type,
-      uint8_t payload_type,
-      uint32_t timestamp,
-      const uint8_t* payload_data,
-      uint16_t payload_len_bytes,
-      const RTPFragmentationHeader* fragmentation) = 0;
+  virtual int32_t SendData(FrameType frame_type,
+                           uint8_t payload_type,
+                           uint32_t timestamp,
+                           const uint8_t* payload_data,
+                           size_t payload_len_bytes,
+                           const RTPFragmentationHeader* fragmentation) = 0;
 };
 
 // Callback class used for inband Dtmf detection
@@ -246,33 +245,6 @@ class AudioCodingModule: public Module {
   virtual int32_t RegisterSendCodec(const CodecInst& send_codec) = 0;
 
   ///////////////////////////////////////////////////////////////////////////
-  // int RegisterSecondarySendCodec()
-  // Register a secondary encoder to enable dual-streaming. If a secondary
-  // codec is already registered, it will be removed before the new one is
-  // registered.
-  //
-  // Note: The secondary encoder will be unregistered if a primary codec
-  // is set with a sampling rate which does not match that of the existing
-  // secondary codec.
-  //
-  // Input:
-  //   -send_codec         : Parameters of the codec to be registered, c.f.
-  //                         common_types.h for the definition of
-  //                         CodecInst.
-  //
-  // Return value:
-  //   -1 if failed to register,
-  //    0 if succeeded.
-  //
-  virtual int RegisterSecondarySendCodec(const CodecInst& send_codec) = 0;
-
-  ///////////////////////////////////////////////////////////////////////////
-  // void UnregisterSecondarySendCodec()
-  // Unregister the secondary encoder to disable dual-streaming.
-  //
-  virtual void UnregisterSecondarySendCodec() = 0;
-
-  ///////////////////////////////////////////////////////////////////////////
   // int32_t SendCodec()
   // Get parameters for the codec currently registered as send codec.
   //
@@ -284,19 +256,6 @@ class AudioCodingModule: public Module {
   //    0 if succeeded.
   //
   virtual int32_t SendCodec(CodecInst* current_send_codec) const = 0;
-
-  ///////////////////////////////////////////////////////////////////////////
-  // int SecondarySendCodec()
-  // Get the codec parameters for the current secondary send codec.
-  //
-  // Output:
-  //   -secondary_codec          : parameters of the secondary send codec.
-  //
-  // Return value:
-  //   -1 if failed to get send codec,
-  //    0 if succeeded.
-  //
-  virtual int SecondarySendCodec(CodecInst* secondary_codec) const = 0;
 
   ///////////////////////////////////////////////////////////////////////////
   // int32_t SendFrequency()
@@ -508,8 +467,7 @@ class AudioCodingModule: public Module {
 
   ///////////////////////////////////////////////////////////////////////////
   // int32_t ReplaceInternalDTXWithWebRtc()
-  // Used to replace codec internal DTX scheme with WebRtc. This is only
-  // supported for G729, where this call replaces AnnexB with WebRtc DTX.
+  // Used to replace codec internal DTX scheme with WebRtc.
   //
   // Input:
   //   -use_webrtc_dtx     : if false (default) the codec built-in DTX/VAD
@@ -525,8 +483,8 @@ class AudioCodingModule: public Module {
 
   ///////////////////////////////////////////////////////////////////////////
   // int32_t IsInternalDTXReplacedWithWebRtc()
-  // Get status if the codec internal DTX (when such exists) is replaced with
-  // WebRtc DTX. This is only supported for G729.
+  // Get status if the codec internal DTX is replaced with WebRtc DTX.
+  // This should always be true if codec does not have an internal DTX.
   //
   // Output:
   //   -uses_webrtc_dtx    : is set to true if the codec internal DTX is
@@ -668,8 +626,8 @@ class AudioCodingModule: public Module {
   //    0 if payload is successfully pushed in.
   //
   virtual int32_t IncomingPacket(const uint8_t* incoming_payload,
-                                       const int32_t payload_len_bytes,
-                                       const WebRtcRTPHeader& rtp_info) = 0;
+                                 const size_t payload_len_bytes,
+                                 const WebRtcRTPHeader& rtp_info) = 0;
 
   ///////////////////////////////////////////////////////////////////////////
   // int32_t IncomingPayload()
@@ -696,9 +654,9 @@ class AudioCodingModule: public Module {
   //    0 if payload is successfully pushed in.
   //
   virtual int32_t IncomingPayload(const uint8_t* incoming_payload,
-                                        const int32_t payload_len_byte,
-                                        const uint8_t payload_type,
-                                        const uint32_t timestamp = 0) = 0;
+                                  const size_t payload_len_byte,
+                                  const uint8_t payload_type,
+                                  const uint32_t timestamp = 0) = 0;
 
   ///////////////////////////////////////////////////////////////////////////
   // int SetMinimumPlayoutDelay()
@@ -917,6 +875,20 @@ class AudioCodingModule: public Module {
       bool enforce_frame_size = false) = 0;
 
   ///////////////////////////////////////////////////////////////////////////
+  // int SetOpusApplication()
+  // Sets the intended application for the Opus encoder. Opus uses this to
+  // optimize the encoding for applications like VOIP and music.
+  //
+  // Input:
+  //   - application      : intended application.
+  //
+  // Return value:
+  //   -1 if failed or on codecs other than Opus.
+  //    0 if succeeded.
+  //
+  virtual int SetOpusApplication(OpusApplicationMode /*application*/) = 0;
+
+  ///////////////////////////////////////////////////////////////////////////
   // int SetOpusMaxPlaybackRate()
   // If current send codec is Opus, informs it about maximum playback rate the
   // receiver will render. Opus can use this information to optimize the bit
@@ -937,7 +909,7 @@ class AudioCodingModule: public Module {
   //
 
   ///////////////////////////////////////////////////////////////////////////
-  // int32_t  NetworkStatistics()
+  // int32_t  GetNetworkStatistics()
   // Get network statistics. Note that the internal statistics of NetEq are
   // reset by this call.
   //
@@ -948,8 +920,8 @@ class AudioCodingModule: public Module {
   //   -1 if failed to set the network statistics,
   //    0 if statistics are set successfully.
   //
-  virtual int32_t NetworkStatistics(
-      ACMNetworkStatistics* network_statistics) = 0;
+  virtual int32_t GetNetworkStatistics(
+      NetworkStatistics* network_statistics) = 0;
 
   //
   // Set an initial delay for playout.
@@ -993,7 +965,8 @@ class AudioCodingModule: public Module {
   // Negative |round_trip_time_ms| results is an error message and empty list
   // is returned.
   //
-  virtual std::vector<uint16_t> GetNackList(int round_trip_time_ms) const = 0;
+  virtual std::vector<uint16_t> GetNackList(
+      int64_t round_trip_time_ms) const = 0;
 
   virtual void GetDecodingCallStatistics(
       AudioDecodingCallStats* call_stats) const = 0;
@@ -1090,12 +1063,12 @@ class AudioCoding {
   // |incoming_payload| contains the RTP payload after the RTP header. Return
   // true if successful, false if not.
   virtual bool InsertPacket(const uint8_t* incoming_payload,
-                            int32_t payload_len_bytes,
+                            size_t payload_len_bytes,
                             const WebRtcRTPHeader& rtp_info) = 0;
 
   // TODO(henrik.lundin): Remove this method?
   virtual bool InsertPayload(const uint8_t* incoming_payload,
-                             int32_t payload_len_byte,
+                             size_t payload_len_byte,
                              uint8_t payload_type,
                              uint32_t timestamp) = 0;
 
@@ -1134,7 +1107,7 @@ class AudioCoding {
 
   // Returns the network statistics. Note that the internal statistics of NetEq
   // are reset by this call. Returns true if successful, false otherwise.
-  virtual bool NetworkStatistics(ACMNetworkStatistics* network_statistics) = 0;
+  virtual bool GetNetworkStatistics(NetworkStatistics* network_statistics) = 0;
 
   // Enables NACK and sets the maximum size of the NACK list. If NACK is already
   // enabled then the maximum NACK list size is modified accordingly. Returns

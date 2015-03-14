@@ -219,6 +219,7 @@ class WebRtcVideoEngine : public sigslot::has_slots<>,
   rtc::scoped_ptr<ViETraceWrapper> tracing_;
   WebRtcVoiceEngine* voice_engine_;
   rtc::scoped_ptr<webrtc::VideoRender> render_module_;
+  rtc::scoped_ptr<WebRtcVideoEncoderFactory> simulcast_encoder_factory_;
   WebRtcVideoEncoderFactory* encoder_factory_;
   WebRtcVideoDecoderFactory* decoder_factory_;
   std::vector<VideoCodec> video_codecs_;
@@ -235,15 +236,7 @@ class WebRtcVideoEngine : public sigslot::has_slots<>,
   rtc::scoped_ptr<rtc::CpuMonitor> cpu_monitor_;
 };
 
-struct CapturedFrameInfo {
-  CapturedFrameInfo() : width(0), height(0), screencast(false) {}
-  CapturedFrameInfo(size_t width, size_t height, bool screencast) :
-      width(width), height(height), screencast(screencast) {}
-
-  size_t width;
-  size_t height;
-  bool screencast;
-};
+struct CapturedFrameInfo;
 
 // TODO(pthatcher): Add VideoOptions.
 struct VideoSendParams {
@@ -331,8 +324,10 @@ class WebRtcVideoMediaChannel : public rtc::MessageHandler,
   int GetLastEngineError() { return engine()->GetLastEngineError(); }
 
   // webrtc::Transport:
-  virtual int SendPacket(int channel, const void* data, int len) OVERRIDE;
-  virtual int SendRTCPPacket(int channel, const void* data, int len) OVERRIDE;
+  virtual int SendPacket(int channel, const void* data, size_t len) OVERRIDE;
+  virtual int SendRTCPPacket(int channel,
+                             const void* data,
+                             size_t len) OVERRIDE;
 
   bool ConferenceModeIsEnabled() const {
     return options_.conference_mode.GetWithDefaultIfUnset(false);
@@ -518,6 +513,28 @@ class WebRtcVideoMediaChannel : public rtc::MessageHandler,
   // aspect ratio
   int ratio_w_;
   int ratio_h_;
+};
+
+// Wrap encoder factory to a simulcast encoder factory. Exposed here for code to
+// be shared with WebRtcVideoEngine2, not to be used externally.
+class WebRtcSimulcastEncoderFactory
+    : public cricket::WebRtcVideoEncoderFactory {
+ public:
+  // WebRtcSimulcastEncoderFactory doesn't take ownership of |factory|, which is
+  // owned by e.g. PeerConnectionFactory.
+  explicit WebRtcSimulcastEncoderFactory(
+      cricket::WebRtcVideoEncoderFactory* factory);
+  virtual ~WebRtcSimulcastEncoderFactory();
+
+  static bool UseSimulcastEncoderFactory(const std::vector<VideoCodec>& codecs);
+
+  virtual webrtc::VideoEncoder* CreateVideoEncoder(
+      webrtc::VideoCodecType type) OVERRIDE;
+  virtual const std::vector<VideoCodec>& codecs() const OVERRIDE;
+  virtual void DestroyVideoEncoder(webrtc::VideoEncoder* encoder) OVERRIDE;
+
+ private:
+  cricket::WebRtcVideoEncoderFactory* factory_;
 };
 
 }  // namespace cricket

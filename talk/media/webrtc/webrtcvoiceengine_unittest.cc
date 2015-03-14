@@ -50,15 +50,16 @@ using cricket::kRtpAbsoluteSenderTimeHeaderExtension;
 
 static const cricket::AudioCodec kPcmuCodec(0, "PCMU", 8000, 64000, 1, 0);
 static const cricket::AudioCodec kIsacCodec(103, "ISAC", 16000, 32000, 1, 0);
-static const cricket::AudioCodec kCeltCodec(110, "CELT", 32000, 64000, 2, 0);
 static const cricket::AudioCodec kOpusCodec(111, "opus", 48000, 64000, 2, 0);
+static const cricket::AudioCodec kG722CodecVoE(9, "G722", 16000, 64000, 1, 0);
+static const cricket::AudioCodec kG722CodecSdp(9, "G722", 8000, 64000, 1, 0);
 static const cricket::AudioCodec kRedCodec(117, "red", 8000, 0, 1, 0);
 static const cricket::AudioCodec kCn8000Codec(13, "CN", 8000, 0, 1, 0);
 static const cricket::AudioCodec kCn16000Codec(105, "CN", 16000, 0, 1, 0);
 static const cricket::AudioCodec
     kTelephoneEventCodec(106, "telephone-event", 8000, 0, 1, 0);
 static const cricket::AudioCodec* const kAudioCodecs[] = {
-    &kPcmuCodec, &kIsacCodec, &kCeltCodec, &kOpusCodec, &kRedCodec,
+    &kPcmuCodec, &kIsacCodec, &kOpusCodec, &kG722CodecVoE, &kRedCodec,
     &kCn8000Codec, &kCn16000Codec, &kTelephoneEventCodec,
 };
 const char kRingbackTone[] = "RIFF____WAVE____ABCD1234";
@@ -643,9 +644,6 @@ TEST_F(WebRtcVoiceEngineTestFake, SetSendBandwidthAuto) {
   // PCMU, default bitrate == 64000.
   TestSendBandwidth(kPcmuCodec, -1, true, 64000);
 
-  // CELT, default bitrate == 64000.
-  TestSendBandwidth(kCeltCodec, 0, true, 64000);
-
   // opus, default bitrate == 64000.
   TestSendBandwidth(kOpusCodec, -1, true, 64000);
 }
@@ -659,10 +657,6 @@ TEST_F(WebRtcVoiceEngineTestFake, SetMaxSendBandwidthMultiRateAsCaller) {
   // ISAC, default bitrate == 32000.
   TestSendBandwidth(kIsacCodec, 128000, true, 128000);
   TestSendBandwidth(kIsacCodec, 16000, true, 16000);
-
-  // CELT, default bitrate == 64000.
-  TestSendBandwidth(kCeltCodec, 96000, true, 96000);
-  TestSendBandwidth(kCeltCodec, 32000, true, 32000);
 
   // opus, default bitrate == 64000.
   TestSendBandwidth(kOpusCodec, 96000, true, 96000);
@@ -768,6 +762,20 @@ TEST_F(WebRtcVoiceEngineTestFake, DontResetSetSendCodec) {
   // In this case media channel shouldn't send codec to VoE.
   EXPECT_TRUE(channel_->SetSendCodecs(codecs));
   EXPECT_EQ(1, voe_.GetNumSetSendCodecs());
+}
+
+// Verify that G722 is set with 16000 samples per second to WebRTC.
+TEST_F(WebRtcVoiceEngineTestFake, SetSendCodecG722) {
+  EXPECT_TRUE(SetupEngine());
+  int channel_num = voe_.GetLastChannel();
+  std::vector<cricket::AudioCodec> codecs;
+  codecs.push_back(kG722CodecSdp);
+  EXPECT_TRUE(channel_->SetSendCodecs(codecs));
+  webrtc::CodecInst gcodec;
+  EXPECT_EQ(0, voe_.GetSendCodec(channel_num, gcodec));
+  EXPECT_STREQ("G722", gcodec.plname);
+  EXPECT_EQ(1, gcodec.channels);
+  EXPECT_EQ(16000, gcodec.plfreq);
 }
 
 // Test that if clockrate is not 48000 for opus, we fail.
@@ -1143,7 +1151,6 @@ TEST_F(WebRtcVoiceEngineTestFake, AddRecvStreamEnableNack) {
   EXPECT_TRUE(voe_.GetNACK(channel_num));
 }
 
-#ifdef USE_WEBRTC_DEV_BRANCH
 // Test that without useinbandfec, Opus FEC is off.
 TEST_F(WebRtcVoiceEngineTestFake, SetSendCodecNoOpusFec) {
   EXPECT_TRUE(SetupEngine());
@@ -1394,61 +1401,32 @@ TEST_F(WebRtcVoiceEngineTestFake, SetOpusMaxPlaybackRateOnTwoStreams) {
   EXPECT_EQ(cricket::kOpusBandwidthNb,
             voe_.GetMaxEncodingBandwidth(channel_num));
 }
-#endif  // USE_WEBRTC_DEV_BRANCH
 
-// Test that we can apply CELT with stereo mode but fail with mono mode.
-TEST_F(WebRtcVoiceEngineTestFake, SetSendCodecsCelt) {
+// Test that we can switch back and forth between Opus and ISAC with CN.
+TEST_F(WebRtcVoiceEngineTestFake, SetSendCodecsIsacOpusSwitching) {
   EXPECT_TRUE(SetupEngine());
   int channel_num = voe_.GetLastChannel();
-  std::vector<cricket::AudioCodec> codecs;
-  codecs.push_back(kCeltCodec);
-  codecs.push_back(kIsacCodec);
-  codecs[0].id = 96;
-  codecs[0].channels = 2;
-  codecs[0].bitrate = 96000;
-  codecs[1].bitrate = 64000;
-  EXPECT_TRUE(channel_->SetSendCodecs(codecs));
+  std::vector<cricket::AudioCodec> opus_codecs;
+  opus_codecs.push_back(kOpusCodec);
+  EXPECT_TRUE(channel_->SetSendCodecs(opus_codecs));
   webrtc::CodecInst gcodec;
   EXPECT_EQ(0, voe_.GetSendCodec(channel_num, gcodec));
-  EXPECT_EQ(96, gcodec.pltype);
-  EXPECT_EQ(96000, gcodec.rate);
-  EXPECT_EQ(2, gcodec.channels);
-  EXPECT_STREQ("CELT", gcodec.plname);
-  // Doesn't support mono, expect it to fall back to the next codec in the list.
-  codecs[0].channels = 1;
-  EXPECT_TRUE(channel_->SetSendCodecs(codecs));
-  EXPECT_EQ(0, voe_.GetSendCodec(channel_num, gcodec));
-  EXPECT_EQ(103, gcodec.pltype);
-  EXPECT_EQ(1, gcodec.channels);
-  EXPECT_EQ(64000, gcodec.rate);
-  EXPECT_STREQ("ISAC", gcodec.plname);
-}
-
-// Test that we can switch back and forth between CELT and ISAC with CN.
-TEST_F(WebRtcVoiceEngineTestFake, SetSendCodecsIsacCeltSwitching) {
-  EXPECT_TRUE(SetupEngine());
-  int channel_num = voe_.GetLastChannel();
-  std::vector<cricket::AudioCodec> celt_codecs;
-  celt_codecs.push_back(kCeltCodec);
-  EXPECT_TRUE(channel_->SetSendCodecs(celt_codecs));
-  webrtc::CodecInst gcodec;
-  EXPECT_EQ(0, voe_.GetSendCodec(channel_num, gcodec));
-  EXPECT_EQ(110, gcodec.pltype);
-  EXPECT_STREQ("CELT", gcodec.plname);
+  EXPECT_EQ(111, gcodec.pltype);
+  EXPECT_STREQ("opus", gcodec.plname);
 
   std::vector<cricket::AudioCodec> isac_codecs;
   isac_codecs.push_back(kIsacCodec);
   isac_codecs.push_back(kCn16000Codec);
-  isac_codecs.push_back(kCeltCodec);
+  isac_codecs.push_back(kOpusCodec);
   EXPECT_TRUE(channel_->SetSendCodecs(isac_codecs));
   EXPECT_EQ(0, voe_.GetSendCodec(channel_num, gcodec));
   EXPECT_EQ(103, gcodec.pltype);
   EXPECT_STREQ("ISAC", gcodec.plname);
 
-  EXPECT_TRUE(channel_->SetSendCodecs(celt_codecs));
+  EXPECT_TRUE(channel_->SetSendCodecs(opus_codecs));
   EXPECT_EQ(0, voe_.GetSendCodec(channel_num, gcodec));
-  EXPECT_EQ(110, gcodec.pltype);
-  EXPECT_STREQ("CELT", gcodec.plname);
+  EXPECT_EQ(111, gcodec.pltype);
+  EXPECT_STREQ("opus", gcodec.plname);
 }
 
 // Test that we handle various ways of specifying bitrate.
@@ -2014,6 +1992,12 @@ TEST_F(WebRtcVoiceEngineTestFake, GetStatsWithMultipleSendStreams) {
   EXPECT_EQ(cricket::kIntStatValue, info.receivers[0].packets_lost);
   EXPECT_EQ(cricket::kIntStatValue, info.receivers[0].ext_seqnum);
   EXPECT_EQ(kPcmuCodec.name, info.receivers[0].codec_name);
+  EXPECT_EQ(static_cast<float>(cricket::kNetStats.currentExpandRate) /
+      (1 << 14), info.receivers[0].expand_rate);
+  EXPECT_EQ(static_cast<float>(cricket::kNetStats.currentSpeechExpandRate) /
+      (1 << 14), info.receivers[0].speech_expand_rate);
+  EXPECT_EQ(static_cast<float>(cricket::kNetStats.currentSecondaryDecodedRate) /
+      (1 << 14), info.receivers[0].secondary_decoded_rate);
 }
 
 // Test that we can add and remove receive streams, and do proper send/playout.
@@ -2341,6 +2325,12 @@ TEST_F(WebRtcVoiceEngineTestFake, GetStats) {
   EXPECT_EQ(cricket::kIntStatValue, info.receivers[0].packets_lost);
   EXPECT_EQ(cricket::kIntStatValue, info.receivers[0].ext_seqnum);
   EXPECT_EQ(kPcmuCodec.name, info.receivers[0].codec_name);
+  EXPECT_EQ(static_cast<float>(cricket::kNetStats.currentExpandRate) /
+      (1 << 14), info.receivers[0].expand_rate);
+  EXPECT_EQ(static_cast<float>(cricket::kNetStats.currentSpeechExpandRate) /
+      (1 << 14), info.receivers[0].speech_expand_rate);
+  EXPECT_EQ(static_cast<float>(cricket::kNetStats.currentSecondaryDecodedRate) /
+      (1 << 14), info.receivers[0].secondary_decoded_rate);
   // TODO(sriniv): Add testing for more receiver fields.
 }
 
@@ -2468,8 +2458,8 @@ TEST_F(WebRtcVoiceEngineTestFake, AddRecvStreamUnsupportedCodec) {
       cricket::StreamParams::CreateLegacy(kSsrc1)));
   int channel_num2 = voe_.GetLastChannel();
   webrtc::CodecInst gcodec;
-  rtc::strcpyn(gcodec.plname, ARRAY_SIZE(gcodec.plname), "CELT");
-  gcodec.plfreq = 32000;
+  rtc::strcpyn(gcodec.plname, ARRAY_SIZE(gcodec.plname), "opus");
+  gcodec.plfreq = 48000;
   gcodec.channels = 2;
   EXPECT_EQ(-1, voe_.GetRecPayloadType(channel_num2, gcodec));
 }
@@ -3169,25 +3159,6 @@ TEST(WebRtcVoiceEngineTest, DISABLED_HasUnencryptedLogging) {
   EXPECT_TRUE(cleartext);
 }
 
-// Tests we do not see any references to a monitor thread being spun up
-// when initiating the engine.
-TEST(WebRtcVoiceEngineTest, HasNoMonitorThread) {
-  cricket::WebRtcVoiceEngine engine;
-  rtc::scoped_ptr<rtc::MemoryStream> stream(
-      new rtc::MemoryStream);
-  rtc::LogMessage::AddLogToStream(stream.get(), rtc::LS_VERBOSE);
-  engine.SetLogging(rtc::LS_VERBOSE, "");
-  EXPECT_TRUE(engine.Init(rtc::Thread::Current()));
-  engine.Terminate();
-  rtc::LogMessage::RemoveLogToStream(stream.get());
-
-  size_t size = 0;
-  EXPECT_TRUE(stream->GetSize(&size));
-  EXPECT_GT(size, 0U);
-  const std::string logs(stream->GetBuffer(), size);
-  EXPECT_NE(std::string::npos, logs.find("ProcessThread"));
-}
-
 // Tests that the library is configured with the codecs we want.
 TEST(WebRtcVoiceEngineTest, HasCorrectCodecs) {
   cricket::WebRtcVoiceEngine engine;
@@ -3208,7 +3179,7 @@ TEST(WebRtcVoiceEngineTest, HasCorrectCodecs) {
   EXPECT_TRUE(engine.FindCodec(
       cricket::AudioCodec(96, "PCMA", 8000, 0, 1, 0)));
   EXPECT_TRUE(engine.FindCodec(
-      cricket::AudioCodec(96, "G722", 16000, 0, 1, 0)));
+      cricket::AudioCodec(96, "G722", 8000, 0, 1, 0)));
   EXPECT_TRUE(engine.FindCodec(
       cricket::AudioCodec(96, "red", 8000, 0, 1, 0)));
   EXPECT_TRUE(engine.FindCodec(
@@ -3225,7 +3196,7 @@ TEST(WebRtcVoiceEngineTest, HasCorrectCodecs) {
   EXPECT_TRUE(engine.FindCodec(
       cricket::AudioCodec(8, "", 8000, 0, 1, 0)));   // PCMA
   EXPECT_TRUE(engine.FindCodec(
-      cricket::AudioCodec(9, "", 16000, 0, 1, 0)));  // G722
+      cricket::AudioCodec(9, "", 8000, 0, 1, 0)));  // G722
   EXPECT_TRUE(engine.FindCodec(
       cricket::AudioCodec(13, "", 8000, 0, 1, 0)));  // CN
   // Check sample/bitrate matching.
@@ -3248,7 +3219,7 @@ TEST(WebRtcVoiceEngineTest, HasCorrectCodecs) {
       EXPECT_EQ(103, it->id);
     } else if (it->name == "ISAC" && it->clockrate == 32000) {
       EXPECT_EQ(104, it->id);
-    } else if (it->name == "G722" && it->clockrate == 16000) {
+    } else if (it->name == "G722" && it->clockrate == 8000) {
       EXPECT_EQ(9, it->id);
     } else if (it->name == "telephone-event") {
       EXPECT_EQ(126, it->id);
@@ -3260,6 +3231,8 @@ TEST(WebRtcVoiceEngineTest, HasCorrectCodecs) {
       EXPECT_EQ("10", it->params.find("minptime")->second);
       ASSERT_TRUE(it->params.find("maxptime") != it->params.end());
       EXPECT_EQ("60", it->params.find("maxptime")->second);
+      ASSERT_TRUE(it->params.find("useinbandfec") != it->params.end());
+      EXPECT_EQ("1", it->params.find("useinbandfec")->second);
     }
   }
 

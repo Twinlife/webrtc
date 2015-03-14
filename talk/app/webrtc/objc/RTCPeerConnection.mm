@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2013, Google Inc.
+ * Copyright 2013 Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -123,12 +123,11 @@ class RTCStatsObserver : public StatsObserver {
     _peerConnection = peerConnection;
   }
 
-  virtual void OnComplete(const std::vector<StatsReport>& reports) OVERRIDE {
+  virtual void OnComplete(const StatsReports& reports) OVERRIDE {
     NSMutableArray* stats = [NSMutableArray arrayWithCapacity:reports.size()];
-    std::vector<StatsReport>::const_iterator it = reports.begin();
-    for (; it != reports.end(); ++it) {
+    for (const auto* report : reports) {
       RTCStatsReport* statsReport =
-          [[RTCStatsReport alloc] initWithStatsReport:*it];
+          [[RTCStatsReport alloc] initWithStatsReport:*report];
       [stats addObject:statsReport];
     }
     [_delegate peerConnection:_peerConnection didGetStats:stats];

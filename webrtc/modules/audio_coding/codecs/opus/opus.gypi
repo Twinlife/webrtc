@@ -19,9 +19,12 @@
            ]
         }, {
           'dependencies': [
-            '<(DEPTH)/third_party/opus/opus.gyp:opus'
+            '<(opus_dir)/opus.gyp:opus'
           ],
         }],
+      ],
+      'dependencies': [
+        'audio_encoder_interface',
       ],
       'include_dirs': [
         '<(webrtc_root)',

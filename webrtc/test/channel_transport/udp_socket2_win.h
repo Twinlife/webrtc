@@ -42,8 +42,6 @@ public:
                       bool ipV6Enable = false, bool disableGQOS = false);
     virtual ~UdpSocket2Windows();
 
-    virtual int32_t ChangeUniqueId(const int32_t id) OVERRIDE;
-
     virtual bool ValidHandle() OVERRIDE;
 
     virtual bool SetCallback(CallbackObj, IncomingSocketCallback) OVERRIDE;
@@ -56,7 +54,7 @@ public:
     virtual inline bool StartReceiving() OVERRIDE {return StartReceiving(8);}
     virtual bool StopReceiving() OVERRIDE;
 
-    virtual int32_t SendTo(const int8_t* buf, int32_t len,
+    virtual int32_t SendTo(const int8_t* buf, size_t len,
                            const SocketAddress& to) OVERRIDE;
 
     virtual void CloseBlocking() OVERRIDE;

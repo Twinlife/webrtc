@@ -84,7 +84,7 @@ class Settable {
     return set_ ? val_ : default_value;
   }
 
-  virtual void Set(T val) {
+  void Set(T val) {
     set_ = true;
     val_ = val;
   }
@@ -124,19 +124,6 @@ class Settable {
  private:
   bool set_;
   T val_;
-};
-
-class SettablePercent : public Settable<float> {
- public:
-  virtual void Set(float val) {
-    if (val < 0) {
-      val = 0;
-    }
-    if (val >  1.0) {
-      val = 1.0;
-    }
-    Settable<float>::Set(val);
-  }
 };
 
 template <class T>
@@ -339,7 +326,6 @@ struct VideoOptions {
     unsignalled_recv_stream_limit.SetFrom(change.unsignalled_recv_stream_limit);
     use_simulcast_adapter.SetFrom(change.use_simulcast_adapter);
     screencast_min_bitrate.SetFrom(change.screencast_min_bitrate);
-    use_payload_padding.SetFrom(change.use_payload_padding);
   }
 
   bool operator==(const VideoOptions& o) const {
@@ -367,8 +353,7 @@ struct VideoOptions {
            suspend_below_min_bitrate == o.suspend_below_min_bitrate &&
            unsignalled_recv_stream_limit == o.unsignalled_recv_stream_limit &&
            use_simulcast_adapter == o.use_simulcast_adapter &&
-           screencast_min_bitrate == o.screencast_min_bitrate &&
-           use_payload_padding == o.use_payload_padding;
+           screencast_min_bitrate == o.screencast_min_bitrate;
   }
 
   std::string ToString() const {
@@ -401,7 +386,6 @@ struct VideoOptions {
                          unsignalled_recv_stream_limit);
     ost << ToStringIfSet("use simulcast adapter", use_simulcast_adapter);
     ost << ToStringIfSet("screencast min bitrate", screencast_min_bitrate);
-    ost << ToStringIfSet("payload padding", use_payload_padding);
     ost << "}";
     return ost.str();
   }
@@ -443,11 +427,11 @@ struct VideoOptions {
   // Use conference mode?
   Settable<bool> conference_mode;
   // Threshhold for process cpu adaptation.  (Process limit)
-  SettablePercent process_adaptation_threshhold;
+  Settable<float> process_adaptation_threshhold;
   // Low threshhold for cpu adaptation.  (Adapt up)
-  SettablePercent system_low_adaptation_threshhold;
+  Settable<float> system_low_adaptation_threshhold;
   // High threshhold for cpu adaptation.  (Adapt down)
-  SettablePercent system_high_adaptation_threshhold;
+  Settable<float> system_high_adaptation_threshhold;
   // Specify buffered mode latency in milliseconds.
   Settable<int> buffered_mode_latency;
   // Set DSCP value for packet sent from video channel.
@@ -461,8 +445,6 @@ struct VideoOptions {
   Settable<bool> use_simulcast_adapter;
   // Force screencast to use a minimum bitrate
   Settable<int> screencast_min_bitrate;
-  // Enable payload padding.
-  Settable<bool> use_payload_padding;
 };
 
 // A class for playing out soundclips.
@@ -711,7 +693,7 @@ struct MediaSenderInfo {
   int packets_sent;
   int packets_lost;
   float fraction_lost;
-  int rtt_ms;
+  int64_t rtt_ms;
   std::string codec_name;
   std::vector<SsrcSenderInfo> local_stats;
   std::vector<SsrcReceiverInfo> remote_stats;
@@ -809,6 +791,8 @@ struct VoiceReceiverInfo : public MediaReceiverInfo {
         delay_estimate_ms(0),
         audio_level(0),
         expand_rate(0),
+        speech_expand_rate(0),
+        secondary_decoded_rate(0),
         decoding_calls_to_silence_generator(0),
         decoding_calls_to_neteq(0),
         decoding_normal(0),
@@ -824,8 +808,12 @@ struct VoiceReceiverInfo : public MediaReceiverInfo {
   int jitter_buffer_preferred_ms;
   int delay_estimate_ms;
   int audio_level;
-  // fraction of synthesized speech inserted through pre-emptive expansion
+  // fraction of synthesized audio inserted through expansion.
   float expand_rate;
+  // fraction of synthesized speech inserted through expansion.
+  float speech_expand_rate;
+  // fraction of data out of secondary decoding, including FEC and RED.
+  float secondary_decoded_rate;
   int decoding_calls_to_silence_generator;
   int decoding_calls_to_neteq;
   int decoding_normal;
@@ -978,7 +966,7 @@ struct BandwidthEstimationInfo {
   int actual_enc_bitrate;
   int retransmit_bitrate;
   int transmit_bitrate;
-  int bucket_delay;
+  int64_t bucket_delay;
   // The following stats are only valid when
   // StatsOptions::include_received_propagation_stats is true.
   int total_received_propagation_delta_ms;

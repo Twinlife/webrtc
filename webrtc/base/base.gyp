@@ -25,22 +25,14 @@
   ],
   'targets': [
     {
-      # Temporary target until Chromium's
-      # src/third_party/libjingle/libjingle.gyp is updated to use rtc_base.
-      # TODO(kjellander): Remove when r7140 is rolled into Chromium's DEPS.
-      'target_name': 'webrtc_base',
-      'type': 'none',
-      'dependencies': [
-        'rtc_base',
-      ],
-    },
-    {
       # The subset of rtc_base approved for use outside of libjingle.
       'target_name': 'rtc_base_approved',
       'type': 'static_library',
       'sources': [
         'checks.cc',
         'checks.h',
+        'event.cc',
+        'event.h',
         'exp_filter.cc',
         'exp_filter.h',
         'md5.cc',
@@ -48,11 +40,17 @@
         'md5digest.h',
         'platform_file.cc',
         'platform_file.h',
+        'safe_conversions.h',
+        'safe_conversions_impl.h',
         'stringencode.cc',
         'stringencode.h',
         'stringutils.cc',
         'stringutils.h',
+        'template_util.h',
         'thread_annotations.h',
+        'thread_checker.h',
+        'thread_checker_impl.cc',
+        'thread_checker_impl.h',
         'timeutils.cc',
         'timeutils.h',
       ],
@@ -66,9 +64,9 @@
       'defines': [
         'FEATURE_ENABLE_SSL',
         'LOGGING=1',
-        'USE_WEBRTC_DEV_BRANCH',
       ],
       'sources': [
+        'arraysize.h',
         'asyncfile.cc',
         'asyncfile.h',
         'asynchttprequest.cc',
@@ -116,8 +114,6 @@
         'diskcache.h',
         'diskcache_win32.cc',
         'diskcache_win32.h',
-        'event.cc',
-        'event.h',
         'filelock.cc',
         'filelock.h',
         'fileutils.cc',
@@ -127,6 +123,7 @@
         'firewallsocketserver.h',
         'flags.cc',
         'flags.h',
+        'format_macros.h',
         'gunit_prod.h',
         'helpers.cc',
         'helpers.h',
@@ -218,8 +215,6 @@
         'refcount.h',
         'referencecountedsingletonfactory.h',
         'rollingaccumulator.h',
-        'safe_conversions.h',
-        'safe_conversions_impl.h',
         'schanneladapter.cc',
         'schanneladapter.h',
         'scoped_autorelease_pool.h',
@@ -279,9 +274,6 @@
         'testclient.h',
         'thread.cc',
         'thread.h',
-        'thread_checker.h',
-        'thread_checker_impl.cc',
-        'thread_checker_impl.h',
         'timing.cc',
         'timing.h',
         'transformadapter.cc',

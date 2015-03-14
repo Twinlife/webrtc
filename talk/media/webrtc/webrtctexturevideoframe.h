@@ -39,17 +39,25 @@ namespace cricket {
 class WebRtcTextureVideoFrame : public VideoFrame {
  public:
   WebRtcTextureVideoFrame(webrtc::NativeHandle* handle, int width, int height,
-                          int64 elapsed_time, int64 time_stamp);
+                          int64_t elapsed_time, int64_t time_stamp);
   virtual ~WebRtcTextureVideoFrame();
 
   // From base class VideoFrame.
   virtual bool InitToBlack(int w, int h, size_t pixel_width,
-                           size_t pixel_height, int64 elapsed_time,
-                           int64 time_stamp);
-  virtual bool Reset(uint32 fourcc, int w, int h, int dw, int dh, uint8* sample,
-                     size_t sample_size, size_t pixel_width,
-                     size_t pixel_height, int64 elapsed_time, int64 time_stamp,
-                     int rotation);
+                           size_t pixel_height, int64_t elapsed_time,
+                           int64_t time_stamp);
+  virtual bool Reset(uint32 fourcc,
+                     int w,
+                     int h,
+                     int dw,
+                     int dh,
+                     uint8* sample,
+                     size_t sample_size,
+                     size_t pixel_width,
+                     size_t pixel_height,
+                     int64_t elapsed_time,
+                     int64_t time_stamp,
+                     webrtc::VideoRotation rotation);
   virtual size_t GetWidth() const { return width_; }
   virtual size_t GetHeight() const { return height_; }
   virtual const uint8* GetYPlane() const;
@@ -63,13 +71,15 @@ class WebRtcTextureVideoFrame : public VideoFrame {
   virtual int32 GetVPitch() const;
   virtual size_t GetPixelWidth() const { return 1; }
   virtual size_t GetPixelHeight() const { return 1; }
-  virtual int64 GetElapsedTime() const { return elapsed_time_; }
-  virtual int64 GetTimeStamp() const { return time_stamp_; }
-  virtual void SetElapsedTime(int64 elapsed_time) {
+  virtual int64_t GetElapsedTime() const { return elapsed_time_; }
+  virtual int64_t GetTimeStamp() const { return time_stamp_; }
+  virtual void SetElapsedTime(int64_t elapsed_time) {
     elapsed_time_ = elapsed_time;
   }
-  virtual void SetTimeStamp(int64 time_stamp) { time_stamp_ = time_stamp; }
-  virtual int GetRotation() const { return 0; }
+  virtual void SetTimeStamp(int64_t time_stamp) { time_stamp_ = time_stamp; }
+  virtual webrtc::VideoRotation GetVideoRotation() const {
+    return webrtc::kVideoRotation_0;
+  }
   virtual VideoFrame* Copy() const;
   virtual bool MakeExclusive();
   virtual size_t CopyToBuffer(uint8* buffer, size_t size) const;
@@ -96,16 +106,17 @@ class WebRtcTextureVideoFrame : public VideoFrame {
 
  protected:
   virtual VideoFrame* CreateEmptyFrame(int w, int h, size_t pixel_width,
-                                       size_t pixel_height, int64 elapsed_time,
-                                       int64 time_stamp) const;
+                                       size_t pixel_height,
+                                       int64_t elapsed_time,
+                                       int64_t time_stamp) const;
 
  private:
   // The handle of the underlying video frame.
   rtc::scoped_refptr<webrtc::NativeHandle> handle_;
   int width_;
   int height_;
-  int64 elapsed_time_;
-  int64 time_stamp_;
+  int64_t elapsed_time_;
+  int64_t time_stamp_;
 };
 
 }  // namespace cricket

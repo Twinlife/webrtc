@@ -464,23 +464,13 @@ AudioDeviceModuleImpl::~AudioDeviceModuleImpl()
 // ============================================================================
 
 // ----------------------------------------------------------------------------
-//  Module::ChangeUniqueId
-// ----------------------------------------------------------------------------
-
-int32_t AudioDeviceModuleImpl::ChangeUniqueId(const int32_t id)
-{
-    _id = id;
-    return 0;
-}
-
-// ----------------------------------------------------------------------------
 //  Module::TimeUntilNextProcess
 //
 //  Returns the number of milliseconds until the module want a worker thread
 //  to call Process().
 // ----------------------------------------------------------------------------
 
-int32_t AudioDeviceModuleImpl::TimeUntilNextProcess()
+int64_t AudioDeviceModuleImpl::TimeUntilNextProcess()
 {
     uint32_t now = AudioDeviceUtility::GetTimeInMS();
     int32_t deltaProcess = kAdmMaxIdleTimeProcess - (now - _lastProcessTime);
@@ -1978,9 +1968,8 @@ int32_t AudioDeviceModuleImpl::GetLoudspeakerStatus(bool* enabled) const
 
 int32_t AudioDeviceModuleImpl::EnableBuiltInAEC(bool enable)
 {
-    CHECK_INITIALIZED();
-
-    return _ptrAudioDevice->EnableBuiltInAEC(enable);
+  CHECK_INITIALIZED();
+  return _ptrAudioDevice->EnableBuiltInAEC(enable);
 }
 
 bool AudioDeviceModuleImpl::BuiltInAECIsEnabled() const
@@ -1988,6 +1977,11 @@ bool AudioDeviceModuleImpl::BuiltInAECIsEnabled() const
     CHECK_INITIALIZED_BOOL();
 
     return _ptrAudioDevice->BuiltInAECIsEnabled();
+}
+
+bool AudioDeviceModuleImpl::BuiltInAECIsAvailable() const {
+  CHECK_INITIALIZED_BOOL();
+  return _ptrAudioDevice->BuiltInAECIsAvailable();
 }
 
 // ============================================================================

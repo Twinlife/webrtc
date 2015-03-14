@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2012, Google Inc.
+ * Copyright 2012 Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -48,6 +48,7 @@
 #include "webrtc/base/logging.h"
 #include "webrtc/base/stringencode.h"
 #include "webrtc/base/stringutils.h"
+#include "webrtc/p2p/base/portallocator.h"
 
 using cricket::ContentInfo;
 using cricket::ContentInfos;
@@ -208,12 +209,13 @@ static bool GetAudioSsrcByTrackId(
   const cricket::MediaContentDescription* audio_content =
       static_cast<const cricket::MediaContentDescription*>(
           audio_info->description);
-  cricket::StreamParams stream;
-  if (!cricket::GetStreamByIds(audio_content->streams(), "", track_id,
-                               &stream)) {
+  const cricket::StreamParams* stream =
+      cricket::GetStreamByIds(audio_content->streams(), "", track_id);
+  if (!stream) {
     return false;
   }
-  *ssrc = stream.first_ssrc();
+
+  *ssrc = stream->first_ssrc();
   return true;
 }
 
@@ -221,7 +223,6 @@ static bool GetTrackIdBySsrc(const SessionDescription* session_description,
                              uint32 ssrc, std::string* track_id) {
   ASSERT(track_id != NULL);
 
-  cricket::StreamParams stream_out;
   const cricket::ContentInfo* audio_info =
       cricket::GetFirstAudioContent(session_description);
   if (audio_info) {
@@ -229,8 +230,10 @@ static bool GetTrackIdBySsrc(const SessionDescription* session_description,
         static_cast<const cricket::MediaContentDescription*>(
             audio_info->description);
 
-    if (cricket::GetStreamBySsrc(audio_content->streams(), ssrc, &stream_out)) {
-      *track_id = stream_out.id;
+    const auto* found =
+        cricket::GetStreamBySsrc(audio_content->streams(), ssrc);
+    if (found) {
+      *track_id = found->id;
       return true;
     }
   }
@@ -242,8 +245,10 @@ static bool GetTrackIdBySsrc(const SessionDescription* session_description,
         static_cast<const cricket::MediaContentDescription*>(
             video_info->description);
 
-    if (cricket::GetStreamBySsrc(video_content->streams(), ssrc, &stream_out)) {
-      *track_id = stream_out.id;
+    const auto* found =
+        cricket::GetStreamBySsrc(video_content->streams(), ssrc);
+    if (found) {
+      *track_id = found->id;
       return true;
     }
   }
@@ -467,10 +472,12 @@ WebRtcSession::WebRtcSession(
     rtc::Thread* worker_thread,
     cricket::PortAllocator* port_allocator,
     MediaStreamSignaling* mediastream_signaling)
-    : cricket::BaseSession(signaling_thread, worker_thread, port_allocator,
-                           rtc::ToString(rtc::CreateRandomId64() &
-                                               LLONG_MAX),
-                           cricket::NS_JINGLE_RTP, false),
+    : cricket::BaseSession(signaling_thread,
+                           worker_thread,
+                           port_allocator,
+                           rtc::ToString(rtc::CreateRandomId64() & LLONG_MAX),
+                           cricket::NS_JINGLE_RTP,
+                           false),
       // RFC 3264: The numeric value of the session id and version in the
       // o line MUST be representable with a "64 bit signed integer".
       // Due to this constraint session id |sid_| is max limited to LLONG_MAX.
@@ -481,7 +488,8 @@ WebRtcSession::WebRtcSession(
       older_version_remote_peer_(false),
       dtls_enabled_(false),
       data_channel_type_(cricket::DCT_NONE),
-      ice_restart_latch_(new IceRestartAnswerLatch) {
+      ice_restart_latch_(new IceRestartAnswerLatch),
+      metrics_observer_(NULL) {
 }
 
 WebRtcSession::~WebRtcSession() {
@@ -509,7 +517,10 @@ bool WebRtcSession::Initialize(
     const PeerConnectionFactoryInterface::Options& options,
     const MediaConstraintsInterface*  constraints,
     DTLSIdentityServiceInterface* dtls_identity_service,
-    PeerConnectionInterface::IceTransportsType ice_transport) {
+    PeerConnectionInterface::IceTransportsType ice_transport_type,
+    PeerConnectionInterface::BundlePolicy bundle_policy) {
+  bundle_policy_ = bundle_policy;
+
   // TODO(perkj): Take |constraints| into consideration. Return false if not all
   // mandatory constraints can be fulfilled. Note that |constraints|
   // can be null.
@@ -590,19 +601,14 @@ bool WebRtcSession::Initialize(
       MediaConstraintsInterface::kCpuOveruseEncodeRsdThreshold,
       &video_options_.cpu_overuse_encode_rsd_threshold);
 
-  // Find payload padding constraint.
-  SetOptionFromOptionalConstraint(constraints,
-      MediaConstraintsInterface::kPayloadPadding,
-      &video_options_.use_payload_padding);
-
   SetOptionFromOptionalConstraint(constraints,
       MediaConstraintsInterface::kNumUnsignalledRecvStreams,
       &video_options_.unsignalled_recv_stream_limit);
   if (video_options_.unsignalled_recv_stream_limit.IsSet()) {
     int stream_limit;
     video_options_.unsignalled_recv_stream_limit.Get(&stream_limit);
-    stream_limit = rtc::_min(kMaxUnsignalledRecvStreams, stream_limit);
-    stream_limit = rtc::_max(0, stream_limit);
+    stream_limit = std::min(kMaxUnsignalledRecvStreams, stream_limit);
+    stream_limit = std::max(0, stream_limit);
     video_options_.unsignalled_recv_stream_limit.Set(stream_limit);
   }
 
@@ -666,7 +672,7 @@ bool WebRtcSession::Initialize(
     webrtc_session_desc_factory_->SetSdesPolicy(cricket::SEC_DISABLED);
   }
   port_allocator()->set_candidate_filter(
-      ConvertIceTransportTypeToCandidateFilter(ice_transport));
+      ConvertIceTransportTypeToCandidateFilter(ice_transport_type));
   return true;
 }
 
@@ -843,6 +849,19 @@ bool WebRtcSession::SetRemoteDescription(SessionDescriptionInterface* desc,
 
   if (error() != cricket::BaseSession::ERROR_NONE) {
     return BadRemoteSdp(desc->type(), GetSessionErrorMsg(), err_desc);
+  }
+
+  // Set the the ICE connection state to connecting since the connection may
+  // become writable with peer reflexive candidates before any remote candidate
+  // is signaled.
+  // TODO(pthatcher): This is a short-term solution for crbug/446908. A real fix
+  // is to have a new signal the indicates a change in checking state from the
+  // transport and expose a new checking() member from transport that can be
+  // read to determine the current checking state. The existing SignalConnecting
+  // actually means "gathering candidates", so cannot be be used here.
+  if (desc->type() != SessionDescriptionInterface::kOffer &&
+      ice_connection_state_ == PeerConnectionInterface::kIceConnectionNew) {
+    SetIceConnectionState(PeerConnectionInterface::kIceConnectionChecking);
   }
   return true;
 }
@@ -1143,7 +1162,7 @@ void WebRtcSession::DisconnectDataChannel(DataChannel* webrtc_data_channel) {
   data_channel_->SignalDataReceived.disconnect(webrtc_data_channel);
 }
 
-void WebRtcSession::AddSctpDataStream(uint32 sid) {
+void WebRtcSession::AddSctpDataStream(int sid) {
   if (!data_channel_.get()) {
     LOG(LS_ERROR) << "AddDataChannelStreams called when data_channel_ is NULL.";
     return;
@@ -1152,8 +1171,8 @@ void WebRtcSession::AddSctpDataStream(uint32 sid) {
   data_channel_->AddSendStream(cricket::StreamParams::CreateLegacy(sid));
 }
 
-void WebRtcSession::RemoveSctpDataStream(uint32 sid) {
-  mediastream_signaling_->RemoveSctpDataChannel(static_cast<int>(sid));
+void WebRtcSession::RemoveSctpDataStream(int sid) {
+  mediastream_signaling_->RemoveSctpDataChannel(sid);
 
   if (!data_channel_.get()) {
     LOG(LS_ERROR) << "RemoveDataChannelStreams called when data_channel_ is "
@@ -1308,7 +1327,12 @@ void WebRtcSession::OnTransportWritable(cricket::Transport* transport) {
 
 void WebRtcSession::OnTransportCompleted(cricket::Transport* transport) {
   ASSERT(signaling_thread()->IsCurrent());
+  PeerConnectionInterface::IceConnectionState old_state = ice_connection_state_;
   SetIceConnectionState(PeerConnectionInterface::kIceConnectionCompleted);
+  // Only report once when Ice connection is completed.
+  if (old_state != PeerConnectionInterface::kIceConnectionCompleted) {
+    ReportBestConnectionState(transport);
+  }
 }
 
 void WebRtcSession::OnTransportFailed(cricket::Transport* transport) {
@@ -1747,6 +1771,40 @@ bool WebRtcSession::ReadyToUseRemoteCandidate(
 
   return transport_proxy && transport_proxy->local_description_set() &&
       transport_proxy->remote_description_set();
+}
+
+// Walk through the ConnectionInfos to gather best connection usage
+// for IPv4 and IPv6.
+void WebRtcSession::ReportBestConnectionState(cricket::Transport* transport) {
+  if (!metrics_observer_) {
+    return;
+  }
+
+  cricket::TransportStats stats;
+  if (!transport->GetStats(&stats)) {
+    return;
+  }
+
+  for (cricket::TransportChannelStatsList::const_iterator it =
+         stats.channel_stats.begin();
+       it != stats.channel_stats.end(); ++it) {
+    for (cricket::ConnectionInfos::const_iterator it_info =
+           it->connection_infos.begin();
+         it_info != it->connection_infos.end(); ++it_info) {
+      if (!it_info->best_connection) {
+        continue;
+      }
+      if (it_info->local_candidate.address().family() == AF_INET) {
+        metrics_observer_->IncrementCounter(kBestConnections_IPv4);
+      } else if (it_info->local_candidate.address().family() ==
+                 AF_INET6) {
+        metrics_observer_->IncrementCounter(kBestConnections_IPv6);
+      } else {
+        ASSERT(false);
+      }
+      return;
+    }
+  }
 }
 
 }  // namespace webrtc

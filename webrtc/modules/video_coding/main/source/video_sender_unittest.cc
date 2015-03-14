@@ -71,12 +71,12 @@ MATCHER_P(MatchesVp8StreamInfo, expected, "") {
 class EmptyFrameGenerator : public FrameGenerator {
  public:
   virtual I420VideoFrame* NextFrame() OVERRIDE {
-    frame_.ResetSize();
-    return &frame_;
+    frame_.reset(new I420VideoFrame());
+    return frame_.get();
   }
 
  private:
-  I420VideoFrame frame_;
+  scoped_ptr<I420VideoFrame> frame_;
 };
 
 class PacketizationCallback : public VCMPacketizationCallback {
@@ -86,16 +86,12 @@ class PacketizationCallback : public VCMPacketizationCallback {
 
   virtual ~PacketizationCallback() {}
 
-  virtual int32_t SendData(FrameType frame_type,
-                           uint8_t payload_type,
-                           uint32_t timestamp,
-                           int64_t capture_time_ms,
-                           const uint8_t* payload_data,
-                           uint32_t payload_size,
+  virtual int32_t SendData(uint8_t payload_type,
+                           const EncodedImage& encoded_image,
                            const RTPFragmentationHeader& fragmentation_header,
                            const RTPVideoHeader* rtp_video_header) OVERRIDE {
     assert(rtp_video_header);
-    frame_data_.push_back(FrameData(payload_size, *rtp_video_header));
+    frame_data_.push_back(FrameData(encoded_image._length, *rtp_video_header));
     return 0;
   }
 
@@ -127,10 +123,10 @@ class PacketizationCallback : public VCMPacketizationCallback {
   struct FrameData {
     FrameData() {}
 
-    FrameData(uint32_t payload_size, const RTPVideoHeader& rtp_video_header)
+    FrameData(size_t payload_size, const RTPVideoHeader& rtp_video_header)
         : payload_size(payload_size), rtp_video_header(rtp_video_header) {}
 
-    uint32_t payload_size;
+    size_t payload_size;
     RTPVideoHeader rtp_video_header;
   };
 
@@ -152,8 +148,8 @@ class PacketizationCallback : public VCMPacketizationCallback {
     return frames;
   }
 
-  int SumPayloadBytesWithinTemporalLayer(int temporal_layer) {
-    int payload_size = 0;
+  size_t SumPayloadBytesWithinTemporalLayer(int temporal_layer) {
+    size_t payload_size = 0;
     for (size_t i = 0; i < frame_data_.size(); ++i) {
       EXPECT_EQ(kRtpVideoVp8, frame_data_[i].rtp_video_header.codec);
       const uint8_t temporal_idx =
@@ -324,7 +320,8 @@ class TestVideoSenderWithVp8 : public TestVideoSender {
     const int width = 352;
     const int height = 288;
     generator_.reset(FrameGenerator::CreateFromYuvFile(
-        test::ResourcePath(input_video, "yuv").c_str(), width, height));
+        std::vector<std::string>(1, test::ResourcePath(input_video, "yuv")),
+        width, height, 1));
 
     codec_ = MakeVp8VideoCodec(width, height, 3);
     codec_.minBitrate = 10;

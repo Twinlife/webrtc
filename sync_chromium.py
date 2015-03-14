@@ -29,7 +29,7 @@ import sys
 
 # Bump this whenever the algorithm changes and you need bots/devs to re-sync,
 # ignoring the .last_sync_chromium file
-SCRIPT_VERSION = 3
+SCRIPT_VERSION = 4
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 CHROMIUM_NO_HISTORY = 'CHROMIUM_NO_HISTORY'
@@ -75,7 +75,8 @@ def main():
     opts.target_revision,
     repr(target_os_list),
   ])
-  if os.path.exists(flag_file):
+  if (os.path.exists(os.path.join(opts.chromium_dir, 'src')) and
+      os.path.exists(flag_file)):
     with open(flag_file, 'r') as f:
       if f.read() == flag_file_content:
         print 'Chromium already up to date: ', opts.target_revision
@@ -83,6 +84,10 @@ def main():
     os.unlink(flag_file)
 
   env = os.environ.copy()
+
+  # Avoid downloading NaCl toolchain as part of the Chromium hooks.
+  env.setdefault('GYP_DEFINES', '')
+  env['GYP_DEFINES'] += ' disable_nacl=1'
   env['GYP_CHROMIUM_NO_ACTION'] = '1'
   gclient_cmd = 'gclient.bat' if sys.platform.startswith('win') else 'gclient'
   args = [

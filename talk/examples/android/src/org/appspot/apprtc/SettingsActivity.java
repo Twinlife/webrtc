@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2014, Google Inc.
+ * Copyright 2014 Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -33,19 +33,34 @@ import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
 import android.os.Bundle;
 import android.preference.Preference;
 
+/**
+ * Settings activity for AppRTC.
+ */
 public class SettingsActivity extends Activity
     implements OnSharedPreferenceChangeListener{
   private SettingsFragment settingsFragment;
-  private String keyprefUrl;
   private String keyprefResolution;
   private String keyprefFps;
+  private String keyprefStartBitrateType;
+  private String keyprefStartBitrateValue;
+  private String keyPrefVideoCodec;
+  private String keyprefHwCodec;
+  private String keyprefCpuUsageDetection;
+  private String keyPrefRoomServerUrl;
+  private String keyPrefDisplayHud;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
-    keyprefUrl = getString(R.string.pref_url_key);
     keyprefResolution = getString(R.string.pref_resolution_key);
     keyprefFps = getString(R.string.pref_fps_key);
+    keyprefStartBitrateType = getString(R.string.pref_startbitrate_key);
+    keyprefStartBitrateValue = getString(R.string.pref_startbitratevalue_key);
+    keyPrefVideoCodec = getString(R.string.pref_videocodec_key);
+    keyprefHwCodec = getString(R.string.pref_hwcodec_key);
+    keyprefCpuUsageDetection = getString(R.string.pref_cpu_usage_detection_key);
+    keyPrefRoomServerUrl = getString(R.string.pref_room_server_url_key);
+    keyPrefDisplayHud = getString(R.string.pref_displayhud_key);
 
     // Display the fragment as the main content.
     settingsFragment = new SettingsFragment();
@@ -61,9 +76,16 @@ public class SettingsActivity extends Activity
     SharedPreferences sharedPreferences =
         settingsFragment.getPreferenceScreen().getSharedPreferences();
     sharedPreferences.registerOnSharedPreferenceChangeListener(this);
-    updateSummary(sharedPreferences, keyprefUrl);
     updateSummary(sharedPreferences, keyprefResolution);
     updateSummary(sharedPreferences, keyprefFps);
+    updateSummary(sharedPreferences, keyprefStartBitrateType);
+    updateSummaryBitrate(sharedPreferences, keyprefStartBitrateValue);
+    setBitrateEnable(sharedPreferences);
+    updateSummary(sharedPreferences, keyPrefVideoCodec);
+    updateSummaryB(sharedPreferences, keyprefHwCodec);
+    updateSummaryB(sharedPreferences, keyprefCpuUsageDetection);
+    updateSummary(sharedPreferences, keyPrefRoomServerUrl);
+    updateSummaryB(sharedPreferences, keyPrefDisplayHud);
   }
 
   @Override
@@ -77,9 +99,20 @@ public class SettingsActivity extends Activity
   @Override
   public void onSharedPreferenceChanged(SharedPreferences sharedPreferences,
       String key) {
-    if (key.equals(keyprefUrl) || key.equals(keyprefResolution) ||
-        key.equals(keyprefFps)) {
+    if (key.equals(keyprefResolution)
+        || key.equals(keyprefFps)
+        || key.equals(keyprefStartBitrateType)
+        || key.equals(keyPrefRoomServerUrl)
+        || key.equals(keyPrefVideoCodec)) {
       updateSummary(sharedPreferences, key);
+    } else if (key.equals(keyprefStartBitrateValue)) {
+      updateSummaryBitrate(sharedPreferences, key);
+    } else if (key.equals(keyprefCpuUsageDetection)
+        || key.equals(keyprefHwCodec) || key.equals(keyPrefDisplayHud)) {
+      updateSummaryB(sharedPreferences, key);
+    }
+    if (key.equals(keyprefStartBitrateType)) {
+      setBitrateEnable(sharedPreferences);
     }
   }
 
@@ -89,4 +122,29 @@ public class SettingsActivity extends Activity
     updatedPref.setSummary(sharedPreferences.getString(key, ""));
   }
 
+  private void updateSummaryBitrate(
+      SharedPreferences sharedPreferences, String key) {
+    Preference updatedPref = settingsFragment.findPreference(key);
+    updatedPref.setSummary(sharedPreferences.getString(key, "") + " kbps");
+  }
+
+  private void updateSummaryB(SharedPreferences sharedPreferences, String key) {
+    Preference updatedPref = settingsFragment.findPreference(key);
+    updatedPref.setSummary(sharedPreferences.getBoolean(key, true)
+        ? getString(R.string.pref_value_enabled)
+        : getString(R.string.pref_value_disabled));
+  }
+
+  private void setBitrateEnable(SharedPreferences sharedPreferences) {
+    Preference bitratePreferenceValue =
+        settingsFragment.findPreference(keyprefStartBitrateValue);
+    String bitrateTypeDefault = getString(R.string.pref_startbitrate_default);
+    String bitrateType = sharedPreferences.getString(
+        keyprefStartBitrateType, bitrateTypeDefault);
+    if (bitrateType.equals(bitrateTypeDefault)) {
+      bitratePreferenceValue.setEnabled(false);
+    } else {
+      bitratePreferenceValue.setEnabled(true);
+    }
+  }
 }

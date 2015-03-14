@@ -29,11 +29,9 @@ class ExtensionVerifyTransport : public webrtc::Transport {
         audio_level_id_(-1),
         absolute_sender_time_id_(-1) {}
 
-  virtual int SendPacket(int channel, const void* data, int len) OVERRIDE {
+  virtual int SendPacket(int channel, const void* data, size_t len) OVERRIDE {
     webrtc::RTPHeader header;
-    if (parser_->Parse(reinterpret_cast<const uint8_t*>(data),
-                       static_cast<size_t>(len),
-                       &header)) {
+    if (parser_->Parse(reinterpret_cast<const uint8_t*>(data), len, &header)) {
       bool ok = true;
       if (audio_level_id_ >= 0 &&
           !header.extension.hasAudioLevel) {
@@ -51,11 +49,13 @@ class ExtensionVerifyTransport : public webrtc::Transport {
     }
     // received_packets_ count all packets we receive.
     ++received_packets_;
-    return len;
+    return static_cast<int>(len);
   }
 
-  virtual int SendRTCPPacket(int channel, const void* data, int len) OVERRIDE {
-    return len;
+  virtual int SendRTCPPacket(int channel,
+                             const void* data,
+                             size_t len) OVERRIDE {
+    return static_cast<int>(len);
   }
 
   void SetAudioLevelId(int id) {
@@ -74,7 +74,7 @@ class ExtensionVerifyTransport : public webrtc::Transport {
     while (received_packets_.Value() < kPacketsExpected) {
       webrtc::SleepMs(kSleepIntervalMs);
     }
-    // Check whether any where 'bad' (didn't contain an extension when they
+    // Check whether any were 'bad' (didn't contain an extension when they
     // where supposed to).
     return bad_packets_.Value() == 0;
   }
@@ -166,11 +166,11 @@ class MockViENetwork : public webrtc::ViENetwork {
   MOCK_METHOD2(SetNetworkTransmissionState, void(const int, const bool));
   MOCK_METHOD2(RegisterSendTransport, int(const int, webrtc::Transport&));
   MOCK_METHOD1(DeregisterSendTransport, int(const int));
-  MOCK_METHOD4(ReceivedRTPPacket, int(const int, const void*, const int,
+  MOCK_METHOD4(ReceivedRTPPacket, int(const int, const void*, const size_t,
                                       const webrtc::PacketTime&));
-  MOCK_METHOD3(ReceivedRTCPPacket, int(const int, const void*, const int));
+  MOCK_METHOD3(ReceivedRTCPPacket, int(const int, const void*, const size_t));
   MOCK_METHOD2(SetMTU, int(int, unsigned int));
-  MOCK_METHOD4(ReceivedBWEPacket, int(const int, int64_t, int,
+  MOCK_METHOD4(ReceivedBWEPacket, int(const int, int64_t, size_t,
                                       const webrtc::RTPHeader&));
 };
 
@@ -183,7 +183,12 @@ class ReceiveRtpRtcpHeaderExtensionsTest : public BeforeStreamingFixture {
         voe_rtp_rtcp_->SetReceiveAbsoluteSenderTimeStatus(channel_, true, 11));
   }
 
+  void Wait() {
+    WaitForTransmittedPackets(kPacketsExpected);
+  }
+
   enum {
+    kPacketsExpected = 5,
     kVideoChannelId1 = 667,
     kVideoChannelId2 = 668
   };
@@ -191,8 +196,9 @@ class ReceiveRtpRtcpHeaderExtensionsTest : public BeforeStreamingFixture {
 };
 
 TEST_F(ReceiveRtpRtcpHeaderExtensionsTest, ReceiveASTDisabled) {
+  EXPECT_CALL(mock_network_, ReceivedBWEPacket(_, _, _, _)).Times(0);
   ResumePlaying();
-  Sleep(500);
+  Wait();
 }
 
 TEST_F(ReceiveRtpRtcpHeaderExtensionsTest, ReceiveASTFailSetTarget) {
@@ -200,6 +206,7 @@ TEST_F(ReceiveRtpRtcpHeaderExtensionsTest, ReceiveASTFailSetTarget) {
   EXPECT_EQ(-1, voe_rtp_rtcp_->SetVideoEngineBWETarget(-1, &mock_network_,
                                                       kVideoChannelId1));
   ResumePlaying();
+  Wait();
 }
 
 TEST_F(ReceiveRtpRtcpHeaderExtensionsTest, ReceiveASTEnabled) {
@@ -211,7 +218,7 @@ TEST_F(ReceiveRtpRtcpHeaderExtensionsTest, ReceiveASTEnabled) {
   EXPECT_EQ(0, voe_rtp_rtcp_->SetVideoEngineBWETarget(channel_, &mock_network_,
                                                       kVideoChannelId1));
   ResumePlaying();
-  Sleep(500);
+  Wait();
   EXPECT_EQ(0, voe_rtp_rtcp_->SetVideoEngineBWETarget(channel_, NULL, -1));
 }
 
@@ -226,7 +233,7 @@ TEST_F(ReceiveRtpRtcpHeaderExtensionsTest, ReceiveASTEnabledBadExtensionId) {
   EXPECT_EQ(0, voe_rtp_rtcp_->SetVideoEngineBWETarget(channel_, &mock_network_,
                                                       kVideoChannelId1));
   ResumePlaying();
-  Sleep(500);
+  Wait();
   EXPECT_EQ(0, voe_rtp_rtcp_->SetVideoEngineBWETarget(channel_, NULL, -1));
 }
 
@@ -241,7 +248,7 @@ TEST_F(ReceiveRtpRtcpHeaderExtensionsTest, ReceiveASTEnabledNotSending) {
   EXPECT_EQ(0, voe_rtp_rtcp_->SetVideoEngineBWETarget(channel_, &mock_network_,
                                                       kVideoChannelId1));
   ResumePlaying();
-  Sleep(500);
+  Wait();
   EXPECT_EQ(0, voe_rtp_rtcp_->SetVideoEngineBWETarget(channel_, NULL, -1));
 }
 
@@ -256,7 +263,7 @@ TEST_F(ReceiveRtpRtcpHeaderExtensionsTest, ReceiveASTEnabledNotReceiving) {
   EXPECT_EQ(0, voe_rtp_rtcp_->SetVideoEngineBWETarget(channel_, &mock_network_,
                                                       kVideoChannelId1));
   ResumePlaying();
-  Sleep(500);
+  Wait();
   EXPECT_EQ(0, voe_rtp_rtcp_->SetVideoEngineBWETarget(channel_, NULL, -1));
 }
 
@@ -275,10 +282,10 @@ TEST_F(ReceiveRtpRtcpHeaderExtensionsTest, ReceiveASTSwitchViENetwork) {
   EXPECT_EQ(0, voe_rtp_rtcp_->SetVideoEngineBWETarget(channel_, &mock_network_2,
                                                       kVideoChannelId1));
   ResumePlaying();
-  Sleep(500);
+  Wait();
   EXPECT_EQ(0, voe_rtp_rtcp_->SetVideoEngineBWETarget(channel_, &mock_network_,
                                                       kVideoChannelId1));
-  Sleep(500);
+  Wait();
   EXPECT_EQ(0, voe_rtp_rtcp_->SetVideoEngineBWETarget(channel_, NULL, -1));
 }
 
@@ -295,9 +302,9 @@ TEST_F(ReceiveRtpRtcpHeaderExtensionsTest, ReceiveASTSwitchVideoChannel) {
   EXPECT_EQ(0, voe_rtp_rtcp_->SetVideoEngineBWETarget(channel_, &mock_network_,
                                                       kVideoChannelId1));
   ResumePlaying();
-  Sleep(500);
+  Wait();
   EXPECT_EQ(0, voe_rtp_rtcp_->SetVideoEngineBWETarget(channel_, &mock_network_,
                                                       kVideoChannelId2));
-  Sleep(500);
+  Wait();
   EXPECT_EQ(0, voe_rtp_rtcp_->SetVideoEngineBWETarget(channel_, NULL, -1));
 }

@@ -82,7 +82,7 @@ int32_t VCMGenericEncoder::Release()
 int32_t
 VCMGenericEncoder::InitEncode(const VideoCodec* settings,
                               int32_t numberOfCores,
-                              uint32_t maxPayloadSize)
+                              size_t maxPayloadSize)
 {
     _bitRate = settings->startBitrate * 1000;
     _frameRate = settings->maxFramerate;
@@ -106,7 +106,7 @@ VCMGenericEncoder::Encode(const I420VideoFrame& inputFrame,
 }
 
 int32_t
-VCMGenericEncoder::SetChannelParameters(int32_t packetLoss, int rtt)
+VCMGenericEncoder::SetChannelParameters(int32_t packetLoss, int64_t rtt)
 {
     return _encoder.SetChannelParameters(packetLoss, rtt);
 }
@@ -208,59 +208,40 @@ VCMEncodedFrameCallback::SetTransportCallback(VCMPacketizationCallback* transpor
     return VCM_OK;
 }
 
-int32_t
-VCMEncodedFrameCallback::Encoded(
-    EncodedImage &encodedImage,
+int32_t VCMEncodedFrameCallback::Encoded(
+    const EncodedImage& encodedImage,
     const CodecSpecificInfo* codecSpecificInfo,
-    const RTPFragmentationHeader* fragmentationHeader)
-{
-    post_encode_callback_->Encoded(encodedImage);
+    const RTPFragmentationHeader* fragmentationHeader) {
+  post_encode_callback_->Encoded(encodedImage, NULL, NULL);
 
-    FrameType frameType = VCMEncodedFrame::ConvertFrameType(encodedImage._frameType);
-
-    uint32_t encodedBytes = 0;
-    if (_sendCallback != NULL)
-    {
-        encodedBytes = encodedImage._length;
+  if (_sendCallback == NULL) {
+    return VCM_UNINITIALIZED;
+  }
 
 #ifdef DEBUG_ENCODER_BIT_STREAM
-        if (_bitStreamAfterEncoder != NULL)
-        {
-            fwrite(encodedImage._buffer, 1, encodedImage._length, _bitStreamAfterEncoder);
-        }
+  if (_bitStreamAfterEncoder != NULL) {
+    fwrite(encodedImage._buffer, 1, encodedImage._length,
+           _bitStreamAfterEncoder);
+  }
 #endif
 
-        RTPVideoHeader rtpVideoHeader;
-        RTPVideoHeader* rtpVideoHeaderPtr = &rtpVideoHeader;
-        CopyCodecSpecific(codecSpecificInfo, &rtpVideoHeaderPtr);
+  RTPVideoHeader rtpVideoHeader;
+  memset(&rtpVideoHeader, 0, sizeof(RTPVideoHeader));
+  RTPVideoHeader* rtpVideoHeaderPtr = &rtpVideoHeader;
+  CopyCodecSpecific(codecSpecificInfo, &rtpVideoHeaderPtr);
 
-        int32_t callbackReturn = _sendCallback->SendData(
-            frameType,
-            _payloadType,
-            encodedImage._timeStamp,
-            encodedImage.capture_time_ms_,
-            encodedImage._buffer,
-            encodedBytes,
-            *fragmentationHeader,
-            rtpVideoHeaderPtr);
-       if (callbackReturn < 0)
-       {
-           return callbackReturn;
-       }
-    }
-    else
-    {
-        return VCM_UNINITIALIZED;
-    }
-    if (_mediaOpt != NULL) {
-      _mediaOpt->UpdateWithEncodedData(encodedBytes, encodedImage._timeStamp,
-                                       frameType);
-      if (_internalSource)
-      {
-          return _mediaOpt->DropFrame(); // Signal to encoder to drop next frame
-      }
-    }
-    return VCM_OK;
+  int32_t callbackReturn = _sendCallback->SendData(
+      _payloadType, encodedImage, *fragmentationHeader, rtpVideoHeaderPtr);
+  if (callbackReturn < 0) {
+    return callbackReturn;
+  }
+
+  if (_mediaOpt != NULL) {
+    _mediaOpt->UpdateWithEncodedData(encodedImage);
+    if (_internalSource)
+      return _mediaOpt->DropFrame();  // Signal to encoder to drop next frame.
+  }
+  return VCM_OK;
 }
 
 void

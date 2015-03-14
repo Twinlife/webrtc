@@ -23,10 +23,12 @@ namespace acm2 {
 
 #ifndef WEBRTC_CODEC_G722
 
-ACMG722::ACMG722(int16_t /* codec_id */)
-    : ptr_enc_str_(NULL),
+ACMG722::ACMG722(int16_t /* codec_id */, bool enable_red)
+    : ACMGenericCodec(enable_red),
+      ptr_enc_str_(NULL),
       encoder_inst_ptr_(NULL),
-      encoder_inst_ptr_right_(NULL) {}
+      encoder_inst_ptr_right_(NULL) {
+}
 
 ACMG722::~ACMG722() {}
 
@@ -64,8 +66,10 @@ struct ACMG722DecStr {
   G722DecInst* inst_right;  // instance for right channel in case of stereo
 };
 
-ACMG722::ACMG722(int16_t codec_id)
-    : encoder_inst_ptr_(NULL), encoder_inst_ptr_right_(NULL) {
+ACMG722::ACMG722(int16_t codec_id, bool enable_red)
+    : ACMGenericCodec(enable_red),
+      encoder_inst_ptr_(NULL),
+      encoder_inst_ptr_right_(NULL) {
   ptr_enc_str_ = new ACMG722EncStr;
   if (ptr_enc_str_ != NULL) {
     ptr_enc_str_->inst = NULL;
@@ -115,11 +119,11 @@ int16_t ACMG722::InternalEncode(uint8_t* bitstream,
     }
     len_in_bytes = WebRtcG722_Encode(
         encoder_inst_ptr_, left_channel, frame_len_smpl_,
-        reinterpret_cast<int16_t*>(out_left));
+        out_left);
     len_in_bytes += WebRtcG722_Encode(encoder_inst_ptr_right_,
                                       right_channel,
                                       frame_len_smpl_,
-                                      reinterpret_cast<int16_t*>(out_right));
+                                      out_right);
     *bitstream_len_byte = len_in_bytes;
 
     // Interleave the 4 bits per sample from left and right channel
@@ -130,7 +134,7 @@ int16_t ACMG722::InternalEncode(uint8_t* bitstream,
   } else {
     *bitstream_len_byte = WebRtcG722_Encode(
         encoder_inst_ptr_, &in_audio_[in_audio_ix_read_], frame_len_smpl_,
-        reinterpret_cast<int16_t*>(bitstream));
+        bitstream);
   }
 
   // increment the read index this tell the caller how far

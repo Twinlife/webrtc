@@ -33,8 +33,6 @@ public:
 
     virtual ~UdpSocketPosix();
 
-    virtual int32_t ChangeUniqueId(const int32_t id) OVERRIDE;
-
     virtual bool SetCallback(CallbackObj obj,
                              IncomingSocketCallback cb) OVERRIDE;
 
@@ -45,7 +43,7 @@ public:
 
     virtual int32_t SetTOS(const int32_t serviceType) OVERRIDE;
 
-    virtual int32_t SendTo(const int8_t* buf, int32_t len,
+    virtual int32_t SendTo(const int8_t* buf, size_t len,
                            const SocketAddress& to) OVERRIDE;
 
     // Deletes socket in addition to closing it.
@@ -72,7 +70,7 @@ public:
 private:
     friend class UdpSocketManagerPosix;
 
-    int32_t _id;
+    const int32_t _id;
     IncomingSocketCallback _incomingCb;
     CallbackObj _obj;
 

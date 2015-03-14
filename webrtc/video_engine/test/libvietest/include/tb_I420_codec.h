@@ -26,7 +26,7 @@ public:
 
     virtual int32_t InitEncode(const webrtc::VideoCodec* codecSettings,
                                int32_t numberOfCores,
-                               uint32_t maxPayloadSize) OVERRIDE;
+                               size_t maxPayloadSize) OVERRIDE;
 
     virtual int32_t Encode(
         const webrtc::I420VideoFrame& inputImage,
@@ -38,7 +38,8 @@ public:
 
     virtual int32_t Release() OVERRIDE;
 
-    virtual int32_t SetChannelParameters(uint32_t packetLoss, int rtt) OVERRIDE;
+    virtual int32_t SetChannelParameters(uint32_t packetLoss,
+                                         int64_t rtt) OVERRIDE;
 
     virtual int32_t SetRates(uint32_t newBitRate, uint32_t frameRate) OVERRIDE;
 

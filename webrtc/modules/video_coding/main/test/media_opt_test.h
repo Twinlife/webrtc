@@ -75,12 +75,12 @@ private:
     bool                             _nackEnabled;
     bool                             _fecEnabled;
     bool                             _nackFecEnabled;
-    uint8_t                    _rttMS;
+    int64_t                    _rttMS;
     float                            _bitRate;
     double                           _lossRate;
     uint32_t                   _renderDelayMs;
     int32_t                    _frameCnt;
-    float                            _sumEncBytes;
+    size_t                            _sumEncBytes;
     int32_t                    _numFramesDropped;
     std::string                      _codecName;
     webrtc::VideoCodecType           _sendCodecType;

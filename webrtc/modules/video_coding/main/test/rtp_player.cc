@@ -41,7 +41,7 @@ enum {
 
 class RawRtpPacket {
  public:
-  RawRtpPacket(const uint8_t* data, uint32_t length, uint32_t ssrc,
+  RawRtpPacket(const uint8_t* data, size_t length, uint32_t ssrc,
                uint16_t seq_num)
       : data_(new uint8_t[length]),
         length_(length),
@@ -53,7 +53,7 @@ class RawRtpPacket {
   }
 
   const uint8_t* data() const { return data_.get(); }
-  uint32_t length() const { return length_; }
+  size_t length() const { return length_; }
   int64_t resend_time_ms() const { return resend_time_ms_; }
   void set_resend_time_ms(int64_t timeMs) { resend_time_ms_ = timeMs; }
   uint32_t ssrc() const { return ssrc_; }
@@ -61,7 +61,7 @@ class RawRtpPacket {
 
  private:
   scoped_ptr<uint8_t[]> data_;
-  uint32_t length_;
+  size_t length_;
   int64_t resend_time_ms_;
   uint32_t ssrc_;
   uint16_t seq_num_;
@@ -71,7 +71,7 @@ class RawRtpPacket {
 
 class LostPackets {
  public:
-  LostPackets(Clock* clock, uint32_t rtt_ms)
+  LostPackets(Clock* clock, int64_t rtt_ms)
       : crit_sect_(CriticalSectionWrapper::CreateCriticalSection()),
         debug_file_(fopen("PacketLossDebug.txt", "w")),
         loss_count_(0),
@@ -180,7 +180,7 @@ class LostPackets {
   int loss_count_;
   RtpPacketList packets_;
   Clock* clock_;
-  uint32_t rtt_ms_;
+  int64_t rtt_ms_;
 
   DISALLOW_IMPLICIT_CONSTRUCTORS(LostPackets);
 };
@@ -251,7 +251,7 @@ class SsrcHandlers {
     return 0;
   }
 
-  void IncomingPacket(const uint8_t* data, uint32_t length) {
+  void IncomingPacket(const uint8_t* data, size_t length) {
     for (HandlerMapIt it = handlers_.begin(); it != handlers_.end(); ++it) {
       if (!it->second->rtp_header_parser_->IsRtcp(data, length)) {
         RTPHeader header;
@@ -323,7 +323,7 @@ class RtpPlayerImpl : public RtpPlayerInterface {
   RtpPlayerImpl(PayloadSinkFactoryInterface* payload_sink_factory,
       const PayloadTypes& payload_types, Clock* clock,
       scoped_ptr<test::RtpFileReader>* packet_source,
-      float loss_rate, uint32_t rtt_ms, bool reordering)
+      float loss_rate, int64_t rtt_ms, bool reordering)
     : ssrc_handlers_(payload_sink_factory, payload_types),
       clock_(clock),
       next_rtp_time_(0),
@@ -375,14 +375,10 @@ class RtpPlayerImpl : public RtpPlayerInterface {
 
       if (reordering_ && reorder_buffer_.get() == NULL) {
         reorder_buffer_.reset(
-            new RawRtpPacket(next_packet_.data,
-                             static_cast<uint32_t>(next_packet_.length),
-                             0,
-                             0));
+            new RawRtpPacket(next_packet_.data, next_packet_.length, 0, 0));
         return 0;
       }
-      int ret = SendPacket(next_packet_.data,
-                           static_cast<uint32_t>(next_packet_.length));
+      int ret = SendPacket(next_packet_.data, next_packet_.length);
       if (reorder_buffer_.get()) {
         SendPacket(reorder_buffer_->data(), reorder_buffer_->length());
         reorder_buffer_.reset(NULL);
@@ -421,7 +417,7 @@ class RtpPlayerImpl : public RtpPlayerInterface {
   }
 
  private:
-  int SendPacket(const uint8_t* data, uint32_t length) {
+  int SendPacket(const uint8_t* data, size_t length) {
     assert(data);
     assert(length > 0);
 
@@ -454,7 +450,7 @@ class RtpPlayerImpl : public RtpPlayerInterface {
   SsrcHandlers ssrc_handlers_;
   Clock* clock_;
   scoped_ptr<test::RtpFileReader> packet_source_;
-  test::RtpFileReader::Packet next_packet_;
+  test::RtpPacket next_packet_;
   uint32_t next_rtp_time_;
   bool first_packet_;
   int64_t first_packet_rtp_time_;
@@ -472,7 +468,7 @@ class RtpPlayerImpl : public RtpPlayerInterface {
 
 RtpPlayerInterface* Create(const std::string& input_filename,
     PayloadSinkFactoryInterface* payload_sink_factory, Clock* clock,
-    const PayloadTypes& payload_types, float loss_rate, uint32_t rtt_ms,
+    const PayloadTypes& payload_types, float loss_rate, int64_t rtt_ms,
     bool reordering) {
   scoped_ptr<test::RtpFileReader> packet_source(test::RtpFileReader::Create(
       test::RtpFileReader::kRtpDump, input_filename));

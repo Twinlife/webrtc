@@ -58,11 +58,13 @@ class ViEToFileRenderer: public webrtc::ExternalRenderer {
                       unsigned int number_of_streams) OVERRIDE;
 
   int DeliverFrame(unsigned char* buffer,
-                   int buffer_size,
+                   size_t buffer_size,
                    uint32_t time_stamp,
                    int64_t ntp_time_ms,
                    int64_t render_time,
                    void* handle) OVERRIDE;
+
+  int DeliverI420Frame(const webrtc::I420VideoFrame& webrtc_frame) OVERRIDE;
 
   bool IsTextureSupported() OVERRIDE;
 
@@ -71,6 +73,9 @@ class ViEToFileRenderer: public webrtc::ExternalRenderer {
  private:
   typedef std::list<test::Frame*> FrameQueue;
 
+  // Returns a frame with the specified |buffer_size|. Tries to avoid allocating
+  // new frames by reusing frames from |free_frame_queue_|.
+  test::Frame* NewFrame(size_t buffer_size);
   static bool RunRenderThread(void* obj);
   void ForgetOutputFile();
   bool ProcessRenderQueue();

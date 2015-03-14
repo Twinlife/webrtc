@@ -82,9 +82,20 @@ class FakeTransportChannel : public TransportChannelImpl,
     return transport_;
   }
 
+  virtual TransportChannelState GetState() const {
+    if (connection_count_ == 0) {
+      return TransportChannelState::STATE_FAILED;
+    }
+
+    if (connection_count_ == 1) {
+      return TransportChannelState::STATE_COMPLETED;
+    }
+
+    return TransportChannelState::STATE_FAILED;
+  }
+
   virtual void SetIceRole(IceRole role) { role_ = role; }
   virtual IceRole GetIceRole() const { return role_; }
-  virtual size_t GetConnectionCount() const { return connection_count_; }
   virtual void SetIceTiebreaker(uint64 tiebreaker) { tiebreaker_ = tiebreaker; }
   virtual bool GetIceProtocolType(IceProtocolType* type) const {
     *type = ice_proto_;
@@ -187,6 +198,9 @@ class FakeTransportChannel : public TransportChannelImpl,
   virtual int SetOption(rtc::Socket::Option opt, int value) {
     return true;
   }
+  virtual bool GetOption(rtc::Socket::Option opt, int* value) {
+    return true;
+  }
   virtual int GetError() {
     return 0;
   }
@@ -229,6 +243,10 @@ class FakeTransportChannel : public TransportChannelImpl,
       *cipher = chosen_srtp_cipher_;
       return true;
     }
+    return false;
+  }
+
+  virtual bool GetSslCipher(std::string* cipher) {
     return false;
   }
 

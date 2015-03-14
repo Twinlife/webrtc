@@ -15,7 +15,7 @@
       'target_name': 'common_audio',
       'type': 'static_library',
       'dependencies': [
-        '<(webrtc_root)/system_wrappers/source/system_wrappers.gyp:system_wrappers',
+        '<(webrtc_root)/system_wrappers/system_wrappers.gyp:system_wrappers',
       ],
       'include_dirs': [
         'resampler/include',
@@ -29,8 +29,12 @@
         ],
       },
       'sources': [
+        'channel_buffer.cc',
+        'channel_buffer.h',
         'audio_converter.cc',
         'audio_converter.h',
+        'audio_ring_buffer.cc',
+        'audio_ring_buffer.h',
         'audio_util.cc',
         'blocker.cc',
         'blocker.h',
@@ -47,6 +51,8 @@
         'resampler/resampler.cc',
         'resampler/sinc_resampler.cc',
         'resampler/sinc_resampler.h',
+        'ring_buffer.c',
+        'ring_buffer.h',
         'signal_processing/include/real_fft.h',
         'signal_processing/include/signal_processing_library.h',
         'signal_processing/include/spl_inl.h',
@@ -119,7 +125,7 @@
         ['target_arch=="ia32" or target_arch=="x64"', {
           'dependencies': ['common_audio_sse2',],
         }],
-        ['target_arch=="arm" or target_arch=="armv7"', {
+        ['target_arch=="arm"', {
           'sources': [
             'signal_processing/complex_bit_reverse_arm.S',
             'signal_processing/spl_sqrt_floor_arm.S',
@@ -129,7 +135,7 @@
             'signal_processing/spl_sqrt_floor.c',
           ],
           'conditions': [
-            ['arm_version==7', {
+            ['arm_version>=7', {
               'dependencies': ['common_audio_neon',],
               'sources': [
                 'signal_processing/filter_ar_fast_q12_armv7.S',
@@ -140,7 +146,7 @@
             }],
           ],  # conditions
         }],
-        ['target_arch=="mipsel" and mips_arch_variant!="r6"', {
+        ['target_arch=="mipsel" and mips_arch_variant!="r6" and android_webview_build==0', {
           'sources': [
             'signal_processing/include/spl_inl_mips.h',
             'signal_processing/complex_bit_reverse_mips.c',
@@ -188,7 +194,7 @@
         },
       ],  # targets
     }],
-    ['(target_arch=="arm" and arm_version==7) or target_arch=="armv7"', {
+    ['target_arch=="arm" and arm_version>=7', {
       'targets': [
         {
           'target_name': 'common_audio_neon',
@@ -200,7 +206,6 @@
             'signal_processing/cross_correlation_neon.S',
             'signal_processing/downsample_fast_neon.S',
             'signal_processing/min_max_operations_neon.S',
-            'signal_processing/vector_scaling_operations_neon.S',
           ],
           'conditions': [
             # Disable LTO in common_audio_neon target due to compiler bug
@@ -227,6 +232,7 @@
           ],
           'sources': [
             'audio_converter_unittest.cc',
+            'audio_ring_buffer_unittest.cc',
             'audio_util_unittest.cc',
             'blocker_unittest.cc',
             'fir_filter_unittest.cc',
@@ -236,6 +242,7 @@
             'resampler/sinc_resampler_unittest.cc',
             'resampler/sinusoidal_linear_chirp_source.cc',
             'resampler/sinusoidal_linear_chirp_source.h',
+            'ring_buffer_unittest.cc',
             'signal_processing/real_fft_unittest.cc',
             'signal_processing/signal_processing_unittest.cc',
             'vad/vad_core_unittest.cc',

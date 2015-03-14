@@ -64,8 +64,7 @@ public:
     bool Init();
 
     // Module functions
-    virtual int32_t ChangeUniqueId(const int32_t id) OVERRIDE;
-    virtual int32_t TimeUntilNextProcess() OVERRIDE;
+    virtual int64_t TimeUntilNextProcess() OVERRIDE;
     virtual int32_t Process() OVERRIDE;
 
     // AudioConferenceMixer functions

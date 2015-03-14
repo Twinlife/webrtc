@@ -25,6 +25,10 @@
 #include "webrtc/modules/video_coding/main/source/internal_defines.h"
 #include "webrtc/system_wrappers/interface/logging.h"
 
+namespace {
+const size_t kDefaultPayloadSize = 1440;
+}
+
 namespace webrtc {
 
 VideoCodecVP8 VideoEncoder::GetDefaultVp8Settings() {
@@ -227,12 +231,12 @@ void VCMCodecDataBase::ResetSender() {
 bool VCMCodecDataBase::SetSendCodec(
     const VideoCodec* send_codec,
     int number_of_cores,
-    int max_payload_size,
+    size_t max_payload_size,
     VCMEncodedFrameCallback* encoded_frame_callback) {
   if (!send_codec) {
     return false;
   }
-  if (max_payload_size <= 0) {
+  if (max_payload_size == 0) {
     max_payload_size = kDefaultPayloadSize;
   }
   if (number_of_cores <= 0) {
@@ -641,7 +645,7 @@ VCMGenericDecoder* VCMCodecDataBase::CreateAndInitDecoder(
   const VCMDecoderMapItem* decoder_item = FindDecoderItem(payload_type);
   if (!decoder_item) {
     LOG(LS_ERROR) << "Can't find a decoder associated with payload type: "
-                  << payload_type;
+                  << static_cast<int>(payload_type);
     return NULL;
   }
   VCMGenericDecoder* ptr_decoder = NULL;

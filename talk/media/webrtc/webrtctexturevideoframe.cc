@@ -38,24 +38,32 @@
 namespace cricket {
 
 WebRtcTextureVideoFrame::WebRtcTextureVideoFrame(
-    webrtc::NativeHandle* handle, int width, int height, int64 elapsed_time,
-    int64 time_stamp)
+    webrtc::NativeHandle* handle, int width, int height, int64_t elapsed_time,
+    int64_t time_stamp)
     : handle_(handle), width_(width), height_(height),
       elapsed_time_(elapsed_time), time_stamp_(time_stamp) {}
 
 WebRtcTextureVideoFrame::~WebRtcTextureVideoFrame() {}
 
 bool WebRtcTextureVideoFrame::InitToBlack(
-    int w, int h, size_t pixel_width, size_t pixel_height, int64 elapsed_time,
-    int64 time_stamp) {
+    int w, int h, size_t pixel_width, size_t pixel_height, int64_t elapsed_time,
+    int64_t time_stamp) {
   UNIMPLEMENTED;
   return false;
 }
 
-bool WebRtcTextureVideoFrame::Reset(
-    uint32 fourcc, int w, int h, int dw, int dh, uint8* sample,
-    size_t sample_size, size_t pixel_width, size_t pixel_height,
-    int64 elapsed_time, int64 time_stamp, int rotation) {
+bool WebRtcTextureVideoFrame::Reset(uint32 fourcc,
+                                    int w,
+                                    int h,
+                                    int dw,
+                                    int dh,
+                                    uint8* sample,
+                                    size_t sample_size,
+                                    size_t pixel_width,
+                                    size_t pixel_height,
+                                    int64_t elapsed_time,
+                                    int64_t time_stamp,
+                                    webrtc::VideoRotation rotation) {
   UNIMPLEMENTED;
   return false;
 }
@@ -174,8 +182,8 @@ bool WebRtcTextureVideoFrame::SetToBlack() {
 }
 
 VideoFrame* WebRtcTextureVideoFrame::CreateEmptyFrame(
-    int w, int h, size_t pixel_width, size_t pixel_height, int64 elapsed_time,
-    int64 time_stamp) const {
+    int w, int h, size_t pixel_width, size_t pixel_height, int64_t elapsed_time,
+    int64_t time_stamp) const {
   UNIMPLEMENTED;
   return NULL;
 }

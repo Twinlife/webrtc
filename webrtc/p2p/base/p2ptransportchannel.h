@@ -59,10 +59,10 @@ class P2PTransportChannel : public TransportChannelImpl,
 
   // From TransportChannelImpl:
   virtual Transport* GetTransport() { return transport_; }
+  virtual TransportChannelState GetState() const;
   virtual void SetIceRole(IceRole role);
   virtual IceRole GetIceRole() const { return ice_role_; }
   virtual void SetIceTiebreaker(uint64 tiebreaker);
-  virtual size_t GetConnectionCount() const { return connections_.size(); }
   virtual bool GetIceProtocolType(IceProtocolType* type) const;
   virtual void SetIceProtocolType(IceProtocolType type);
   virtual void SetIceCredentials(const std::string& ice_ufrag,
@@ -79,6 +79,7 @@ class P2PTransportChannel : public TransportChannelImpl,
   virtual int SendPacket(const char *data, size_t len,
                          const rtc::PacketOptions& options, int flags);
   virtual int SetOption(rtc::Socket::Option opt, int value);
+  virtual bool GetOption(rtc::Socket::Option opt, int* value);
   virtual int GetError() { return error_; }
   virtual bool GetStats(std::vector<ConnectionInfo>* stats);
 
@@ -108,8 +109,13 @@ class P2PTransportChannel : public TransportChannelImpl,
     return false;
   }
 
-  // Find out which DTLS-SRTP cipher was negotiated
+  // Find out which DTLS-SRTP cipher was negotiated.
   virtual bool GetSrtpCipher(std::string* cipher) {
+    return false;
+  }
+
+  // Find out which DTLS cipher was negotiated.
+  virtual bool GetSslCipher(std::string* cipher) {
     return false;
   }
 
@@ -164,7 +170,7 @@ class P2PTransportChannel : public TransportChannelImpl,
   void HandleNotWritable();
   void HandleAllTimedOut();
 
-  Connection* GetBestConnectionOnNetwork(rtc::Network* network);
+  Connection* GetBestConnectionOnNetwork(rtc::Network* network) const;
   bool CreateConnections(const Candidate &remote_candidate,
                          PortInterface* origin_port, bool readable);
   bool CreateConnection(PortInterface* port, const Candidate& remote_candidate,

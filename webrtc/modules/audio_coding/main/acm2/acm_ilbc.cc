@@ -21,7 +21,9 @@ namespace acm2 {
 
 #ifndef WEBRTC_CODEC_ILBC
 
-ACMILBC::ACMILBC(int16_t /* codec_id */) : encoder_inst_ptr_(NULL) {}
+ACMILBC::ACMILBC(int16_t /* codec_id */, bool enable_red)
+    : ACMGenericCodec(enable_red), encoder_inst_ptr_(NULL) {
+}
 
 ACMILBC::~ACMILBC() { return; }
 
@@ -44,7 +46,8 @@ int16_t ACMILBC::SetBitRateSafe(const int32_t /* rate */) { return -1; }
 
 #else  //===================== Actual Implementation =======================
 
-ACMILBC::ACMILBC(int16_t codec_id) : encoder_inst_ptr_(NULL) {
+ACMILBC::ACMILBC(int16_t codec_id, bool enable_red)
+    : ACMGenericCodec(enable_red), encoder_inst_ptr_(NULL) {
   codec_id_ = codec_id;
   return;
 }
@@ -61,7 +64,7 @@ int16_t ACMILBC::InternalEncode(uint8_t* bitstream,
                                 int16_t* bitstream_len_byte) {
   *bitstream_len_byte = WebRtcIlbcfix_Encode(
       encoder_inst_ptr_, &in_audio_[in_audio_ix_read_], frame_len_smpl_,
-      reinterpret_cast<int16_t*>(bitstream));
+      bitstream);
   if (*bitstream_len_byte < 0) {
     WEBRTC_TRACE(webrtc::kTraceError,
                  webrtc::kTraceAudioCoding,
