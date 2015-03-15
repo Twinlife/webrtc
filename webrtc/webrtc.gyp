@@ -55,6 +55,7 @@
             'test/test.gyp:*',
             'test/webrtc_test_common.gyp:webrtc_test_common_unittests',
             'webrtc_tests',
+            'rtc_unittests',
           ],
         }],
       ],
