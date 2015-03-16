@@ -70,14 +70,6 @@ public:
     virtual bool GetApplyRotation() {
       return apply_rotation_;
     }
-    // -twinlife- switch camera
-    virtual void SwitchCamera(int cameraId) {};
-    // -twinlife- set camera mute
-    virtual void SetCameraMute(bool mute) {};
-    // -twinlife- is zoom supported
-    virtual bool IsZoomSupported() {return false;};
-    // -twinlife- set zoom
-    virtual void SetZoom(int progress) {};
 
     virtual void EnableFrameRateCallback(const bool enable);
     virtual void EnableNoPictureAlarm(const bool enable);

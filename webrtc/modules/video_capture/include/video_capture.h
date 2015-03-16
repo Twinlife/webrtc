@@ -144,15 +144,6 @@ class VideoCaptureModule: public RefCountedModule {
   // Return whether the rotation is applied or left pending.
   virtual bool GetApplyRotation() = 0;
 
-  // -twinlife- set camera mute
-  virtual void SetCameraMute(bool mute) = 0;
-  // -twinlife- switch camera
-  virtual void SwitchCamera(int cameraId) = 0;
-  // -twinlife- is zoom supported
-  virtual bool IsZoomSupported() = 0;
-  // -twinlife- set zoom
-  virtual void SetZoom(int progress) = 0;
-
   // Gets a pointer to an encode interface if the capture device supports the
   // requested type and size.  NULL otherwise.
   virtual VideoCaptureEncodeInterface* GetEncodeInterface(

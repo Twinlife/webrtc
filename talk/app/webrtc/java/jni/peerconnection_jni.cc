@@ -1688,36 +1688,6 @@ JOW(void, VideoTrack_nativeRemoveRenderer)(
 }
 
 // -twinlife-
-JOW(void, VideoCapturer_nativeSetCaptureRotation)(
-    JNIEnv* jni, jclass, jlong pointer, jint rotation) {
-  (reinterpret_cast<cricket::VideoCapturer*>(pointer))->SetCaptureRotation(rotation);
-}
-
-// -twinlife-
-JOW(void, VideoCapturer_nativeSetCameraMute)(
-    JNIEnv* jni, jclass, jlong pointer, jboolean mute) {
-  (reinterpret_cast<cricket::VideoCapturer*>(pointer))->SetCameraMute(mute);
-}
-
-// -twinlife-
-JOW(void, VideoCapturer_nativeSwitchCamera)(
-    JNIEnv* jni, jclass, jlong pointer, jint camera_id) {
-  (reinterpret_cast<cricket::VideoCapturer*>(pointer))->SwitchCamera(camera_id);
-}
-
-// -twinlife-
-JOW(bool, VideoCapturer_nativeIsZoomSupported)(
-    JNIEnv* jni, jclass, jlong pointer) {
-  return (reinterpret_cast<cricket::VideoCapturer*>(pointer))->IsZoomSupported();
-}
-
-// -twinlife-
-JOW(void, VideoCapturer_nativeSetZoom)(
-    JNIEnv* jni, jclass, jlong pointer, jint progress) {
-  (reinterpret_cast<cricket::VideoCapturer*>(pointer))->SetZoom(progress);
-}
-
-// -twinlife-
 JOW(void, VideoSource_nativeUpdateConstraints)(
     JNIEnv* jni, jclass, jlong j_p_source, jobject j_constraints) {
   CHECK(j_p_source);

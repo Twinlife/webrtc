@@ -340,26 +340,6 @@ bool WebRtcVideoCapturer::IsRunning() {
   return (module_ != NULL && module_->CaptureStarted());
 }
 
-  // -twinlife- set camera mute
-void WebRtcVideoCapturer::SetCameraMute(bool mute) {
-  module_->SetCameraMute(mute);
-}
-
-  // -twinlife- switch camera
-void WebRtcVideoCapturer::SwitchCamera(int camera_id) {
-  module_->SwitchCamera(camera_id);
-}
-
-  // -twinlife- is zoom supported
-bool WebRtcVideoCapturer::IsZoomSupported() {
-  return module_->IsZoomSupported();
-}
-
-  // -twinlife- set zoom
-void WebRtcVideoCapturer::SetZoom(int progress) {
-  module_->SetZoom(progress);
-}
-
 bool WebRtcVideoCapturer::GetPreferredFourccs(
     std::vector<uint32>* fourccs) {
   if (!fourccs) {
