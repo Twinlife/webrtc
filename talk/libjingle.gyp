@@ -81,7 +81,12 @@
               'sources': [
                 'app/webrtc/java/jni/androidvideocapturer_jni.cc',
                 'app/webrtc/java/jni/androidvideocapturer_jni.h',
-              ]
+              ],
+              'variables': {
+                # This library uses native JNI exports; tell GYP so that the
+                # required symbols will be kept.
+                'use_native_jni_exports': 1,
+              },
             }],
             ['OS=="android" and build_with_chromium==0', {
               'sources': [
@@ -136,6 +141,8 @@
                   '<(webrtc_modules_dir)/video_render/android/java/src/org/webrtc/videoengine/ViEAndroidGLES20.java',
                   '<(webrtc_modules_dir)/video_render/android/java/src/org/webrtc/videoengine/ViERenderer.java',
                   '<(webrtc_modules_dir)/video_render/android/java/src/org/webrtc/videoengine/ViESurfaceRenderer.java',
+                  '<(webrtc_modules_dir)/audio_device/android/java/src/org/webrtc/voiceengine/WebRtcAudioManager.java',
+                  '<(webrtc_modules_dir)/audio_device/android/java/src/org/webrtc/voiceengine/WebRtcAudioUtils.java',
                   '<(webrtc_modules_dir)/audio_device/android/java/src/org/webrtc/voiceengine/WebRtcAudioRecord.java',
                   '<(webrtc_modules_dir)/audio_device/android/java/src/org/webrtc/voiceengine/WebRtcAudioTrack.java',
                 ],
@@ -372,6 +379,7 @@
       'dependencies': [
         '<(DEPTH)/third_party/libyuv/libyuv.gyp:libyuv',
         '<(DEPTH)/third_party/usrsctp/usrsctp.gyp:usrsctplib',
+        '<(webrtc_root)/common.gyp:webrtc_common',
         '<(webrtc_root)/modules/modules.gyp:video_render_module',
         '<(webrtc_root)/webrtc.gyp:webrtc',
         '<(webrtc_root)/voice_engine/voice_engine.gyp:voice_engine',
@@ -457,8 +465,6 @@
         'media/webrtc/webrtcmediaengine.cc',
         'media/webrtc/webrtcpassthroughrender.cc',
         'media/webrtc/webrtcpassthroughrender.h',
-        'media/webrtc/webrtctexturevideoframe.cc',
-        'media/webrtc/webrtctexturevideoframe.h',
         'media/webrtc/webrtcvideocapturer.cc',
         'media/webrtc/webrtcvideocapturerfactory.h',
         'media/webrtc/webrtcvideocapturerfactory.cc',

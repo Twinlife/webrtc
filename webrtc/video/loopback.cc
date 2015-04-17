@@ -16,10 +16,11 @@
 
 #include "testing/gtest/include/gtest/gtest.h"
 
+#include "webrtc/base/checks.h"
+#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/call.h"
 #include "webrtc/modules/video_coding/codecs/vp8/include/vp8.h"
 #include "webrtc/system_wrappers/interface/clock.h"
-#include "webrtc/system_wrappers/interface/scoped_ptr.h"
 #include "webrtc/test/direct_transport.h"
 #include "webrtc/test/encoder_settings.h"
 #include "webrtc/test/fake_encoder.h"
@@ -48,14 +49,16 @@ Loopback::~Loopback() {
 }
 
 void Loopback::Run() {
-  scoped_ptr<test::TraceToStderr> trace_to_stderr_;
+  rtc::scoped_ptr<test::TraceToStderr> trace_to_stderr_;
   if (config_.logs)
     trace_to_stderr_.reset(new test::TraceToStderr);
 
-  scoped_ptr<test::VideoRenderer> local_preview(test::VideoRenderer::Create(
-      "Local Preview", config_.width, config_.height));
-  scoped_ptr<test::VideoRenderer> loopback_video(test::VideoRenderer::Create(
-      "Loopback Video", config_.width, config_.height));
+  rtc::scoped_ptr<test::VideoRenderer> local_preview(
+      test::VideoRenderer::Create("Local Preview", config_.width,
+                                  config_.height));
+  rtc::scoped_ptr<test::VideoRenderer> loopback_video(
+      test::VideoRenderer::Create("Loopback Video", config_.width,
+                                  config_.height));
 
   FakeNetworkPipe::Config pipe_config;
   pipe_config.loss_percent = config_.loss_percent;
@@ -66,13 +69,13 @@ void Loopback::Run() {
   test::DirectTransport transport(pipe_config);
   Call::Config call_config(&transport);
 
-  call_config.stream_bitrates.min_bitrate_bps =
+  call_config.bitrate_config.min_bitrate_bps =
       static_cast<int>(config_.min_bitrate_kbps) * 1000;
-  call_config.stream_bitrates.start_bitrate_bps =
+  call_config.bitrate_config.start_bitrate_bps =
       static_cast<int>(config_.start_bitrate_kbps) * 1000;
-  call_config.stream_bitrates.max_bitrate_bps =
+  call_config.bitrate_config.max_bitrate_bps =
       static_cast<int>(config_.max_bitrate_kbps) * 1000;
-  scoped_ptr<Call> call(Call::Create(call_config));
+  rtc::scoped_ptr<Call> call(Call::Create(call_config));
 
   // Loopback, call sends to itself.
   transport.SetReceiver(call->Receiver());
@@ -86,14 +89,14 @@ void Loopback::Run() {
       RtpExtension(RtpExtension::kAbsSendTime, kAbsSendTimeExtensionId));
 
   send_config.local_renderer = local_preview.get();
-  scoped_ptr<VideoEncoder> encoder;
+  rtc::scoped_ptr<VideoEncoder> encoder;
   if (config_.codec == "VP8") {
     encoder.reset(VideoEncoder::Create(VideoEncoder::kVp8));
   } else if (config_.codec == "VP9") {
     encoder.reset(VideoEncoder::Create(VideoEncoder::kVp9));
   } else {
     // Codec not supported.
-    assert(false && "Codec not supported!");
+    RTC_NOTREACHED() << "Codec not supported!";
     return;
   }
   send_config.encoder_settings.encoder = encoder.get();
@@ -105,7 +108,7 @@ void Loopback::Run() {
   VideoSendStream* send_stream =
       call->CreateVideoSendStream(send_config, encoder_config);
 
-  scoped_ptr<test::VideoCapturer> capturer(CreateCapturer(send_stream));
+  rtc::scoped_ptr<test::VideoCapturer> capturer(CreateCapturer(send_stream));
 
   VideoReceiveStream::Config receive_config;
   receive_config.rtp.remote_ssrc = send_config.rtp.ssrcs[0];

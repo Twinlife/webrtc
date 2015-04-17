@@ -26,6 +26,7 @@ import argparse
 import os
 import subprocess
 import sys
+import textwrap
 
 # Bump this whenever the algorithm changes and you need bots/devs to re-sync,
 # ignoring the .last_sync_chromium file
@@ -104,6 +105,9 @@ def main():
     else:
       cache_path = '/b/git-cache'
   else:
+    # Verbose, but not as verbose as on the buildbots.
+    args.append('-v')
+
     # Support developers setting the cache_dir in .gclient.
     cache_path = get_cache_dir()
 
@@ -143,6 +147,13 @@ def main():
   if target_os_list:
     args += ['--deps=' + target_os_list]
 
+  print textwrap.dedent("""\
+  +---------------------------------------------------------------------+
+  | NOTICE: This sync of Chromium will take a long time as several      |
+  |         gigabytes of data are downloaded. If this is your initial   |
+  |         sync and it's interrupted, try running 'gclient sync' again.|
+  |         If that fails, wipe everything clean and start over again.  |
+  +---------------------------------------------------------------------+""")
   print 'Running "%s" in %s' % (' '.join(args), opts.chromium_dir)
   ret = subprocess.call(args, cwd=opts.chromium_dir, env=env)
   if ret == 0:

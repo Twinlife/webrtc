@@ -987,7 +987,7 @@ class VideoFrameTest : public testing::Test {
                         y, 1, u, 1, v, 1, 0));
   }
 
-  // Test 5 pixel edge case image I420 buffer rounds down to 4.
+  // Test 5 pixel edge case image.
   void ConstructI4205Pixel() {
     T frame;
     uint8 pixels5x5[5 * 5 + ((5 + 1) / 2 * (5 + 1) / 2) *  2];
@@ -997,11 +997,11 @@ class VideoFrameTest : public testing::Test {
                              sizeof(pixels5x5), 1, 1, 0, 0,
                              webrtc::kVideoRotation_0));
     }
-    EXPECT_EQ(4u, frame.GetWidth());
-    EXPECT_EQ(4u, frame.GetHeight());
-    EXPECT_EQ(4, frame.GetYPitch());
-    EXPECT_EQ(2, frame.GetUPitch());
-    EXPECT_EQ(2, frame.GetVPitch());
+    EXPECT_EQ(5u, frame.GetWidth());
+    EXPECT_EQ(5u, frame.GetHeight());
+    EXPECT_EQ(5, frame.GetYPitch());
+    EXPECT_EQ(3, frame.GetUPitch());
+    EXPECT_EQ(3, frame.GetVPitch());
   }
 
   // Test 1 pixel edge case image ARGB buffer.
@@ -1415,7 +1415,7 @@ class VideoFrameTest : public testing::Test {
   }
 
   // Tests re-initing an existing image.
-  void Reset() {
+  void Reset(webrtc::VideoRotation rotation, bool apply_rotation) {
     T frame1, frame2;
     rtc::scoped_ptr<rtc::MemoryStream> ms(
         LoadSample(kImageFilename));
@@ -1428,9 +1428,32 @@ class VideoFrameTest : public testing::Test {
     EXPECT_TRUE(IsEqual(frame1, frame2, 0));
     EXPECT_TRUE(frame1.Reset(cricket::FOURCC_I420, kWidth, kHeight, kWidth,
                              kHeight, reinterpret_cast<uint8*>(ms->GetBuffer()),
-                             data_size, 1, 1, 0, 0, webrtc::kVideoRotation_0));
+                             data_size, 1, 1, 0, 0, rotation,
+                             apply_rotation));
+    if (apply_rotation)
+      EXPECT_EQ(webrtc::kVideoRotation_0, frame1.GetVideoRotation());
+    else
+      EXPECT_EQ(rotation, frame1.GetVideoRotation());
+
+    // Swapp width and height if the frame is rotated 90 or 270 degrees.
+    if (apply_rotation && (rotation == webrtc::kVideoRotation_90
+        || rotation == webrtc::kVideoRotation_270)) {
+      EXPECT_TRUE(kHeight == frame1.GetWidth());
+      EXPECT_TRUE(kWidth == frame1.GetHeight());
+    } else {
+      EXPECT_TRUE(kWidth == frame1.GetWidth());
+      EXPECT_TRUE(kHeight == frame1.GetHeight());
+    }
     EXPECT_FALSE(IsBlack(frame1));
     EXPECT_FALSE(IsEqual(frame1, frame2, 0));
+  }
+
+  void ResetAndApplyRotation() {
+    Reset(webrtc::kVideoRotation_90, true);
+  }
+
+  void ResetAndDontApplyRotation() {
+    Reset(webrtc::kVideoRotation_90, false);
   }
 
   //////////////////////
@@ -2007,13 +2030,14 @@ class VideoFrameTest : public testing::Test {
 
   void CopyIsRef() {
     rtc::scoped_ptr<T> source(new T);
-    rtc::scoped_ptr<cricket::VideoFrame> target;
+    rtc::scoped_ptr<const cricket::VideoFrame> target;
     ASSERT_TRUE(LoadFrameNoRepeat(source.get()));
     target.reset(source->Copy());
     EXPECT_TRUE(IsEqual(*source, *target, 0));
-    EXPECT_EQ(source->GetYPlane(), target->GetYPlane());
-    EXPECT_EQ(source->GetUPlane(), target->GetUPlane());
-    EXPECT_EQ(source->GetVPlane(), target->GetVPlane());
+    const T* const_source = source.get();
+    EXPECT_EQ(const_source->GetYPlane(), target->GetYPlane());
+    EXPECT_EQ(const_source->GetUPlane(), target->GetUPlane());
+    EXPECT_EQ(const_source->GetVPlane(), target->GetVPlane());
   }
 
   void MakeExclusive() {

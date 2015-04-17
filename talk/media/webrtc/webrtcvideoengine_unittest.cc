@@ -50,6 +50,7 @@
 
 using cricket::kRtpTimestampOffsetHeaderExtension;
 using cricket::kRtpAbsoluteSenderTimeHeaderExtension;
+using cricket::kRtpVideoRotationHeaderExtension;
 
 static const cricket::VideoCodec kVP8Codec720p(100, "VP8", 1280, 720, 30, 0);
 static const cricket::VideoCodec kVP8Codec360p(100, "VP8", 640, 360, 30, 0);
@@ -1005,6 +1006,14 @@ TEST_F(WebRtcVideoEngineTestFake, RecvAbsoluteSendTimeHeaderExtensions) {
   TestSetRecvRtpHeaderExtensions(kRtpAbsoluteSenderTimeHeaderExtension);
 }
 
+// Test support for Coordination of Video Orientation (CVO) header extension.
+TEST_F(WebRtcVideoEngineTestFake, SendVideoRotationHeaderExtensions) {
+  TestSetSendRtpHeaderExtensions(kRtpVideoRotationHeaderExtension);
+}
+TEST_F(WebRtcVideoEngineTestFake, RecvVideoRotationHeaderExtensions) {
+  TestSetRecvRtpHeaderExtensions(kRtpVideoRotationHeaderExtension);
+}
+
 TEST_F(WebRtcVideoEngineTestFake, LeakyBucketTest) {
   EXPECT_TRUE(SetupEngine());
 
@@ -1745,7 +1754,7 @@ TEST_F(WebRtcVideoEngineTestFake, SendReceiveBitratesStats) {
   EXPECT_NE(first_receive_channel, second_receive_channel);
 
   cricket::VideoMediaInfo info;
-  EXPECT_TRUE(channel_->GetStats(cricket::StatsOptions(), &info));
+  EXPECT_TRUE(channel_->GetStats(&info));
   ASSERT_EQ(1U, info.bw_estimations.size());
   ASSERT_EQ(0, info.bw_estimations[0].actual_enc_bitrate);
   ASSERT_EQ(0, info.bw_estimations[0].transmit_bitrate);
@@ -1771,7 +1780,7 @@ TEST_F(WebRtcVideoEngineTestFake, SendReceiveBitratesStats) {
   vie_.SetReceiveBandwidthEstimate(first_receive_channel, receive_bandwidth);
 
   info.Clear();
-  EXPECT_TRUE(channel_->GetStats(cricket::StatsOptions(), &info));
+  EXPECT_TRUE(channel_->GetStats(&info));
   ASSERT_EQ(1U, info.bw_estimations.size());
   ASSERT_EQ(send_video_bitrate, info.bw_estimations[0].actual_enc_bitrate);
   ASSERT_EQ(send_total_bitrate, info.bw_estimations[0].transmit_bitrate);
@@ -1789,7 +1798,7 @@ TEST_F(WebRtcVideoEngineTestFake, SendReceiveBitratesStats) {
   EXPECT_EQ(0, vie_.StartReceive(second_receive_channel));
 
   info.Clear();
-  EXPECT_TRUE(channel_->GetStats(cricket::StatsOptions(), &info));
+  EXPECT_TRUE(channel_->GetStats(&info));
   ASSERT_EQ(1U, info.bw_estimations.size());
   ASSERT_EQ(2 * send_video_bitrate, info.bw_estimations[0].actual_enc_bitrate);
   ASSERT_EQ(2 * send_total_bitrate, info.bw_estimations[0].transmit_bitrate);
@@ -1952,6 +1961,7 @@ TEST_F(WebRtcVideoEngineTestFake, DontRegisterEncoderIfFactoryIsNotGiven) {
 
 TEST_F(WebRtcVideoEngineTestFake, RegisterEncoderIfFactoryIsGiven) {
   encoder_factory_.AddSupportedVideoCodecType(webrtc::kVideoCodecVP8, "VP8");
+  encoder_factory_.set_encoders_have_internal_sources(false);
   engine_.SetExternalEncoderFactory(&encoder_factory_);
   EXPECT_TRUE(SetupEngine());
   int channel_num = vie_.GetLastChannel();
@@ -1964,6 +1974,29 @@ TEST_F(WebRtcVideoEngineTestFake, RegisterEncoderIfFactoryIsGiven) {
       cricket::StreamParams::CreateLegacy(kSsrc)));
 
   EXPECT_TRUE(vie_.ExternalEncoderRegistered(channel_num, 100));
+  EXPECT_FALSE(vie_.ExternalEncoderHasInternalSource(channel_num, 100));
+  EXPECT_EQ(1, vie_.GetNumExternalEncoderRegistered(channel_num));
+
+  // Remove stream previously added to free the external encoder instance.
+  EXPECT_TRUE(channel_->RemoveSendStream(kSsrc));
+}
+
+TEST_F(WebRtcVideoEngineTestFake, RegisterEncoderWithInternalSource) {
+  encoder_factory_.AddSupportedVideoCodecType(webrtc::kVideoCodecVP8, "VP8");
+  encoder_factory_.set_encoders_have_internal_sources(true);
+  engine_.SetExternalEncoderFactory(&encoder_factory_);
+  EXPECT_TRUE(SetupEngine());
+  int channel_num = vie_.GetLastChannel();
+
+  std::vector<cricket::VideoCodec> codecs;
+  codecs.push_back(kVP8Codec);
+  EXPECT_TRUE(channel_->SetSendCodecs(codecs));
+
+  EXPECT_TRUE(
+      channel_->AddSendStream(cricket::StreamParams::CreateLegacy(kSsrc)));
+
+  ASSERT_TRUE(vie_.ExternalEncoderRegistered(channel_num, 100));
+  EXPECT_TRUE(vie_.ExternalEncoderHasInternalSource(channel_num, 100));
   EXPECT_EQ(1, vie_.GetNumExternalEncoderRegistered(channel_num));
 
   // Remove stream previously added to free the external encoder instance.
@@ -2466,7 +2499,13 @@ TEST_F(WebRtcVideoMediaChannelTest, AddRemoveRecvStreams) {
   Base::AddRemoveRecvStreams();
 }
 
-TEST_F(WebRtcVideoMediaChannelTest, AddRemoveRecvStreamAndRender) {
+// Flaky on Linux and Windows. See webrtc:4452.
+#if defined(WEBRTC_WIN) || defined(WEBRTC_LINUX)
+#define MAYBE_AddRemoveRecvStreamAndRender DISABLED_AddRemoveRecvStreamAndRender
+#else
+#define MAYBE_AddRemoveRecvStreamAndRender AddRemoveRecvStreamAndRender
+#endif
+TEST_F(WebRtcVideoMediaChannelTest, MAYBE_AddRemoveRecvStreamAndRender) {
   Base::AddRemoveRecvStreamAndRender();
 }
 
@@ -3729,7 +3768,7 @@ TEST_F(WebRtcVideoEngineSimulcastTestFake, GetStatsWithMultipleSsrcs) {
 
   // Get stats and verify there are 2 ssrcs.
   cricket::VideoMediaInfo info;
-  EXPECT_TRUE(channel_->GetStats(cricket::StatsOptions(), &info));
+  EXPECT_TRUE(channel_->GetStats(&info));
   ASSERT_EQ(1U, info.senders.size());
   ASSERT_EQ(2U, info.senders[0].ssrcs().size());
   EXPECT_EQ(1U, info.senders[0].ssrcs()[0]);
@@ -4176,7 +4215,7 @@ TEST_F(WebRtcVideoEngineSimulcastTestFake, GetAdaptStats) {
   // Capture format VGA -> adapt (OnCpuResolutionRequest downgrade) -> VGA/2.
   EXPECT_TRUE(video_capturer_vga.CaptureFrame());
   cricket::VideoMediaInfo info;
-  EXPECT_TRUE(channel_->GetStats(cricket::StatsOptions(), &info));
+  EXPECT_TRUE(channel_->GetStats(&info));
   ASSERT_EQ(1U, info.senders.size());
   EXPECT_EQ(1, info.senders[0].adapt_changes);
   EXPECT_EQ(cricket::CoordinatedVideoAdapter::ADAPTREASON_CPU,
@@ -4186,7 +4225,7 @@ TEST_F(WebRtcVideoEngineSimulcastTestFake, GetAdaptStats) {
   observer->NormalUsage();
   EXPECT_TRUE(video_capturer_vga.CaptureFrame());
   info.Clear();
-  EXPECT_TRUE(channel_->GetStats(cricket::StatsOptions(), &info));
+  EXPECT_TRUE(channel_->GetStats(&info));
   ASSERT_EQ(1U, info.senders.size());
   EXPECT_EQ(2, info.senders[0].adapt_changes);
   EXPECT_EQ(cricket::CoordinatedVideoAdapter::ADAPTREASON_NONE,
@@ -4196,7 +4235,7 @@ TEST_F(WebRtcVideoEngineSimulcastTestFake, GetAdaptStats) {
   EXPECT_TRUE(channel_->SetCapturer(kSsrcs3[0], NULL));
   EXPECT_TRUE(vie_.GetCpuOveruseObserver(channel0) == NULL);
   info.Clear();
-  EXPECT_TRUE(channel_->GetStats(cricket::StatsOptions(), &info));
+  EXPECT_TRUE(channel_->GetStats(&info));
   ASSERT_EQ(1U, info.senders.size());
   EXPECT_EQ(2, info.senders[0].adapt_changes);
   EXPECT_EQ(cricket::CoordinatedVideoAdapter::ADAPTREASON_NONE,
@@ -4215,7 +4254,7 @@ TEST_F(WebRtcVideoEngineSimulcastTestFake, GetAdaptStats) {
   observer->OveruseDetected();
   EXPECT_TRUE(video_capturer_hd.CaptureFrame());
   info.Clear();
-  EXPECT_TRUE(channel_->GetStats(cricket::StatsOptions(), &info));
+  EXPECT_TRUE(channel_->GetStats(&info));
   ASSERT_EQ(1U, info.senders.size());
   EXPECT_EQ(3, info.senders[0].adapt_changes);
   EXPECT_EQ(cricket::CoordinatedVideoAdapter::ADAPTREASON_CPU,
@@ -4253,7 +4292,16 @@ TEST_F(WebRtcVideoEngineSimulcastTestFake,
 }
 
 TEST_F(WebRtcVideoEngineSimulcastTestFake,
-       DontUseSimulcastAdapterOnNoneVp8Factory) {
+       UsesSimulcastAdapterForVp8WithCombinedVP8AndH264Factory) {
+  encoder_factory_.AddSupportedVideoCodecType(webrtc::kVideoCodecVP8, "VP8");
+  encoder_factory_.AddSupportedVideoCodecType(webrtc::kVideoCodecGeneric,
+                                              "H264");
+  TestSimulcastAdapter(kVP8Codec, true);
+}
+
+TEST_F(WebRtcVideoEngineSimulcastTestFake,
+       DontUseSimulcastAdapterForH264WithCombinedVP8AndH264Factory) {
+  encoder_factory_.AddSupportedVideoCodecType(webrtc::kVideoCodecVP8, "VP8");
   encoder_factory_.AddSupportedVideoCodecType(webrtc::kVideoCodecGeneric,
                                               "H264");
   static const cricket::VideoCodec kH264Codec(100, "H264", 640, 400, 30, 0);
@@ -4261,11 +4309,11 @@ TEST_F(WebRtcVideoEngineSimulcastTestFake,
 }
 
 TEST_F(WebRtcVideoEngineSimulcastTestFake,
-    DontUseSimulcastAdapterOnMultipleCodecsFactory) {
-  encoder_factory_.AddSupportedVideoCodecType(webrtc::kVideoCodecVP8, "VP8");
+       DontUseSimulcastAdapterOnNonVp8Factory) {
   encoder_factory_.AddSupportedVideoCodecType(webrtc::kVideoCodecGeneric,
                                               "H264");
-  TestSimulcastAdapter(kVP8Codec, false);
+  static const cricket::VideoCodec kH264Codec(100, "H264", 640, 400, 30, 0);
+  TestSimulcastAdapter(kH264Codec, false);
 }
 
 // Flaky on Windows and tsan. https://code.google.com/p/webrtc/issues/detail?id=4135

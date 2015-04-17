@@ -15,10 +15,10 @@
 #include <string>
 
 #include "webrtc/base/constructormagic.h"
+#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/modules/interface/module.h"
 #include "webrtc/modules/remote_bitrate_estimator/test/bwe.h"
 #include "webrtc/modules/remote_bitrate_estimator/test/bwe_test_framework.h"
-#include "webrtc/system_wrappers/interface/scoped_ptr.h"
 
 namespace webrtc {
 namespace testing {
@@ -37,14 +37,14 @@ class PacketSender : public PacketProcessor, public BitrateObserver {
   // output of the estimators is sampled and therefore the baseline files may
   // have to be regenerated.
   virtual int GetFeedbackIntervalMs() const;
-  virtual void RunFor(int64_t time_ms, Packets* in_out) OVERRIDE;
+  void RunFor(int64_t time_ms, Packets* in_out) override;
 
   virtual VideoSource* source() const { return source_; }
 
   // Implements BitrateObserver.
-  virtual void OnNetworkChanged(uint32_t target_bitrate_bps,
-                                uint8_t fraction_lost,
-                                int64_t rtt) OVERRIDE;
+  void OnNetworkChanged(uint32_t target_bitrate_bps,
+                        uint8_t fraction_lost,
+                        int64_t rtt) override;
 
  protected:
   void ProcessFeedbackAndGeneratePackets(int64_t time_ms,
@@ -55,7 +55,7 @@ class PacketSender : public PacketProcessor, public BitrateObserver {
 
   SimulatedClock clock_;
   VideoSource* source_;
-  scoped_ptr<BweSender> bwe_;
+  rtc::scoped_ptr<BweSender> bwe_;
   int64_t start_of_run_ms_;
   std::list<Module*> modules_;
 
@@ -70,19 +70,19 @@ class PacedVideoSender : public PacketSender, public PacedSender::Callback {
                    BandwidthEstimatorType estimator);
   virtual ~PacedVideoSender();
 
-  virtual void RunFor(int64_t time_ms, Packets* in_out) OVERRIDE;
+  void RunFor(int64_t time_ms, Packets* in_out) override;
 
   // Implements PacedSender::Callback.
-  virtual bool TimeToSendPacket(uint32_t ssrc,
-                                uint16_t sequence_number,
-                                int64_t capture_time_ms,
-                                bool retransmission) OVERRIDE;
-  virtual size_t TimeToSendPadding(size_t bytes) OVERRIDE;
+  bool TimeToSendPacket(uint32_t ssrc,
+                        uint16_t sequence_number,
+                        int64_t capture_time_ms,
+                        bool retransmission) override;
+  size_t TimeToSendPadding(size_t bytes) override;
 
   // Implements BitrateObserver.
-  virtual void OnNetworkChanged(uint32_t target_bitrate_bps,
-                                uint8_t fraction_lost,
-                                int64_t rtt) OVERRIDE;
+  void OnNetworkChanged(uint32_t target_bitrate_bps,
+                        uint8_t fraction_lost,
+                        int64_t rtt) override;
 
  private:
   int64_t TimeUntilNextProcess(const std::list<Module*>& modules);

@@ -9,10 +9,10 @@
  */
 
 #include "testing/gmock/include/gmock/gmock.h"
+#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/modules/audio_coding/neteq/audio_decoder_impl.h"
 #include "webrtc/modules/audio_coding/neteq/tools/neteq_external_decoder_test.h"
 #include "webrtc/modules/audio_coding/neteq/tools/rtp_generator.h"
-#include "webrtc/system_wrappers/interface/scoped_ptr.h"
 
 namespace webrtc {
 namespace test {
@@ -35,19 +35,6 @@ class MockAudioDecoderOpus : public AudioDecoderOpus {
 
   MOCK_METHOD0(Init, int());
 
-  // Override the following methods such that no actual payload is needed.
-  int Decode(const uint8_t* encoded, size_t encoded_len, int16_t* decoded,
-             SpeechType* speech_type) override {
-    *speech_type = kSpeech;
-    memset(decoded, 0, sizeof(int16_t) * kPacketDuration * channels_);
-    return kPacketDuration * channels_;
-  }
-
-  int DecodeRedundant(const uint8_t* encoded, size_t encoded_len,
-                      int16_t* decoded, SpeechType* speech_type) override {
-    return Decode(encoded, encoded_len, decoded, speech_type);
-  }
-
   int PacketDuration(const uint8_t* encoded,
                      size_t encoded_len) const override {
     return kPacketDuration;
@@ -65,6 +52,27 @@ class MockAudioDecoderOpus : public AudioDecoderOpus {
   void set_fec_enabled(bool enable_fec) { fec_enabled_ = enable_fec; }
 
   bool fec_enabled() const { return fec_enabled_; }
+
+ protected:
+  // Override the following methods such that no actual payload is needed.
+  int DecodeInternal(const uint8_t* encoded,
+                     size_t encoded_len,
+                     int /*sample_rate_hz*/,
+                     int16_t* decoded,
+                     SpeechType* speech_type) override {
+    *speech_type = kSpeech;
+    memset(decoded, 0, sizeof(int16_t) * kPacketDuration * Channels());
+    return kPacketDuration * Channels();
+  }
+
+  int DecodeRedundantInternal(const uint8_t* encoded,
+                              size_t encoded_len,
+                              int sample_rate_hz,
+                              int16_t* decoded,
+                              SpeechType* speech_type) override {
+    return DecodeInternal(encoded, encoded_len, sample_rate_hz, decoded,
+                          speech_type);
+  }
 
  private:
   bool fec_enabled_;
@@ -253,7 +261,7 @@ struct NetEqNetworkStatsCheck {
   MockAudioDecoderOpus* external_decoder_;
   const int samples_per_ms_;
   const size_t frame_size_samples_;
-  scoped_ptr<test::RtpGenerator> rtp_generator_;
+  rtc::scoped_ptr<test::RtpGenerator> rtp_generator_;
   WebRtcRTPHeader rtp_header_;
   uint32_t last_lost_time_;
   uint32_t packet_loss_interval_;

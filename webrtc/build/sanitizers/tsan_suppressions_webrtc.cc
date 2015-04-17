@@ -44,9 +44,17 @@ char kTSanDefaultSuppressions[] =
 
 // rtc_unittest
 // https://code.google.com/p/webrtc/issues/detail?id=3911 for details.
+"race:rtc::AsyncInvoker::OnMessage\n"
 "race:rtc::FireAndForgetAsyncClosure<FunctorB>::Execute\n"
 "race:rtc::MessageQueueManager::Clear\n"
 "race:rtc::Thread::Clear\n"
+// https://code.google.com/p/webrtc/issues/detail?id=2080
+"race:webrtc/base/logging.cc\n"
+"race:webrtc/base/sharedexclusivelock_unittest.cc\n"
+"race:webrtc/base/signalthread_unittest.cc\n"
+// https://code.google.com/p/webrtc/issues/detail?id=4456
+"deadlock:rtc::MessageQueueManager::Clear\n"
+"deadlock:rtc::MessageQueueManager::ClearInternal\n"
 
 // libjingle_p2p_unittest
 // https://code.google.com/p/webrtc/issues/detail?id=2079
@@ -54,19 +62,12 @@ char kTSanDefaultSuppressions[] =
 "race:webrtc/base/virtualsocketserver.cc\n"
 "race:talk/p2p/base/stunserver_unittest.cc\n"
 
-// libjingle_unittest
-// https://code.google.com/p/webrtc/issues/detail?id=2080
-"race:webrtc/base/logging.cc\n"
-"race:webrtc/base/sharedexclusivelock_unittest.cc\n"
-"race:webrtc/base/signalthread_unittest.cc\n"
-
 // third_party/usrsctp
 // TODO(jiayl): https://code.google.com/p/webrtc/issues/detail?id=3492
 "race:user_sctp_timer_iterate\n"
 
 // Potential deadlocks detected after roll in r6516.
 // https://code.google.com/p/webrtc/issues/detail?id=3509
-"deadlock:webrtc::ProcessThreadImpl::RegisterModule\n"
 "deadlock:webrtc::RTCPReceiver::SetSsrcs\n"
 "deadlock:webrtc::test::UdpSocketManagerPosixImpl::RemoveSocket\n"
 "deadlock:webrtc::vcm::VideoReceiver::RegisterPacketRequestCallback\n"

@@ -30,7 +30,6 @@
 {
   'variables': {
     'webrtc_root%': '<(DEPTH)/third_party/webrtc',
-    # TODO(ronghuawu): Chromium build will need a different libjingle_root.
     'libjingle_tests_additional_deps%': [],
     'libjingle_root%': '<(DEPTH)/third_party/libjingle',
     # TODO(ronghuawu): For now, disable the Chrome plugins, which causes a

@@ -24,3 +24,107 @@
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+#include "talk/app/webrtc/dtlsidentitystore.h"
+
+#include "talk/app/webrtc/webrtcsessiondescriptionfactory.h"
+#include "webrtc/base/gunit.h"
+#include "webrtc/base/logging.h"
+#include "webrtc/base/ssladapter.h"
+
+using webrtc::DtlsIdentityStore;
+using webrtc::WebRtcSessionDescriptionFactory;
+
+static const int kTimeoutMs = 10000;
+
+class MockDtlsIdentityRequestObserver :
+    public webrtc::DTLSIdentityRequestObserver {
+ public:
+  MockDtlsIdentityRequestObserver()
+      : call_back_called_(false), last_request_success_(false) {}
+  void OnFailure(int error) override {
+    EXPECT_FALSE(call_back_called_);
+    call_back_called_ = true;
+    last_request_success_ = false;
+  }
+  void OnSuccess(const std::string& der_cert,
+                 const std::string& der_private_key) {
+    LOG(LS_WARNING) << "The string version of OnSuccess is called unexpectedly";
+    EXPECT_TRUE(false);
+  }
+  void OnSuccessWithIdentityObj(
+      rtc::scoped_ptr<rtc::SSLIdentity> identity) override {
+    EXPECT_FALSE(call_back_called_);
+    call_back_called_ = true;
+    last_request_success_ = true;
+  }
+
+  void Reset() {
+    call_back_called_ = false;
+    last_request_success_ = false;
+  }
+
+  bool LastRequestSucceeded() const {
+    return call_back_called_ && last_request_success_;
+  }
+
+  bool call_back_called() const {
+    return call_back_called_;
+  }
+
+ private:
+  bool call_back_called_;
+  bool last_request_success_;
+};
+
+class DtlsIdentityStoreTest : public testing::Test {
+ protected:
+  DtlsIdentityStoreTest()
+      : worker_thread_(new rtc::Thread()),
+        store_(new DtlsIdentityStore(rtc::Thread::Current(),
+                                     worker_thread_.get())),
+        observer_(
+            new rtc::RefCountedObject<MockDtlsIdentityRequestObserver>()) {
+    CHECK(worker_thread_->Start());
+    store_->Initialize();
+  }
+  ~DtlsIdentityStoreTest() {}
+
+  static void SetUpTestCase() {
+    rtc::InitializeSSL();
+  }
+  static void TearDownTestCase() {
+    rtc::CleanupSSL();
+  }
+
+  rtc::scoped_ptr<rtc::Thread> worker_thread_;
+  rtc::scoped_ptr<DtlsIdentityStore> store_;
+  rtc::scoped_refptr<MockDtlsIdentityRequestObserver> observer_;
+};
+
+TEST_F(DtlsIdentityStoreTest, RequestIdentitySuccess) {
+  EXPECT_TRUE_WAIT(store_->HasFreeIdentityForTesting(), kTimeoutMs);
+
+  store_->RequestIdentity(observer_.get());
+  EXPECT_TRUE_WAIT(observer_->LastRequestSucceeded(), kTimeoutMs);
+
+  EXPECT_TRUE_WAIT(store_->HasFreeIdentityForTesting(), kTimeoutMs);
+
+  observer_->Reset();
+
+  // Verifies that the callback is async when a free identity is ready.
+  store_->RequestIdentity(observer_.get());
+  EXPECT_FALSE(observer_->call_back_called());
+  EXPECT_TRUE_WAIT(observer_->LastRequestSucceeded(), kTimeoutMs);
+}
+
+TEST_F(DtlsIdentityStoreTest, DeleteStoreEarlyNoCrash) {
+  EXPECT_FALSE(store_->HasFreeIdentityForTesting());
+
+  store_->RequestIdentity(observer_.get());
+  store_.reset();
+
+  worker_thread_->Stop();
+  EXPECT_FALSE(observer_->call_back_called());
+}
+

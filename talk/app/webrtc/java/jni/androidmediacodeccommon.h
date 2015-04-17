@@ -30,6 +30,7 @@
 #define TALK_APP_WEBRTC_JAVA_JNI_ANDROIDMEDIACODECCOMMON_H_
 
 #include <android/log.h>
+#include "talk/app/webrtc/java/jni/classreferenceholder.h"
 #include "webrtc/base/thread.h"
 #include "webrtc/system_wrappers/interface/tick_util.h"
 
@@ -37,7 +38,7 @@ namespace webrtc_jni {
 
 // Uncomment this define to enable verbose logging for every encoded/decoded
 // video frame.
-// #define TRACK_BUFFER_TIMING
+//#define TRACK_BUFFER_TIMING
 
 #define TAG "MediaCodecVideo"
 #ifdef TRACK_BUFFER_TIMING
@@ -64,9 +65,13 @@ enum COLOR_FORMATTYPE {
 // Arbitrary interval to poll the codec for new outputs.
 enum { kMediaCodecPollMs = 10 };
 // Media codec maximum output buffer ready timeout.
-enum { kMediaCodecTimeoutMs = 500 };
+enum { kMediaCodecTimeoutMs = 1000 };
 // Interval to print codec statistics (bitrate, fps, encoding/decoding time).
 enum { kMediaCodecStatisticsIntervalMs = 3000 };
+// Maximum amount of pending frames for VP8 decoder.
+enum { kMaxPendingFramesVp8 = 1 };
+// Maximum amount of pending frames for H.264 decoder.
+enum { kMaxPendingFramesH264 = 30 };
 
 static inline int64_t GetCurrentTimeMs() {
   return webrtc::TickTime::Now().Ticks() / 1000000LL;
@@ -76,6 +81,15 @@ static inline void AllowBlockingCalls() {
   rtc::Thread* current_thread = rtc::Thread::Current();
   if (current_thread != NULL)
     current_thread->SetAllowBlockingCalls(true);
+}
+
+// Return the (singleton) Java Enum object corresponding to |index|;
+// |state_class_fragment| is something like "MediaSource$State".
+static inline jobject JavaEnumFromIndex(
+    JNIEnv* jni, const std::string& state_class_fragment, int index) {
+  const std::string state_class = "org/webrtc/" + state_class_fragment;
+  return JavaEnumFromIndex(jni, FindClass(jni, state_class.c_str()),
+                           state_class, index);
 }
 
 }  // namespace webrtc_jni

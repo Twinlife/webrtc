@@ -32,7 +32,6 @@ static_library("system_wrappers") {
     "interface/ref_count.h",
     "interface/rtp_to_ntp.h",
     "interface/rw_lock_wrapper.h",
-    "interface/scoped_ptr.h",
     "interface/scoped_refptr.h",
     "interface/scoped_vector.h",
     "interface/sleep.h",
@@ -101,12 +100,6 @@ static_library("system_wrappers") {
 
   configs += [ "..:common_config" ]
 
-  if (is_clang) {
-    # Suppress warnings from Chrome's Clang plugins.
-    # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-    configs -= [ "//build/config/clang:find_bad_constructs" ]
-  }
-
   public_configs = [
     "..:common_inherited_config",
   ]
@@ -119,11 +112,7 @@ static_library("system_wrappers") {
 
   defines = []
   libs = []
-  deps = []
-
-  if (rtc_use_direct_trace) {
-    defines += [ "WEBRTC_DIRECT_TRACE" ]
-  }
+  deps = [ "..:webrtc_common" ]
 
   if (is_android) {
     sources += [
@@ -198,12 +187,6 @@ source_set("field_trial_default") {
   configs += [ "..:common_config" ]
   public_configs = [ "..:common_inherited_config" ]
 
-  if (is_clang) {
-    # Suppress warnings from Chrome's Clang plugins.
-    # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-    configs -= [ "//build/config/clang:find_bad_constructs" ]
-  }
-
   deps = [
     ":system_wrappers",
   ]
@@ -217,12 +200,6 @@ source_set("metrics_default") {
   configs += [ "..:common_config" ]
   public_configs = [ "..:common_inherited_config" ]
 
-  if (is_clang) {
-    # Suppress warnings from Chrome's Clang plugins.
-    # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-    configs -= [ "//build/config/clang:find_bad_constructs" ]
-  }
-
   deps = [
     ":system_wrappers",
   ]
@@ -232,12 +209,6 @@ source_set("system_wrappers_default") {
 
   configs += [ "..:common_config" ]
   public_configs = [ "..:common_inherited_config" ]
-
-  if (is_clang) {
-    # Suppress warnings from Chrome's Clang plugins.
-    # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-    configs -= [ "//build/config/clang:find_bad_constructs" ]
-  }
 
   deps = [
     ":field_trial_default",

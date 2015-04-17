@@ -20,6 +20,9 @@ namespace webrtc {
 namespace testing {
 namespace bwe {
 
+const int kMinBitrateKbps = 150;
+const int kMaxBitrateKbps = 2000;
+
 class BweSender : public Module {
  public:
   BweSender() {}
@@ -27,6 +30,7 @@ class BweSender : public Module {
 
   virtual int GetFeedbackIntervalMs() const = 0;
   virtual void GiveFeedback(const FeedbackPacket& feedback) = 0;
+  virtual void OnPacketsSent(const Packets& packets) = 0;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(BweSender);
@@ -51,6 +55,8 @@ enum BandwidthEstimatorType {
   kRembEstimator,
   kFullSendSideEstimator
 };
+
+int64_t GetAbsSendTimeInMs(uint32_t abs_send_time);
 
 BweSender* CreateBweSender(BandwidthEstimatorType estimator,
                            int kbps,

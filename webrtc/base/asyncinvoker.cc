@@ -10,6 +10,8 @@
 
 #include "webrtc/base/asyncinvoker.h"
 
+#include "webrtc/base/logging.h"
+
 namespace rtc {
 
 AsyncInvoker::AsyncInvoker() : destroying_(false) {}
@@ -69,6 +71,10 @@ NotifyingAsyncClosureBase::NotifyingAsyncClosureBase(AsyncInvoker* invoker,
       this, &NotifyingAsyncClosureBase::CancelCallback);
   invoker->SignalInvokerDestroyed.connect(
       this, &NotifyingAsyncClosureBase::CancelCallback);
+}
+
+NotifyingAsyncClosureBase::~NotifyingAsyncClosureBase() {
+  disconnect_all();
 }
 
 void NotifyingAsyncClosureBase::TriggerCallback() {

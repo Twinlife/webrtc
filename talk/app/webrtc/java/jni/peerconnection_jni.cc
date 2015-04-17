@@ -155,7 +155,7 @@ extern "C" void JNIEXPORT JNICALL JNI_OnUnLoad(JavaVM *jvm, void *reserved) {
 
 // Return the (singleton) Java Enum object corresponding to |index|;
 // |state_class_fragment| is something like "MediaSource$State".
-jobject JavaEnumFromIndex(
+static jobject JavaEnumFromIndex(
     JNIEnv* jni, const std::string& state_class_fragment, int index) {
   const std::string state_class = "org/webrtc/" + state_class_fragment;
   return JavaEnumFromIndex(jni, FindClass(jni, state_class.c_str()),
@@ -216,7 +216,7 @@ class MediaStreamObserver : public ObserverInterface {
    stream_->UnregisterObserver(this);
   }
 
-  virtual void OnChanged() OVERRIDE {
+  virtual void OnChanged() override {
     LOG(LS_ERROR) << "OnChanged() stream_=" << stream_;
     AudioTrackVector audio_tracks = stream_->GetAudioTracks();
     for (size_t i = 0; i < audio_tracks.size(); ++i) {
@@ -370,7 +370,7 @@ class PCOJava : public PeerConnectionObserver {
 
   virtual ~PCOJava() {}
 
-  virtual void OnIceCandidate(const IceCandidateInterface* candidate) OVERRIDE {
+  void OnIceCandidate(const IceCandidateInterface* candidate) override {
     ScopedLocalRefFrame local_ref_frame(jni());
     std::string sdp;
     CHECK(candidate->ToString(&sdp)) << "got so far: " << sdp;
@@ -388,8 +388,8 @@ class PCOJava : public PeerConnectionObserver {
     CHECK_EXCEPTION(jni()) << "error during CallVoidMethod";
   }
 
-  virtual void OnSignalingChange(
-      PeerConnectionInterface::SignalingState new_state) OVERRIDE {
+  void OnSignalingChange(
+      PeerConnectionInterface::SignalingState new_state) override {
     ScopedLocalRefFrame local_ref_frame(jni());
     jmethodID m = GetMethodID(
         jni(), *j_observer_class_, "onSignalingChange",
@@ -400,8 +400,8 @@ class PCOJava : public PeerConnectionObserver {
     CHECK_EXCEPTION(jni()) << "error during CallVoidMethod";
   }
 
-  virtual void OnIceConnectionChange(
-      PeerConnectionInterface::IceConnectionState new_state) OVERRIDE {
+  void OnIceConnectionChange(
+      PeerConnectionInterface::IceConnectionState new_state) override {
     ScopedLocalRefFrame local_ref_frame(jni());
     jmethodID m = GetMethodID(
         jni(), *j_observer_class_, "onIceConnectionChange",
@@ -412,8 +412,8 @@ class PCOJava : public PeerConnectionObserver {
     CHECK_EXCEPTION(jni()) << "error during CallVoidMethod";
   }
 
-  virtual void OnIceGatheringChange(
-      PeerConnectionInterface::IceGatheringState new_state) OVERRIDE {
+  void OnIceGatheringChange(
+      PeerConnectionInterface::IceGatheringState new_state) override {
     ScopedLocalRefFrame local_ref_frame(jni());
     jmethodID m = GetMethodID(
         jni(), *j_observer_class_, "onIceGatheringChange",
@@ -424,7 +424,7 @@ class PCOJava : public PeerConnectionObserver {
     CHECK_EXCEPTION(jni()) << "error during CallVoidMethod";
   }
 
-  virtual void OnAddStream(MediaStreamInterface* stream) OVERRIDE {
+  void OnAddStream(MediaStreamInterface* stream) override {
     ScopedLocalRefFrame local_ref_frame(jni());
     jobject j_stream = jni()->NewObject(
         *j_media_stream_class_, j_media_stream_ctor_, (jlong)stream);
@@ -482,7 +482,7 @@ class PCOJava : public PeerConnectionObserver {
     CHECK_EXCEPTION(jni()) << "error during CallVoidMethod";
   }
 
-  virtual void OnRemoveStream(MediaStreamInterface* stream) OVERRIDE {
+  void OnRemoveStream(MediaStreamInterface* stream) override {
     ScopedLocalRefFrame local_ref_frame(jni());
     NativeToJavaStreamsMap::iterator it = streams_.find(stream);
     CHECK(it != streams_.end()) << "unexpected stream: " << std::hex << stream;
@@ -502,7 +502,7 @@ class PCOJava : public PeerConnectionObserver {
     CHECK_EXCEPTION(jni()) << "error during CallVoidMethod";
   }
 
-  virtual void OnDataChannel(DataChannelInterface* channel) OVERRIDE {
+  void OnDataChannel(DataChannelInterface* channel) override {
     ScopedLocalRefFrame local_ref_frame(jni());
     jobject j_channel = jni()->NewObject(
         *j_data_channel_class_, j_data_channel_ctor_, (jlong)channel);
@@ -522,7 +522,7 @@ class PCOJava : public PeerConnectionObserver {
     CHECK_EXCEPTION(jni()) << "error during CallVoidMethod";
   }
 
-  virtual void OnRenegotiationNeeded() OVERRIDE {
+  void OnRenegotiationNeeded() override {
     ScopedLocalRefFrame local_ref_frame(jni());
     jmethodID m =
         GetMethodID(jni(), *j_observer_class_, "onRenegotiationNeeded", "()V");
@@ -572,13 +572,9 @@ class ConstraintsWrapper : public MediaConstraintsInterface {
   virtual ~ConstraintsWrapper() {}
 
   // MediaConstraintsInterface.
-  virtual const Constraints& GetMandatory() const OVERRIDE {
-    return mandatory_;
-  }
+  const Constraints& GetMandatory() const override { return mandatory_; }
 
-  virtual const Constraints& GetOptional() const OVERRIDE {
-    return optional_;
-  }
+  const Constraints& GetOptional() const override { return optional_; }
 
  private:
   // Helper for translating a List<Pair<String, String>> to a Constraints.
@@ -658,7 +654,7 @@ class SdpObserverWrapper : public T {
 
   virtual ~SdpObserverWrapper() {}
 
-  // Can't mark OVERRIDE because of templating.
+  // Can't mark override because of templating.
   virtual void OnSuccess() {
     ScopedLocalRefFrame local_ref_frame(jni());
     jmethodID m = GetMethodID(jni(), *j_observer_class_, "onSetSuccess", "()V");
@@ -666,7 +662,7 @@ class SdpObserverWrapper : public T {
     CHECK_EXCEPTION(jni()) << "error during CallVoidMethod";
   }
 
-  // Can't mark OVERRIDE because of templating.
+  // Can't mark override because of templating.
   virtual void OnSuccess(SessionDescriptionInterface* desc) {
     ScopedLocalRefFrame local_ref_frame(jni());
     jmethodID m = GetMethodID(
@@ -705,7 +701,7 @@ class CreateSdpObserverWrapper
                            ConstraintsWrapper* constraints)
       : SdpObserverWrapper(jni, j_observer, constraints) {}
 
-  virtual void OnFailure(const std::string& error) OVERRIDE {
+  void OnFailure(const std::string& error) override {
     ScopedLocalRefFrame local_ref_frame(jni());
     SdpObserverWrapper::OnFailure(std::string("Create"), error);
   }
@@ -718,7 +714,7 @@ class SetSdpObserverWrapper
                         ConstraintsWrapper* constraints)
       : SdpObserverWrapper(jni, j_observer, constraints) {}
 
-  virtual void OnFailure(const std::string& error) OVERRIDE {
+  void OnFailure(const std::string& error) override {
     ScopedLocalRefFrame local_ref_frame(jni());
     SdpObserverWrapper::OnFailure(std::string("Set"), error);
   }
@@ -742,17 +738,16 @@ class DataChannelObserverWrapper : public DataChannelObserver {
 
   virtual ~DataChannelObserverWrapper() {}
 
-  virtual void OnStateChange() OVERRIDE {
+  void OnStateChange() override {
     ScopedLocalRefFrame local_ref_frame(jni());
     jni()->CallVoidMethod(*j_observer_global_, j_on_state_change_mid_);
     CHECK_EXCEPTION(jni()) << "error during CallVoidMethod";
   }
 
-  virtual void OnMessage(const DataBuffer& buffer) OVERRIDE {
+  void OnMessage(const DataBuffer& buffer) override {
     ScopedLocalRefFrame local_ref_frame(jni());
-    jobject byte_buffer =
-        jni()->NewDirectByteBuffer(const_cast<char*>(buffer.data.data()),
-                                   buffer.data.length());
+    jobject byte_buffer = jni()->NewDirectByteBuffer(
+        const_cast<char*>(buffer.data.data()), buffer.data.size());
     jobject j_buffer = jni()->NewObject(*j_buffer_class_, j_buffer_ctor_,
                                         byte_buffer, buffer.binary);
     jni()->CallVoidMethod(*j_observer_global_, j_on_message_mid_, j_buffer);
@@ -793,7 +788,7 @@ class StatsObserverWrapper : public StatsObserver {
 
   virtual ~StatsObserverWrapper() {}
 
-  virtual void OnComplete(const StatsReports& reports) OVERRIDE {
+  void OnComplete(const StatsReports& reports) override {
     ScopedLocalRefFrame local_ref_frame(jni());
     jobjectArray j_reports = ReportsToJava(jni(), reports);
     jmethodID m = GetMethodID(jni(), *j_observer_class_, "onComplete",
@@ -810,7 +805,7 @@ class StatsObserverWrapper : public StatsObserver {
     int i = 0;
     for (const auto* report : reports) {
       ScopedLocalRefFrame local_ref_frame(jni);
-      jstring j_id = JavaStringFromStdString(jni, report->id().ToString());
+      jstring j_id = JavaStringFromStdString(jni, report->id()->ToString());
       jstring j_type = JavaStringFromStdString(jni, report->TypeToString());
       jobjectArray j_values = ValuesToJava(jni, report->values());
       jobject j_report = jni->NewObject(*j_stats_report_class_,
@@ -827,16 +822,16 @@ class StatsObserverWrapper : public StatsObserver {
   jobjectArray ValuesToJava(JNIEnv* jni, const StatsReport::Values& values) {
     jobjectArray j_values = jni->NewObjectArray(
         values.size(), *j_value_class_, NULL);
-    for (int i = 0; i < values.size(); ++i) {
+    int i = 0;
+    for (const auto& it : values) {
       ScopedLocalRefFrame local_ref_frame(jni);
-      const auto& value = values[i];
       // Should we use the '.name' enum value here instead of converting the
       // name to a string?
-      jstring j_name = JavaStringFromStdString(jni, value->display_name());
-      jstring j_value = JavaStringFromStdString(jni, value->value);
+      jstring j_name = JavaStringFromStdString(jni, it.second->display_name());
+      jstring j_value = JavaStringFromStdString(jni, it.second->ToString());
       jobject j_element_value =
           jni->NewObject(*j_value_class_, j_value_ctor_, j_name, j_value);
-      jni->SetObjectArrayElement(j_values, i, j_element_value);
+      jni->SetObjectArrayElement(j_values, i++, j_element_value);
     }
     return j_values;
   }
@@ -865,21 +860,26 @@ class VideoRendererWrapper : public VideoRendererInterface {
 
   virtual ~VideoRendererWrapper() {}
 
-  virtual void SetSize(int width, int height) OVERRIDE {
+  // This wraps VideoRenderer which still has SetSize.
+  void RenderFrame(const cricket::VideoFrame* video_frame) override {
     ScopedLocalRefFrame local_ref_frame(AttachCurrentThreadIfNeeded());
-    const bool kNotReserved = false;  // What does this param mean??
-    renderer_->SetSize(width, height, kNotReserved);
-  }
-
-  virtual void RenderFrame(const cricket::VideoFrame* frame) OVERRIDE {
-    ScopedLocalRefFrame local_ref_frame(AttachCurrentThreadIfNeeded());
+    const cricket::VideoFrame* frame =
+      video_frame->GetCopyWithRotationApplied();
+    if (width_ != frame->GetWidth() || height_ != frame->GetHeight()) {
+      width_ = frame->GetWidth();
+      height_ = frame->GetHeight();
+      renderer_->SetSize(width_, height_, 0);
+    }
     renderer_->RenderFrame(frame);
   }
 
+  // TODO(guoweis): Remove this once chrome code base is updated.
+  bool CanApplyRotation() override { return true; }
+
  private:
   explicit VideoRendererWrapper(cricket::VideoRenderer* renderer)
-      : renderer_(renderer) {}
-
+    : renderer_(renderer), width_(0), height_(0) {}
+  int width_, height_;
   scoped_ptr<cricket::VideoRenderer> renderer_;
 };
 
@@ -889,32 +889,36 @@ class JavaVideoRendererWrapper : public VideoRendererInterface {
  public:
   JavaVideoRendererWrapper(JNIEnv* jni, jobject j_callbacks)
       : j_callbacks_(jni, j_callbacks),
-        j_set_size_id_(GetMethodID(
-            jni, GetObjectClass(jni, j_callbacks), "setSize", "(II)V")),
         j_render_frame_id_(GetMethodID(
             jni, GetObjectClass(jni, j_callbacks), "renderFrame",
             "(Lorg/webrtc/VideoRenderer$I420Frame;)V")),
+        j_can_apply_rotation_id_(GetMethodID(
+            jni, GetObjectClass(jni, j_callbacks),
+            "canApplyRotation", "()Z")),
         j_frame_class_(jni,
                        FindClass(jni, "org/webrtc/VideoRenderer$I420Frame")),
         j_i420_frame_ctor_id_(GetMethodID(
-            jni, *j_frame_class_, "<init>", "(II[I[Ljava/nio/ByteBuffer;)V")),
+            jni, *j_frame_class_, "<init>", "(III[I[Ljava/nio/ByteBuffer;)V")),
         j_texture_frame_ctor_id_(GetMethodID(
             jni, *j_frame_class_, "<init>",
-            "(IILjava/lang/Object;I)V")),
-        j_byte_buffer_class_(jni, FindClass(jni, "java/nio/ByteBuffer")) {
+            "(IIILjava/lang/Object;I)V")),
+        j_byte_buffer_class_(jni, FindClass(jni, "java/nio/ByteBuffer")),
+        can_apply_rotation_set_(false),
+        can_apply_rotation_(false) {
     CHECK_EXCEPTION(jni);
   }
 
   virtual ~JavaVideoRendererWrapper() {}
 
-  virtual void SetSize(int width, int height) OVERRIDE {
+  void RenderFrame(const cricket::VideoFrame* video_frame) override {
     ScopedLocalRefFrame local_ref_frame(jni());
-    jni()->CallVoidMethod(*j_callbacks_, j_set_size_id_, width, height);
-    CHECK_EXCEPTION(jni());
-  }
 
-  virtual void RenderFrame(const cricket::VideoFrame* frame) OVERRIDE {
-    ScopedLocalRefFrame local_ref_frame(jni());
+    // Calling CanApplyRotation here to ensure can_apply_rotation_ is set.
+    CanApplyRotation();
+
+    const cricket::VideoFrame* frame =
+        can_apply_rotation_ ? video_frame
+                            : video_frame->GetCopyWithRotationApplied();
     if (frame->GetNativeHandle() != NULL) {
       jobject j_frame = CricketToJavaTextureFrame(frame);
       jni()->CallVoidMethod(*j_callbacks_, j_render_frame_id_, j_frame);
@@ -924,6 +928,21 @@ class JavaVideoRendererWrapper : public VideoRendererInterface {
       jni()->CallVoidMethod(*j_callbacks_, j_render_frame_id_, j_frame);
       CHECK_EXCEPTION(jni());
     }
+  }
+
+  // TODO(guoweis): Report that rotation is supported as RenderFrame calls
+  // GetCopyWithRotationApplied.
+  virtual bool CanApplyRotation() override {
+    if (can_apply_rotation_set_) {
+      return can_apply_rotation_;
+    }
+    ScopedLocalRefFrame local_ref_frame(jni());
+    jboolean ret =
+        jni()->CallBooleanMethod(*j_callbacks_, j_can_apply_rotation_id_);
+    CHECK_EXCEPTION(jni());
+    can_apply_rotation_ = ret;
+    can_apply_rotation_set_ = true;
+    return ret;
   }
 
  private:
@@ -948,7 +967,9 @@ class JavaVideoRendererWrapper : public VideoRendererInterface {
     jni()->SetObjectArrayElement(planes, 2, v_buffer);
     return jni()->NewObject(
         *j_frame_class_, j_i420_frame_ctor_id_,
-        frame->GetWidth(), frame->GetHeight(), strides, planes);
+        frame->GetWidth(), frame->GetHeight(),
+        static_cast<int>(frame->GetVideoRotation()),
+        strides, planes);
   }
 
   // Return a VideoRenderer.I420Frame referring texture object in |frame|.
@@ -959,7 +980,9 @@ class JavaVideoRendererWrapper : public VideoRendererInterface {
     int texture_id = handle->GetTextureId();
     return jni()->NewObject(
         *j_frame_class_, j_texture_frame_ctor_id_,
-        frame->GetWidth(), frame->GetHeight(), texture_object, texture_id);
+        frame->GetWidth(), frame->GetHeight(),
+        static_cast<int>(frame->GetVideoRotation()),
+        texture_object, texture_id);
   }
 
   JNIEnv* jni() {
@@ -967,12 +990,14 @@ class JavaVideoRendererWrapper : public VideoRendererInterface {
   }
 
   ScopedGlobalRef<jobject> j_callbacks_;
-  jmethodID j_set_size_id_;
   jmethodID j_render_frame_id_;
+  jmethodID j_can_apply_rotation_id_;
   ScopedGlobalRef<jclass> j_frame_class_;
   jmethodID j_i420_frame_ctor_id_;
   jmethodID j_texture_frame_ctor_id_;
   ScopedGlobalRef<jclass> j_byte_buffer_class_;
+  bool can_apply_rotation_set_;
+  bool can_apply_rotation_;
 };
 
 
@@ -1133,7 +1158,7 @@ JOW(jboolean, PeerConnectionFactory_initializeAndroidGlobals)(
       failure |= AndroidVideoCapturerJni::SetAndroidObjects(jni, context);
     }
     if (initialize_audio)
-      failure |= webrtc::VoiceEngine::SetAndroidObjects(GetJVM(), jni, context);
+      failure |= webrtc::VoiceEngine::SetAndroidObjects(GetJVM(), context);
     factory_static_initialized = true;
   }
   if (initialize_video) {
@@ -1550,12 +1575,12 @@ JOW(jobject, VideoCapturer_nativeCreateVideoCapturer)(
                                             j_videocapturer_ctor);
   CHECK_EXCEPTION(jni) << "error during NewObject";
 
-  rtc::scoped_ptr<AndroidVideoCapturerJni> delegate(
-      new AndroidVideoCapturerJni(jni, j_video_capturer));
-  if (!delegate->Init(j_device_name))
+  rtc::scoped_refptr<AndroidVideoCapturerJni> delegate =
+      AndroidVideoCapturerJni::Create(jni, j_video_capturer, j_device_name);
+  if (!delegate.get())
     return nullptr;
   rtc::scoped_ptr<webrtc::AndroidVideoCapturer> capturer(
-      new webrtc::AndroidVideoCapturer(delegate.Pass()));
+      new webrtc::AndroidVideoCapturer(delegate));
 
 #else
   std::string device_name = JavaToStdString(jni, j_device_name);

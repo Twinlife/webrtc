@@ -114,6 +114,10 @@ static const uint8 kIdentityDigest[] = {0x4A, 0xAD, 0xB9, 0xB1,
                                         0x3E, 0x5D, 0x49, 0x6B,
                                         0x19, 0xE5, 0x7C, 0xAB};
 
+static const char kDtlsSctp[] = "DTLS/SCTP";
+static const char kUdpDtlsSctp[] = "UDP/DTLS/SCTP";
+static const char kTcpDtlsSctp[] = "TCP/DTLS/SCTP";
+
 struct CodecParams {
   int max_ptime;
   int ptime;
@@ -284,10 +288,10 @@ static const char kSdpSctpDataChannelString[] =
     "a=mid:data_content_name\r\n"
     "a=sctpmap:5000 webrtc-datachannel 1024\r\n";
 
-// draft-ietf-mmusic-sctp-sdp-07
+// draft-ietf-mmusic-sctp-sdp-12
 static const char kSdpSctpDataChannelStringWithSctpPort[] =
     "m=application 9 DTLS/SCTP webrtc-datachannel\r\n"
-    "a=fmtp:webrtc-datachannel max-message-size=100000\r\n"
+    "a=max-message-size=100000\r\n"
     "a=sctp-port 5000\r\n"
     "c=IN IP4 0.0.0.0\r\n"
     "a=ice-ufrag:ufrag_data\r\n"
@@ -740,8 +744,21 @@ class WebRtcSdpTest : public testing::Test {
       EXPECT_EQ(c1.key_params, c2.key_params);
       EXPECT_EQ(c1.session_params, c2.session_params);
     }
+
     // protocol
-    EXPECT_EQ(cd1->protocol(), cd2->protocol());
+    // Use an equivalence class here, for old and new versions of the
+    // protocol description.
+    if (cd1->protocol() == cricket::kMediaProtocolDtlsSctp
+        || cd1->protocol() == cricket::kMediaProtocolUdpDtlsSctp
+        || cd1->protocol() == cricket::kMediaProtocolTcpDtlsSctp) {
+      const bool cd2_is_also_dtls_sctp =
+        cd2->protocol() == cricket::kMediaProtocolDtlsSctp
+        || cd2->protocol() == cricket::kMediaProtocolUdpDtlsSctp
+        || cd2->protocol() == cricket::kMediaProtocolTcpDtlsSctp;
+      EXPECT_TRUE(cd2_is_also_dtls_sctp);
+    } else {
+      EXPECT_EQ(cd1->protocol(), cd2->protocol());
+    }
 
     // codecs
     EXPECT_EQ(cd1->codecs(), cd2->codecs());
@@ -2119,6 +2136,19 @@ TEST_F(WebRtcSdpTest, DeserializeSdpWithSctpDataChannels) {
   sdp_with_data.append(kSdpSctpDataChannelString);
   JsepSessionDescription jdesc_output(kDummyString);
 
+  // Verify with DTLS/SCTP (already in kSdpSctpDataChannelString).
+  EXPECT_TRUE(SdpDeserialize(sdp_with_data, &jdesc_output));
+  EXPECT_TRUE(CompareSessionDescription(jdesc, jdesc_output));
+
+  // Verify with UDP/DTLS/SCTP.
+  sdp_with_data.replace(sdp_with_data.find(kDtlsSctp),
+                        strlen(kDtlsSctp), kUdpDtlsSctp);
+  EXPECT_TRUE(SdpDeserialize(sdp_with_data, &jdesc_output));
+  EXPECT_TRUE(CompareSessionDescription(jdesc, jdesc_output));
+
+  // Verify with TCP/DTLS/SCTP.
+  sdp_with_data.replace(sdp_with_data.find(kUdpDtlsSctp),
+                        strlen(kUdpDtlsSctp), kTcpDtlsSctp);
   EXPECT_TRUE(SdpDeserialize(sdp_with_data, &jdesc_output));
   EXPECT_TRUE(CompareSessionDescription(jdesc, jdesc_output));
 }
@@ -2132,6 +2162,19 @@ TEST_F(WebRtcSdpTest, DeserializeSdpWithSctpDataChannelsWithSctpPort) {
   sdp_with_data.append(kSdpSctpDataChannelStringWithSctpPort);
   JsepSessionDescription jdesc_output(kDummyString);
 
+  // Verify with DTLS/SCTP (already in kSdpSctpDataChannelStringWithSctpPort).
+  EXPECT_TRUE(SdpDeserialize(sdp_with_data, &jdesc_output));
+  EXPECT_TRUE(CompareSessionDescription(jdesc, jdesc_output));
+
+  // Verify with UDP/DTLS/SCTP.
+  sdp_with_data.replace(sdp_with_data.find(kDtlsSctp),
+                        strlen(kDtlsSctp), kUdpDtlsSctp);
+  EXPECT_TRUE(SdpDeserialize(sdp_with_data, &jdesc_output));
+  EXPECT_TRUE(CompareSessionDescription(jdesc, jdesc_output));
+
+  // Verify with TCP/DTLS/SCTP.
+  sdp_with_data.replace(sdp_with_data.find(kUdpDtlsSctp),
+                        strlen(kUdpDtlsSctp), kTcpDtlsSctp);
   EXPECT_TRUE(SdpDeserialize(sdp_with_data, &jdesc_output));
   EXPECT_TRUE(CompareSessionDescription(jdesc, jdesc_output));
 }
@@ -2182,8 +2225,8 @@ TEST_F(WebRtcSdpTest, DeserializeSdpWithSctpDataChannelAndNewPort) {
   DataContentDescription* dcdesc = static_cast<DataContentDescription*>(
       mutant->GetContentDescriptionByName(kDataContentName));
   std::vector<cricket::DataCodec> codecs(dcdesc->codecs());
-  EXPECT_EQ(codecs.size(), 1UL);
-  EXPECT_EQ(codecs[0].id, cricket::kGoogleSctpDataCodecId);
+  EXPECT_EQ(1U, codecs.size());
+  EXPECT_EQ(cricket::kGoogleSctpDataCodecId, codecs[0].id);
   codecs[0].SetParam(cricket::kCodecParamPort, kUnusualSctpPort);
   dcdesc->set_codecs(codecs);
 

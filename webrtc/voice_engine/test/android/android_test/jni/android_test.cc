@@ -139,10 +139,9 @@ class my_transportation : public Transport
       netw(network) {
   }
 
-  virtual int SendPacket(int channel, const void *data, size_t len) OVERRIDE;
-  virtual int SendRTCPPacket(int channel,
-                             const void *data,
-                             size_t len) OVERRIDE;
+  int SendPacket(int channel, const void* data, size_t len) override;
+  int SendRTCPPacket(int channel, const void* data, size_t len) override;
+
  private:
   VoENetwork * netw;
 };
@@ -178,26 +177,18 @@ private:
     static bool Run(void* ptr);
     bool Process();
 private:
-    ThreadWrapper* _thread;
+    rtc::scoped_ptr<ThreadWrapper> _thread;
 };
 
 ThreadTest::~ThreadTest()
 {
     if (_thread)
-    {
-        if (_thread->Stop())
-        {
-            delete _thread;
-            _thread = NULL;
-        }
-    }
+        _thread->Stop();
 }
 
-ThreadTest::ThreadTest() :
-    _thread(NULL)
+ThreadTest::ThreadTest()
 {
-    _thread = ThreadWrapper::CreateThread(Run, this, kNormalPriority,
-                                          "ThreadTest thread");
+    _thread = ThreadWrapper::CreateThread(Run, this, "ThreadTest thread");
 }
 
 bool ThreadTest::Run(void* ptr)
@@ -282,8 +273,7 @@ int ThreadTest::RunTest()
 {
     if (_thread)
     {
-        unsigned int id;
-        _thread->Start(id);
+        _thread->Start();
     }
     return 0;
 }

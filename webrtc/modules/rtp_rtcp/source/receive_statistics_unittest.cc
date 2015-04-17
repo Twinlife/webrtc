@@ -10,9 +10,9 @@
 
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/modules/rtp_rtcp/interface/receive_statistics.h"
 #include "webrtc/system_wrappers/interface/clock.h"
-#include "webrtc/system_wrappers/interface/scoped_ptr.h"
 
 namespace webrtc {
 
@@ -36,7 +36,7 @@ class ReceiveStatisticsTest : public ::testing::Test {
 
  protected:
   SimulatedClock clock_;
-  scoped_ptr<ReceiveStatistics> receive_statistics_;
+  rtc::scoped_ptr<ReceiveStatistics> receive_statistics_;
   RTPHeader header1_;
   RTPHeader header2_;
 };
@@ -169,7 +169,7 @@ TEST_F(ReceiveStatisticsTest, RtcpCallbacks) {
       ++num_calls_;
     }
 
-    virtual void CNameChanged(const char* cname, uint32_t ssrc) OVERRIDE {}
+    void CNameChanged(const char* cname, uint32_t ssrc) override {}
 
     uint32_t num_calls_;
     uint32_t ssrc_;

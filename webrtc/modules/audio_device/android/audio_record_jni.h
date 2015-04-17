@@ -14,6 +14,7 @@
 #include <jni.h>
 
 #include "webrtc/base/thread_checker.h"
+#include "webrtc/modules/audio_device/android/audio_manager.h"
 #include "webrtc/modules/audio_device/include/audio_device_defines.h"
 #include "webrtc/modules/audio_device/audio_device_generic.h"
 #include "webrtc/modules/utility/interface/helpers_android.h"
@@ -41,23 +42,24 @@ class PlayoutDelayProvider;
 // CHECK that the calling thread is attached to a Java VM.
 //
 // All methods use AttachThreadScoped to attach to a Java VM if needed and then
-// detach when method goes out of scope. We do so beacuse this class does not
+// detach when method goes out of scope. We do so because this class does not
 // own the thread is is created and called on and other objects on the same
 // thread might put us in a detached state at any time.
 class AudioRecordJni {
  public:
   // Use the invocation API to allow the native application to use the JNI
   // interface pointer to access VM features.
-  // |jvm| denotes the Java VM, |env| is a pointer to the JNI interface pointer
-  // and |context| corresponds to android.content.Context in Java.
+  // |jvm| denotes the Java VM and |context| corresponds to
+  // android.content.Context in Java.
   // This method also sets a global jclass object, |g_audio_record_class| for
   // the "org/webrtc/voiceengine/WebRtcAudioRecord"-class.
-  static void SetAndroidAudioDeviceObjects(void* jvm, void* env, void* context);
+  static void SetAndroidAudioDeviceObjects(void* jvm, void* context);
   // Always call this method after the object has been destructed. It deletes
   // existing global references and enables garbage collection.
   static void ClearAndroidAudioDeviceObjects();
 
-  AudioRecordJni();
+  AudioRecordJni(
+      PlayoutDelayProvider* delay_provider, AudioManager* audio_manager);
   ~AudioRecordJni();
 
   int32_t Init();
@@ -104,10 +106,6 @@ class AudioRecordJni {
   // Called from the constructor. Defines the |j_audio_record_| member.
   void CreateJavaInstance();
 
-  // Returns the native, or optimal, sample rate reported by the audio input
-  // device.
-  int GetNativeSampleRate();
-
   // Stores thread ID in constructor.
   // We can then use ThreadChecker::CalledOnValidThread() to ensure that
   // other methods are called from the same thread.
@@ -118,10 +116,15 @@ class AudioRecordJni {
   // thread in Java. Detached during construction of this object.
   rtc::ThreadChecker thread_checker_java_;
 
+  // Returns the current playout delay.
+  // TODO(henrika): this value is currently fixed since initial tests have
+  // shown that the estimated delay varies very little over time. It might be
+  // possible to make improvements in this area.
+  PlayoutDelayProvider* delay_provider_;
 
-  // Should return the current playout delay.
-  // TODO(henrika): fix on Android. Reports zero today.
-  // PlayoutDelayProvider* delay_provider_;
+  // Contains audio parameters provided to this class at construction by the
+  // AudioManager.
+  const AudioParameters audio_parameters_;
 
   // The Java WebRtcAudioRecord instance.
   jobject j_audio_record_;
@@ -146,11 +149,8 @@ class AudioRecordJni {
   // AudioDeviceModuleImpl class and called by AudioDeviceModuleImpl::Create().
   AudioDeviceBuffer* audio_device_buffer_;
 
-  // Native sample rate set in AttachAudioBuffer() which uses JNI to ask the
-  // Java layer for the best possible sample rate for this particular device
-  // and audio configuration.
-  int sample_rate_hz_;
-
+  // Contains a delay estimate from the playout side given by |delay_provider_|.
+  int playout_delay_in_milliseconds_;
 };
 
 }  // namespace webrtc

@@ -25,10 +25,6 @@
 
 namespace webrtc {
 
-// Number of bytes per audio frame.
-// Example: 16-bit PCM in mono => 1*(16/8)=2 [bytes/frame]
-static const int kBytesPerFrame = kNumChannels * (kBitsPerSample / 8);
-
 // We are unable to obtain exact measurements of the hardware delay on Android.
 // Instead, a lower bound (based on measurements) is used.
 // TODO(henrika): is it possible to improve this?
@@ -38,12 +34,10 @@ static JavaVM* g_jvm = NULL;
 static jobject g_context = NULL;
 static jclass g_audio_record_class = NULL;
 
-void AudioRecordJni::SetAndroidAudioDeviceObjects(void* jvm, void* env,
-                                                  void* context) {
+void AudioRecordJni::SetAndroidAudioDeviceObjects(void* jvm, void* context) {
   ALOGD("SetAndroidAudioDeviceObjects%s", GetThreadInfo().c_str());
 
   CHECK(jvm);
-  CHECK(env);
   CHECK(context);
 
   g_jvm = reinterpret_cast<JavaVM*>(jvm);
@@ -59,6 +53,8 @@ void AudioRecordJni::SetAndroidAudioDeviceObjects(void* jvm, void* env,
       jni, "org/webrtc/voiceengine/WebRtcAudioRecord");
   g_audio_record_class = reinterpret_cast<jclass>(
       NewGlobalRef(jni, local_class));
+  jni->DeleteLocalRef(local_class);
+  CHECK_EXCEPTION(jni);
 
   // Register native methods with the WebRtcAudioRecord class. These methods
   // are declared private native in WebRtcAudioRecord.java.
@@ -86,16 +82,20 @@ void AudioRecordJni::ClearAndroidAudioDeviceObjects() {
   g_jvm = NULL;
 }
 
-AudioRecordJni::AudioRecordJni()
-    : j_audio_record_(NULL),
+AudioRecordJni::AudioRecordJni(
+    PlayoutDelayProvider* delay_provider, AudioManager* audio_manager)
+    : delay_provider_(delay_provider),
+      audio_parameters_(audio_manager->GetRecordAudioParameters()),
+      j_audio_record_(NULL),
       direct_buffer_address_(NULL),
       direct_buffer_capacity_in_bytes_(0),
       frames_per_buffer_(0),
       initialized_(false),
       recording_(false),
       audio_device_buffer_(NULL),
-      sample_rate_hz_(0) {
+      playout_delay_in_milliseconds_(0) {
   ALOGD("ctor%s", GetThreadInfo().c_str());
+  DCHECK(audio_parameters_.is_valid());
   CHECK(HasDeviceObjects());
   CreateJavaInstance();
   // Detach from this thread since we want to use the checker to verify calls
@@ -137,9 +137,10 @@ int32_t AudioRecordJni::InitRecording() {
   AttachThreadScoped ats(g_jvm);
   JNIEnv* jni = ats.env();
   jmethodID initRecordingID = GetMethodID(
-      jni, g_audio_record_class, "InitRecording", "(I)I");
+      jni, g_audio_record_class, "InitRecording", "(II)I");
   jint frames_per_buffer = jni->CallIntMethod(
-      j_audio_record_, initRecordingID, sample_rate_hz_);
+      j_audio_record_, initRecordingID, audio_parameters_.sample_rate(),
+      audio_parameters_.channels());
   CHECK_EXCEPTION(jni);
   if (frames_per_buffer < 0) {
     ALOGE("InitRecording failed!");
@@ -149,6 +150,7 @@ int32_t AudioRecordJni::InitRecording() {
   ALOGD("frames_per_buffer: %d", frames_per_buffer_);
   CHECK_EQ(direct_buffer_capacity_in_bytes_,
            frames_per_buffer_ * kBytesPerFrame);
+  CHECK_EQ(frames_per_buffer_, audio_parameters_.frames_per_buffer());
   initialized_ = true;
   return 0;
 }
@@ -178,7 +180,7 @@ int32_t AudioRecordJni::StartRecording() {
 int32_t AudioRecordJni::StopRecording() {
   ALOGD("StopRecording%s", GetThreadInfo().c_str());
   DCHECK(thread_checker_.CalledOnValidThread());
-  if (!initialized_) {
+  if (!initialized_ || !recording_) {
     return 0;
   }
   AttachThreadScoped ats(g_jvm);
@@ -197,7 +199,6 @@ int32_t AudioRecordJni::StopRecording() {
   initialized_ = false;
   recording_ = false;
   return 0;
-
 }
 
 int32_t AudioRecordJni::RecordingDelay(uint16_t& delayMS) const {  // NOLINT
@@ -210,10 +211,12 @@ void AudioRecordJni::AttachAudioBuffer(AudioDeviceBuffer* audioBuffer) {
   ALOGD("AttachAudioBuffer");
   DCHECK(thread_checker_.CalledOnValidThread());
   audio_device_buffer_ = audioBuffer;
-  sample_rate_hz_ = GetNativeSampleRate();
-  ALOGD("SetRecordingSampleRate(%d)", sample_rate_hz_);
-  audio_device_buffer_->SetRecordingSampleRate(sample_rate_hz_);
-  audio_device_buffer_->SetRecordingChannels(kNumChannels);
+  const int sample_rate_hz = audio_parameters_.sample_rate();
+  ALOGD("SetRecordingSampleRate(%d)", sample_rate_hz);
+  audio_device_buffer_->SetRecordingSampleRate(sample_rate_hz);
+  const int channels = audio_parameters_.channels();
+  ALOGD("SetRecordingChannels(%d)", channels);
+  audio_device_buffer_->SetRecordingChannels(channels);
 }
 
 bool AudioRecordJni::BuiltInAECIsAvailable() const {
@@ -268,7 +271,7 @@ void AudioRecordJni::OnCacheDirectBufferAddress(
 void JNICALL AudioRecordJni::DataIsRecorded(
   JNIEnv* env, jobject obj, jint length, jlong nativeAudioRecord) {
   webrtc::AudioRecordJni* this_object =
-      reinterpret_cast<webrtc::AudioRecordJni*> (nativeAudioRecord  );
+      reinterpret_cast<webrtc::AudioRecordJni*> (nativeAudioRecord);
   this_object->OnDataIsRecorded(length);
 }
 
@@ -276,11 +279,22 @@ void JNICALL AudioRecordJni::DataIsRecorded(
 // the thread is 'AudioRecordThread'.
 void AudioRecordJni::OnDataIsRecorded(int length) {
   DCHECK(thread_checker_java_.CalledOnValidThread());
+  if (!audio_device_buffer_) {
+    ALOGE("AttachAudioBuffer has not been called!");
+    return;
+  }
+  if (playout_delay_in_milliseconds_ == 0) {
+    playout_delay_in_milliseconds_ = delay_provider_->PlayoutDelayMs();
+    ALOGD("cached playout delay: %d", playout_delay_in_milliseconds_);
+  }
   audio_device_buffer_->SetRecordedBuffer(direct_buffer_address_,
                                           frames_per_buffer_);
-  // TODO(henrika): improve playout delay estimate.
-  audio_device_buffer_->SetVQEData(0, kHardwareDelayInMilliseconds, 0);
-  audio_device_buffer_->DeliverRecordedData();
+  audio_device_buffer_->SetVQEData(playout_delay_in_milliseconds_,
+                                   kHardwareDelayInMilliseconds,
+                                   0 /* clockDrift */);
+  if (audio_device_buffer_->DeliverRecordedData() == 1) {
+    ALOGE("AudioDeviceBuffer::DeliverRecordedData failed!");
+  }
 }
 
 bool AudioRecordJni::HasDeviceObjects() {
@@ -302,17 +316,6 @@ void AudioRecordJni::CreateJavaInstance() {
   j_audio_record_ = jni->NewGlobalRef(j_audio_record_);
   CHECK_EXCEPTION(jni) << "Error during NewGlobalRef";
   CHECK(j_audio_record_);
-}
-
-int AudioRecordJni::GetNativeSampleRate() {
-  AttachThreadScoped ats(g_jvm);
-  JNIEnv* jni = ats.env();
-  jmethodID getNativeSampleRate = GetMethodID(
-      jni, g_audio_record_class, "GetNativeSampleRate", "()I");
-  jint sample_rate_hz = jni->CallIntMethod(
-      j_audio_record_, getNativeSampleRate);
-  CHECK_EXCEPTION(jni);
-  return sample_rate_hz;
 }
 
 }  // namespace webrtc
