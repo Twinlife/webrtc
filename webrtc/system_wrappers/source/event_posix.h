@@ -39,24 +39,23 @@ class EventPosix : public EventWrapper {
 
  private:
   EventPosix();
-  int Construct();
 
-  static bool Run(ThreadObj obj);
+  static bool Run(void* obj);
   bool Process();
-  EventTypeWrapper Wait(timespec& wake_at);
+  EventTypeWrapper Wait(timespec* end_at);
 
  private:
   pthread_cond_t  cond_;
   pthread_mutex_t mutex_;
+  bool event_set_;
 
-  ThreadWrapper* timer_thread_;
+  rtc::scoped_ptr<ThreadWrapper> timer_thread_;
   EventPosix*    timer_event_;
   timespec       created_at_;
 
   bool          periodic_;
   unsigned long time_;  // In ms
   unsigned long count_;
-  State         state_;
 };
 
 }  // namespace webrtc

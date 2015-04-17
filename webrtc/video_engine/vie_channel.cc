@@ -19,6 +19,7 @@
 #include "webrtc/experiments.h"
 #include "webrtc/frame_callback.h"
 #include "webrtc/modules/pacing/include/paced_sender.h"
+#include "webrtc/modules/pacing/include/packet_router.h"
 #include "webrtc/modules/rtp_rtcp/interface/rtp_receiver.h"
 #include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp.h"
 #include "webrtc/modules/utility/interface/process_thread.h"
@@ -91,6 +92,7 @@ ViEChannel::ViEChannel(int32_t channel_id,
                        RemoteBitrateEstimator* remote_bitrate_estimator,
                        RtcpRttStats* rtt_stats,
                        PacedSender* paced_sender,
+                       PacketRouter* packet_router,
                        bool sender,
                        bool disable_default_encoder)
     : ViEFrameProviderBase(channel_id, engine_id),
@@ -115,13 +117,14 @@ ViEChannel::ViEChannel(int32_t channel_id,
       intra_frame_observer_(intra_frame_observer),
       rtt_stats_(rtt_stats),
       paced_sender_(paced_sender),
+      packet_router_(packet_router),
       bandwidth_observer_(bandwidth_observer),
       send_timestamp_extension_id_(kInvalidRtpExtensionId),
       absolute_send_time_extension_id_(kInvalidRtpExtensionId),
+      video_rotation_extension_id_(kInvalidRtpExtensionId),
       external_transport_(NULL),
       decoder_reset_(true),
       wait_for_key_frame_(false),
-      decode_thread_(NULL),
       effect_filter_(NULL),
       color_enhancement_(false),
       mtu_(0),
@@ -153,9 +156,10 @@ int32_t ViEChannel::Init() {
     rtp_rtcp_->SetStorePacketsStatus(true, nack_history_size_sender_);
   }
   if (sender_) {
-     std::list<RtpRtcp*> send_rtp_modules(1, rtp_rtcp_.get());
-     send_payload_router_->SetSendingRtpModules(send_rtp_modules);
-     DCHECK(!send_payload_router_->active());
+    packet_router_->AddRtpModule(rtp_rtcp_.get());
+    std::list<RtpRtcp*> send_rtp_modules(1, rtp_rtcp_.get());
+    send_payload_router_->SetSendingRtpModules(send_rtp_modules);
+    DCHECK(!send_payload_router_->active());
   }
   if (vcm_->InitializeReceiver() != 0) {
     return -1;
@@ -203,9 +207,11 @@ ViEChannel::~ViEChannel() {
   module_process_thread_.DeRegisterModule(vcm_);
   module_process_thread_.DeRegisterModule(&vie_sync_);
   send_payload_router_->SetSendingRtpModules(std::list<RtpRtcp*>());
+  packet_router_->RemoveRtpModule(rtp_rtcp_.get());
   while (simulcast_rtp_rtcp_.size() > 0) {
     std::list<RtpRtcp*>::iterator it = simulcast_rtp_rtcp_.begin();
     RtpRtcp* rtp_rtcp = *it;
+    packet_router_->RemoveRtpModule(rtp_rtcp);
     module_process_thread_.DeRegisterModule(rtp_rtcp);
     delete rtp_rtcp;
     simulcast_rtp_rtcp_.erase(it);
@@ -355,6 +361,9 @@ int32_t ViEChannel::SetSendCodec(const VideoCodec& video_codec,
   bool router_was_active = send_payload_router_->active();
   send_payload_router_->set_active(false);
   send_payload_router_->SetSendingRtpModules(std::list<RtpRtcp*>());
+  packet_router_->RemoveRtpModule(rtp_rtcp_.get());
+  for (RtpRtcp* module : simulcast_rtp_rtcp_)
+    packet_router_->RemoveRtpModule(module);
   if (rtp_rtcp_->Sending() && new_stream) {
     restart_rtp = true;
     rtp_rtcp_->SetSendingStatus(false);
@@ -459,6 +468,7 @@ int32_t ViEChannel::SetSendCodec(const VideoCodec& video_codec,
         if (rtp_rtcp->RegisterSendRtpHeaderExtension(
             kRtpExtensionTransmissionTimeOffset,
             send_timestamp_extension_id_) != 0) {
+          LOG(LS_WARNING) << "Register Transmission Time Offset failed";
         }
       } else {
         rtp_rtcp->DeregisterSendRtpHeaderExtension(
@@ -471,10 +481,22 @@ int32_t ViEChannel::SetSendCodec(const VideoCodec& video_codec,
         if (rtp_rtcp->RegisterSendRtpHeaderExtension(
             kRtpExtensionAbsoluteSendTime,
             absolute_send_time_extension_id_) != 0) {
+          LOG(LS_WARNING) << "Register Absolute Send Time failed";
         }
       } else {
         rtp_rtcp->DeregisterSendRtpHeaderExtension(
             kRtpExtensionAbsoluteSendTime);
+      }
+      if (video_rotation_extension_id_ != kInvalidRtpExtensionId) {
+        // Deregister in case the extension was previously enabled.
+        rtp_rtcp->DeregisterSendRtpHeaderExtension(kRtpExtensionVideoRotation);
+        if (rtp_rtcp->RegisterSendRtpHeaderExtension(
+                kRtpExtensionVideoRotation, video_rotation_extension_id_) !=
+            0) {
+          LOG(LS_WARNING) << "Register VideoRotation extension failed";
+        }
+      } else {
+        rtp_rtcp->DeregisterSendRtpHeaderExtension(kRtpExtensionVideoRotation);
       }
       rtp_rtcp->RegisterRtcpStatisticsCallback(
           rtp_rtcp_->GetRtcpStatisticsCallback());
@@ -513,7 +535,11 @@ int32_t ViEChannel::SetSendCodec(const VideoCodec& video_codec,
       (*it)->SetSendingMediaStatus(true);
     }
   }
-  // Update the packet router with the sending RTP RTCP modules.
+  // Update the packet and payload routers with the sending RTP RTCP modules.
+  packet_router_->AddRtpModule(rtp_rtcp_.get());
+  for (RtpRtcp* module : simulcast_rtp_rtcp_)
+    packet_router_->AddRtpModule(module);
+
   std::list<RtpRtcp*> active_send_modules;
   active_send_modules.push_back(rtp_rtcp_.get());
   for (std::list<RtpRtcp*>::const_iterator cit = simulcast_rtp_rtcp_.begin();
@@ -897,6 +923,37 @@ int ViEChannel::SetSendAbsoluteSendTimeStatus(bool enable, int id) {
 
 int ViEChannel::SetReceiveAbsoluteSendTimeStatus(bool enable, int id) {
   return vie_receiver_.SetReceiveAbsoluteSendTimeStatus(enable, id) ? 0 : -1;
+}
+
+int ViEChannel::SetSendVideoRotationStatus(bool enable, int id) {
+  CriticalSectionScoped cs(rtp_rtcp_cs_.get());
+  int error = 0;
+  if (enable) {
+    // Enable the extension, but disable possible old id to avoid errors.
+    video_rotation_extension_id_ = id;
+    rtp_rtcp_->DeregisterSendRtpHeaderExtension(kRtpExtensionVideoRotation);
+    error = rtp_rtcp_->RegisterSendRtpHeaderExtension(
+        kRtpExtensionVideoRotation, id);
+    for (std::list<RtpRtcp*>::iterator it = simulcast_rtp_rtcp_.begin();
+         it != simulcast_rtp_rtcp_.end(); it++) {
+      (*it)->DeregisterSendRtpHeaderExtension(kRtpExtensionVideoRotation);
+      error |=
+          (*it)->RegisterSendRtpHeaderExtension(kRtpExtensionVideoRotation, id);
+    }
+  } else {
+    // Disable the extension.
+    video_rotation_extension_id_ = kInvalidRtpExtensionId;
+    rtp_rtcp_->DeregisterSendRtpHeaderExtension(kRtpExtensionVideoRotation);
+    for (std::list<RtpRtcp*>::iterator it = simulcast_rtp_rtcp_.begin();
+         it != simulcast_rtp_rtcp_.end(); it++) {
+      (*it)->DeregisterSendRtpHeaderExtension(kRtpExtensionVideoRotation);
+    }
+  }
+  return error;
+}
+
+int ViEChannel::SetReceiveVideoRotationStatus(bool enable, int id) {
+  return vie_receiver_.SetReceiveVideoRotationStatus(enable, id) ? 0 : -1;
 }
 
 void ViEChannel::SetRtcpXrRrtrStatus(bool enable) {
@@ -1695,6 +1752,8 @@ bool ViEChannel::ChannelDecodeThreadFunction(void* obj) {
 }
 
 bool ViEChannel::ChannelDecodeProcess() {
+  // TODO(pbos): Make sure the decoder thread doesn't run for send-only
+  // channels.
   vcm_->Decode(kMaxDecodeWaitTimeMs);
   return true;
 }
@@ -1795,19 +1854,9 @@ int32_t ViEChannel::StartDecodeThread() {
     return 0;
   }
   decode_thread_ = ThreadWrapper::CreateThread(ChannelDecodeThreadFunction,
-                                                   this, kHighestPriority,
-                                                   "DecodingThread");
-  if (!decode_thread_) {
-    return -1;
-  }
-
-  unsigned int thread_id;
-  if (decode_thread_->Start(thread_id) == false) {
-    delete decode_thread_;
-    decode_thread_ = NULL;
-    LOG(LS_ERROR) << "Could not start decode thread.";
-    return -1;
-  }
+                                               this, "DecodingThread");
+  decode_thread_->Start();
+  decode_thread_->SetPriority(kHighestPriority);
   return 0;
 }
 
@@ -1818,12 +1867,9 @@ int32_t ViEChannel::StopDecodeThread() {
 
   vcm_->TriggerDecoderShutdown();
 
-  if (decode_thread_->Stop()) {
-    delete decode_thread_;
-  } else {
-    assert(false && "could not stop decode thread");
-  }
-  decode_thread_ = NULL;
+  decode_thread_->Stop();
+  decode_thread_.reset();
+
   return 0;
 }
 

@@ -77,6 +77,7 @@ AudioEncoderOpus::AudioEncoderOpus(const Config& config)
       num_channels_(config.num_channels),
       payload_type_(config.payload_type),
       application_(config.application),
+      dtx_enabled_(config.dtx_enabled),
       samples_per_10ms_frame_(rtc::CheckedDivExact(kSampleRateHz, 100) *
                               num_channels_),
       packet_loss_rate_(0.0) {
@@ -111,6 +112,16 @@ int AudioEncoderOpus::NumChannels() const {
   return num_channels_;
 }
 
+size_t AudioEncoderOpus::MaxEncodedBytes() const {
+  // Calculate the number of bytes we expect the encoder to produce,
+  // then multiply by two to give a wide margin for error.
+  int frame_size_ms = num_10ms_frames_per_packet_ * 10;
+  int bytes_per_millisecond = bitrate_bps_ / (1000 * 8) + 1;
+  size_t approx_encoded_bytes =
+      static_cast<size_t>(frame_size_ms * bytes_per_millisecond);
+  return 2 * approx_encoded_bytes;
+}
+
 int AudioEncoderOpus::Num10MsFramesInNextPacket() const {
   return num_10ms_frames_per_packet_;
 }
@@ -120,10 +131,9 @@ int AudioEncoderOpus::Max10MsFramesInAPacket() const {
 }
 
 void AudioEncoderOpus::SetTargetBitrate(int bits_per_second) {
-  CHECK_EQ(WebRtcOpus_SetBitRate(
-               inst_, std::max(std::min(bits_per_second, kMaxBitrateBps),
-                               kMinBitrateBps)),
-           0);
+  bitrate_bps_ = std::max(std::min(bits_per_second, kMaxBitrateBps),
+                          kMinBitrateBps);
+  CHECK_EQ(WebRtcOpus_SetBitRate(inst_, bitrate_bps_), 0);
 }
 
 void AudioEncoderOpus::SetProjectedPacketLossRate(double fraction) {
@@ -173,19 +183,18 @@ void AudioEncoderOpus::SetProjectedPacketLossRate(double fraction) {
   }
 }
 
-void AudioEncoderOpus::EncodeInternal(uint32_t rtp_timestamp,
-                                      const int16_t* audio,
-                                      size_t max_encoded_bytes,
-                                      uint8_t* encoded,
-                                      EncodedInfo* info) {
+AudioEncoder::EncodedInfo AudioEncoderOpus::EncodeInternal(
+    uint32_t rtp_timestamp,
+    const int16_t* audio,
+    size_t max_encoded_bytes,
+    uint8_t* encoded) {
   if (input_buffer_.empty())
     first_timestamp_in_buffer_ = rtp_timestamp;
   input_buffer_.insert(input_buffer_.end(), audio,
                        audio + samples_per_10ms_frame_);
   if (input_buffer_.size() < (static_cast<size_t>(num_10ms_frames_per_packet_) *
                               samples_per_10ms_frame_)) {
-    info->encoded_bytes = 0;
-    return;
+    return EncodedInfo();
   }
   CHECK_EQ(input_buffer_.size(),
            static_cast<size_t>(num_10ms_frames_per_packet_) *
@@ -197,12 +206,13 @@ void AudioEncoderOpus::EncodeInternal(uint32_t rtp_timestamp,
       ClampInt16(max_encoded_bytes), encoded);
   CHECK_GE(r, 0);  // Fails only if fed invalid data.
   input_buffer_.clear();
-  info->encoded_bytes = r;
-  info->encoded_timestamp = first_timestamp_in_buffer_;
-  info->payload_type = payload_type_;
-  // Allows Opus to send empty packets.
-  info->send_even_if_empty = true;
-  info->speech = r > 0;
+  EncodedInfo info;
+  info.encoded_bytes = r;
+  info.encoded_timestamp = first_timestamp_in_buffer_;
+  info.payload_type = payload_type_;
+  info.send_even_if_empty = true;  // Allows Opus to send empty packets.
+  info.speech = r > 0;
+  return info;
 }
 
 }  // namespace webrtc

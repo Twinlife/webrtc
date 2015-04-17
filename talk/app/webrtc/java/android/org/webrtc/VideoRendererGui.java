@@ -37,6 +37,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
+import android.annotation.SuppressLint;
 import android.graphics.SurfaceTexture;
 import android.opengl.EGL14;
 import android.opengl.EGLContext;
@@ -264,6 +265,22 @@ public class VideoRendererGui implements GLSurfaceView.Renderer {
     private int videoWidth;
     private int videoHeight;
 
+    // This is the degree that the frame should be rotated clockwisely to have
+    // it rendered up right.
+    private int rotationDegree;
+
+    // Mapping array from original UV mapping to the rotated mapping. The number
+    // is the position where the original UV coordination should be mapped
+    // to. (0,1) is the top left coord. (2,3) is the bottom left. (4,5) is the
+    // top right. (6,7) is the bottom right.
+    private static int rotation_matrix[][] =
+        { {4, 5, 0, 1, 6, 7, 2, 3},   //  90 degree (clockwise)
+          {6, 7, 4, 5, 2, 3, 0, 1},   // 180 degree (clockwise)
+          {2, 3, 6, 7, 0, 1, 4, 5} }; // 270 degree (clockwise)
+
+    private static int mirror_matrix[] =
+        {4, 1, 6, 3, 0, 5, 2, 7}; // mirrored
+
     private YuvImageRenderer(
         GLSurfaceView surface, int id,
         int x, int y, int width, int height,
@@ -292,6 +309,7 @@ public class VideoRendererGui implements GLSurfaceView.Renderer {
       };
       textureCoords = directNativeFloatBuffer(textureCoordinatesFloat);
       updateTextureProperties = false;
+      rotationDegree = 0;
     }
 
     private void createTextures(int yuvProgram, int oesProgram) {
@@ -340,7 +358,13 @@ public class VideoRendererGui implements GLSurfaceView.Renderer {
         if (displayWidth > 1 && displayHeight > 1 &&
             videoWidth > 1 && videoHeight > 1) {
           float displayAspectRatio = displayWidth / displayHeight;
-          float videoAspectRatio = (float)videoWidth / videoHeight;
+          // videoAspectRatio should be the one after rotation applied.
+          float videoAspectRatio = 0;
+          if (rotationDegree == 90 || rotationDegree == 270) {
+            videoAspectRatio = (float)videoHeight / videoWidth;
+          } else {
+            videoAspectRatio = (float)videoWidth / videoHeight;
+          }
           if (scalingType == ScalingType.SCALE_ASPECT_FIT) {
             // Need to re-adjust vertices width or height to match video AR.
             if (displayAspectRatio > videoAspectRatio) {
@@ -357,12 +381,21 @@ public class VideoRendererGui implements GLSurfaceView.Renderer {
           }
           if (scalingType == ScalingType.SCALE_ASPECT_FILL) {
             // Need to re-adjust UV coordinates to match display AR.
+            boolean adjustU = true;
+            float ratio = 0;
             if (displayAspectRatio > videoAspectRatio) {
-              texOffsetV = (1.0f - videoAspectRatio / displayAspectRatio) /
+              ratio = (1.0f - videoAspectRatio / displayAspectRatio) /
                   2.0f;
+              adjustU = (rotationDegree == 90 || rotationDegree == 270);
             } else {
-              texOffsetU = (1.0f - displayAspectRatio / videoAspectRatio) /
+              ratio = (1.0f - displayAspectRatio / videoAspectRatio) /
                   2.0f;
+              adjustU = (rotationDegree == 0 || rotationDegree == 180);
+            }
+            if (adjustU) {
+              texOffsetU = ratio;
+            } else {
+              texOffsetV = ratio;
             }
           }
           Log.d(TAG, "  Texture vertices: (" + texLeft + "," + texBottom +
@@ -378,21 +411,57 @@ public class VideoRendererGui implements GLSurfaceView.Renderer {
           Log.d(TAG, "  Texture UV offsets: " + texOffsetU + ", " + texOffsetV);
           float uLeft = texOffsetU;
           float uRight = 1.0f - texOffsetU;
-          if (mirror) {
-            // Swap U coordinates for mirror image.
-            uLeft = 1.0f - texOffsetU;
-            uRight = texOffsetU;
-          }
           float textureCoordinatesFloat[] = new float[] {
-            uLeft, texOffsetV,         // left top
-            uLeft, 1.0f - texOffsetV,  // left bottom
-            uRight, texOffsetV,        // right top
-            uRight, 1.0f - texOffsetV  // right bottom
+            uLeft, texOffsetV,         // top left
+            uLeft, 1.0f - texOffsetV,  // bottom left
+            uRight, texOffsetV,        // top right
+            uRight, 1.0f - texOffsetV  // bottom right
           };
-          textureCoords = directNativeFloatBuffer(textureCoordinatesFloat);
+
+          // Rotation needs to be done before mirroring.
+          textureCoordinatesFloat = applyRotation(textureCoordinatesFloat,
+                                                  rotationDegree);
+          textureCoordinatesFloat = applyMirror(textureCoordinatesFloat,
+                                                mirror);
+          textureCoords =
+              directNativeFloatBuffer(textureCoordinatesFloat);
         }
         updateTextureProperties = false;
       }
+    }
+
+
+    private float[] applyMirror(float textureCoordinatesFloat[],
+                                boolean mirror) {
+      if (!mirror) {
+        return textureCoordinatesFloat;
+      }
+
+      return applyMatrixOperation(textureCoordinatesFloat,
+                                  mirror_matrix);
+    }
+
+    private float[] applyRotation(float textureCoordinatesFloat[],
+                                  int rotationDegree) {
+      if (rotationDegree == 0) {
+        return textureCoordinatesFloat;
+      }
+
+      int index = rotationDegree / 90 - 1;
+      return applyMatrixOperation(textureCoordinatesFloat,
+                                  rotation_matrix[index]);
+    }
+
+    private float[] applyMatrixOperation(float textureCoordinatesFloat[],
+                                         int matrix_operation[]) {
+      float textureCoordinatesModifiedFloat[] =
+          new float[textureCoordinatesFloat.length];
+
+      for(int i = 0; i < textureCoordinatesFloat.length; i++) {
+        textureCoordinatesModifiedFloat[matrix_operation[i]] =
+            textureCoordinatesFloat[i];
+      }
+      return textureCoordinatesModifiedFloat;
     }
 
     private void draw() {
@@ -528,12 +597,19 @@ public class VideoRendererGui implements GLSurfaceView.Renderer {
       }
     }
 
-    @Override
-    public void setSize(final int width, final int height) {
+    private void setSize(final int width, final int height,
+                         final int rotation) {
+      if (width == videoWidth && height == videoHeight &&
+        rotation == rotationDegree) {
+        return;
+      }
+
       Log.d(TAG, "ID: " + id + ". YuvImageRenderer.setSize: " +
-          width + " x " + height);
+        width + " x " + height + " rotation " + rotation);
+
       videoWidth = width;
       videoHeight = height;
+      rotationDegree = rotation;
       int[] strides = { width, width / 2, width / 2  };
       // Frame re-allocation need to be synchronized with copying
       // frame to textures in draw() function to avoid re-allocating
@@ -542,14 +618,17 @@ public class VideoRendererGui implements GLSurfaceView.Renderer {
         // Clear rendering queue.
         frameToRenderQueue.poll();
         // Re-allocate / allocate the frame.
-        yuvFrameToRender = new I420Frame(width, height, strides, null);
-        textureFrameToRender = new I420Frame(width, height, null, -1);
+        yuvFrameToRender = new I420Frame(width, height, rotationDegree,
+                                         strides, null);
+        textureFrameToRender = new I420Frame(width, height, rotationDegree,
+                                             null, -1);
         updateTextureProperties = true;
       }
     }
 
     @Override
     public synchronized void renderFrame(I420Frame frame) {
+      setSize(frame.width, frame.height, frame.rotationDegree);
       long now = System.nanoTime();
       framesReceived++;
       // Skip rendering of this frame if setSize() was not called.
@@ -597,6 +676,11 @@ public class VideoRendererGui implements GLSurfaceView.Renderer {
       surface.requestRender();
     }
 
+    // TODO(guoweis): Remove this once chrome code base is updated.
+    @Override
+    public boolean canApplyRotation() {
+      return true;
+    }
   }
 
   /** Passes GLSurfaceView to video renderer. */
@@ -707,6 +791,7 @@ public class VideoRendererGui implements GLSurfaceView.Renderer {
     }
   }
 
+  @SuppressLint("NewApi")
   @Override
   public void onSurfaceCreated(GL10 unused, EGLConfig config) {
     Log.d(TAG, "VideoRendererGui.onSurfaceCreated");

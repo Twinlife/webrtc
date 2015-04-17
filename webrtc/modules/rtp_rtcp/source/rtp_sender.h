@@ -41,6 +41,14 @@ class RTPSenderInterface {
   RTPSenderInterface() {}
   virtual ~RTPSenderInterface() {}
 
+  enum CVOMode {
+    kCVONone,
+    kCVOInactive,  // CVO rtp header extension is registered but haven't
+                   // received any frame with rotation pending.
+    kCVOActivated,  // CVO rtp header extension will be present in the rtp
+                    // packets.
+  };
+
   virtual uint32_t SSRC() const = 0;
   virtual uint32_t Timestamp() const = 0;
 
@@ -70,6 +78,7 @@ class RTPSenderInterface {
                                    const RTPHeader& rtp_header,
                                    VideoRotation rotation) const = 0;
   virtual bool IsRtpHeaderExtensionRegistered(RTPExtensionType type) = 0;
+  virtual CVOMode ActivateCVORtpHeaderExtension() = 0;
 };
 
 class RTPSender : public RTPSenderInterface {
@@ -153,6 +162,7 @@ class RTPSender : public RTPSenderInterface {
   int32_t SetTransmissionTimeOffset(int32_t transmission_time_offset);
   int32_t SetAbsoluteSendTime(uint32_t absolute_send_time);
   void SetVideoRotation(VideoRotation rotation);
+  int32_t SetTransportSequenceNumber(uint16_t sequence_number);
 
   int32_t RegisterRtpHeaderExtension(RTPExtensionType type, uint8_t id);
   virtual bool IsRtpHeaderExtensionRegistered(RTPExtensionType type) override;
@@ -166,6 +176,7 @@ class RTPSender : public RTPSenderInterface {
   uint8_t BuildAudioLevelExtension(uint8_t* data_buffer) const;
   uint8_t BuildAbsoluteSendTimeExtension(uint8_t* data_buffer) const;
   uint8_t BuildVideoRotationExtension(uint8_t* data_buffer) const;
+  uint8_t BuildTransportSequenceNumberExtension(uint8_t* data_buffer) const;
 
   bool UpdateAudioLevel(uint8_t* rtp_packet,
                         size_t rtp_packet_length,
@@ -283,8 +294,7 @@ class RTPSender : public RTPSenderInterface {
   RtpState GetRtpState() const;
   void SetRtxRtpState(const RtpState& rtp_state);
   RtpState GetRtxRtpState() const;
-
-  static uint8_t ConvertToCVOByte(VideoRotation rotation);
+  CVOMode ActivateCVORtpHeaderExtension() override;
 
  protected:
   int32_t CheckPayloadType(int8_t payload_type, RtpVideoCodecTypes* video_type);
@@ -378,6 +388,8 @@ class RTPSender : public RTPSenderInterface {
   int32_t transmission_time_offset_;
   uint32_t absolute_send_time_;
   VideoRotation rotation_;
+  CVOMode cvo_mode_;
+  uint16_t transport_sequence_number_;
 
   // NACK
   uint32_t nack_byte_count_times_[NACK_BYTECOUNT_SIZE];

@@ -29,8 +29,8 @@ template <class InputType, class OutputType>
 class OpenSlRunnerTemplate {
  public:
   OpenSlRunnerTemplate()
-      : output_(),
-        input_(&output_) {
+      : output_(NULL),  // TODO(henrika): inject proper audio manager.
+        input_(&output_, NULL) {
     output_.AttachAudioBuffer(&audio_buffer_);
     if (output_.Init() != 0) {
       assert(false);
@@ -84,8 +84,8 @@ class OpenSlRunner
       jobject obj,
       jobject context) {
     assert(!g_runner);  // Should only be called once.
-    OpenSlesInput::SetAndroidAudioDeviceObjects(g_vm, env, context);
-    OpenSlesOutput::SetAndroidAudioDeviceObjects(g_vm, env, context);
+    OpenSlesInput::SetAndroidAudioDeviceObjects(g_vm, context);
+    OpenSlesOutput::SetAndroidAudioDeviceObjects(g_vm, context);
     g_runner = new OpenSlRunner();
   }
 

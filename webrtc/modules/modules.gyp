@@ -57,6 +57,7 @@
             'acm_receive_test',
             'acm_send_test',
             'audio_coding_module',
+            'audio_device'  ,
             'audio_processing',
             'bitrate_controller',
             'CNG',
@@ -107,7 +108,6 @@
             'audio_coding/codecs/isac/fix/source/lpc_masking_model_unittest.cc',
             'audio_coding/codecs/isac/fix/source/transform_unittest.cc',
             'audio_coding/codecs/isac/main/source/isac_unittest.cc',
-            'audio_coding/codecs/isac/main/source/audio_encoder_isac_red_unittest.cc',
             'audio_coding/codecs/opus/audio_encoder_opus_unittest.cc',
             'audio_coding/codecs/opus/opus_unittest.cc',
             'audio_coding/codecs/red/audio_encoder_copy_red_unittest.cc',
@@ -169,8 +169,8 @@
             'audio_processing/beamformer/complex_matrix_unittest.cc',
             'audio_processing/beamformer/covariance_matrix_generator_unittest.cc',
             'audio_processing/beamformer/matrix_unittest.cc',
-            'audio_processing/beamformer/mock_beamformer.cc',
-            'audio_processing/beamformer/mock_beamformer.h',
+            'audio_processing/beamformer/mock_nonlinear_beamformer.cc',
+            'audio_processing/beamformer/mock_nonlinear_beamformer.h',
             'audio_processing/beamformer/pcm_utils.cc',
             'audio_processing/beamformer/pcm_utils.h',
             'audio_processing/echo_cancellation_impl_unittest.cc',
@@ -187,7 +187,6 @@
             'audio_processing/utility/delay_estimator_unittest.cc',
             'bitrate_controller/bitrate_allocator_unittest.cc',
             'bitrate_controller/bitrate_controller_unittest.cc',
-            'bitrate_controller/remb_suppressor_unittest.cc',
             'bitrate_controller/send_side_bandwidth_estimation_unittest.cc',
             'bitrate_controller/send_time_history_unittest.cc',
             'desktop_capture/desktop_and_cursor_composer_unittest.cc',
@@ -207,6 +206,7 @@
             'module_common_types_unittest.cc',
             'pacing/bitrate_prober_unittest.cc',
             'pacing/paced_sender_unittest.cc',
+            'pacing/packet_router_unittest.cc',
             'remote_bitrate_estimator/bwe_simulations.cc',
             'remote_bitrate_estimator/include/mock/mock_remote_bitrate_observer.h',
             'remote_bitrate_estimator/inter_arrival_unittest.cc',
@@ -234,7 +234,7 @@
             'remote_bitrate_estimator/test/packet_receiver.h',
             'remote_bitrate_estimator/test/packet_sender.cc',
             'remote_bitrate_estimator/test/packet_sender.h',
-            'remote_bitrate_estimator/test/packets.h',
+            'remote_bitrate_estimator/test/packet.h',
             'remote_bitrate_estimator/test/estimators/nada.cc',
             'remote_bitrate_estimator/test/estimators/nada.h',
             'remote_bitrate_estimator/test/estimators/remb.cc',
@@ -351,6 +351,18 @@
             ['OS=="android"', {
               'dependencies': [
                 '<(DEPTH)/testing/android/native_test.gyp:native_test_native_code',
+              ],
+              # Need to disable error due to the line in
+              # base/android/jni_android.h triggering it:
+              # const BASE_EXPORT jobject GetApplicationContext()
+              # error: type qualifiers ignored on function return type
+              'cflags': [
+                '-Wno-ignored-qualifiers',
+              ],
+              'sources': [
+                'audio_device/android/audio_device_unittest.cc',
+                'audio_device/android/ensure_initialized.cc',
+                'audio_device/android/ensure_initialized.h',
               ],
             }],
           ],

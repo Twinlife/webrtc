@@ -90,17 +90,15 @@ bool FrameGeneratorCapturer::Init() {
 
   if (!tick_->StartTimer(true, 1000 / target_fps_))
     return false;
-  thread_.reset(ThreadWrapper::CreateThread(FrameGeneratorCapturer::Run,
-                                            this,
-                                            webrtc::kHighPriority,
-                                            "FrameGeneratorCapturer"));
+  thread_ = ThreadWrapper::CreateThread(FrameGeneratorCapturer::Run, this,
+                                        "FrameGeneratorCapturer");
   if (thread_.get() == NULL)
     return false;
-  unsigned int thread_id;
-  if (!thread_->Start(thread_id)) {
+  if (!thread_->Start()) {
     thread_.reset();
     return false;
   }
+  thread_->SetPriority(webrtc::kHighPriority);
   return true;
 }
 

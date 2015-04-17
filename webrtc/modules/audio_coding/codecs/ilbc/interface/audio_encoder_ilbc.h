@@ -33,17 +33,19 @@ class AudioEncoderIlbc : public AudioEncoder {
 
   int SampleRateHz() const override;
   int NumChannels() const override;
+  size_t MaxEncodedBytes() const override;
   int Num10MsFramesInNextPacket() const override;
   int Max10MsFramesInAPacket() const override;
 
  protected:
-  void EncodeInternal(uint32_t rtp_timestamp,
-                      const int16_t* audio,
-                      size_t max_encoded_bytes,
-                      uint8_t* encoded,
-                      EncodedInfo* info) override;
+  EncodedInfo EncodeInternal(uint32_t rtp_timestamp,
+                             const int16_t* audio,
+                             size_t max_encoded_bytes,
+                             uint8_t* encoded) override;
 
  private:
+  size_t RequiredOutputSizeBytes() const;
+
   static const int kMaxSamplesPerPacket = 480;
   const int payload_type_;
   const int num_10ms_frames_per_packet_;

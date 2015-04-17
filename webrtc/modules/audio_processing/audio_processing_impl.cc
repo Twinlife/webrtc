@@ -14,11 +14,11 @@
 
 #include "webrtc/base/platform_file.h"
 #include "webrtc/common_audio/include/audio_util.h"
+#include "webrtc/common_audio/channel_buffer.h"
 #include "webrtc/common_audio/signal_processing/include/signal_processing_library.h"
 #include "webrtc/modules/audio_processing/agc/agc_manager_direct.h"
 #include "webrtc/modules/audio_processing/audio_buffer.h"
-#include "webrtc/modules/audio_processing/beamformer/beamformer.h"
-#include "webrtc/common_audio/channel_buffer.h"
+#include "webrtc/modules/audio_processing/beamformer/nonlinear_beamformer.h"
 #include "webrtc/modules/audio_processing/common.h"
 #include "webrtc/modules/audio_processing/echo_cancellation_impl.h"
 #include "webrtc/modules/audio_processing/echo_control_mobile_impl.h"
@@ -45,7 +45,7 @@
 
 #define RETURN_ON_ERR(expr)  \
   do {                       \
-    int err = expr;          \
+    int err = (expr);        \
     if (err != kNoError) {   \
       return err;            \
     }                        \
@@ -134,7 +134,7 @@ AudioProcessing* AudioProcessing::Create(const Config& config) {
 }
 
 AudioProcessing* AudioProcessing::Create(const Config& config,
-                                         Beamformer* beamformer) {
+                                         Beamformer<float>* beamformer) {
   AudioProcessingImpl* apm = new AudioProcessingImpl(config, beamformer);
   if (apm->Initialize() != kNoError) {
     delete apm;
@@ -148,7 +148,7 @@ AudioProcessingImpl::AudioProcessingImpl(const Config& config)
     : AudioProcessingImpl(config, nullptr) {}
 
 AudioProcessingImpl::AudioProcessingImpl(const Config& config,
-                                         Beamformer* beamformer)
+                                         Beamformer<float>* beamformer)
     : echo_cancellation_(NULL),
       echo_control_mobile_(NULL),
       gain_control_(NULL),
@@ -278,9 +278,8 @@ int AudioProcessingImpl::InitializeLocked() {
                                        fwd_out_format_.samples_per_channel()));
 
   // Initialize all components.
-  std::list<ProcessingComponent*>::iterator it;
-  for (it = component_list_.begin(); it != component_list_.end(); ++it) {
-    int err = (*it)->Initialize();
+  for (auto item : component_list_) {
+    int err = item->Initialize();
     if (err != kNoError) {
       return err;
     }
@@ -412,9 +411,9 @@ int AudioProcessingImpl::MaybeInitializeLocked(int input_sample_rate_hz,
 
 void AudioProcessingImpl::SetExtraOptions(const Config& config) {
   CriticalSectionScoped crit_scoped(crit_);
-  std::list<ProcessingComponent*>::iterator it;
-  for (it = component_list_.begin(); it != component_list_.end(); ++it)
-    (*it)->SetExtraOptions(config);
+  for (auto item : component_list_) {
+    item->SetExtraOptions(config);
+  }
 
   if (transient_suppressor_enabled_ != config.Get<ExperimentalNs>().enabled) {
     transient_suppressor_enabled_ = config.Get<ExperimentalNs>().enabled;
@@ -453,14 +452,15 @@ int AudioProcessingImpl::num_output_channels() const {
 }
 
 void AudioProcessingImpl::set_output_will_be_muted(bool muted) {
-  output_will_be_muted_ = muted;
   CriticalSectionScoped lock(crit_);
+  output_will_be_muted_ = muted;
   if (agc_manager_.get()) {
     agc_manager_->SetCaptureMuted(output_will_be_muted_);
   }
 }
 
 bool AudioProcessingImpl::output_will_be_muted() const {
+  CriticalSectionScoped lock(crit_);
   return output_will_be_muted_;
 }
 
@@ -600,12 +600,10 @@ int AudioProcessingImpl::ProcessStreamLocked() {
     ca->SplitIntoFrequencyBands();
   }
 
-#ifdef WEBRTC_BEAMFORMER
   if (beamformer_enabled_) {
-    beamformer_->ProcessChunk(ca->split_data_f(), ca->split_data_f());
+    beamformer_->ProcessChunk(*ca->split_data_f(), ca->split_data_f());
     ca->set_num_channels(1);
   }
-#endif
 
   RETURN_ON_ERR(high_pass_filter_->ProcessCaptureAudio(ca));
   RETURN_ON_ERR(gain_control_->AnalyzeCaptureAudio(ca));
@@ -915,9 +913,8 @@ bool AudioProcessingImpl::is_data_processed() const {
   }
 
   int enabled_count = 0;
-  std::list<ProcessingComponent*>::const_iterator it;
-  for (it = component_list_.begin(); it != component_list_.end(); it++) {
-    if ((*it)->is_component_enabled()) {
+  for (auto item : component_list_) {
+    if (item->is_component_enabled()) {
       enabled_count++;
     }
   }
@@ -988,14 +985,10 @@ int AudioProcessingImpl::InitializeTransient() {
 
 void AudioProcessingImpl::InitializeBeamformer() {
   if (beamformer_enabled_) {
-#ifdef WEBRTC_BEAMFORMER
     if (!beamformer_) {
-      beamformer_.reset(new Beamformer(array_geometry_));
+      beamformer_.reset(new NonlinearBeamformer(array_geometry_));
     }
     beamformer_->Initialize(kChunkSizeMs, split_rate_);
-#else
-    assert(false);
-#endif
   }
 }
 

@@ -32,6 +32,9 @@ class I420VideoFrame {
                  uint32_t timestamp,
                  int64_t render_time_ms);
 
+  // TODO(pbos): Make all create/copy functions void, they should not be able to
+  // fail (which should be DCHECK/CHECKed instead).
+
   // CreateEmptyFrame: Sets frame dimensions and allocates buffers based
   // on set dimensions - height and plane stride.
   // If required size is bigger than the allocated one, new buffers of adequate
@@ -46,12 +49,8 @@ class I420VideoFrame {
   // CreateFrame: Sets the frame's members and buffers. If required size is
   // bigger than allocated one, new buffers of adequate size will be allocated.
   // Return value: 0 on success, -1 on error.
-  // TODO(magjed): Remove unnecessary buffer size arguments.
-  int CreateFrame(int size_y,
-                  const uint8_t* buffer_y,
-                  int size_u,
+  int CreateFrame(const uint8_t* buffer_y,
                   const uint8_t* buffer_u,
-                  int size_v,
                   const uint8_t* buffer_v,
                   int width,
                   int height,
@@ -60,17 +59,23 @@ class I420VideoFrame {
                   int stride_v);
 
   // TODO(guoweis): remove the previous CreateFrame when chromium has this code.
-  int CreateFrame(int size_y,
-                  const uint8_t* buffer_y,
-                  int size_u,
+  int CreateFrame(const uint8_t* buffer_y,
                   const uint8_t* buffer_u,
-                  int size_v,
                   const uint8_t* buffer_v,
                   int width,
                   int height,
                   int stride_y,
                   int stride_u,
                   int stride_v,
+                  VideoRotation rotation);
+
+  // CreateFrame: Sets the frame's members and buffers. If required size is
+  // bigger than allocated one, new buffers of adequate size will be allocated.
+  // |buffer| must be a packed I420 buffer.
+  // Return value: 0 on success, -1 on error.
+  int CreateFrame(const uint8_t* buffer,
+                  int width,
+                  int height,
                   VideoRotation rotation);
 
   // Deep copy frame: If required size is bigger than allocated one, new
@@ -82,12 +87,8 @@ class I420VideoFrame {
   // reference to the video buffer also retained by |videoFrame|.
   void ShallowCopy(const I420VideoFrame& videoFrame);
 
-  // Make a copy of |this|. The caller owns the returned frame.
-  // Return value: a new frame on success, NULL on error.
-  I420VideoFrame* CloneFrame() const;
-
-  // Swap Frame.
-  void SwapFrame(I420VideoFrame* videoFrame);
+  // Release frame buffer and reset time stamps.
+  void Reset();
 
   // Get pointer to buffer per plane.
   uint8_t* buffer(PlaneType type);
@@ -154,6 +155,10 @@ class I420VideoFrame {
   // Return the underlying buffer.
   rtc::scoped_refptr<webrtc::VideoFrameBuffer> video_frame_buffer() const;
 
+  // Set the underlying buffer.
+  void set_video_frame_buffer(
+      const rtc::scoped_refptr<webrtc::VideoFrameBuffer>& buffer);
+
  private:
   // An opaque reference counted handle that stores the pixel data.
   rtc::scoped_refptr<webrtc::VideoFrameBuffer> video_frame_buffer_;
@@ -174,43 +179,23 @@ enum VideoFrameType {
 // TODO(pbos): Rename EncodedFrame and reformat this class' members.
 class EncodedImage {
  public:
-  EncodedImage()
-      : _encodedWidth(0),
-        _encodedHeight(0),
-        _timeStamp(0),
-        capture_time_ms_(0),
-        _frameType(kDeltaFrame),
-        _buffer(NULL),
-        _length(0),
-        _size(0),
-        _completeFrame(false) {}
-
+  EncodedImage() : EncodedImage(nullptr, 0, 0) {}
   EncodedImage(uint8_t* buffer, size_t length, size_t size)
-      : _encodedWidth(0),
-        _encodedHeight(0),
-        _timeStamp(0),
-        ntp_time_ms_(0),
-        capture_time_ms_(0),
-        _frameType(kDeltaFrame),
-        _buffer(buffer),
-        _length(length),
-        _size(size),
-        _completeFrame(false) {}
+      : _buffer(buffer), _length(length), _size(size) {}
 
-  uint32_t _encodedWidth;
-  uint32_t _encodedHeight;
-  uint32_t _timeStamp;
+  uint32_t _encodedWidth = 0;
+  uint32_t _encodedHeight = 0;
+  uint32_t _timeStamp = 0;
   // NTP time of the capture time in local timebase in milliseconds.
-  int64_t ntp_time_ms_;
-  int64_t capture_time_ms_;
+  int64_t ntp_time_ms_ = 0;
+  int64_t capture_time_ms_ = 0;
   // TODO(pbos): Use webrtc::FrameType directly (and remove VideoFrameType).
-  VideoFrameType _frameType;
+  VideoFrameType _frameType = kDeltaFrame;
   uint8_t* _buffer;
   size_t _length;
   size_t _size;
-  bool _completeFrame;
+  bool _completeFrame = false;
 };
 
 }  // namespace webrtc
 #endif  // WEBRTC_VIDEO_FRAME_H_
-

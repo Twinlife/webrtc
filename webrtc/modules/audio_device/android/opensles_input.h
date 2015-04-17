@@ -24,6 +24,7 @@
 namespace webrtc {
 
 class AudioDeviceBuffer;
+class AudioManager;
 class CriticalSectionWrapper;
 class PlayoutDelayProvider;
 class SingleRwFifo;
@@ -35,11 +36,11 @@ class ThreadWrapper;
 // to non-const methods require exclusive access to the object.
 class OpenSlesInput {
  public:
-  OpenSlesInput(PlayoutDelayProvider* delay_provider);
+  OpenSlesInput(
+      PlayoutDelayProvider* delay_provider, AudioManager* audio_manager);
   ~OpenSlesInput();
 
   static int32_t SetAndroidAudioDeviceObjects(void* javaVM,
-                                              void* env,
                                               void* context);
   static void ClearAndroidAudioDeviceObjects();
 

@@ -34,17 +34,17 @@ class AudioEncoderPcm : public AudioEncoder {
 
   int SampleRateHz() const override;
   int NumChannels() const override;
+  size_t MaxEncodedBytes() const override;
   int Num10MsFramesInNextPacket() const override;
   int Max10MsFramesInAPacket() const override;
 
  protected:
   AudioEncoderPcm(const Config& config, int sample_rate_hz);
 
-  void EncodeInternal(uint32_t rtp_timestamp,
-                      const int16_t* audio,
-                      size_t max_encoded_bytes,
-                      uint8_t* encoded,
-                      EncodedInfo* info) override;
+  EncodedInfo EncodeInternal(uint32_t rtp_timestamp,
+                             const int16_t* audio,
+                             size_t max_encoded_bytes,
+                             uint8_t* encoded) override;
 
   virtual int16_t EncodeCall(const int16_t* audio,
                              size_t input_len,
@@ -55,7 +55,7 @@ class AudioEncoderPcm : public AudioEncoder {
   const int num_channels_;
   const int payload_type_;
   const int num_10ms_frames_per_packet_;
-  const int16_t full_frame_samples_;
+  const size_t full_frame_samples_;
   std::vector<int16_t> speech_buffer_;
   uint32_t first_timestamp_in_buffer_;
 };

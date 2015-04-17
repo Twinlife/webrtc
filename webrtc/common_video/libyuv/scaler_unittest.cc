@@ -101,9 +101,9 @@ TEST_F(TestScaler, ScaleSendingBufferTooSmall) {
   I420VideoFrame test_frame2;
   rtc::scoped_ptr<uint8_t[]> orig_buffer(new uint8_t[frame_length_]);
   EXPECT_GT(fread(orig_buffer.get(), 1, frame_length_, source_file_), 0U);
-  test_frame_.CreateFrame(size_y_, orig_buffer.get(),
-                          size_uv_, orig_buffer.get() + size_y_,
-                          size_uv_, orig_buffer.get() + size_y_ + size_uv_,
+  test_frame_.CreateFrame(orig_buffer.get(),
+                          orig_buffer.get() + size_y_,
+                          orig_buffer.get() + size_y_ + size_uv_,
                           width_, height_,
                           width_, half_width_, half_width_);
   EXPECT_EQ(0, test_scaler_.Scale(test_frame_, &test_frame2));
@@ -309,9 +309,9 @@ double TestScaler::ComputeAvgSequencePSNR(FILE* input_file,
     }
     frame_count++;
     EXPECT_EQ(0, ConvertToI420(kI420, input_buffer, 0, 0, width, height,
-                               required_size, kRotateNone, &in_frame));
+                               required_size, kVideoRotation_0, &in_frame));
     EXPECT_EQ(0, ConvertToI420(kI420, output_buffer, 0, 0, width, height,
-                               required_size, kRotateNone, &out_frame));
+                               required_size, kVideoRotation_0, &out_frame));
     double psnr = I420PSNR(&in_frame, &out_frame);
     avg_psnr += psnr;
   }
@@ -353,9 +353,9 @@ void TestScaler::ScaleSequence(ScaleMethod method,
         src_required_size)
       break;
 
-    input_frame.CreateFrame(size_y, frame_buffer.get(),
-                            size_uv, frame_buffer.get() + size_y,
-                            size_uv, frame_buffer.get() + size_y + size_uv,
+    input_frame.CreateFrame(frame_buffer.get(),
+                            frame_buffer.get() + size_y,
+                            frame_buffer.get() + size_y + size_uv,
                             src_width, src_height,
                             src_width, (src_width + 1) / 2,
                             (src_width + 1) / 2);

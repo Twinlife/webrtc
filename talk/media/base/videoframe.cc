@@ -33,6 +33,7 @@
 #include "libyuv/planar_functions.h"
 #include "libyuv/scale.h"
 #include "talk/media/base/videocommon.h"
+#include "webrtc/base/checks.h"
 #include "webrtc/base/logging.h"
 
 namespace cricket {

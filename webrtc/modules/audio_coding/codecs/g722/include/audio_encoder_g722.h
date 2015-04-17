@@ -31,17 +31,17 @@ class AudioEncoderG722 : public AudioEncoder {
   ~AudioEncoderG722() override;
 
   int SampleRateHz() const override;
-  int RtpTimestampRateHz() const override;
   int NumChannels() const override;
+  size_t MaxEncodedBytes() const override;
+  int RtpTimestampRateHz() const override;
   int Num10MsFramesInNextPacket() const override;
   int Max10MsFramesInAPacket() const override;
 
  protected:
-  void EncodeInternal(uint32_t rtp_timestamp,
-                      const int16_t* audio,
-                      size_t max_encoded_bytes,
-                      uint8_t* encoded,
-                      EncodedInfo* info) override;
+  EncodedInfo EncodeInternal(uint32_t rtp_timestamp,
+                             const int16_t* audio,
+                             size_t max_encoded_bytes,
+                             uint8_t* encoded) override;
 
  private:
   // The encoder state for one channel.
@@ -52,6 +52,8 @@ class AudioEncoderG722 : public AudioEncoder {
     EncoderState();
     ~EncoderState();
   };
+
+  int SamplesPerChannel() const;
 
   const int num_channels_;
   const int payload_type_;

@@ -161,9 +161,8 @@ int SequenceCoder(webrtc::test::CommandLineParser& parser) {
      if (fread(frame_buffer.get(), 1, length, input_file) != length)
       continue;
     if (frame_cnt >= start_frame) {
-      webrtc::ConvertToI420(webrtc::kI420, frame_buffer.get(), 0, 0,
-                            width, height, 0, webrtc::kRotateNone,
-                            &input_frame);
+      webrtc::ConvertToI420(webrtc::kI420, frame_buffer.get(), 0, 0, width,
+                            height, 0, webrtc::kVideoRotation_0, &input_frame);
       encoder->Encode(input_frame, NULL, NULL);
       decoder->Decode(encoder_callback.encoded_image(), false, NULL);
       ++frames_processed;
@@ -212,6 +211,7 @@ int main(int argc, char** argv) {
 
   // Init the parser and set the usage message.
   parser.Init(argc, argv);
+  parser.SetUsageMessage(usage);
 
   // Reset flags.
   parser.SetFlag("w", "352");
@@ -225,6 +225,7 @@ int main(int argc, char** argv) {
                  webrtc::test::OutputPath() + "vp8_encoded.vp8");
   parser.SetFlag("input_file", webrtc::test::ResourcePath("foreman_cif",
                                                           "yuv"));
+  parser.SetFlag("help", "false");
 
   parser.ProcessFlags();
   if (parser.GetFlag("help") == "true") {

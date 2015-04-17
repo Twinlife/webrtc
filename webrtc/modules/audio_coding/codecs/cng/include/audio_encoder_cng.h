@@ -48,6 +48,7 @@ class AudioEncoderCng final : public AudioEncoder {
 
   int SampleRateHz() const override;
   int NumChannels() const override;
+  size_t MaxEncodedBytes() const override;
   int RtpTimestampRateHz() const override;
   int Num10MsFramesInNextPacket() const override;
   int Max10MsFramesInAPacket() const override;
@@ -55,11 +56,10 @@ class AudioEncoderCng final : public AudioEncoder {
   void SetProjectedPacketLossRate(double fraction) override;
 
  protected:
-  void EncodeInternal(uint32_t rtp_timestamp,
-                      const int16_t* audio,
-                      size_t max_encoded_bytes,
-                      uint8_t* encoded,
-                      EncodedInfo* info) override;
+  EncodedInfo EncodeInternal(uint32_t rtp_timestamp,
+                             const int16_t* audio,
+                             size_t max_encoded_bytes,
+                             uint8_t* encoded) override;
 
  private:
   // Deleter for use with scoped_ptr. E.g., use as
@@ -68,11 +68,9 @@ class AudioEncoderCng final : public AudioEncoder {
     inline void operator()(CNG_enc_inst* ptr) const { WebRtcCng_FreeEnc(ptr); }
   };
 
-  void EncodePassive(uint8_t* encoded, size_t* encoded_bytes);
-
-  void EncodeActive(size_t max_encoded_bytes,
-                    uint8_t* encoded,
-                    EncodedInfo* info);
+  EncodedInfo EncodePassive(size_t max_encoded_bytes, uint8_t* encoded);
+  EncodedInfo EncodeActive(size_t max_encoded_bytes, uint8_t* encoded);
+  size_t SamplesPer10msFrame() const;
 
   AudioEncoder* speech_encoder_;
   const int cng_payload_type_;
