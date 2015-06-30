@@ -195,6 +195,7 @@ ChannelGroup::~ChannelGroup() {
   DCHECK(channel_map_.empty());
   DCHECK(!remb_->InUse());
   DCHECK(vie_encoder_map_.empty());
+  DCHECK(send_encoders_.empty());
 }
 
 bool ChannelGroup::CreateSendChannel(int channel_id,
@@ -222,7 +223,7 @@ bool ChannelGroup::CreateSendChannel(int channel_id,
   int stream_idx = 0;
   channel->GetLocalSSRC(stream_idx, &ssrc);
   encoder_state_feedback_->AddEncoder(ssrc, encoder);
-  std::list<unsigned int> ssrcs;
+  std::vector<uint32_t> ssrcs;
   ssrcs.push_back(ssrc);
   encoder->SetSsrcs(ssrcs);
   return true;
@@ -273,6 +274,8 @@ bool ChannelGroup::CreateChannel(int channel_id,
   {
     CriticalSectionScoped lock(encoder_map_cs_.get());
     vie_encoder_map_[channel_id] = vie_encoder;
+    if (sender)
+      send_encoders_[channel_id] = vie_encoder;
   }
 
   return true;
@@ -285,7 +288,7 @@ void ChannelGroup::DeleteChannel(int channel_id) {
   DCHECK(vie_encoder != NULL);
 
   call_stats_->DeregisterStatsObserver(vie_channel->GetStatsObserver());
-  SetChannelRembStatus(channel_id, false, false, vie_channel);
+  SetChannelRembStatus(false, false, vie_channel);
 
   // If we're owning the encoder, remove the feedback and stop all encoding
   // threads and processing. This must be done before deleting the channel.
@@ -368,10 +371,14 @@ ViEChannel* ChannelGroup::PopChannel(int channel_id) {
 
 ViEEncoder* ChannelGroup::PopEncoder(int channel_id) {
   CriticalSectionScoped lock(encoder_map_cs_.get());
-  EncoderMap::iterator e_it = vie_encoder_map_.find(channel_id);
-  DCHECK(e_it != vie_encoder_map_.end());
-  ViEEncoder* encoder = e_it->second;
-  vie_encoder_map_.erase(e_it);
+  auto it = vie_encoder_map_.find(channel_id);
+  DCHECK(it != vie_encoder_map_.end());
+  ViEEncoder* encoder = it->second;
+  vie_encoder_map_.erase(it);
+
+  it = send_encoders_.find(channel_id);
+  if (it != send_encoders_.end())
+    send_encoders_.erase(it);
 
   return encoder;
 }
@@ -446,8 +453,7 @@ int64_t ChannelGroup::GetPacerQueuingDelayMs() const {
   return pacer_->QueueInMs();
 }
 
-void ChannelGroup::SetChannelRembStatus(int channel_id,
-                                        bool sender,
+void ChannelGroup::SetChannelRembStatus(bool sender,
                                         bool receiver,
                                         ViEChannel* channel) {
   // Update the channel state.
@@ -473,7 +479,7 @@ void ChannelGroup::OnNetworkChanged(uint32_t target_bitrate_bps,
   int pad_up_to_bitrate_bps = 0;
   {
     CriticalSectionScoped lock(encoder_map_cs_.get());
-    for (const auto& encoder : vie_encoder_map_) {
+    for (const auto& encoder : send_encoders_) {
       pad_up_to_bitrate_bps +=
           encoder.second->GetPaddingNeededBps(target_bitrate_bps);
     }
