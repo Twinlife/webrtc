@@ -83,17 +83,19 @@ if 'android' in get_target_os_list():
     'third_party/appurify-python',
     'third_party/ashmem',
     'third_party/jsr-305',
+    'third_party/junit',
     'third_party/libevent',
     'third_party/libxml',
+    'third_party/mockito',
     'third_party/modp_b64',
     'third_party/requests',
+    'third_party/robolectric',
     'tools/android',
     'tools/grit',
     'tools/relocation_packer'
   ]
 
 FILES = {
-  '.gn': None,
   'tools/find_depot_tools.py': None,
   'third_party/BUILD.gn': None,
 }
@@ -349,7 +351,8 @@ class WebRTCLinkSetup():
         if not self._dry_run:
           if os.path.exists(link_path):
             if sys.platform.startswith('win') and os.path.isdir(link_path):
-              subprocess.check_call(['rmdir', '/q', link_path], shell=True)
+              subprocess.check_call(['rmdir', '/q', '/s', link_path],
+                                    shell=True)
             else:
               os.remove(link_path)
           del self._links_db[source]

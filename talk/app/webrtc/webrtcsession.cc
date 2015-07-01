@@ -505,7 +505,7 @@ WebRtcSession::~WebRtcSession() {
   }
   if (voice_channel_) {
     SignalVoiceChannelDestroyed();
-    channel_manager_->DestroyVoiceChannel(voice_channel_.release());
+    channel_manager_->DestroyVoiceChannel(voice_channel_.release(), nullptr);
   }
   if (data_channel_) {
     SignalDataChannelDestroyed();
@@ -521,9 +521,8 @@ bool WebRtcSession::Initialize(
     const PeerConnectionFactoryInterface::Options& options,
     const MediaConstraintsInterface*  constraints,
     DTLSIdentityServiceInterface* dtls_identity_service,
-    PeerConnectionInterface::IceTransportsType ice_transport_type,
-    PeerConnectionInterface::BundlePolicy bundle_policy) {
-  bundle_policy_ = bundle_policy;
+    const PeerConnectionInterface::RTCConfiguration& rtc_configuration) {
+  bundle_policy_ = rtc_configuration.bundle_policy;
 
   // TODO(perkj): Take |constraints| into consideration. Return false if not all
   // mandatory constraints can be fulfilled. Note that |constraints|
@@ -639,7 +638,8 @@ bool WebRtcSession::Initialize(
   SetOptionFromOptionalConstraint(constraints,
       MediaConstraintsInterface::kCombinedAudioVideoBwe,
       &audio_options_.combined_audio_video_bwe);
-
+  audio_options_.audio_jitter_buffer_max_packets.Set(
+      rtc_configuration.audio_jitter_buffer_max_packets);
   // -twinlife-
   SetOptionFromOptionalConstraint(constraints,
       MediaConstraintsInterface::kExcludeOpusCodec,
@@ -676,7 +676,7 @@ bool WebRtcSession::Initialize(
     webrtc_session_desc_factory_->SetSdesPolicy(cricket::SEC_DISABLED);
   }
   port_allocator()->set_candidate_filter(
-      ConvertIceTransportTypeToCandidateFilter(ice_transport_type));
+      ConvertIceTransportTypeToCandidateFilter(rtc_configuration.type));
   return true;
 }
 
@@ -1562,7 +1562,8 @@ void WebRtcSession::RemoveUnusedChannelsAndTransports(
     mediastream_signaling_->OnAudioChannelClose();
     SignalVoiceChannelDestroyed();
     const std::string content_name = voice_channel_->content_name();
-    channel_manager_->DestroyVoiceChannel(voice_channel_.release());
+    channel_manager_->DestroyVoiceChannel(voice_channel_.release(),
+                                          video_channel_.get());
     DestroyTransportProxy(content_name);
   }
 
@@ -1608,14 +1609,13 @@ bool WebRtcSession::CreateChannels(const SessionDescription* desc) {
 
   // Enable bundle before when kMaxBundle policy is in effect.
   if (bundle_policy_ == PeerConnectionInterface::kBundlePolicyMaxBundle) {
-    const cricket::ContentGroup* local_bundle_group =
-        BaseSession::local_description()->GetGroupByName(
-            cricket::GROUP_TYPE_BUNDLE);
-    if (!local_bundle_group) {
+    const cricket::ContentGroup* bundle_group = desc->GetGroupByName(
+        cricket::GROUP_TYPE_BUNDLE);
+    if (!bundle_group) {
       LOG(LS_WARNING) << "max-bundle specified without BUNDLE specified";
       return false;
     }
-    if (!BaseSession::BundleContentGroup(local_bundle_group)) {
+    if (!BaseSession::BundleContentGroup(bundle_group)) {
       LOG(LS_WARNING) << "max-bundle failed to enable bundling.";
       return false;
     }

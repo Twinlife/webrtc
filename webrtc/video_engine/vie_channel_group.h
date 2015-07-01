@@ -64,10 +64,7 @@ class ChannelGroup : public BitrateObserver {
 
   void SetSyncInterface(VoEVideoSync* sync_interface);
 
-  void SetChannelRembStatus(int channel_id,
-                            bool sender,
-                            bool receiver,
-                            ViEChannel* channel);
+  void SetChannelRembStatus(bool sender, bool receiver, ViEChannel* channel);
 
   BitrateController* GetBitrateController() const;
   CallStats* GetCallStats() const;
@@ -105,6 +102,7 @@ class ChannelGroup : public BitrateObserver {
   ChannelMap channel_map_;
   // Maps Channel id -> ViEEncoder.
   EncoderMap vie_encoder_map_;
+  EncoderMap send_encoders_;
   rtc::scoped_ptr<CriticalSectionWrapper> encoder_map_cs_;
 
   const Config* config_;
