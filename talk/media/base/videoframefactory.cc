@@ -73,6 +73,8 @@ VideoFrame* VideoFrameFactory::CreateAliasedFrame(
     output_frame_->SetElapsedTime(cropped_input_frame->GetElapsedTime());
     output_frame_->SetTimeStamp(cropped_input_frame->GetTimeStamp());
   }
+  // --twinlife-- 150702
+  output_frame_->SetRotation(cropped_input_frame->GetVideoRotation());
   return output_frame_->Copy();
 }
 

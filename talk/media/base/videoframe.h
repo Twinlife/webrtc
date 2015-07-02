@@ -126,6 +126,8 @@ class VideoFrame {
   // TODO(guoweis): Remove this function, rename GetVideoRotation and remove the
   // skeleton implementation of GetRotation once chrome is updated.
   virtual int GetRotation() const { return GetVideoRotation(); }
+  // --twinlife-- 150702
+  virtual void SetRotation(webrtc::VideoRotation rotation) = 0;
   virtual webrtc::VideoRotation GetVideoRotation() const {
     return webrtc::kVideoRotation_0;
   }

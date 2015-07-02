@@ -121,6 +121,8 @@ class WebRtcVideoFrame : public VideoFrame {
   }
 
   virtual webrtc::VideoRotation GetVideoRotation() const { return rotation_; }
+  // --twinlife-- 150702
+  virtual void SetRotation(webrtc::VideoRotation rotation) { rotation_ = rotation; }
 
   virtual VideoFrame* Copy() const;
   virtual bool IsExclusive() const;
@@ -129,9 +131,6 @@ class WebRtcVideoFrame : public VideoFrame {
                                     size_t size, int stride_rgb) const;
 
   const VideoFrame* GetCopyWithRotationApplied() const override;
-
- protected:
-  void SetRotation(webrtc::VideoRotation rotation) { rotation_ = rotation; }
 
  private:
   virtual VideoFrame* CreateEmptyFrame(int w, int h, size_t pixel_width,
