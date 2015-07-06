@@ -1166,6 +1166,15 @@ JOW(jboolean, PeerConnectionFactory_initializeAndroidGlobals)(
 }
 #endif  // defined(ANDROID) && !defined(WEBRTC_CHROMIUM_BUILD)
 
+// -twinlife- 150706
+JOW(jboolean, PeerConnectionFactory_initializeEGLContext)(
+    JNIEnv* jni, jclass, jobject render_egl_context) {
+  bool failure = false;
+  failure |= MediaCodecVideoDecoderFactory::SetAndroidObjects(jni,
+        render_egl_context);
+  return !failure;
+}
+
 JOW(void, PeerConnectionFactory_initializeFieldTrials)(
     JNIEnv* jni, jclass, jstring j_trials_init_string) {
   field_trials_init_string = NULL;
