@@ -122,6 +122,13 @@
     # enable schannel on windows.
     'use_legacy_ssl_defaults%': 0,
 
+    # Determines whether NEON code will be built.
+    'build_with_neon%': 0,
+
+    # Enable this to use HW H.264 encoder/decoder on iOS/Mac PeerConnections.
+    # Enabling this may break interop with Android clients that support H264.
+    'use_objc_h264%': 0,
+
     'conditions': [
       ['build_with_chromium==1', {
         # Exclude pulse audio on Chromium since its prerequisites don't require
@@ -130,7 +137,6 @@
 
         # Exclude internal ADM since Chromium uses its own IO handling.
         'include_internal_audio_device%': 0,
-
       }, {  # Settings for the standalone (not-in-Chromium) build.
         # TODO(andrew): For now, disable the Chrome plugins, which causes a
         # flood of chromium-style warnings. Investigate enabling them:
@@ -153,6 +159,9 @@
       }],
       ['target_arch=="arm" or target_arch=="arm64"', {
         'prefer_fixed_point%': 1,
+      }],
+      ['(target_arch=="arm" and (arm_neon==1 or arm_neon_optional==1)) or target_arch=="arm64"', {
+        'build_with_neon%': 1,
       }],
       ['OS!="ios" and (target_arch!="arm" or arm_version>=7) and target_arch!="mips64el"', {
         'rtc_use_openmax_dl%': 1,
@@ -267,13 +276,8 @@
       }],
       ['target_arch=="arm64"', {
         'defines': [
-          'WEBRTC_ARCH_ARM',
-          # TODO(zhongwei) Defining an unique WEBRTC_NEON and
-          # distinguishing ARMv7 NEON and ARM64 NEON by
-          # WEBRTC_ARCH_ARM_V7 and WEBRTC_ARCH_ARM64 should be better.
-
-          # This macro is used to distinguish ARMv7 NEON and ARM64 NEON
-          'WEBRTC_ARCH_ARM64_NEON',
+          'WEBRTC_ARCH_ARM64',
+          'WEBRTC_HAS_NEON',
         ],
       }],
       ['target_arch=="arm"', {
@@ -285,10 +289,10 @@
             'defines': ['WEBRTC_ARCH_ARM_V7',],
             'conditions': [
               ['arm_neon==1', {
-                'defines': ['WEBRTC_ARCH_ARM_NEON',],
+                'defines': ['WEBRTC_HAS_NEON',],
               }],
-              ['arm_neon==0 and OS=="android"', {
-                'defines': ['WEBRTC_DETECT_ARM_NEON',],
+              ['arm_neon==0 and arm_neon_optional==1', {
+                'defines': ['WEBRTC_DETECT_NEON',],
               }],
             ],
           }],
@@ -340,6 +344,11 @@
           'WEBRTC_IOS',
         ],
       }],
+      ['OS=="ios" and use_objc_h264==1', {
+        'defines': [
+          'WEBRTC_OBJC_H264',
+        ],
+      }],
       ['OS=="linux"', {
         'defines': [
           'WEBRTC_LINUX',
@@ -370,11 +379,6 @@
           'WEBRTC_ANDROID',
          ],
          'conditions': [
-           ['enable_android_opensl==1', {
-             'defines': [
-               'WEBRTC_ANDROID_OPENSLES',
-             ],
-           }],
            ['clang!=1', {
              # The Android NDK doesn't provide optimized versions of these
              # functions. Ensure they are disabled for all compilers.
@@ -386,6 +390,11 @@
              ],
            }],
          ],
+      }],
+      ['include_internal_audio_device==1', {
+        'defines': [
+          'WEBRTC_INCLUDE_INTERNAL_AUDIO_DEVICE',
+        ],
       }],
     ], # conditions
     'direct_dependent_settings': {
@@ -437,13 +446,6 @@
           'defines': [
             'WEBRTC_LINUX',
             'WEBRTC_ANDROID',
-           ],
-           'conditions': [
-             ['enable_android_opensl==1', {
-               'defines': [
-                 'WEBRTC_ANDROID_OPENSLES',
-               ],
-             }]
            ],
         }],
         ['os_posix==1', {

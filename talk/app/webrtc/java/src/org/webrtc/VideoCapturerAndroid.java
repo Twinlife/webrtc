@@ -51,6 +51,7 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Exchanger;
 import java.util.concurrent.TimeUnit;
@@ -73,6 +74,7 @@ import java.util.concurrent.TimeUnit;
 @SuppressWarnings("deprecation")
 public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallback {
   private final static String TAG = "VideoCapturerAndroid";
+  private final static int CAMERA_OBSERVER_PERIOD_MS = 5000;
 
   private Camera camera;  // Only non-null while capturing.
   private CameraThread cameraThread;
@@ -86,11 +88,68 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
   private int width;
   private int height;
   private int framerate;
+  private int cameraFramesCount;
+  private int captureBuffersCount;
   private volatile boolean pendingCameraSwitch;
   private CapturerObserver frameObserver = null;
+  private CameraErrorHandler errorHandler = null;
   // List of formats supported by all cameras. This list is filled once in order
   // to be able to switch cameras.
   private static List<List<CaptureFormat>> supportedFormats;
+
+  // Camera error callback.
+  private final Camera.ErrorCallback cameraErrorCallback =
+      new Camera.ErrorCallback() {
+    @Override
+    public void onError(int error, Camera camera) {
+      String errorMessage;
+      if (error == android.hardware.Camera.CAMERA_ERROR_SERVER_DIED) {
+        errorMessage = "Camera server died!";
+      } else {
+        errorMessage = "Camera error: " + error;
+      }
+      Log.e(TAG, errorMessage);
+      if (errorHandler != null) {
+        errorHandler.onCameraError(errorMessage);
+      }
+    }
+  };
+
+  // Camera observer - monitors camera framerate and amount of available
+  // camera buffers. Observer is excecuted on camera thread.
+  private final Runnable cameraObserver = new Runnable() {
+    @Override
+    public void run() {
+      int cameraFps = (cameraFramesCount * 1000 + CAMERA_OBSERVER_PERIOD_MS / 2)
+          / CAMERA_OBSERVER_PERIOD_MS;
+      double averageCaptureBuffersCount = 0;
+      if (cameraFramesCount > 0) {
+        averageCaptureBuffersCount =
+            (double)captureBuffersCount / cameraFramesCount;
+      }
+      Log.d(TAG, "Camera fps: " + cameraFps + ". CaptureBuffers: " +
+          String.format("%.1f", averageCaptureBuffersCount) +
+          ". Pending buffers: [" + videoBuffers.pendingFramesTimeStamps() + "]");
+      if (cameraFramesCount == 0) {
+        Log.e(TAG, "Camera freezed.");
+        if (errorHandler != null) {
+          errorHandler.onCameraError("Camera failure.");
+        }
+      } else {
+        cameraFramesCount = 0;
+        captureBuffersCount = 0;
+        if (cameraThreadHandler != null) {
+          cameraThreadHandler.postDelayed(this, CAMERA_OBSERVER_PERIOD_MS);
+        }
+      }
+    }
+  };
+
+  // Camera error handler - invoked when camera stops receiving frames
+  // or any camera exception happens on camera thread.
+  public static interface CameraErrorHandler {
+    public void onCameraError(String errorDescription);
+  }
 
   // Returns device names that can be used to create a new VideoCapturerAndroid.
   public static String[] getDeviceNames() {
@@ -155,10 +214,14 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
     return null;
   }
 
-  public static VideoCapturerAndroid create(String name) {
+  public static VideoCapturerAndroid create(String name,
+      CameraErrorHandler errorHandler) {
     VideoCapturer capturer = VideoCapturer.create(name);
-    if (capturer != null)
-      return (VideoCapturerAndroid) capturer;
+    if (capturer != null) {
+      VideoCapturerAndroid capturerAndroid = (VideoCapturerAndroid) capturer;
+      capturerAndroid.errorHandler = errorHandler;
+      return capturerAndroid;
+    }
     return null;
   }
 
@@ -207,6 +270,21 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
     return true;
   }
 
+  // Requests a new output format from the video capturer. Captured frames
+  // by the camera will be scaled/or dropped by the video capturer.
+  public synchronized void onOutputFormatRequest(
+      final int width, final int height, final int fps) {
+    if (cameraThreadHandler == null) {
+      Log.e(TAG, "Calling onOutputFormatRequest() for already stopped camera.");
+      return;
+    }
+    cameraThreadHandler.post(new Runnable() {
+      @Override public void run() {
+        onOutputFormatRequestOnCameraThread(width, height, fps);
+      }
+    });
+  }
+
   private VideoCapturerAndroid() {
     Log.d(TAG, "VideoCapturerAndroid");
   }
@@ -218,7 +296,7 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
   // If deviceName is empty, the first available device is used in order to be
   // compatible with the generic VideoCapturer class.
   synchronized boolean init(String deviceName) {
-    Log.d(TAG, "init " + deviceName);
+    Log.d(TAG, "init: " + deviceName);
     if (deviceName == null || !initStatics())
       return false;
 
@@ -245,9 +323,20 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
       Log.d(TAG, "Get supported formats.");
       supportedFormats =
           new ArrayList<List<CaptureFormat>>(Camera.getNumberOfCameras());
-      for (int i = 0; i < Camera.getNumberOfCameras(); ++i) {
-        supportedFormats.add(getSupportedFormats(i));
+      // Start requesting supported formats from camera with the highest index
+      // (back camera) first. If it fails then likely camera is in bad state.
+      for (int i = Camera.getNumberOfCameras() - 1; i >= 0; i--) {
+        ArrayList<CaptureFormat> supportedFormat = getSupportedFormats(i);
+        if (supportedFormat.size() == 0) {
+          Log.e(TAG, "Fail to get supported formats for camera " + i);
+          supportedFormats = null;
+          return false;
+        }
+        supportedFormats.add(supportedFormat);
       }
+      // Reverse the list since it is filled in reverse order.
+      Collections.reverse(supportedFormats);
+      Log.d(TAG, "Get supported formats done.");
       return true;
     } catch (Exception e) {
       supportedFormats = null;
@@ -328,6 +417,7 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
 
     Camera camera;
     try {
+      Log.d(TAG, "Opening camera " + id);
       camera = Camera.open(id);
     } catch (Exception e) {
       Log.e(TAG, "Open camera failed on id " + id, e);
@@ -353,6 +443,7 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
       Log.e(TAG, "getSupportedFormats failed on id " + id, e);
     }
     camera.release();
+    camera = null;
     return formatList;
   }
 
@@ -411,6 +502,7 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
     this.applicationContext = applicationContext;
     this.frameObserver = frameObserver;
     try {
+      Log.d(TAG, "Opening camera " + id);
       camera = Camera.open(id);
       info = new Camera.CameraInfo();
       Camera.getCameraInfo(id, info);
@@ -454,6 +546,8 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
         parameters.setVideoStabilization(true);
       }
 
+      camera.setErrorCallback(cameraErrorCallback);
+
       int androidFramerate = framerate * 1000;
       int[] range = getFramerateRange(parameters, androidFramerate);
       if (range != null) {
@@ -480,6 +574,11 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
       camera.setPreviewCallbackWithBuffer(this);
       camera.startPreview();
       frameObserver.OnCapturerStarted(true);
+
+      // Start camera observer.
+      cameraFramesCount = 0;
+      captureBuffersCount = 0;
+      cameraThreadHandler.postDelayed(cameraObserver, CAMERA_OBSERVER_PERIOD_MS);
       return;
     } catch (RuntimeException e) {
       error = e;
@@ -488,6 +587,9 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
     stopCaptureOnCameraThread();
     cameraThreadHandler = null;
     frameObserver.OnCapturerStarted(false);
+    if (errorHandler != null) {
+      errorHandler.onCameraError("Camera can not be started.");
+    }
     return;
   }
 
@@ -509,17 +611,18 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
   }
 
   private void stopCaptureOnCameraThread() {
-    Log.d(TAG, "stopCaptureOnCameraThread");
-    doStopCaptureOnCamerathread();
+    doStopCaptureOnCameraThread();
     Looper.myLooper().quit();
     return;
   }
 
-  private void doStopCaptureOnCamerathread() {
+  private void doStopCaptureOnCameraThread() {
+    Log.d(TAG, "stopCaptureOnCameraThread");
     if (camera == null) {
       return;
     }
     try {
+      cameraThreadHandler.removeCallbacks(cameraObserver);
       Log.d(TAG, "Stop preview.");
       camera.stopPreview();
       camera.setPreviewCallbackWithBuffer(null);
@@ -543,7 +646,7 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
   private void switchCameraOnCameraThread(Runnable switchDoneEvent) {
     Log.d(TAG, "switchCameraOnCameraThread");
 
-    doStopCaptureOnCamerathread();
+    doStopCaptureOnCameraThread();
     startCaptureOnCameraThread(width, height, framerate, frameObserver,
         applicationContext);
     pendingCameraSwitch = false;
@@ -551,6 +654,16 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
     if (switchDoneEvent != null) {
       switchDoneEvent.run();
     }
+  }
+
+  private void onOutputFormatRequestOnCameraThread(
+      int width, int height, int fps) {
+    if (camera == null) {
+      return;
+    }
+    Log.d(TAG, "onOutputFormatRequestOnCameraThread: " + width + "x" + height +
+        "@" + fps);
+    frameObserver.OnOutputFormatRequest(width, height, fps);
   }
 
   synchronized void returnBuffer(final long timeStamp) {
@@ -638,6 +751,8 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
     long captureTimeNs =
         TimeUnit.MILLISECONDS.toNanos(SystemClock.elapsedRealtime());
 
+    cameraFramesCount++;
+    captureBuffersCount += videoBuffers.numCaptureBuffersAvailable;
     int rotation = getDeviceOrientation();
     if (info.facing == Camera.CameraInfo.CAMERA_FACING_BACK) {
       rotation = 360 - rotation;
@@ -687,6 +802,7 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
     private static int numCaptureBuffers = 3;
     private final List<Frame> cameraFrames = new ArrayList<Frame>();
     public int frameSize = 0;
+    public int numCaptureBuffersAvailable = 0;
     private Camera camera;
 
     private static class Frame {
@@ -713,7 +829,7 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
       this.camera = camera;
       int newFrameSize = CaptureFormat.frameSize(width, height, format);
 
-      int numberOfEnquedCameraBuffers = 0;
+      numCaptureBuffersAvailable = 0;
       if (newFrameSize != frameSize) {
         // Create new frames and add to the camera.
         // The old frames will be released when frames are returned.
@@ -722,33 +838,39 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
           cameraFrames.add(frame);
           this.camera.addCallbackBuffer(frame.data());
         }
-        numberOfEnquedCameraBuffers = numCaptureBuffers;
+        numCaptureBuffersAvailable = numCaptureBuffers;
       } else {
         // Add all frames that have been returned.
         for (Frame frame : cameraFrames) {
           if (frame.timeStamp < 0) {
             camera.addCallbackBuffer(frame.data());
-            ++numberOfEnquedCameraBuffers;
+            numCaptureBuffersAvailable++;
           }
         }
       }
       frameSize = newFrameSize;
-      Log.d(TAG, "queueCameraBuffers enqued " + numberOfEnquedCameraBuffers
+      Log.d(TAG, "queueCameraBuffers enqued " + numCaptureBuffersAvailable
           + " buffers of size " + frameSize + ".");
+    }
+
+    String pendingFramesTimeStamps() {
+      String pendingTimeStamps = new String();
+      for (Frame frame : cameraFrames) {
+        if (frame.timeStamp > -1) {
+          pendingTimeStamps += " " +
+              TimeUnit.NANOSECONDS.toMillis(frame.timeStamp);
+        }
+      }
+      return pendingTimeStamps;
     }
 
     void stopReturnBuffersToCamera() {
       this.camera = null;
-      String pendingTimeStamps = new String();
-      for (Frame frame : cameraFrames) {
-        if (frame.timeStamp > -1) {
-          pendingTimeStamps+= " " + frame.timeStamp;
-        }
-      }
+      String pendingTimeStamps = pendingFramesTimeStamps();
       Log.d(TAG, "stopReturnBuffersToCamera called."
             + (pendingTimeStamps.isEmpty() ?
                    " All buffers have been returned."
-                   : " Pending buffers " + pendingTimeStamps + "."));
+                   : " Pending buffers: [" + pendingTimeStamps + "]."));
 
     }
 
@@ -759,6 +881,11 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
             throw new RuntimeException("Frame already in use !");
           }
           frame.timeStamp = timeStamp;
+          numCaptureBuffersAvailable--;
+          if (numCaptureBuffersAvailable == 0) {
+            Log.v(TAG, "Camera is running out of capture buffers."
+                + " Pending buffers: [" + pendingFramesTimeStamps() + "]");
+          }
           return;
         }
       }
@@ -782,11 +909,17 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
 
       if (camera != null && returnedFrame.frameSize == frameSize) {
         camera.addCallbackBuffer(returnedFrame.data());
+        if (numCaptureBuffersAvailable == 0) {
+          Log.v(TAG, "Frame returned when camera is running out of capture"
+              + " buffers for TS " + TimeUnit.NANOSECONDS.toMillis(timeStamp));
+        }
+        numCaptureBuffersAvailable++;
         return;
       }
 
       if (returnedFrame.frameSize != frameSize) {
-        Log.d(TAG, "returnBuffer with time stamp "+ timeStamp
+        Log.d(TAG, "returnBuffer with time stamp "
+            + TimeUnit.NANOSECONDS.toMillis(timeStamp)
             + " called with old frame size, " + returnedFrame.frameSize + ".");
         // Since this frame has the wrong size, remove it from the list. Frames
         // with the correct size is created in queueCameraBuffers so this must
@@ -795,7 +928,8 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
         return;
       }
 
-      Log.d(TAG, "returnBuffer with time stamp "+ timeStamp
+      Log.d(TAG, "returnBuffer with time stamp "
+          + TimeUnit.NANOSECONDS.toMillis(timeStamp)
           + " called after camera has been stopped.");
     }
   }
@@ -810,6 +944,11 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
     // VideoCapturerAndroid.
     abstract void OnFrameCaptured(byte[] data, int length, int rotation,
         long timeStamp);
+
+    // Requests an output format from the video capturer. Captured frames
+    // by the camera will be scaled/or dropped by the video capturer.
+    // Called on a Java thread owned by VideoCapturerAndroid.
+    abstract void OnOutputFormatRequest(int width, int height, int fps);
   }
 
   // An implementation of CapturerObserver that forwards all calls from
@@ -832,9 +971,16 @@ public class VideoCapturerAndroid extends VideoCapturer implements PreviewCallba
       nativeOnFrameCaptured(nativeCapturer, data, length, rotation, timeStamp);
     }
 
+    @Override
+    public void OnOutputFormatRequest(int width, int height, int fps) {
+      nativeOnOutputFormatRequest(nativeCapturer, width, height, fps);
+    }
+
     private native void nativeCapturerStarted(long nativeCapturer,
         boolean success);
     private native void nativeOnFrameCaptured(long nativeCapturer,
         byte[] data, int length, int rotation, long timeStamp);
+    private native void nativeOnOutputFormatRequest(long nativeCapturer,
+        int width, int height, int fps);
   }
 }

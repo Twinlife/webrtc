@@ -6,7 +6,7 @@
 vars = {
   'extra_gyp_flag': '-Dextra_gyp_flag=0',
   'chromium_git': 'https://chromium.googlesource.com',
-  'chromium_revision': '62a5bb3d60f9863666194da9446d467c69fe3280',
+  'chromium_revision': 'f8d6ba9efdddfb3aa0dfc01cd579f500a2de0b8d',
 }
 
 # NOTE: Prefer revision numbers to tags for svn deps. Use http rather than
@@ -34,6 +34,7 @@ include_rules = [
   # WebRTC production code.
   '-base',
   '-chromium',
+  '+external/webrtc/webrtc',  # Android platform build.
   '+gflags',
   '+libyuv',
   '+net',
