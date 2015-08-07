@@ -640,17 +640,17 @@ bool WebRtcSession::Initialize(
         cricket::VideoOptions::HIGH);
   }
 
+  // --twinlife-- 150715
+  SetOptionFromOptionalConstraint(constraints,
+      MediaConstraintsInterface::kTwinlifeMaxFrameRate,
+      &video_options_.twinlife_max_frame_rate);
+  SetOptionFromOptionalConstraint(constraints,
+      MediaConstraintsInterface::kTwinlifeMaxFrameSize,
+      &video_options_.twinlife_max_frame_size);
+
   SetOptionFromOptionalConstraint(constraints,
       MediaConstraintsInterface::kCombinedAudioVideoBwe,
       &audio_options_.combined_audio_video_bwe);
-
-  // --twinlife-- 150715
-  SetOptionFromOptionalConstraint(constraints,
-      MediaConstraintsInterface::kExcludeOpusCodec,
-      &audio_options_.exclude_opus_codec);
-  SetOptionFromOptionalConstraint(constraints,
-      MediaConstraintsInterface::kExcludeIsacCodec,
-      &audio_options_.exclude_isac_codec);
 
   audio_options_.audio_jitter_buffer_max_packets.Set(
       rtc_configuration.audio_jitter_buffer_max_packets);

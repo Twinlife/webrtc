@@ -89,8 +89,7 @@ float VideoAdapter::FindScale(const float* scale_factors,
                               const float upbias,
                               int width, int height,
                               int target_num_pixels) {
-  // -twinlife- 2014/10/10
-  const float kMinNumPixels = 80 * 60;
+  const float kMinNumPixels = 160 * 90;
   if (!target_num_pixels) {
     return 0.f;
   }
@@ -175,7 +174,10 @@ VideoAdapter::VideoAdapter()
       adaption_changes_(0),
       previous_width_(0),
       previous_height_(0),
-      interval_next_frame_(0) {
+      interval_next_frame_(0),
+      // --twinlife-- 150720
+      twinlife_max_num_pixels_(INT_MAX),
+      twinlife_min_interval_(0) {
 }
 
 VideoAdapter::~VideoAdapter() {
@@ -229,6 +231,9 @@ void VideoAdapter::SetOutputFormat(const VideoFormat& format) {
   output_num_pixels_ = output_format_.width * output_format_.height;
   output_format_.interval =
       std::max(output_format_.interval, input_format_.interval);
+  // --twinlife-- 150720
+  output_format_.interval =
+      std::max(output_format_.interval, twinlife_min_interval_);
   if (old_output_interval != output_format_.interval) {
     LOG(LS_INFO) << "VAdapt output interval changed from "
       << old_output_interval << " to " << output_format_.interval;
@@ -278,12 +283,13 @@ VideoFormat VideoAdapter::AdaptFrameResolution(int in_width, int in_height) {
     interval_next_frame_ += input_format_.interval;
     if (output_format_.interval > 0) {
       if (interval_next_frame_ >= output_format_.interval) {
-        interval_next_frame_ %= output_format_.interval;
+	interval_next_frame_ %= output_format_.interval;
       } else {
-        should_drop = true;
+	should_drop = true;
       }
     }
   }
+
   if (should_drop) {
     // Show VAdapt log every 90 frames dropped. (3 seconds)
     if ((frames_in_ - frames_out_) % 90 == 0) {
@@ -302,8 +308,16 @@ VideoFormat VideoAdapter::AdaptFrameResolution(int in_width, int in_height) {
     return VideoFormat();  // Drop frame.
   }
 
-  const float scale = VideoAdapter::FindClosestViewScale(
+  // --twinlife-- 150720
+  float scale;
+  if (output_num_pixels_ > twinlife_max_num_pixels_) {
+    output_num_pixels_ = twinlife_max_num_pixels_;
+    scale = VideoAdapter::FindLowerScale(
       in_width, in_height, output_num_pixels_);
+  } else {
+    scale = VideoAdapter::FindClosestViewScale(
+      in_width, in_height, output_num_pixels_);
+  }
   const int output_width = static_cast<int>(in_width * scale + .5f);
   const int output_height = static_cast<int>(in_height * scale + .5f);
 
@@ -355,6 +369,14 @@ void VideoAdapter::set_scale_third(bool enable) {
                << (enable ? "enabled" : "disabled");
   scale_third_ = enable;
 }
+
+// --twinlife-- 150720
+void VideoAdapter::set_twinlife_limits(int max_num_pixels, int64 min_interval) {
+  rtc::CritScope cs(&critical_section_);
+  twinlife_max_num_pixels_ = max_num_pixels;
+  twinlife_min_interval_ = min_interval;
+}
+
 
 ///////////////////////////////////////////////////////////////////////
 // Implementation of CoordinatedVideoAdapter

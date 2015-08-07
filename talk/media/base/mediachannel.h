@@ -175,9 +175,6 @@ struct AudioOptions {
     playout_sample_rate.SetFrom(change.playout_sample_rate);
     dscp.SetFrom(change.dscp);
     combined_audio_video_bwe.SetFrom(change.combined_audio_video_bwe);
-    // -twinlife-
-    exclude_opus_codec.SetFrom(change.exclude_opus_codec);
-    exclude_isac_codec.SetFrom(change.exclude_isac_codec);
   }
 
   bool operator==(const AudioOptions& o) const {
@@ -208,10 +205,7 @@ struct AudioOptions {
         recording_sample_rate == o.recording_sample_rate &&
         playout_sample_rate == o.playout_sample_rate &&
         dscp == o.dscp &&
-        combined_audio_video_bwe == o.combined_audio_video_bwe &&
-        // -twinlife-
-        exclude_opus_codec == o.exclude_opus_codec &&
-        exclude_isac_codec == o.exclude_isac_codec;
+        combined_audio_video_bwe == o.combined_audio_video_bwe;
   }
 
   std::string ToString() const {
@@ -248,10 +242,6 @@ struct AudioOptions {
     ost << ToStringIfSet("playout_sample_rate", playout_sample_rate);
     ost << ToStringIfSet("dscp", dscp);
     ost << ToStringIfSet("combined_audio_video_bwe", combined_audio_video_bwe);
-    // -twinlife-
-    ost << ToStringIfSet("exclude_opus_codec", exclude_opus_codec);
-    ost << ToStringIfSet("exclude_isac_codec", exclude_isac_codec);
-    ost << "}";
     return ost.str();
   }
 
@@ -295,9 +285,6 @@ struct AudioOptions {
   Settable<bool> dscp;
   // Enable combined audio+bandwidth BWE.
   Settable<bool> combined_audio_video_bwe;
-  // -twinlife-
-  Settable<bool> exclude_opus_codec;
-  Settable<bool> exclude_isac_codec;
 };
 
 // Options that can be applied to a VideoMediaChannel or a VideoMediaEngine.
@@ -345,6 +332,9 @@ struct VideoOptions {
     unsignalled_recv_stream_limit.SetFrom(change.unsignalled_recv_stream_limit);
     use_simulcast_adapter.SetFrom(change.use_simulcast_adapter);
     screencast_min_bitrate.SetFrom(change.screencast_min_bitrate);
+    // --twinlife-- 150720
+    twinlife_max_frame_size.SetFrom(change.twinlife_max_frame_size);
+    twinlife_max_frame_rate.SetFrom(change.twinlife_max_frame_rate);
   }
 
   bool operator==(const VideoOptions& o) const {
@@ -372,7 +362,10 @@ struct VideoOptions {
            suspend_below_min_bitrate == o.suspend_below_min_bitrate &&
            unsignalled_recv_stream_limit == o.unsignalled_recv_stream_limit &&
            use_simulcast_adapter == o.use_simulcast_adapter &&
-           screencast_min_bitrate == o.screencast_min_bitrate;
+           screencast_min_bitrate == o.screencast_min_bitrate &&
+           // --twinlife-- 150720
+           twinlife_max_frame_size == o.twinlife_max_frame_size &&
+           twinlife_max_frame_rate == o.twinlife_max_frame_rate;
   }
 
   std::string ToString() const {
@@ -405,6 +398,9 @@ struct VideoOptions {
                          unsignalled_recv_stream_limit);
     ost << ToStringIfSet("use simulcast adapter", use_simulcast_adapter);
     ost << ToStringIfSet("screencast min bitrate", screencast_min_bitrate);
+    // --twinlife-- 150720
+    ost << ToStringIfSet("twinlife max frame size", twinlife_max_frame_size);
+    ost << ToStringIfSet("twinlife max frame rate", twinlife_max_frame_rate);
     ost << "}";
     return ost.str();
   }
@@ -464,6 +460,9 @@ struct VideoOptions {
   Settable<bool> use_simulcast_adapter;
   // Force screencast to use a minimum bitrate
   Settable<int> screencast_min_bitrate;
+  // --twinlife-- 150720
+  Settable<int> twinlife_max_frame_size;
+  Settable<int> twinlife_max_frame_rate;
 };
 
 struct RtpHeaderExtension {

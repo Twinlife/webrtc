@@ -44,9 +44,9 @@ const char MediaConstraintsInterface::kMaxHeight[] = "maxHeight";
 const char MediaConstraintsInterface::kMinHeight[] = "minHeight";
 const char MediaConstraintsInterface::kMaxFrameRate[] = "maxFrameRate";
 const char MediaConstraintsInterface::kMinFrameRate[] = "minFrameRate";
-// -twinlife-
-const char MediaConstraintsInterface::kMaxFrameSize[] = "maxFrameSize";
-const char MediaConstraintsInterface::kMinFrameSize[] = "mimFrameSize";
+// --twinlife-- 150720
+const char MediaConstraintsInterface::kTwinlifeMaxFrameSize[] = "twinlifeMaxFrameSize";
+const char MediaConstraintsInterface::kTwinlifeMaxFrameRate[] = "twinlifeMaxFrameRate";
 
 // Audio constraints.
 const char MediaConstraintsInterface::kEchoCancellation[] =
@@ -124,9 +124,9 @@ const char MediaConstraintsInterface::kHighBitrate[] =
 const char MediaConstraintsInterface::kVeryHighBitrate[] =
     "googVeryHighBitrate";
 const char MediaConstraintsInterface::kPayloadPadding[] = "googPayloadPadding";
-// -twinlife-
-const char MediaConstraintsInterface::kExcludeOpusCodec[] = "excludeOpusCodec";
-const char MediaConstraintsInterface::kExcludeIsacCodec[] = "excludeIsacCodec";
+// --twinlife-- 150720
+const char MediaConstraintsInterface::kTwinlifeExcludeOpusCodec[] = "twinlifeExcludeOpusCodec";
+const char MediaConstraintsInterface::kTwinlifeExcludeIsacCodec[] = "twinlifeExcludeIsacCodec";
 
 // Set |value| to the value associated with the first appearance of |key|, or
 // return false if |key| is not found.

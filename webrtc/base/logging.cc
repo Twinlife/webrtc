@@ -81,8 +81,8 @@ LoggingSeverity LogMessage::min_sev_ = LS_INFO;
 LoggingSeverity LogMessage::dbg_sev_ = LS_INFO;
 #else  // !_DEBUG
 // --twinlife-- 150715
-LoggingSeverity LogMessage::min_sev_ = LS_WARNING;
-LoggingSeverity LogMessage::dbg_sev_ = LS_NONE;
+LoggingSeverity LogMessage::min_sev_ = LS_INFO;
+LoggingSeverity LogMessage::dbg_sev_ = LS_INFO;
 #endif  // !_DEBUG
 
 // Global lock for log subsystem, only needed to serialize access to streams_.

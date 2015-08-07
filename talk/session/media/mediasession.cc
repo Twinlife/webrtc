@@ -1195,6 +1195,20 @@ SessionDescription* MediaSessionDescriptionFactory::CreateOffer(
     StripCNCodecs(&audio_codecs);
   }
 
+  // --twinlife-- 150721
+  AudioCodecs::iterator iter = audio_codecs.begin();
+  while (iter != audio_codecs.end()) {
+    if (options.twinlife_exclude_opus_codec &&
+	stricmp(iter->name.c_str(), kOpusCodecName) == 0) {
+      iter = audio_codecs.erase(iter);
+    } else if (options.twinlife_exclude_isac_codec &&
+	stricmp(iter->name.c_str(), kIsacCodecName) == 0) {
+      iter = audio_codecs.erase(iter);
+    } else {
+      ++iter;
+    }
+  }
+
   RtpHeaderExtensions audio_rtp_extensions;
   RtpHeaderExtensions video_rtp_extensions;
   GetRtpHdrExtsToOffer(current_description, &audio_rtp_extensions,
@@ -1641,6 +1655,20 @@ bool MediaSessionDescriptionFactory::AddAudioContentForAnswer(
   AudioCodecs audio_codecs = audio_codecs_;
   if (!options.vad_enabled) {
     StripCNCodecs(&audio_codecs);
+  }
+
+  // --twinlife-- 150722
+  AudioCodecs::iterator iter = audio_codecs.begin();
+  while (iter != audio_codecs.end()) {
+    if (options.twinlife_exclude_opus_codec &&
+	stricmp(iter->name.c_str(), kOpusCodecName) == 0) {
+      iter = audio_codecs.erase(iter);
+    } else if (options.twinlife_exclude_isac_codec &&
+	stricmp(iter->name.c_str(), kIsacCodecName) == 0) {
+      iter = audio_codecs.erase(iter);
+    } else {
+      ++iter;
+    }
   }
 
   bool bundle_enabled =

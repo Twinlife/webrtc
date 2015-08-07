@@ -93,6 +93,12 @@ class VideoAdapter {
   rtc::CriticalSection critical_section_;
 
   DISALLOW_COPY_AND_ASSIGN(VideoAdapter);
+ protected:
+  // --twinlife-- 150720
+  int twinlife_max_num_pixels_;
+  int64 twinlife_min_interval_;
+ public:
+  void set_twinlife_limits(int max_num_pixels, int64 min_interval);
 };
 
 // CoordinatedVideoAdapter adapts the video input to the encoder by coordinating
@@ -132,8 +138,6 @@ class CoordinatedVideoAdapter
   // Enable or disable video adaptation to fast switch View
   void set_view_switch(bool enable) { view_switch_ = enable; }
   bool view_switch() const { return view_switch_; }
-  // -twinlife-
-  void set_view_desired_interval(int interval) { view_desired_interval_ = interval; }
 
   CoordinatedVideoAdapter::AdaptReason adapt_reason() const {
     return adapt_reason_;

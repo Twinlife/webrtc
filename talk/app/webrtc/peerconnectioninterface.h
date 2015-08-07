@@ -248,24 +248,33 @@ class PeerConnectionInterface : public rtc::RefCountInterface {
     bool voice_activity_detection;
     bool ice_restart;
     bool use_rtp_mux;
+    // --twinlife-- 150721
+    bool twinlife_exclude_opus_codec;
+    bool twinlife_exclude_isac_codec;
 
     RTCOfferAnswerOptions()
         : offer_to_receive_video(kUndefined),
           offer_to_receive_audio(kUndefined),
           voice_activity_detection(true),
           ice_restart(false),
-          use_rtp_mux(true) {}
+          use_rtp_mux(true),
+          twinlife_exclude_opus_codec(false),
+          twinlife_exclude_isac_codec(false) {}
 
     RTCOfferAnswerOptions(int offer_to_receive_video,
                           int offer_to_receive_audio,
                           bool voice_activity_detection,
                           bool ice_restart,
-                          bool use_rtp_mux)
+                          bool use_rtp_mux,
+			  bool twinlife_exclude_opus_codec,
+			  bool twinlife_exclude_isac_codec)
         : offer_to_receive_video(offer_to_receive_video),
           offer_to_receive_audio(offer_to_receive_audio),
           voice_activity_detection(voice_activity_detection),
           ice_restart(ice_restart),
-          use_rtp_mux(use_rtp_mux) {}
+          use_rtp_mux(use_rtp_mux),
+          twinlife_exclude_opus_codec(twinlife_exclude_opus_codec),
+          twinlife_exclude_isac_codec(twinlife_exclude_isac_codec) {}
   };
 
   // Used by GetStats to decide which stats to include in the stats reports.

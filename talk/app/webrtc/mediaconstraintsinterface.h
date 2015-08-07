@@ -70,9 +70,9 @@ class MediaConstraintsInterface {
   static const char kMinHeight[];  // minHeight
   static const char kMaxFrameRate[];  // maxFrameRate
   static const char kMinFrameRate[];  // minFrameRate
-  // -twinlife-
-  static const char kMaxFrameSize[];  // maxFrameSize
-  static const char kMinFrameSize[];  // minFrameSize
+  // --twinlife-- 150720
+  static const char kTwinlifeMaxFrameRate[];
+  static const char kTwinlifeMaxFrameSize[];
 
   // Constraint keys used by a local audio source.
   static const char kEchoCancellation[];  // echoCancellation
@@ -144,9 +144,9 @@ class MediaConstraintsInterface {
   // stripped by Chrome before passed down to Libjingle.
   static const char kInternalConstraintPrefix[];
 
-  // -twinlife-
-  static const char kExcludeOpusCodec[];  // Exclude Opus audio codec
-  static const char kExcludeIsacCodec[];  // Exclude Isac audio codec
+  // --twinlife-- 150720
+  static const char kTwinlifeExcludeOpusCodec[];
+  static const char kTwinlifeExcludeIsacCodec[];
 
  protected:
   // Dtor protected as objects shouldn't be deleted via this interface

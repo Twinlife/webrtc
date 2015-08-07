@@ -145,6 +145,9 @@ struct MediaSessionOptions {
   int video_bandwidth;
   int data_bandwidth;
   TransportOptions transport_options;
+  // --twinlife-- 150721
+  bool twinlife_exclude_opus_codec;
+  bool twinlife_exclude_isac_codec;
 
   struct Stream {
     Stream(MediaType type,
