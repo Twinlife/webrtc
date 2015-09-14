@@ -195,11 +195,13 @@ class ChannelTest : public testing::Test, public sigslot::has_slots<> {
     CopyContent(local_media_content2_, &remote_media_content2_);
 
     if (flags1 & DTLS) {
-      identity1_.reset(rtc::SSLIdentity::Generate("session1"));
+      // Confirmed to work with KT_RSA and KT_ECDSA.
+      identity1_.reset(rtc::SSLIdentity::Generate("session1", rtc::KT_DEFAULT));
       session1_.set_ssl_identity(identity1_.get());
     }
     if (flags2 & DTLS) {
-      identity2_.reset(rtc::SSLIdentity::Generate("session2"));
+      // Confirmed to work with KT_RSA and KT_ECDSA.
+      identity2_.reset(rtc::SSLIdentity::Generate("session2", rtc::KT_DEFAULT));
       session2_.set_ssl_identity(identity2_.get());
     }
 
@@ -616,30 +618,6 @@ class ChannelTest : public testing::Test, public sigslot::has_slots<> {
     EXPECT_TRUE(channel2_->SetRemoteContent(&content, CA_PRANSWER, NULL));
     EXPECT_TRUE(channel2_->SetRemoteContent(&content, CA_ANSWER, NULL));
     EXPECT_TRUE(channel2_->rtcp_transport_channel() != NULL);
-  }
-
-  // Test that SetLocalContent and SetRemoteContent properly set
-  // video options to the media channel.
-  void TestSetContentsVideoOptions() {
-    CreateChannels(0, 0);
-    typename T::Content content;
-    CreateContent(0, kPcmuCodec, kH264Codec, &content);
-    content.set_buffered_mode_latency(101);
-    EXPECT_TRUE(channel1_->SetLocalContent(&content, CA_OFFER, NULL));
-    EXPECT_EQ(0U, media_channel1_->codecs().size());
-    cricket::VideoOptions options;
-    ASSERT_TRUE(media_channel1_->GetOptions(&options));
-    int latency = 0;
-    EXPECT_TRUE(options.buffered_mode_latency.Get(&latency));
-    EXPECT_EQ(101, latency);
-    content.set_buffered_mode_latency(102);
-    EXPECT_TRUE(channel1_->SetRemoteContent(&content, CA_ANSWER, NULL));
-    ASSERT_EQ(1U, media_channel1_->codecs().size());
-    EXPECT_TRUE(CodecMatches(content.codecs()[0],
-                             media_channel1_->codecs()[0]));
-    ASSERT_TRUE(media_channel1_->GetOptions(&options));
-    EXPECT_TRUE(options.buffered_mode_latency.Get(&latency));
-    EXPECT_EQ(102, latency);
   }
 
   // Test that SetRemoteContent properly deals with a content update.
@@ -1904,7 +1882,7 @@ cricket::VideoChannel* ChannelTest<VideoTraits>::CreateChannel(
     cricket::FakeVideoMediaChannel* ch, cricket::BaseSession* session,
     bool rtcp) {
   cricket::VideoChannel* channel = new cricket::VideoChannel(
-      thread, engine, ch, session, cricket::CN_VIDEO, rtcp);
+      thread, ch, session, cricket::CN_VIDEO, rtcp);
   if (!channel->Init()) {
     delete channel;
     channel = NULL;
@@ -2408,10 +2386,6 @@ TEST_F(VideoChannelTest, TestSetContentsRtcpMux) {
 
 TEST_F(VideoChannelTest, TestSetContentsRtcpMuxWithPrAnswer) {
   Base::TestSetContentsRtcpMux();
-}
-
-TEST_F(VideoChannelTest, TestSetContentsVideoOptions) {
-  Base::TestSetContentsVideoOptions();
 }
 
 TEST_F(VideoChannelTest, TestSetRemoteContentUpdate) {

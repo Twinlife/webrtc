@@ -61,7 +61,7 @@ void FullBweSender::GiveFeedback(const FeedbackPacket& feedback) {
 
   int64_t rtt_ms =
       clock_->TimeInMilliseconds() - feedback.latest_send_time_ms();
-  rbe_->OnRttUpdate(rtt_ms);
+  rbe_->OnRttUpdate(rtt_ms, rtt_ms);
   BWE_TEST_LOGGING_PLOT(1, "RTT", clock_->TimeInMilliseconds(), rtt_ms);
 
   rbe_->IncomingPacketFeedbackVector(packet_feedback_vector);
@@ -127,12 +127,11 @@ SendSideBweReceiver::~SendSideBweReceiver() {
 void SendSideBweReceiver::ReceivePacket(int64_t arrival_time_ms,
                                         const MediaPacket& media_packet) {
   packet_feedback_vector_.push_back(PacketInfo(
-      arrival_time_ms, media_packet.sender_timestamp_us() / 1000,
+      arrival_time_ms, media_packet.sender_timestamp_ms(),
       media_packet.header().sequenceNumber, media_packet.payload_size(), true));
 
-  received_packets_.Insert(media_packet.sequence_number(),
-                           media_packet.send_time_ms(), arrival_time_ms,
-                           media_packet.payload_size());
+  // Log received packet information.
+  BweReceiver::ReceivePacket(arrival_time_ms, media_packet);
 }
 
 FeedbackPacket* SendSideBweReceiver::GetFeedback(int64_t now_ms) {

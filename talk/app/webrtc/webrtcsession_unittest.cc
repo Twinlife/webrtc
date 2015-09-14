@@ -32,7 +32,7 @@
 #include "talk/app/webrtc/mediastreamsignaling.h"
 #include "talk/app/webrtc/streamcollection.h"
 #include "talk/app/webrtc/test/fakeconstraints.h"
-#include "talk/app/webrtc/test/fakedtlsidentityservice.h"
+#include "talk/app/webrtc/test/fakedtlsidentitystore.h"
 #include "talk/app/webrtc/test/fakemediastreamsignaling.h"
 #include "talk/app/webrtc/videotrack.h"
 #include "talk/app/webrtc/webrtcsession.h"
@@ -55,6 +55,7 @@
 #include "webrtc/base/network.h"
 #include "webrtc/base/physicalsocketserver.h"
 #include "webrtc/base/ssladapter.h"
+#include "webrtc/base/sslidentity.h"
 #include "webrtc/base/sslstreamadapter.h"
 #include "webrtc/base/stringutils.h"
 #include "webrtc/base/thread.h"
@@ -70,8 +71,6 @@ using cricket::BaseSession;
 using cricket::DF_PLAY;
 using cricket::DF_SEND;
 using cricket::FakeVoiceMediaChannel;
-using cricket::NS_GINGLE_P2P;
-using cricket::NS_JINGLE_ICE_UDP;
 using cricket::TransportInfo;
 using rtc::SocketAddress;
 using rtc::scoped_ptr;
@@ -79,8 +78,7 @@ using rtc::Thread;
 using webrtc::CreateSessionDescription;
 using webrtc::CreateSessionDescriptionObserver;
 using webrtc::CreateSessionDescriptionRequest;
-using webrtc::DTLSIdentityRequestObserver;
-using webrtc::DTLSIdentityServiceInterface;
+using webrtc::DtlsIdentityStoreInterface;
 using webrtc::FakeConstraints;
 using webrtc::FakeMetricsObserver;
 using webrtc::IceCandidateCollection;
@@ -337,8 +335,6 @@ class WebRtcSessionTest : public testing::Test {
       turn_server_(Thread::Current(), kTurnUdpIntAddr, kTurnUdpExtAddr),
       mediastream_signaling_(channel_manager_.get()),
       metrics_observer_(new rtc::RefCountedObject<FakeMetricsObserver>()) {
-    tdesc_factory_->set_protocol(cricket::ICEPROTO_HYBRID);
-
     cricket::ServerAddresses stun_servers;
     stun_servers.insert(stun_socket_addr_);
     allocator_.reset(new cricket::BasicPortAllocator(
@@ -346,8 +342,7 @@ class WebRtcSessionTest : public testing::Test {
         stun_servers,
         SocketAddress(), SocketAddress(), SocketAddress()));
     allocator_->set_flags(cricket::PORTALLOCATOR_DISABLE_TCP |
-                         cricket::PORTALLOCATOR_DISABLE_RELAY |
-                         cricket::PORTALLOCATOR_ENABLE_SHARED_UFRAG);
+                          cricket::PORTALLOCATOR_DISABLE_RELAY);
     EXPECT_TRUE(channel_manager_->Init());
     desc_factory_->set_add_legacy_streams(false);
     allocator_->set_step_delay(cricket::kMinimumStepDelay);
@@ -358,7 +353,7 @@ class WebRtcSessionTest : public testing::Test {
   }
 
   void Init(
-      DTLSIdentityServiceInterface* identity_service,
+      rtc::scoped_ptr<webrtc::DtlsIdentityStoreInterface> dtls_identity_store,
       const PeerConnectionInterface::RTCConfiguration& rtc_configuration) {
     ASSERT_TRUE(session_.get() == NULL);
     session_.reset(new WebRtcSessionForTest(
@@ -372,42 +367,44 @@ class WebRtcSessionTest : public testing::Test {
     EXPECT_EQ(PeerConnectionInterface::kIceGatheringNew,
         observer_.ice_gathering_state_);
 
-    EXPECT_TRUE(session_->Initialize(options_, constraints_.get(),
-                                     identity_service, rtc_configuration));
+    EXPECT_TRUE(session_->Initialize(
+        options_, constraints_.get(), dtls_identity_store.Pass(),
+        rtc_configuration));
     session_->set_metrics_observer(metrics_observer_);
   }
 
   void Init() {
     PeerConnectionInterface::RTCConfiguration configuration;
-    Init(NULL, configuration);
+    Init(nullptr, configuration);
   }
 
   void InitWithIceTransport(
       PeerConnectionInterface::IceTransportsType ice_transport_type) {
     PeerConnectionInterface::RTCConfiguration configuration;
     configuration.type = ice_transport_type;
-    Init(NULL, configuration);
+    Init(nullptr, configuration);
   }
 
   void InitWithBundlePolicy(
       PeerConnectionInterface::BundlePolicy bundle_policy) {
     PeerConnectionInterface::RTCConfiguration configuration;
     configuration.bundle_policy = bundle_policy;
-    Init(NULL, configuration);
+    Init(nullptr, configuration);
   }
 
   void InitWithRtcpMuxPolicy(
       PeerConnectionInterface::RtcpMuxPolicy rtcp_mux_policy) {
     PeerConnectionInterface::RTCConfiguration configuration;
     configuration.rtcp_mux_policy = rtcp_mux_policy;
-    Init(NULL, configuration);
+    Init(nullptr, configuration);
   }
 
   void InitWithDtls(bool identity_request_should_fail = false) {
-    FakeIdentityService* identity_service = new FakeIdentityService();
-    identity_service->set_should_fail(identity_request_should_fail);
+    rtc::scoped_ptr<FakeDtlsIdentityStore> dtls_identity_store(
+        new FakeDtlsIdentityStore());
+    dtls_identity_store->set_should_fail(identity_request_should_fail);
     PeerConnectionInterface::RTCConfiguration configuration;
-    Init(identity_service, configuration);
+    Init(dtls_identity_store.Pass(), configuration);
   }
 
   void InitWithDtmfCodec() {
@@ -521,9 +518,9 @@ class WebRtcSessionTest : public testing::Test {
     ASSERT_EQ(0U, video_content->cryptos().size());
 
     if (dtls) {
-      EXPECT_EQ(std::string(cricket::kMediaProtocolSavpf),
+      EXPECT_EQ(std::string(cricket::kMediaProtocolDtlsSavpf),
                 audio_content->protocol());
-      EXPECT_EQ(std::string(cricket::kMediaProtocolSavpf),
+      EXPECT_EQ(std::string(cricket::kMediaProtocolDtlsSavpf),
                 video_content->protocol());
     } else {
       EXPECT_EQ(std::string(cricket::kMediaProtocolAvpf),
@@ -538,7 +535,8 @@ class WebRtcSessionTest : public testing::Test {
     desc_factory_->set_secure(cricket::SEC_DISABLED);
     std::string identity_name = "WebRTC" +
         rtc::ToString(rtc::CreateRandomId());
-    identity_.reset(rtc::SSLIdentity::Generate(identity_name));
+    // Confirmed to work with KT_RSA and KT_ECDSA.
+    identity_.reset(rtc::SSLIdentity::Generate(identity_name, rtc::KT_DEFAULT));
     tdesc_factory_->set_identity(identity_.get());
     tdesc_factory_->set_secure(cricket::SEC_REQUIRED);
   }
@@ -1006,11 +1004,19 @@ class WebRtcSessionTest : public testing::Test {
     void Verify(const rtc::scoped_refptr<FakeMetricsObserver> metrics_observer,
                 const ExpectedBestConnection& expected) const {
       EXPECT_EQ(
-          metrics_observer->GetCounter(webrtc::kBestConnections_IPv4),
+          metrics_observer->GetEnumCounter(webrtc::kEnumCounterAddressFamily,
+                                           webrtc::kBestConnections_IPv4),
           expected.ipv4_count_);
       EXPECT_EQ(
-          metrics_observer->GetCounter(webrtc::kBestConnections_IPv6),
+          metrics_observer->GetEnumCounter(webrtc::kEnumCounterAddressFamily,
+                                           webrtc::kBestConnections_IPv6),
           expected.ipv6_count_);
+      // This is used in the loopback call so there is only single host to host
+      // candidate pair.
+      EXPECT_EQ(metrics_observer->GetEnumCounter(
+                    webrtc::kEnumCounterIceCandidatePairTypeUdp,
+                    webrtc::kIceCandidatePairHostHost),
+                1);
     }
   };
 
@@ -1085,7 +1091,8 @@ class WebRtcSessionTest : public testing::Test {
     std::string sdp;
     offer->ToString(&sdp);
     SessionDescriptionInterface* desc =
-        webrtc::CreateSessionDescription(JsepSessionDescription::kAnswer, sdp);
+        webrtc::CreateSessionDescription(
+            JsepSessionDescription::kAnswer, sdp, nullptr);
     ASSERT_TRUE(desc != NULL);
     SetRemoteDescriptionWithoutError(desc);
 
@@ -1137,13 +1144,6 @@ class WebRtcSessionTest : public testing::Test {
   void TestLoopbackCall() {
     LoopbackNetworkConfiguration config;
     TestLoopbackCall(config);
-  }
-
-  void VerifyTransportType(const std::string& content_name,
-                           cricket::TransportProtocol protocol) {
-    const cricket::Transport* transport = session_->GetTransport(content_name);
-    ASSERT_TRUE(transport != NULL);
-    EXPECT_EQ(protocol, transport->protocol());
   }
 
   // Adds CN codecs to FakeMediaEngine and MediaDescriptionFactory.
@@ -1227,8 +1227,7 @@ class WebRtcSessionTest : public testing::Test {
         kTurnUdpIntAddr, cricket::PROTO_UDP, false));
     allocator_->AddRelay(relay_server);
     allocator_->set_step_delay(cricket::kMinimumStepDelay);
-    allocator_->set_flags(cricket::PORTALLOCATOR_DISABLE_TCP |
-                          cricket::PORTALLOCATOR_ENABLE_SHARED_UFRAG);
+    allocator_->set_flags(cricket::PORTALLOCATOR_DISABLE_TCP);
   }
 
   cricket::FakeMediaEngine* media_engine_;
@@ -1666,7 +1665,10 @@ TEST_F(WebRtcSessionTest, TestSetLocalNonDtlsAnswerWhenDtlsOn) {
 // a DTLS fingerprint when DTLS is required.
 TEST_F(WebRtcSessionTest, TestSetRemoteNonDtlsAnswerWhenDtlsOn) {
   MAYBE_SKIP_TEST(rtc::SSLStreamAdapter::HaveDtlsSrtp);
+  // Enable both SDES and DTLS, so that offer won't be outright rejected as a
+  // result of using the "UDP/TLS/RTP/SAVPF" profile.
   InitWithDtls();
+  session_->SetSdesPolicy(cricket::SEC_ENABLED);
   SessionDescriptionInterface* offer = CreateOffer();
   cricket::MediaSessionOptions options;
   options.recv_video = true;
@@ -2531,7 +2533,6 @@ TEST_F(WebRtcSessionTest, TestSetRemoteDescriptionWithoutIce) {
 // too short ice ufrag and pwd strings.
 TEST_F(WebRtcSessionTest, TestSetLocalDescriptionInvalidIceCredentials) {
   Init();
-  tdesc_factory_->set_protocol(cricket::ICEPROTO_RFC5245);
   mediastream_signaling_.SendAudioVideoStream1();
   rtc::scoped_ptr<SessionDescriptionInterface> offer(CreateOffer());
 
@@ -2557,7 +2558,6 @@ TEST_F(WebRtcSessionTest, TestSetLocalDescriptionInvalidIceCredentials) {
 // too short ice ufrag and pwd strings.
 TEST_F(WebRtcSessionTest, TestSetRemoteDescriptionInvalidIceCredentials) {
   Init();
-  tdesc_factory_->set_protocol(cricket::ICEPROTO_RFC5245);
   rtc::scoped_ptr<SessionDescriptionInterface> offer(CreateRemoteOffer());
   std::string sdp;
   // Modifying ice ufrag and pwd in remote offer with strings smaller than the
@@ -2574,6 +2574,63 @@ TEST_F(WebRtcSessionTest, TestSetRemoteDescriptionInvalidIceCredentials) {
   modified_offer = CreateSessionDescription(JsepSessionDescription::kOffer, sdp,
                                             NULL);
   EXPECT_FALSE(session_->SetRemoteDescription(modified_offer, &error));
+}
+
+// Test that if the remote description indicates the peer requested ICE restart
+// (via a new ufrag or pwd), the old ICE candidates are not copied,
+// and vice versa.
+TEST_F(WebRtcSessionTest, TestSetRemoteDescriptionWithIceRestart) {
+  Init();
+  scoped_ptr<SessionDescriptionInterface> offer(CreateRemoteOffer());
+
+  // Create the first offer.
+  std::string sdp;
+  ModifyIceUfragPwdLines(offer.get(), "0123456789012345",
+                         "abcdefghijklmnopqrstuvwx", &sdp);
+  SessionDescriptionInterface* offer1 =
+      CreateSessionDescription(JsepSessionDescription::kOffer, sdp, NULL);
+  cricket::Candidate candidate1(1, "udp", rtc::SocketAddress("1.1.1.1", 5000),
+                                0, "", "", "relay", 0, "");
+  JsepIceCandidate ice_candidate1(kMediaContentName0, kMediaContentIndex0,
+                                  candidate1);
+  EXPECT_TRUE(offer1->AddCandidate(&ice_candidate1));
+  SetRemoteDescriptionWithoutError(offer1);
+  EXPECT_EQ(1, session_->remote_description()->candidates(0)->count());
+
+  // The second offer has the same ufrag and pwd but different address.
+  sdp.clear();
+  ModifyIceUfragPwdLines(offer.get(), "0123456789012345",
+                         "abcdefghijklmnopqrstuvwx", &sdp);
+  SessionDescriptionInterface* offer2 =
+      CreateSessionDescription(JsepSessionDescription::kOffer, sdp, NULL);
+  candidate1.set_address(rtc::SocketAddress("1.1.1.1", 6000));
+  JsepIceCandidate ice_candidate2(kMediaContentName0, kMediaContentIndex0,
+                                  candidate1);
+  EXPECT_TRUE(offer2->AddCandidate(&ice_candidate2));
+  SetRemoteDescriptionWithoutError(offer2);
+  EXPECT_EQ(2, session_->remote_description()->candidates(0)->count());
+
+  // The third offer has a different ufrag and different address.
+  sdp.clear();
+  ModifyIceUfragPwdLines(offer.get(), "0123456789012333",
+                         "abcdefghijklmnopqrstuvwx", &sdp);
+  SessionDescriptionInterface* offer3 =
+      CreateSessionDescription(JsepSessionDescription::kOffer, sdp, NULL);
+  candidate1.set_address(rtc::SocketAddress("1.1.1.1", 7000));
+  JsepIceCandidate ice_candidate3(kMediaContentName0, kMediaContentIndex0,
+                                  candidate1);
+  EXPECT_TRUE(offer3->AddCandidate(&ice_candidate3));
+  SetRemoteDescriptionWithoutError(offer3);
+  EXPECT_EQ(1, session_->remote_description()->candidates(0)->count());
+
+  // The fourth offer has no candidate but a different ufrag/pwd.
+  sdp.clear();
+  ModifyIceUfragPwdLines(offer.get(), "0123456789012444",
+                         "abcdefghijklmnopqrstuvyz", &sdp);
+  SessionDescriptionInterface* offer4 =
+      CreateSessionDescription(JsepSessionDescription::kOffer, sdp, NULL);
+  SetRemoteDescriptionWithoutError(offer4);
+  EXPECT_EQ(0, session_->remote_description()->candidates(0)->count());
 }
 
 // Test that candidates sent to the "video" transport do not get pushed down to
@@ -3074,55 +3131,6 @@ TEST_F(WebRtcSessionTest, TestInitiatorFlagAsReceiver) {
   EXPECT_FALSE(session_->initiator());
 }
 
-// This test verifies the ice protocol type at initiator of the call
-// if |a=ice-options:google-ice| is present in answer.
-TEST_F(WebRtcSessionTest, TestInitiatorGIceInAnswer) {
-  Init();
-  mediastream_signaling_.SendAudioVideoStream1();
-  SessionDescriptionInterface* offer = CreateOffer();
-  rtc::scoped_ptr<SessionDescriptionInterface> answer(
-      CreateRemoteAnswer(offer));
-  SetLocalDescriptionWithoutError(offer);
-  std::string sdp;
-  EXPECT_TRUE(answer->ToString(&sdp));
-  // Adding ice-options to the session level.
-  InjectAfter("t=0 0\r\n",
-              "a=ice-options:google-ice\r\n",
-              &sdp);
-  SessionDescriptionInterface* answer_with_gice =
-      CreateSessionDescription(JsepSessionDescription::kAnswer, sdp, NULL);
-  // Default offer is ICEPROTO_RFC5245, so we expect responder with
-  // only gice to fail.
-  SetRemoteDescriptionAnswerExpectError(kPushDownTDFailed, answer_with_gice);
-}
-
-// This test verifies the ice protocol type at initiator of the call
-// if ICE RFC5245 is supported in answer.
-TEST_F(WebRtcSessionTest, TestInitiatorIceInAnswer) {
-  Init();
-  mediastream_signaling_.SendAudioVideoStream1();
-  SessionDescriptionInterface* offer = CreateOffer();
-  SessionDescriptionInterface* answer = CreateRemoteAnswer(offer);
-  SetLocalDescriptionWithoutError(offer);
-
-  SetRemoteDescriptionWithoutError(answer);
-  VerifyTransportType("audio", cricket::ICEPROTO_RFC5245);
-  VerifyTransportType("video", cricket::ICEPROTO_RFC5245);
-}
-
-// This test verifies the ice protocol type at receiver side of the call if
-// receiver decides to use ice RFC 5245.
-TEST_F(WebRtcSessionTest, TestReceiverIceInOffer) {
-  Init();
-  mediastream_signaling_.SendAudioVideoStream1();
-  SessionDescriptionInterface* offer = CreateOffer();
-  SetRemoteDescriptionWithoutError(offer);
-  SessionDescriptionInterface* answer = CreateAnswer(NULL);
-  SetLocalDescriptionWithoutError(answer);
-  VerifyTransportType("audio", cricket::ICEPROTO_RFC5245);
-  VerifyTransportType("video", cricket::ICEPROTO_RFC5245);
-}
-
 // Verifing local offer and remote answer have matching m-lines as per RFC 3264.
 TEST_F(WebRtcSessionTest, TestIncorrectMLinesInRemoteAnswer) {
   Init();
@@ -3343,16 +3351,14 @@ TEST_F(WebRtcSessionTest, TestSessionContentError) {
 // Runs the loopback call test with BUNDLE and STUN disabled.
 TEST_F(WebRtcSessionTest, TestIceStatesBasic) {
   // Lets try with only UDP ports.
-  allocator_->set_flags(cricket::PORTALLOCATOR_ENABLE_SHARED_UFRAG |
-                        cricket::PORTALLOCATOR_DISABLE_TCP |
+  allocator_->set_flags(cricket::PORTALLOCATOR_DISABLE_TCP |
                         cricket::PORTALLOCATOR_DISABLE_STUN |
                         cricket::PORTALLOCATOR_DISABLE_RELAY);
   TestLoopbackCall();
 }
 
 TEST_F(WebRtcSessionTest, TestIceStatesBasicIPv6) {
-  allocator_->set_flags(cricket::PORTALLOCATOR_ENABLE_SHARED_UFRAG |
-                        cricket::PORTALLOCATOR_DISABLE_TCP |
+  allocator_->set_flags(cricket::PORTALLOCATOR_DISABLE_TCP |
                         cricket::PORTALLOCATOR_DISABLE_STUN |
                         cricket::PORTALLOCATOR_ENABLE_IPV6 |
                         cricket::PORTALLOCATOR_DISABLE_RELAY);
@@ -3368,9 +3374,8 @@ TEST_F(WebRtcSessionTest, TestIceStatesBasicIPv6) {
 
 // Runs the loopback call test with BUNDLE and STUN enabled.
 TEST_F(WebRtcSessionTest, TestIceStatesBundle) {
-  allocator_->set_flags(cricket::PORTALLOCATOR_ENABLE_SHARED_UFRAG |
-                       cricket::PORTALLOCATOR_DISABLE_TCP |
-                       cricket::PORTALLOCATOR_DISABLE_RELAY);
+  allocator_->set_flags(cricket::PORTALLOCATOR_DISABLE_TCP |
+                        cricket::PORTALLOCATOR_DISABLE_RELAY);
   TestLoopbackCall();
 }
 

@@ -37,10 +37,6 @@ TransportProxy::~TransportProxy() {
   }
 }
 
-const std::string& TransportProxy::type() const {
-  return transport_->get()->type();
-}
-
 TransportChannel* TransportProxy::GetChannel(int component) {
   ASSERT(rtc::Thread::Current() == worker_thread_);
   return GetChannelProxy(component);
@@ -339,12 +335,12 @@ BaseSession::BaseSession(rtc::Thread* signaling_thread,
       port_allocator_(port_allocator),
       sid_(sid),
       content_type_(content_type),
-      transport_type_(NS_GINGLE_P2P),
       initiator_(initiator),
       identity_(NULL),
       ssl_max_version_(rtc::SSL_PROTOCOL_DTLS_10),
       ice_tiebreaker_(rtc::CreateRandomId64()),
-      role_switch_(false) {
+      role_switch_(false),
+      ice_receiving_timeout_(-1) {
   ASSERT(signaling_thread->IsCurrent());
 }
 
@@ -477,6 +473,16 @@ bool BaseSession::PushdownRemoteTransportDescription(
   return true;
 }
 
+void BaseSession::SetIceConnectionReceivingTimeout(int timeout_ms) {
+  ice_receiving_timeout_ = timeout_ms;
+  for (const auto& kv : transport_proxies()) {
+    Transport* transport = kv.second->impl();
+    if (transport) {
+      transport->SetChannelReceivingTimeout(timeout_ms);
+    }
+  }
+}
+
 TransportChannel* BaseSession::CreateChannel(const std::string& content_name,
                                              int component) {
   // We create the proxy "on demand" here because we need to support
@@ -566,12 +572,12 @@ void BaseSession::DestroyTransportProxy(
   }
 }
 
-cricket::Transport* BaseSession::CreateTransport(
-    const std::string& content_name) {
-  ASSERT(transport_type_ == NS_GINGLE_P2P);
-  return new cricket::DtlsTransport<P2PTransport>(
-      signaling_thread(), worker_thread(), content_name,
-      port_allocator(), identity_);
+Transport* BaseSession::CreateTransport(const std::string& content_name) {
+  Transport* transport = new DtlsTransport<P2PTransport>(
+      signaling_thread(), worker_thread(), content_name, port_allocator(),
+      identity_);
+  transport->SetChannelReceivingTimeout(ice_receiving_timeout_);
+  return transport;
 }
 
 void BaseSession::SetState(State state) {
@@ -766,8 +772,7 @@ void BaseSession::LogState(State old_state, State new_state) {
   LOG(LS_INFO) << "Session:" << id()
                << " Old state:" << StateToString(old_state)
                << " New state:" << StateToString(new_state)
-               << " Type:" << content_type()
-               << " Transport:" << transport_type();
+               << " Type:" << content_type();
 }
 
 // static

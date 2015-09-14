@@ -63,8 +63,6 @@ class P2PTransportChannel : public TransportChannelImpl,
   virtual void SetIceRole(IceRole role);
   virtual IceRole GetIceRole() const { return ice_role_; }
   virtual void SetIceTiebreaker(uint64 tiebreaker);
-  virtual bool GetIceProtocolType(IceProtocolType* type) const;
-  virtual void SetIceProtocolType(IceProtocolType type);
   virtual void SetIceCredentials(const std::string& ice_ufrag,
                                  const std::string& ice_pwd);
   virtual void SetRemoteIceCredentials(const std::string& ice_ufrag,
@@ -73,6 +71,9 @@ class P2PTransportChannel : public TransportChannelImpl,
   virtual void Connect();
   virtual void OnSignalingReady();
   virtual void OnCandidate(const Candidate& candidate);
+  // Sets the receiving timeout in milliseconds.
+  // This also sets the check_receiving_delay proportionally.
+  virtual void SetReceivingTimeout(int receiving_timeout_ms);
 
   // From TransportChannel:
   virtual int SendPacket(const char *data, size_t len,
@@ -84,10 +85,6 @@ class P2PTransportChannel : public TransportChannelImpl,
 
   const Connection* best_connection() const { return best_connection_; }
   void set_incoming_only(bool value) { incoming_only_ = value; }
-
-  // Sets the receiving timeout in milliseconds.
-  // This also sets the check_receiving_delay proportionally.
-  void set_receiving_timeout(int receiving_timeout_ms);
 
   // Note: This is only for testing purpose.
   // |ports_| should not be changed from outside.
@@ -244,7 +241,6 @@ class P2PTransportChannel : public TransportChannelImpl,
   std::string ice_pwd_;
   std::string remote_ice_ufrag_;
   std::string remote_ice_pwd_;
-  IceProtocolType protocol_type_;
   IceMode remote_ice_mode_;
   IceRole ice_role_;
   uint64 tiebreaker_;
