@@ -77,7 +77,7 @@ RembReceiver::RembReceiver(int flow_id, bool plot)
   ss << "Estimate_" << flow_id_ << "#1";
   estimate_log_prefix_ = ss.str();
   // Default RTT in RemoteRateControl is 200 ms ; 50 ms is more realistic.
-  estimator_->OnRttUpdate(50);
+  estimator_->OnRttUpdate(50, 50);
 }
 
 RembReceiver::~RembReceiver() {
@@ -101,9 +101,8 @@ void RembReceiver::ReceivePacket(int64_t arrival_time_ms,
   clock_.AdvanceTimeMilliseconds(arrival_time_ms - clock_.TimeInMilliseconds());
   ASSERT_TRUE(arrival_time_ms == clock_.TimeInMilliseconds());
 
-  received_packets_.Insert(media_packet.sequence_number(),
-                           media_packet.send_time_ms(), arrival_time_ms,
-                           media_packet.payload_size());
+  // Log received packet information.
+  BweReceiver::ReceivePacket(arrival_time_ms, media_packet);
 }
 
 FeedbackPacket* RembReceiver::GetFeedback(int64_t now_ms) {

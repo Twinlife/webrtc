@@ -238,8 +238,6 @@ class BaseSession : public sigslot::has_slots<>,
   // from local/remote_description(). Remove these functions and members.
   // Returns the XML namespace identifying the type of this session.
   const std::string& content_type() const { return content_type_; }
-  // Returns the XML namespace identifying the transport used for this session.
-  const std::string& transport_type() const { return transport_type_; }
 
   // Indicates whether we initiated this session.
   bool initiator() const { return initiator_; }
@@ -318,6 +316,9 @@ class BaseSession : public sigslot::has_slots<>,
                               int component);
 
   rtc::SSLIdentity* identity() { return identity_; }
+
+  // Set the ice connection receiving timeout.
+  void SetIceConnectionReceivingTimeout(int timeout_ms);
 
  protected:
   // Specifies the identity to use in this session.
@@ -442,7 +443,6 @@ class BaseSession : public sigslot::has_slots<>,
   PortAllocator* const port_allocator_;
   const std::string sid_;
   const std::string content_type_;
-  const std::string transport_type_;
   bool initiator_;
   rtc::SSLIdentity* identity_;
   rtc::SSLProtocolVersion ssl_max_version_;
@@ -453,6 +453,10 @@ class BaseSession : public sigslot::has_slots<>,
   // will enable us to stop any role switch during the call.
   bool role_switch_;
   TransportMap transports_;
+
+  // Timeout value in milliseconds for which no ICE connection receives
+  // any packets.
+  int ice_receiving_timeout_;
 };
 
 }  // namespace cricket

@@ -165,6 +165,8 @@ class MockRtpRtcp : public RtpRtcp {
       int32_t(size_t *bytesSent, uint32_t *packetsSent));
   MOCK_CONST_METHOD2(GetSendStreamDataCounters,
       void(StreamDataCounters*, StreamDataCounters*));
+  MOCK_CONST_METHOD3(GetRtpPacketLossStats,
+      void(bool, uint32_t, struct RtpPacketLossStats*));
   MOCK_METHOD1(RemoteRTCPStat,
       int32_t(RTCPSenderInfo* senderInfo));
   MOCK_CONST_METHOD1(RemoteRTCPStat,
@@ -183,9 +185,6 @@ class MockRtpRtcp : public RtpRtcp {
   MOCK_METHOD2(SetREMBData,
                void(const uint32_t bitrate,
                     const std::vector<uint32_t>& ssrcs));
-  MOCK_CONST_METHOD0(IJ,
-      bool());
-  MOCK_METHOD1(SetIJStatus, void(const bool));
   MOCK_CONST_METHOD0(TMMBR,
       bool());
   MOCK_METHOD1(SetTMMBRStatus, void(const bool enable));
@@ -225,11 +224,13 @@ class MockRtpRtcp : public RtpRtcp {
   MOCK_METHOD1(SetTargetSendBitrate,
       void(uint32_t bitrate_bps));
   MOCK_METHOD3(SetGenericFECStatus,
-      int32_t(const bool enable,
-              const uint8_t payloadTypeRED,
-              const uint8_t payloadTypeFEC));
+               void(const bool enable,
+                    const uint8_t payload_type_red,
+                    const uint8_t payload_type_fec));
   MOCK_METHOD3(GenericFECStatus,
-      int32_t(bool& enable, uint8_t& payloadTypeRED, uint8_t& payloadTypeFEC));
+               void(bool& enable,
+                    uint8_t& payloadTypeRED,
+                    uint8_t& payloadTypeFEC));
   MOCK_METHOD2(SetFecParameters,
       int32_t(const FecProtectionParams* delta_params,
               const FecProtectionParams* key_params));

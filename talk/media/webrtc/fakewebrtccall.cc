@@ -37,6 +37,7 @@ namespace cricket {
 FakeAudioReceiveStream::FakeAudioReceiveStream(
     const webrtc::AudioReceiveStream::Config& config)
     : config_(config), received_packets_(0) {
+  DCHECK(config.voe_channel_id != -1);
 }
 
 webrtc::AudioReceiveStream::Stats FakeAudioReceiveStream::GetStats() const {
@@ -109,6 +110,11 @@ int FakeVideoSendStream::GetLastWidth() const {
 
 int FakeVideoSendStream::GetLastHeight() const {
   return last_frame_.height();
+}
+
+int64_t FakeVideoSendStream::GetLastTimestamp() const {
+  DCHECK(last_frame_.ntp_time_ms() == 0);
+  return last_frame_.render_time_ms();
 }
 
 void FakeVideoSendStream::IncomingCapturedFrame(
@@ -194,7 +200,7 @@ void FakeVideoReceiveStream::SetStats(
 
 FakeCall::FakeCall(const webrtc::Call::Config& config)
     : config_(config),
-      network_state_(kNetworkUp),
+      network_state_(webrtc::kNetworkUp),
       num_created_send_streams_(0),
       num_created_receive_streams_(0) {
 }
@@ -230,7 +236,7 @@ const FakeAudioReceiveStream* FakeCall::GetAudioReceiveStream(uint32_t ssrc) {
   return nullptr;
 }
 
-webrtc::Call::NetworkState FakeCall::GetNetworkState() const {
+webrtc::NetworkState FakeCall::GetNetworkState() const {
   return network_state_;
 }
 
@@ -356,7 +362,7 @@ void FakeCall::SetBitrateConfig(
   config_.bitrate_config = bitrate_config;
 }
 
-void FakeCall::SignalNetworkState(webrtc::Call::NetworkState state) {
+void FakeCall::SignalNetworkState(webrtc::NetworkState state) {
   network_state_ = state;
 }
 }  // namespace cricket

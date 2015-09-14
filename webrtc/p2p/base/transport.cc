@@ -56,25 +56,6 @@ struct ChannelParams : public rtc::MessageData {
   Candidate* candidate;
 };
 
-static std::string IceProtoToString(TransportProtocol proto) {
-  std::string proto_str;
-  switch (proto) {
-    case ICEPROTO_GOOGLE:
-      proto_str = "gice";
-      break;
-    case ICEPROTO_HYBRID:
-      proto_str = "hybrid";
-      break;
-    case ICEPROTO_RFC5245:
-      proto_str = "ice";
-      break;
-    default:
-      ASSERT(false);
-      break;
-  }
-  return proto_str;
-}
-
 static bool VerifyIceParams(const TransportDescription& desc) {
   // For legacy protocols.
   if (desc.ice_ufrag.empty() && desc.ice_pwd.empty())
@@ -119,23 +100,21 @@ static bool IceCredentialsChanged(const TransportDescription& old_desc,
 Transport::Transport(rtc::Thread* signaling_thread,
                      rtc::Thread* worker_thread,
                      const std::string& content_name,
-                     const std::string& type,
                      PortAllocator* allocator)
-  : signaling_thread_(signaling_thread),
-    worker_thread_(worker_thread),
-    content_name_(content_name),
-    type_(type),
-    allocator_(allocator),
-    destroyed_(false),
-    readable_(TRANSPORT_STATE_NONE),
-    writable_(TRANSPORT_STATE_NONE),
-    receiving_(TRANSPORT_STATE_NONE),
-    was_writable_(false),
-    connect_requested_(false),
-    ice_role_(ICEROLE_UNKNOWN),
-    tiebreaker_(0),
-    protocol_(ICEPROTO_HYBRID),
-    remote_ice_mode_(ICEMODE_FULL) {
+    : signaling_thread_(signaling_thread),
+      worker_thread_(worker_thread),
+      content_name_(content_name),
+      allocator_(allocator),
+      destroyed_(false),
+      readable_(TRANSPORT_STATE_NONE),
+      writable_(TRANSPORT_STATE_NONE),
+      receiving_(TRANSPORT_STATE_NONE),
+      was_writable_(false),
+      connect_requested_(false),
+      ice_role_(ICEROLE_UNKNOWN),
+      tiebreaker_(0),
+      remote_ice_mode_(ICEMODE_FULL),
+      channel_receiving_timeout_(-1) {
 }
 
 Transport::~Transport() {
@@ -172,6 +151,19 @@ bool Transport::GetRemoteCertificate_w(rtc::SSLCertificate** cert) {
 
   ChannelMap::iterator iter = channels_.begin();
   return iter->second->GetRemoteCertificate(cert);
+}
+
+void Transport::SetChannelReceivingTimeout(int timeout_ms) {
+  worker_thread_->Invoke<void>(
+      Bind(&Transport::SetChannelReceivingTimeout_w, this, timeout_ms));
+}
+
+void Transport::SetChannelReceivingTimeout_w(int timeout_ms) {
+  ASSERT(worker_thread()->IsCurrent());
+  channel_receiving_timeout_ = timeout_ms;
+  for (const auto& kv : channels_) {
+    kv.second->SetReceivingTimeout(timeout_ms);
+  }
 }
 
 bool Transport::SetLocalTransportDescription(
@@ -233,6 +225,7 @@ TransportChannelImpl* Transport::CreateChannel_w(int component) {
   // Push down our transport state to the new channel.
   impl->SetIceRole(ice_role_);
   impl->SetIceTiebreaker(tiebreaker_);
+  impl->SetReceivingTimeout(channel_receiving_timeout_);
   // TODO(ronghuawu): Change CreateChannel_w to be able to return error since
   // below Apply**Description_w calls can fail.
   if (local_description_)
@@ -337,7 +330,7 @@ void Transport::ConnectChannels_w() {
     // initiate request initiated by the remote.
     LOG(LS_INFO) << "Transport::ConnectChannels_w: No local description has "
                  << "been set. Will generate one.";
-    TransportDescription desc(NS_GINGLE_P2P, std::vector<std::string>(),
+    TransportDescription desc(std::vector<std::string>(),
                               rtc::CreateRandomString(ICE_UFRAG_LENGTH),
                               rtc::CreateRandomString(ICE_PWD_LENGTH),
                               ICEMODE_FULL, CONNECTIONROLE_NONE, NULL,
@@ -813,21 +806,6 @@ bool Transport::SetRemoteTransportDescription_w(
 bool Transport::ApplyLocalTransportDescription_w(TransportChannelImpl* ch,
                                                  std::string* error_desc) {
   ASSERT(worker_thread()->IsCurrent());
-  // If existing protocol_type is HYBRID, we may have not chosen the final
-  // protocol type, so update the channel protocol type from the
-  // local description. Otherwise, skip updating the protocol type.
-  // We check for HYBRID to avoid accidental changes; in the case of a
-  // session renegotiation, the new offer will have the google-ice ICE option,
-  // so we need to make sure we don't switch back from ICE mode to HYBRID
-  // when this happens.
-  // There are some other ways we could have solved this, but this is the
-  // simplest. The ultimate solution will be to get rid of GICE altogether.
-  IceProtocolType protocol_type;
-  if (ch->GetIceProtocolType(&protocol_type) &&
-      protocol_type == ICEPROTO_HYBRID) {
-    ch->SetIceProtocolType(
-        TransportProtocolFromDescription(local_description()));
-  }
   ch->SetIceCredentials(local_description_->ice_ufrag,
                         local_description_->ice_pwd);
   return true;
@@ -843,7 +821,6 @@ bool Transport::ApplyRemoteTransportDescription_w(TransportChannelImpl* ch,
 bool Transport::ApplyNegotiatedTransportDescription_w(
     TransportChannelImpl* channel, std::string* error_desc) {
   ASSERT(worker_thread()->IsCurrent());
-  channel->SetIceProtocolType(protocol_);
   channel->SetRemoteIceMode(remote_ice_mode_);
   return true;
 }
@@ -853,39 +830,6 @@ bool Transport::NegotiateTransportDescription_w(ContentAction local_role,
   ASSERT(worker_thread()->IsCurrent());
   // TODO(ekr@rtfm.com): This is ICE-specific stuff. Refactor into
   // P2PTransport.
-  const TransportDescription* offer;
-  const TransportDescription* answer;
-
-  if (local_role == CA_OFFER) {
-    offer = local_description_.get();
-    answer = remote_description_.get();
-  } else {
-    offer = remote_description_.get();
-    answer = local_description_.get();
-  }
-
-  TransportProtocol offer_proto = TransportProtocolFromDescription(offer);
-  TransportProtocol answer_proto = TransportProtocolFromDescription(answer);
-
-  // If offered protocol is gice/ice, then we expect to receive matching
-  // protocol in answer, anything else is treated as an error.
-  // HYBRID is not an option when offered specific protocol.
-  // If offered protocol is HYBRID and answered protocol is HYBRID then
-  // gice is preferred protocol.
-  // TODO(mallinath) - Answer from local or remote should't have both ice
-  // and gice support. It should always pick which protocol it wants to use.
-  // Once WebRTC stops supporting gice (for backward compatibility), HYBRID in
-  // answer must be treated as error.
-  if ((offer_proto == ICEPROTO_GOOGLE || offer_proto == ICEPROTO_RFC5245) &&
-      (offer_proto != answer_proto)) {
-    std::ostringstream desc;
-    desc << "Offer and answer protocol mismatch: "
-         << IceProtoToString(offer_proto)
-         << " vs "
-         << IceProtoToString(answer_proto);
-    return BadTransportDescription(desc.str(), error_desc);
-  }
-  protocol_ = answer_proto == ICEPROTO_HYBRID ? ICEPROTO_GOOGLE : answer_proto;
 
   // If transport is in ICEROLE_CONTROLLED and remote end point supports only
   // ice_lite, this local end point should take CONTROLLING role.
@@ -957,18 +901,6 @@ void Transport::OnMessage(rtc::Message* msg) {
       SignalFailed(this);
       break;
   }
-}
-
-// We're GICE if the namespace is NS_GOOGLE_P2P, or if NS_JINGLE_ICE_UDP is
-// used and the GICE ice-option is set.
-TransportProtocol TransportProtocolFromDescription(
-    const TransportDescription* desc) {
-  ASSERT(desc != NULL);
-  if (desc->transport_type == NS_JINGLE_ICE_UDP) {
-    return (desc->HasOption(ICE_OPTION_GICE)) ?
-        ICEPROTO_HYBRID : ICEPROTO_RFC5245;
-  }
-  return ICEPROTO_GOOGLE;
 }
 
 }  // namespace cricket
