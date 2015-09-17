@@ -144,10 +144,6 @@ class MediaConstraintsInterface {
   // stripped by Chrome before passed down to Libjingle.
   static const char kInternalConstraintPrefix[];
 
-  // --twinlife-- 150720
-  static const char kTwinlifeExcludeOpusCodec[];
-  static const char kTwinlifeExcludeIsacCodec[];
-
  protected:
   // Dtor protected as objects shouldn't be deleted via this interface
   virtual ~MediaConstraintsInterface() {}

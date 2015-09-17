@@ -124,9 +124,7 @@ const char MediaConstraintsInterface::kHighBitrate[] =
 const char MediaConstraintsInterface::kVeryHighBitrate[] =
     "googVeryHighBitrate";
 const char MediaConstraintsInterface::kPayloadPadding[] = "googPayloadPadding";
-// --twinlife-- 150720
-const char MediaConstraintsInterface::kTwinlifeExcludeOpusCodec[] = "twinlifeExcludeOpusCodec";
-const char MediaConstraintsInterface::kTwinlifeExcludeIsacCodec[] = "twinlifeExcludeIsacCodec";
+
 
 // Set |value| to the value associated with the first appearance of |key|, or
 // return false if |key| is not found.

@@ -96,17 +96,6 @@ static bool ParseConstraintsForAnswer(
     // kIceRestart defaults to false according to spec.
     options->transport_options.ice_restart = false;
   }
-  // --twinlife-- 150722
-  if (FindConstraint(constraints,
-                     MediaConstraintsInterface::kTwinlifeExcludeOpusCodec,
-                     &value, &mandatory_constraints_satisfied)) {
-    options->twinlife_exclude_opus_codec = value;
-  }
-  if (FindConstraint(constraints,
-                     MediaConstraintsInterface::kTwinlifeExcludeIsacCodec,
-                     &value, &mandatory_constraints_satisfied)) {
-    options->twinlife_exclude_isac_codec = value;
-  }
 
   if (!constraints) {
     return true;
@@ -447,10 +436,6 @@ bool MediaStreamSignaling::GetOptionsForOffer(
   session_options->bundle_enabled = rtc_options.use_rtp_mux;
 
   session_options->bundle_enabled = EvaluateNeedForBundle(*session_options);
-
-  // --twinlife-- 150721
-  session_options->twinlife_exclude_opus_codec = rtc_options.twinlife_exclude_opus_codec;
-  session_options->twinlife_exclude_isac_codec = rtc_options.twinlife_exclude_isac_codec;
   return true;
 }
 

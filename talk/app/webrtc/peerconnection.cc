@@ -573,20 +573,6 @@ void PeerConnection::CreateOffer(CreateSessionDescriptionObserver* observer,
     options.use_rtp_mux = value;
   }
 
-  // --twinlife-- 150721
-  if (FindConstraint(constraints,
-                     MediaConstraintsInterface::kTwinlifeExcludeOpusCodec,
-                     &value,
-                     &mandatory_constraints)) {
-    options.twinlife_exclude_opus_codec = value;
-  }
-  if (FindConstraint(constraints,
-                     MediaConstraintsInterface::kTwinlifeExcludeIsacCodec,
-                     &value,
-                     &mandatory_constraints)) {
-    options.twinlife_exclude_isac_codec = value;
-  }
-
   CreateOffer(observer, options);
 }
 
