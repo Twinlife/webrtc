@@ -27,11 +27,11 @@ namespace test {
 class RtpRtcpObserver {
  public:
   virtual ~RtpRtcpObserver() {}
-  newapi::Transport* SendTransport() {
+  Transport* SendTransport() {
     return &send_transport_;
   }
 
-  newapi::Transport* ReceiveTransport() {
+  Transport* ReceiveTransport() {
     return &receive_transport_;
   }
 
@@ -171,9 +171,9 @@ class RtpRtcpObserver {
   rtc::CriticalSection crit_;
   const rtc::scoped_ptr<EventWrapper> observation_complete_;
   const rtc::scoped_ptr<RtpHeaderParser> parser_;
+  PacketTransport send_transport_, receive_transport_;
 
  private:
-  PacketTransport send_transport_, receive_transport_;
   unsigned int timeout_ms_;
 };
 }  // namespace test

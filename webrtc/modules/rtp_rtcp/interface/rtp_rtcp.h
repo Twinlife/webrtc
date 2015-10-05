@@ -19,12 +19,13 @@
 
 namespace webrtc {
 // Forward declarations.
-class PacedSender;
-class PacketRouter;
 class ReceiveStatistics;
 class RemoteBitrateEstimator;
 class RtpReceiver;
 class Transport;
+namespace rtcp {
+class TransportFeedback;
+}
 
 class RtpRtcp : public Module {
  public:
@@ -54,7 +55,6 @@ class RtpRtcp : public Module {
     *  paced_sender             - Spread any bursts of packets into smaller
     *                             bursts to minimize packet loss.
     */
-    int32_t id;
     bool audio;
     bool receiver_only;
     Clock* clock;
@@ -62,13 +62,13 @@ class RtpRtcp : public Module {
     Transport* outgoing_transport;
     RtcpIntraFrameObserver* intra_frame_callback;
     RtcpBandwidthObserver* bandwidth_callback;
-    SendTimeObserver* send_time_callback;
+    TransportFeedbackObserver* transport_feedback_callback;
     RtcpRttStats* rtt_stats;
     RtcpPacketTypeCounterObserver* rtcp_packet_type_counter_observer;
     RtpAudioFeedback* audio_messages;
     RemoteBitrateEstimator* remote_bitrate_estimator;
-    PacedSender* paced_sender;
-    PacketRouter* packet_router;
+    RtpPacketSender* paced_sender;
+    TransportSequenceNumberAllocator* transport_sequence_number_allocator;
     BitrateStatisticsObserver* send_bitrate_observer;
     FrameCountObserver* send_frame_count_observer;
     SendSideDelayObserver* send_side_delay_observer;
@@ -542,6 +542,8 @@ class RtpRtcp : public Module {
         RtcpStatisticsCallback* callback) = 0;
     virtual RtcpStatisticsCallback*
         GetRtcpStatisticsCallback() = 0;
+    // BWE feedback packets.
+    virtual bool SendFeedbackPacket(const rtcp::TransportFeedback& packet) = 0;
 
     /**************************************************************************
     *

@@ -57,8 +57,8 @@ class FakeAudioCaptureModule
 
   // The value for the following constants have been derived by running VoE
   // using a real ADM. The constants correspond to 10ms of mono audio at 44kHz.
-  static const int kNumberSamples = 440;
-  static const int kNumberBytesPerSample = sizeof(Sample);
+  static const size_t kNumberSamples = 440;
+  static const size_t kNumberBytesPerSample = sizeof(Sample);
 
   // Creates a FakeAudioCaptureModule or returns NULL on failure.
   static rtc::scoped_refptr<FakeAudioCaptureModule> Create();
@@ -191,6 +191,10 @@ class FakeAudioCaptureModule
   int32_t GetLoudspeakerStatus(bool* enabled) const override;
   virtual bool BuiltInAECIsAvailable() const { return false; }
   virtual int32_t EnableBuiltInAEC(bool enable) { return -1; }
+  virtual bool BuiltInAGCIsAvailable() const { return false; }
+  virtual int32_t EnableBuiltInAGC(bool enable) { return -1; }
+  virtual bool BuiltInNSIsAvailable() const { return false; }
+  virtual int32_t EnableBuiltInNS(bool enable) { return -1; }
   // End of functions inherited from webrtc::AudioDeviceModule.
 
   // The following function is inherited from rtc::MessageHandler.

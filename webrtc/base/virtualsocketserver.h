@@ -243,7 +243,7 @@ class VirtualSocketServer : public SocketServer, public sigslot::has_slots<> {
   CriticalSection delay_crit_;
 
   double drop_prob_;
-  DISALLOW_COPY_AND_ASSIGN(VirtualSocketServer);
+  RTC_DISALLOW_COPY_AND_ASSIGN(VirtualSocketServer);
 };
 
 // Implements the socket interface using the virtual network.  Packets are
@@ -306,7 +306,6 @@ class VirtualSocket : public AsyncSocket, public MessageHandler {
   void SetLocalAddress(const SocketAddress& addr);
 
   VirtualSocketServer* server_;
-  int family_;
   int type_;
   bool async_;
   ConnState state_;

@@ -27,13 +27,15 @@
 
 package org.webrtc;
 
+import android.graphics.SurfaceTexture;
 import android.opengl.EGL14;
 import android.opengl.EGLConfig;
 import android.opengl.EGLContext;
 import android.opengl.EGLDisplay;
 import android.opengl.EGLSurface;
-import android.util.Log;
 import android.view.Surface;
+
+import org.webrtc.Logging;
 
 /**
  * Holds EGL state and utility methods for handling an EGLContext, an EGLDisplay, and an EGLSurface.
@@ -52,7 +54,7 @@ public final class EglBase {
   private EGLSurface eglSurface = EGL14.EGL_NO_SURFACE;
 
   public static boolean isEGL14Supported() {
-    Log.d(TAG, "SDK version: " + CURRENT_SDK_VERSION);
+    Logging.d(TAG, "SDK version: " + CURRENT_SDK_VERSION);
     return (CURRENT_SDK_VERSION >= EGL14_SDK_VERSION);
   }
 
@@ -84,9 +86,22 @@ public final class EglBase {
 
   // Create EGLSurface from the Android Surface.
   public void createSurface(Surface surface) {
+    createSurfaceInternal(surface);
+  }
+
+  // Create EGLSurface from the Android SurfaceTexture.
+  public void createSurface(SurfaceTexture surfaceTexture) {
+    createSurfaceInternal(surfaceTexture);
+  }
+
+  // Create EGLSurface from either Surface or SurfaceTexture.
+  private void createSurfaceInternal(Object surface) {
+    if (!(surface instanceof Surface) && !(surface instanceof SurfaceTexture)) {
+      throw new IllegalStateException("Input must be either a Surface or SurfaceTexture");
+    }
     checkIsNotReleased();
     if (configType == ConfigType.PIXEL_BUFFER) {
-      Log.w(TAG, "This EGL context is configured for PIXEL_BUFFER, but uses regular Surface");
+      Logging.w(TAG, "This EGL context is configured for PIXEL_BUFFER, but uses regular Surface");
     }
     if (eglSurface != EGL14.EGL_NO_SURFACE) {
       throw new RuntimeException("Already has an EGLSurface");
@@ -156,9 +171,7 @@ public final class EglBase {
   public void release() {
     checkIsNotReleased();
     releaseSurface();
-    // Release our context.
-    EGL14.eglMakeCurrent(
-        eglDisplay, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
+    detachCurrent();
     EGL14.eglDestroyContext(eglDisplay, eglContext);
     EGL14.eglReleaseThread();
     EGL14.eglTerminate(eglDisplay);
@@ -173,6 +186,14 @@ public final class EglBase {
       throw new RuntimeException("No EGLSurface - can't make current");
     }
     if (!EGL14.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
+      throw new RuntimeException("eglMakeCurrent failed");
+    }
+  }
+
+  // Detach the current EGL context, so that it can be made current on another thread.
+  public void detachCurrent() {
+    if (!EGL14.eglMakeCurrent(
+        eglDisplay, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)) {
       throw new RuntimeException("eglMakeCurrent failed");
     }
   }

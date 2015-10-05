@@ -59,38 +59,66 @@ public class RendererCommon {
   public static enum ScalingType { SCALE_ASPECT_FIT, SCALE_ASPECT_FILL, SCALE_ASPECT_BALANCED }
   // The minimum fraction of the frame content that will be shown for |SCALE_ASPECT_BALANCED|.
   // This limits excessive cropping when adjusting display size.
-  private static float BALANCED_VISIBLE_FRACTION = 0.56f;
+  private static float BALANCED_VISIBLE_FRACTION = 0.5625f;
+  public static final float[] identityMatrix() {
+    return new float[] {
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1};
+  }
+  // Matrix with transform y' = 1 - y.
+  public static final float[] verticalFlipMatrix() {
+    return new float[] {
+        1,  0, 0, 0,
+        0, -1, 0, 0,
+        0,  0, 1, 0,
+        0,  1, 0, 1};
+  }
 
   /**
-   * Calculates a texture transformation matrix based on rotation, mirror, and video vs display
-   * aspect ratio.
+   * Returns texture matrix that will have the effect of rotating the frame |rotationDegree|
+   * clockwise when rendered.
    */
-  public static void getTextureMatrix(float[] outputTextureMatrix, float rotationDegree,
+  public static float[] rotateTextureMatrix(float[] textureMatrix, float rotationDegree) {
+    final float[] rotationMatrix = new float[16];
+    Matrix.setRotateM(rotationMatrix, 0, rotationDegree, 0, 0, 1);
+    adjustOrigin(rotationMatrix);
+    return multiplyMatrices(textureMatrix, rotationMatrix);
+  }
+
+  /**
+   * Returns new matrix with the result of a * b.
+   */
+  public static float[] multiplyMatrices(float[] a, float[] b) {
+    final float[] resultMatrix = new float[16];
+    Matrix.multiplyMM(resultMatrix, 0, a, 0, b, 0);
+    return resultMatrix;
+  }
+
+  /**
+   * Returns layout transformation matrix that applies an optional mirror effect and compensates
+   * for video vs display aspect ratio.
+   */
+  public static float[] getLayoutMatrix(
       boolean mirror, float videoAspectRatio, float displayAspectRatio) {
-    // The matrix stack is using post-multiplication, which means that matrix operations:
-    // A; B; C; will end up as A * B * C. When you apply this to a vertex, it will result in:
-    // v' = A * B * C * v, i.e. the last matrix operation is the first thing that affects the
-    // vertex. This is the opposite of what you might expect.
-    Matrix.setIdentityM(outputTextureMatrix, 0);
-    // Move coordinates back to [0,1]x[0,1].
-    Matrix.translateM(outputTextureMatrix, 0, 0.5f, 0.5f, 0.0f);
-    // Rotate frame clockwise in the XY-plane (around the Z-axis).
-    Matrix.rotateM(outputTextureMatrix, 0, -rotationDegree, 0, 0, 1);
-    // Scale one dimension until video and display size have same aspect ratio.
+    float scaleX = 1;
+    float scaleY = 1;
+    // Scale X or Y dimension so that video and display size have same aspect ratio.
     if (displayAspectRatio > videoAspectRatio) {
-      Matrix.scaleM(outputTextureMatrix, 0, 1, videoAspectRatio / displayAspectRatio, 1);
+      scaleY = videoAspectRatio / displayAspectRatio;
     } else {
-      Matrix.scaleM(outputTextureMatrix, 0, displayAspectRatio / videoAspectRatio, 1, 1);
+      scaleX = displayAspectRatio / videoAspectRatio;
     }
-    // TODO(magjed): We currently ignore the texture transform matrix from the SurfaceTexture.
-    // It contains a vertical flip that is hardcoded here instead.
-    Matrix.scaleM(outputTextureMatrix, 0, 1, -1, 1);
     // Apply optional horizontal flip.
     if (mirror) {
-      Matrix.scaleM(outputTextureMatrix, 0, -1, 1, 1);
+      scaleX *= -1;
     }
-    // Center coordinates around origin.
-    Matrix.translateM(outputTextureMatrix, 0, -0.5f, -0.5f, 0.0f);
+    final float matrix[] = new float[16];
+    Matrix.setIdentityM(matrix, 0);
+    Matrix.scaleM(matrix, 0, scaleX, scaleY, 1);
+    adjustOrigin(matrix);
+    return matrix;
   }
 
   /**
@@ -100,6 +128,20 @@ public class RendererCommon {
       int maxDisplayWidth, int maxDisplayHeight) {
     return getDisplaySize(convertScalingTypeToVisibleFraction(scalingType), videoAspectRatio,
         maxDisplayWidth, maxDisplayHeight);
+  }
+
+  /**
+   * Move |matrix| transformation origin to (0.5, 0.5). This is the origin for texture coordinates
+   * that are in the range 0 to 1.
+   */
+  private static void adjustOrigin(float[] matrix) {
+    // Note that OpenGL is using column-major order.
+    // Pre translate with -0.5 to move coordinates to range [-0.5, 0.5].
+    matrix[12] -= 0.5f * (matrix[0] + matrix[4]);
+    matrix[13] -= 0.5f * (matrix[1] + matrix[5]);
+    // Post translate with 0.5 to move coordinates to range [0, 1].
+    matrix[12] += 0.5f;
+    matrix[13] += 0.5f;
   }
 
   /**

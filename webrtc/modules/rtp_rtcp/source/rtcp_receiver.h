@@ -29,12 +29,12 @@ class ModuleRtpRtcpImpl;
 class RTCPReceiver : public TMMBRHelp
 {
 public:
- RTCPReceiver(int32_t id,
-              Clock* clock,
+ RTCPReceiver(Clock* clock,
               bool receiver_only,
               RtcpPacketTypeCounterObserver* packet_type_counter_observer,
               RtcpBandwidthObserver* rtcp_bandwidth_observer,
               RtcpIntraFrameObserver* rtcp_intra_frame_observer,
+              TransportFeedbackObserver* transport_feedback_observer,
               ModuleRtpRtcpImpl* owner);
     virtual ~RTCPReceiver();
 
@@ -217,6 +217,10 @@ protected:
     void HandleAPPItem(RTCPUtility::RTCPParserV2& rtcpParser,
                        RTCPHelp::RTCPPacketInformation& rtcpPacketInformation);
 
+    void HandleTransportFeedback(
+        RTCPUtility::RTCPParserV2* rtcp_parser,
+        RTCPHelp::RTCPPacketInformation* rtcp_packet_information);
+
  private:
   typedef std::map<uint32_t, RTCPHelp::RTCPReceiveInformation*>
       ReceivedInfoMap;
@@ -242,6 +246,7 @@ protected:
   CriticalSectionWrapper* _criticalSectionFeedbacks;
   RtcpBandwidthObserver* const _cbRtcpBandwidthObserver;
   RtcpIntraFrameObserver* const _cbRtcpIntraFrameObserver;
+  TransportFeedbackObserver* const _cbTransportFeedbackObserver;
 
   CriticalSectionWrapper* _criticalSectionRTCPReceiver;
   uint32_t main_ssrc_;
@@ -283,6 +288,9 @@ protected:
   RtcpPacketTypeCounter packet_type_counter_;
 
   RTCPUtility::NackStats nack_stats_;
+
+  size_t num_skipped_packets_;
+  int64_t last_skipped_packets_warning_;
 };
 }  // namespace webrtc
 #endif // WEBRTC_MODULES_RTP_RTCP_SOURCE_RTCP_RECEIVER_H_

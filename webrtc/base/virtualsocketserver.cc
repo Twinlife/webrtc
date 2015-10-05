@@ -98,7 +98,6 @@ VirtualSocket::VirtualSocket(VirtualSocketServer* server,
                              int type,
                              bool async)
     : server_(server),
-      family_(family),
       type_(type),
       async_(async),
       state_(CS_CLOSED),
@@ -1116,7 +1115,7 @@ IPAddress VirtualSocketServer::GetDefaultRoute(int family) {
   return IPAddress();
 }
 void VirtualSocketServer::SetDefaultRoute(const IPAddress& from_addr) {
-  DCHECK(!IPIsAny(from_addr));
+  RTC_DCHECK(!IPIsAny(from_addr));
   if (from_addr.family() == AF_INET) {
     default_route_v4_ = from_addr;
   } else if (from_addr.family() == AF_INET6) {

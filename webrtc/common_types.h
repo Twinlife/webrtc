@@ -165,18 +165,6 @@ enum FrameType
     kVideoFrameDelta       = 4,    // depends on the previus frame
 };
 
-// External transport callback interface
-class Transport
-{
-public:
-    virtual int SendPacket(int channel, const void *data, size_t len) = 0;
-    virtual int SendRTCPPacket(int channel, const void *data, size_t len) = 0;
-
-protected:
-    virtual ~Transport() {}
-    Transport() {}
-};
-
 // Statistics for an RTCP channel
 struct RtcpStatistics {
   RtcpStatistics()
@@ -381,7 +369,7 @@ struct NetworkStatistics           // NETEQ statistics
     // max packet waiting time in the jitter buffer (ms)
     int maxWaitingTimeMs;
     // added samples in off mode due to packet loss
-    int addedSamples;
+    size_t addedSamples;
 };
 
 // Statistics for calls to AudioCodingModule::PlayoutData10Ms().
@@ -627,6 +615,7 @@ struct VideoCodecVP9 {
   bool                 frameDroppingOn;
   int                  keyFrameInterval;
   bool                 adaptiveQpMode;
+  bool                 automaticResizeOn;
   unsigned char        numberOfSpatialLayers;
   bool                 flexibleMode;
 };

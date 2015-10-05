@@ -566,7 +566,7 @@ void Port::SendBindingResponse(StunMessage* request,
   response.AddFingerprint();
 
   // The fact that we received a successful request means that this connection
-  // (if one exists) should now be readable.
+  // (if one exists) should now be receiving.
   Connection* conn = GetConnection(addr);
 
   // Send the response message.
@@ -630,8 +630,10 @@ void Port::SendBindingErrorResponse(StunMessage* request,
 }
 
 void Port::OnMessage(rtc::Message *pmsg) {
-  ASSERT(pmsg->message_id == MSG_CHECKTIMEOUT);
-  CheckTimeout();
+  ASSERT(pmsg->message_id == MSG_DEAD);
+  if (dead()) {
+    Destroy();
+  }
 }
 
 std::string Port::ToString() const {
@@ -652,12 +654,13 @@ void Port::OnConnectionDestroyed(Connection* conn) {
   ASSERT(iter != connections_.end());
   connections_.erase(iter);
 
-  // On the controlled side, ports time out, but only after all connections
-  // fail.  Note: If a new connection is added after this message is posted,
-  // but it fails and is removed before kPortTimeoutDelay, then this message
-  //  will still cause the Port to be destroyed.
-  if (ice_role_ == ICEROLE_CONTROLLED)
-    thread_->PostDelayed(timeout_delay_, this, MSG_CHECKTIMEOUT);
+  // On the controlled side, ports time out after all connections fail.
+  // Note: If a new connection is added after this message is posted, but it
+  // fails and is removed before kPortTimeoutDelay, then this message will
+  // still cause the Port to be destroyed.
+  if (dead()) {
+    thread_->PostDelayed(timeout_delay_, this, MSG_DEAD);
+  }
 }
 
 void Port::Destroy() {
@@ -665,16 +668,6 @@ void Port::Destroy() {
   LOG_J(LS_INFO, this) << "Port deleted";
   SignalDestroyed(this);
   delete this;
-}
-
-void Port::CheckTimeout() {
-  ASSERT(ice_role_ == ICEROLE_CONTROLLED);
-  // If this port has no connections, then there's no reason to keep it around.
-  // When the connections time out (both read and write), they will delete
-  // themselves, so if we have any connections, they are either readable or
-  // writable (or still connecting).
-  if (connections_.empty())
-    Destroy();
 }
 
 const std::string Port::username_fragment() const {
@@ -782,11 +775,12 @@ Connection::Connection(Port* port,
     : port_(port),
       local_candidate_index_(index),
       remote_candidate_(remote_candidate),
-      read_state_(STATE_READ_INIT),
       write_state_(STATE_WRITE_INIT),
+      receiving_(false),
       connected_(true),
       pruned_(false),
       use_candidate_attr_(false),
+      nominated_(false),
       remote_ice_mode_(ICEMODE_FULL),
       requests_(port->thread()),
       rtt_(DEFAULT_RTT),
@@ -794,10 +788,14 @@ Connection::Connection(Port* port,
       last_ping_received_(0),
       last_data_received_(0),
       last_ping_response_received_(0),
+      recv_rate_tracker_(100u, 10u),
+      send_rate_tracker_(100u, 10u),
       sent_packets_discarded_(0),
       sent_packets_total_(0),
       reported_(false),
-      state_(STATE_WAITING) {
+      state_(STATE_WAITING),
+      receiving_timeout_(WEAK_CONNECTION_RECEIVE_TIMEOUT),
+      time_created_ms_(rtc::Time()) {
   // All of our connections start in WAITING state.
   // TODO(mallinath) - Start connections from STATE_FROZEN.
   // Wire up to send stun packets
@@ -838,16 +836,6 @@ uint64 Connection::priority() const {
   return priority;
 }
 
-void Connection::set_read_state(ReadState value) {
-  ReadState old_value = read_state_;
-  read_state_ = value;
-  if (value != old_value) {
-    LOG_J(LS_VERBOSE, this) << "set_read_state";
-    SignalStateChange(this);
-    CheckTimeout();
-  }
-}
-
 void Connection::set_write_state(WriteState value) {
   WriteState old_value = write_state_;
   write_state_ = value;
@@ -855,7 +843,14 @@ void Connection::set_write_state(WriteState value) {
     LOG_J(LS_VERBOSE, this) << "set_write_state from: " << old_value << " to "
                             << value;
     SignalStateChange(this);
-    CheckTimeout();
+  }
+}
+
+void Connection::set_receiving(bool value) {
+  if (value != receiving_) {
+    LOG_J(LS_VERBOSE, this) << "set_receiving to " << value;
+    receiving_ = value;
+    SignalStateChange(this);
   }
 }
 
@@ -899,34 +894,24 @@ void Connection::OnReadPacket(
   const rtc::SocketAddress& addr(remote_candidate_.address());
   if (!port_->GetStunMessage(data, size, addr, msg.accept(), &remote_ufrag)) {
     // The packet did not parse as a valid STUN message
+    // This is a data packet, pass it along.
+    set_receiving(true);
+    last_data_received_ = rtc::Time();
+    recv_rate_tracker_.AddSamples(size);
+    SignalReadPacket(this, data, size, packet_time);
 
-    // If this connection is readable, then pass along the packet.
-    if (read_state_ == STATE_READABLE) {
-      // readable means data from this address is acceptable
-      // Send it on!
-      last_data_received_ = rtc::Time();
-      recv_rate_tracker_.Update(size);
-      SignalReadPacket(this, data, size, packet_time);
-
-      // If timed out sending writability checks, start up again
-      if (!pruned_ && (write_state_ == STATE_WRITE_TIMEOUT)) {
-        LOG(LS_WARNING) << "Received a data packet on a timed-out Connection. "
-                        << "Resetting state to STATE_WRITE_INIT.";
-        set_write_state(STATE_WRITE_INIT);
-      }
-    } else {
-      // Not readable means the remote address hasn't sent a valid
-      // binding request yet.
-
-      LOG_J(LS_WARNING, this)
-        << "Received non-STUN packet from an unreadable connection.";
+    // If timed out sending writability checks, start up again
+    if (!pruned_ && (write_state_ == STATE_WRITE_TIMEOUT)) {
+      LOG(LS_WARNING) << "Received a data packet on a timed-out Connection. "
+                      << "Resetting state to STATE_WRITE_INIT.";
+      set_write_state(STATE_WRITE_INIT);
     }
   } else if (!msg) {
     // The packet was STUN, but failed a check and was handled internally.
   } else {
     // The packet is STUN and passed the Port checks.
     // Perform our own checks to ensure this packet is valid.
-    // If this is a STUN request, then update the readable bit and respond.
+    // If this is a STUN request, then update the receiving bit and respond.
     // If this is a STUN response, then update the writable bit.
     // Log at LS_INFO if we receive a ping on an unwritable connection.
     rtc::LoggingSeverity sev = (!writable() ? rtc::LS_INFO : rtc::LS_VERBOSE);
@@ -944,7 +929,7 @@ void Connection::OnReadPacket(
           }
 
           // Incoming, validated stun request from remote peer.
-          // This call will also set the connection readable.
+          // This call will also set the connection receiving.
           port_->SendBindingResponse(msg.get(), addr);
 
           // If timed out sending writability checks, start up again
@@ -954,8 +939,10 @@ void Connection::OnReadPacket(
           if (port_->GetIceRole() == ICEROLE_CONTROLLED) {
             const StunByteStringAttribute* use_candidate_attr =
                 msg->GetByteString(STUN_ATTR_USE_CANDIDATE);
-            if (use_candidate_attr)
-              SignalUseCandidate(this);
+            if (use_candidate_attr) {
+              set_nominated(true);
+              SignalNominated(this);
+            }
           }
         } else {
           // The packet had the right local username, but the remote username
@@ -982,17 +969,11 @@ void Connection::OnReadPacket(
         // Otherwise silently discard the response message.
         break;
 
-      // Remote end point sent an STUN indication instead of regular
-      // binding request. In this case |last_ping_received_| will be updated.
-      // Otherwise we can mark connection to read timeout. No response will be
-      // sent in this scenario.
+      // Remote end point sent an STUN indication instead of regular binding
+      // request. In this case |last_ping_received_| will be updated but no
+      // response will be sent.
       case STUN_BINDING_INDICATION:
-        if (read_state_ == STATE_READABLE) {
-          ReceivedPing();
-        } else {
-          LOG_J(LS_WARNING, this) << "Received STUN binding indication "
-                                  << "from an unreadable connection.";
-        }
+        ReceivedPing();
         break;
 
       default:
@@ -1009,7 +990,7 @@ void Connection::OnReadyToSend() {
 }
 
 void Connection::Prune() {
-  if (!pruned_) {
+  if (!pruned_ || active()) {
     LOG_J(LS_VERBOSE, this) << "Connection pruned";
     pruned_ = true;
     requests_.Clear();
@@ -1019,8 +1000,7 @@ void Connection::Prune() {
 
 void Connection::Destroy() {
   LOG_J(LS_VERBOSE, this) << "Connection destroyed";
-  set_read_state(STATE_READ_TIMEOUT);
-  set_write_state(STATE_WRITE_TIMEOUT);
+  port_->thread()->Post(this, MSG_DELETE);
 }
 
 void Connection::PrintPingsSinceLastResponse(std::string* s, size_t max) {
@@ -1084,7 +1064,6 @@ void Connection::UpdateState(uint32 now) {
                          << " rtt=" << rtt;
     set_write_state(STATE_WRITE_UNRELIABLE);
   }
-
   if ((write_state_ == STATE_WRITE_UNRELIABLE ||
        write_state_ == STATE_WRITE_INIT) &&
       TooLongWithoutResponse(pings_since_last_response_,
@@ -1095,6 +1074,14 @@ void Connection::UpdateState(uint32 now) {
                          << " ms without a response"
                          << ", rtt=" << rtt;
     set_write_state(STATE_WRITE_TIMEOUT);
+  }
+
+  // Check the receiving state.
+  uint32 last_recv_time = last_received();
+  bool receiving = now <= last_recv_time + receiving_timeout_;
+  set_receiving(receiving);
+  if (dead(now)) {
+    Destroy();
   }
 }
 
@@ -1109,8 +1096,8 @@ void Connection::Ping(uint32 now) {
 }
 
 void Connection::ReceivedPing() {
+  set_receiving(true);
   last_ping_received_ = rtc::Time();
-  set_read_state(STATE_READABLE);
 }
 
 void Connection::ReceivedPingResponse() {
@@ -1119,10 +1106,33 @@ void Connection::ReceivedPingResponse() {
   // So if we're not already, become writable. We may be bringing a pruned
   // connection back to life, but if we don't really want it, we can always
   // prune it again.
+  set_receiving(true);
   set_write_state(STATE_WRITABLE);
   set_state(STATE_SUCCEEDED);
   pings_since_last_response_.clear();
   last_ping_response_received_ = rtc::Time();
+}
+
+bool Connection::dead(uint32 now) const {
+  if (now < (time_created_ms_ + MIN_CONNECTION_LIFETIME)) {
+    // A connection that hasn't passed its minimum lifetime is still alive.
+    // We do this to prevent connections from being pruned too quickly
+    // during a network change event when two networks would be up
+    // simultaneously but only for a brief period.
+    return false;
+  }
+
+  if (receiving_) {
+    // A connection that is receiving is alive.
+    return false;
+  }
+
+  // A connection is alive until it is inactive.
+  return !active();
+
+  // TODO(honghaiz): Move from using the write state to using the receiving
+  // state with something like the following:
+  // return (now > (last_received() + DEAD_CONNECTION_RECEIVE_TIMEOUT));
 }
 
 std::string Connection::ToDebugId() const {
@@ -1136,10 +1146,9 @@ std::string Connection::ToString() const {
     '-',  // not connected (false)
     'C',  // connected (true)
   };
-  const char READ_STATE_ABBREV[3] = {
-    '-',  // STATE_READ_INIT
-    'R',  // STATE_READABLE
-    'x',  // STATE_READ_TIMEOUT
+  const char RECEIVE_STATE_ABBREV[2] = {
+    '-',  // not receiving (false)
+    'R',  // receiving (true)
   };
   const char WRITE_STATE_ABBREV[4] = {
     'W',  // STATE_WRITABLE
@@ -1167,7 +1176,7 @@ std::string Connection::ToString() const {
      << ":" << remote.type() << ":"
      << remote.protocol() << ":" << remote.address().ToSensitiveString() << "|"
      << CONNECT_STATE_ABBREV[connected()]
-     << READ_STATE_ABBREV[read_state()]
+     << RECEIVE_STATE_ABBREV[receiving()]
      << WRITE_STATE_ABBREV[write_state()]
      << ICESTATE[state()] << "|"
      << priority() << "|";
@@ -1192,11 +1201,6 @@ void Connection::OnConnectionRequestResponse(ConnectionRequest* request,
   uint32 rtt = request->Elapsed();
 
   ReceivedPingResponse();
-  if (remote_ice_mode_ == ICEMODE_LITE) {
-    // A ice-lite end point never initiates ping requests. This will allow
-    // us to move to STATE_READABLE without an incoming ping request.
-    set_read_state(STATE_READABLE);
-  }
 
   if (LOG_CHECK_LEVEL_V(sev)) {
     bool use_candidate = (
@@ -1242,7 +1246,7 @@ void Connection::OnConnectionRequestErrorResponse(ConnectionRequest* request,
     LOG_J(LS_ERROR, this) << "Received STUN error response, code="
                           << error_code << "; killing connection";
     set_state(STATE_FAILED);
-    set_write_state(STATE_WRITE_TIMEOUT);
+    Destroy();
   }
 }
 
@@ -1261,19 +1265,6 @@ void Connection::OnConnectionRequestSent(ConnectionRequest* request) {
   LOG_JV(sev, this) << "Sent STUN ping"
                     << ", id=" << rtc::hex_encode(request->id())
                     << ", use_candidate=" << use_candidate;
-}
-
-void Connection::CheckTimeout() {
-  // If both read and write have timed out or read has never initialized, then
-  // this connection can contribute no more to p2p socket unless at some later
-  // date readability were to come back.  However, we gave readability a long
-  // time to timeout, so at this point, it seems fair to get rid of this
-  // connection.
-  if ((read_state_ == STATE_READ_TIMEOUT ||
-       read_state_ == STATE_READ_INIT) &&
-      write_state_ == STATE_WRITE_TIMEOUT) {
-    port_->thread()->Post(this, MSG_DELETE);
-  }
 }
 
 void Connection::HandleRoleConflictFromPeer() {
@@ -1303,7 +1294,7 @@ void Connection::MaybeUpdatePeerReflexiveCandidate(
 
 void Connection::OnMessage(rtc::Message *pmsg) {
   ASSERT(pmsg->message_id == MSG_DELETE);
-  LOG_J(LS_INFO, this) << "Connection deleted due to read or write timeout";
+  LOG_J(LS_INFO, this) << "Connection deleted";
   SignalDestroyed(this);
   delete this;
 }
@@ -1314,19 +1305,19 @@ uint32 Connection::last_received() {
 }
 
 size_t Connection::recv_bytes_second() {
-  return recv_rate_tracker_.units_second();
+  return recv_rate_tracker_.ComputeRate();
 }
 
 size_t Connection::recv_total_bytes() {
-  return recv_rate_tracker_.total_units();
+  return recv_rate_tracker_.TotalSampleCount();
 }
 
 size_t Connection::sent_bytes_second() {
-  return send_rate_tracker_.units_second();
+  return send_rate_tracker_.ComputeRate();
 }
 
 size_t Connection::sent_total_bytes() {
-  return send_rate_tracker_.total_units();
+  return send_rate_tracker_.TotalSampleCount();
 }
 
 size_t Connection::sent_discarded_packets() {
@@ -1421,7 +1412,7 @@ int ProxyConnection::Send(const void* data, size_t size,
     error_ = port_->GetError();
     sent_packets_discarded_++;
   } else {
-    send_rate_tracker_.Update(sent);
+    send_rate_tracker_.AddSamples(sent);
   }
   return sent;
 }
