@@ -92,7 +92,7 @@ class VideoAdapter {
   // The critical section to protect the above variables.
   rtc::CriticalSection critical_section_;
 
-  DISALLOW_COPY_AND_ASSIGN(VideoAdapter);
+  RTC_DISALLOW_COPY_AND_ASSIGN(VideoAdapter);
  protected:
   // --twinlife-- 150720
   int twinlife_max_num_pixels_;
@@ -207,7 +207,7 @@ class CoordinatedVideoAdapter
   // adaptation is on), but only used if cpu_smoothing_ is set.
   float system_load_average_;
 
-  DISALLOW_COPY_AND_ASSIGN(CoordinatedVideoAdapter);
+  RTC_DISALLOW_COPY_AND_ASSIGN(CoordinatedVideoAdapter);
 };
 
 }  // namespace cricket

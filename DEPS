@@ -6,7 +6,7 @@
 vars = {
   'extra_gyp_flag': '-Dextra_gyp_flag=0',
   'chromium_git': 'https://chromium.googlesource.com',
-  'chromium_revision': 'f8d6ba9efdddfb3aa0dfc01cd579f500a2de0b8d',
+  'chromium_revision': '681f0cd52075b890849f54b873f075d6cc92a4ef',
 }
 
 # NOTE: Prefer revision numbers to tags for svn deps. Use http rather than
@@ -44,11 +44,6 @@ include_rules = [
   '+unicode',
   '+webrtc',
   '+vpx',
-]
-
-# checkdeps.py shouldn't check include paths for files in these dirs:
-skip_child_includes = [
-  'webrtc/overrides',
 ]
 
 hooks = [

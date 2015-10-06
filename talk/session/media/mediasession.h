@@ -553,7 +553,7 @@ const DataContentDescription* GetFirstDataContentDescription(
 void GetSupportedAudioCryptoSuites(std::vector<std::string>* crypto_suites);
 void GetSupportedVideoCryptoSuites(std::vector<std::string>* crypto_suites);
 void GetSupportedDataCryptoSuites(std::vector<std::string>* crypto_suites);
-void GetSupportedDefaultCryptoSuites(std::vector<std::string>* crypto_suites);
+void GetDefaultSrtpCryptoSuiteNames(std::vector<std::string>* crypto_suites);
 }  // namespace cricket
 
 #endif  // TALK_SESSION_MEDIA_MEDIASESSION_H_
