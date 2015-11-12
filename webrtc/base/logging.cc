@@ -95,9 +95,8 @@ std::string ErrorName(int err, const ConstantLabel* err_table) {
 LoggingSeverity LogMessage::min_sev_ = LS_INFO;
 LoggingSeverity LogMessage::dbg_sev_ = LS_INFO;
 #else  // !_DEBUG
-// --twinlife-- 150715
-LoggingSeverity LogMessage::min_sev_ = LS_INFO;
-LoggingSeverity LogMessage::dbg_sev_ = LS_INFO;
+LoggingSeverity LogMessage::min_sev_ = LS_NONE;
+LoggingSeverity LogMessage::dbg_sev_ = LS_NONE;
 #endif  // !_DEBUG
 bool LogMessage::log_to_stderr_ = true;
 
