@@ -15,9 +15,9 @@
 #include <set>
 
 #include "webrtc/base/checks.h"
+#include "webrtc/base/logging.h"
 #include "webrtc/common_types.h"
-#include "webrtc/system_wrappers/interface/logging.h"
-#include "webrtc/system_wrappers/interface/trace.h"
+#include "webrtc/system_wrappers/include/trace.h"
 
 #ifdef _WIN32
 // Disable warning C4355: 'this' : used in base member initializer list.
@@ -93,7 +93,7 @@ ModuleRtpRtcpImpl::ModuleRtpRtcpImpl(const Configuration& configuration)
       nack_last_time_sent_full_(0),
       nack_last_time_sent_full_prev_(0),
       nack_last_seq_number_sent_(0),
-      key_frame_req_method_(kKeyFrameReqFirRtp),
+      key_frame_req_method_(kKeyFrameReqPliRtcp),
       remote_bitrate_(configuration.remote_bitrate_estimator),
       rtt_stats_(configuration.rtt_stats),
       critical_section_rtt_(CriticalSectionWrapper::CreateCriticalSection()),
@@ -474,15 +474,15 @@ int32_t ModuleRtpRtcpImpl::SetMaxTransferUnit(const uint16_t mtu) {
                                          packet_overhead_);
 }
 
-RTCPMethod ModuleRtpRtcpImpl::RTCP() const {
-  if (rtcp_sender_.Status() != kRtcpOff) {
+RtcpMode ModuleRtpRtcpImpl::RTCP() const {
+  if (rtcp_sender_.Status() != RtcpMode::kOff) {
     return rtcp_receiver_.Status();
   }
-  return kRtcpOff;
+  return RtcpMode::kOff;
 }
 
 // Configure RTCP status i.e on/off.
-void ModuleRtpRtcpImpl::SetRTCPStatus(const RTCPMethod method) {
+void ModuleRtpRtcpImpl::SetRTCPStatus(const RtcpMode method) {
   rtcp_sender_.SetRTCPStatus(method);
   rtcp_receiver_.SetRTCPStatus(method);
 }
@@ -811,8 +811,6 @@ int32_t ModuleRtpRtcpImpl::SetKeyFrameRequestMethod(
 
 int32_t ModuleRtpRtcpImpl::RequestKeyFrame() {
   switch (key_frame_req_method_) {
-    case kKeyFrameReqFirRtp:
-      return rtp_sender_.SendRTPIntraRequest();
     case kKeyFrameReqPliRtcp:
       return SendRTCP(kRtcpPli);
     case kKeyFrameReqFirRtcp:
@@ -861,7 +859,7 @@ void ModuleRtpRtcpImpl::SetRemoteSSRC(const uint32_t ssrc) {
       // Configured via API ignore.
       return;
     }
-    if (kRtcpOff != rtcp_sender_.Status()) {
+    if (RtcpMode::kOff != rtcp_sender_.Status()) {
       // Send RTCP bye on the current SSRC.
       SendRTCP(kRtcpBye);
     }

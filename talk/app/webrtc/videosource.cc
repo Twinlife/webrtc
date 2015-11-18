@@ -32,6 +32,7 @@
 
 #include "talk/app/webrtc/mediaconstraintsinterface.h"
 #include "talk/session/media/channelmanager.h"
+#include "webrtc/base/arraysize.h"
 
 using cricket::CaptureState;
 using webrtc::MediaConstraintsInterface;
@@ -275,10 +276,10 @@ const cricket::VideoFormat& GetBestCaptureFormat(
   std::vector<cricket::VideoFormat>::const_iterator it = formats.begin();
   std::vector<cricket::VideoFormat>::const_iterator best_it = formats.begin();
   int best_diff_area = std::abs(default_area - it->width * it->height);
-  int64 best_diff_interval = kDefaultFormat.interval;
+  int64_t best_diff_interval = kDefaultFormat.interval;
   for (; it != formats.end(); ++it) {
     int diff_area = std::abs(default_area - it->width * it->height);
-    int64 diff_interval = std::abs(kDefaultFormat.interval - it->interval);
+    int64_t diff_interval = std::abs(kDefaultFormat.interval - it->interval);
     if (diff_area < best_diff_area ||
         (diff_area == best_diff_area && diff_interval < best_diff_interval)) {
       best_diff_area = diff_area;
@@ -292,11 +293,12 @@ const cricket::VideoFormat& GetBestCaptureFormat(
 // Set |option| to the highest-priority value of |key| in the constraints.
 // Return false if the key is mandatory, and the value is invalid.
 bool ExtractOption(const MediaConstraintsInterface* all_constraints,
-    const std::string& key, cricket::Settable<bool>* option) {
+                   const std::string& key,
+                   rtc::Optional<bool>* option) {
   size_t mandatory = 0;
   bool value;
   if (FindConstraint(all_constraints, key, &value, &mandatory)) {
-    option->Set(value);
+    *option = rtc::Optional<bool>(value);
     return true;
   }
 
@@ -326,28 +328,28 @@ bool ExtractTwinlifeVideoOptions(const MediaConstraintsInterface* all_constraint
     if (iter->key == MediaConstraintsInterface::kTwinlifeMaxFrameSize) {
       int twinlife_max_frame_size = rtc::FromString<int>(iter->value);
       if (twinlife_max_frame_size > 0) {
-	int old_twinlife_max_frame_size;
-	if (options->twinlife_max_frame_size.Get(&old_twinlife_max_frame_size)) {
+	if ((bool)options->twinlife_max_frame_size) {
+	  int old_twinlife_max_frame_size = *options->twinlife_max_frame_size;
 	  if (old_twinlife_max_frame_size != twinlife_max_frame_size) {
 	    changed = true;
 	  }
 	} else {
 	  changed = true;
 	}
-	options->twinlife_max_frame_size.Set(twinlife_max_frame_size);
+	options->twinlife_max_frame_size = rtc::Optional<int>(twinlife_max_frame_size);
       }
     } else if (iter->key == MediaConstraintsInterface::kTwinlifeMaxFrameRate) {
       int twinlife_max_frame_rate = rtc::FromString<int>(iter->value);
       if (twinlife_max_frame_rate > 0) {
-	int old_twinlife_max_frame_rate;
-	if (options->twinlife_max_frame_rate.Get(&old_twinlife_max_frame_rate)) {
+	if ((bool)options->twinlife_max_frame_rate) {
+	  int old_twinlife_max_frame_rate = *options->twinlife_max_frame_rate;
 	  if (old_twinlife_max_frame_rate != twinlife_max_frame_rate) {
 	    changed = true;
 	  }
 	} else {
 	  changed = true;
 	}
-	options->twinlife_max_frame_rate.Set(twinlife_max_frame_rate);
+	options->twinlife_max_frame_rate= rtc::Optional<int>(twinlife_max_frame_rate);
       }
     }
   }
@@ -429,7 +431,7 @@ void VideoSource::Initialize(
     } else {
       // The VideoCapturer implementation doesn't support capability
       // enumeration. We need to guess what the camera supports.
-      for (int i = 0; i < ARRAY_SIZE(kVideoFormats); ++i) {
+      for (int i = 0; i < arraysize(kVideoFormats); ++i) {
         formats.push_back(cricket::VideoFormat(kVideoFormats[i]));
       }
     }
@@ -476,9 +478,9 @@ void VideoSource::Initialize(
   format_ = GetBestCaptureFormat(formats);
 
   // --twinlife-- 150720
-  int max_frame_size = options_.twinlife_max_frame_size.GetWithDefaultIfUnset(INT_MAX);
-  int max_frame_rate = options_.twinlife_max_frame_rate.GetWithDefaultIfUnset(INT_MAX);
-  int64 min_interval = 0;
+  int max_frame_size = options_.twinlife_max_frame_size.value_or(INT_MAX);
+  int max_frame_rate = options_.twinlife_max_frame_rate.value_or(INT_MAX);
+  int64_t min_interval = 0;
   if (max_frame_rate < INT_MAX) {
     min_interval = FPS_TO_INTERVAL(max_frame_rate);
   }
@@ -533,9 +535,9 @@ void VideoSource::UpdateConstraints(const webrtc::MediaConstraintsInterface* con
   cricket::VideoOptions options;
   bool changed = ExtractTwinlifeVideoOptions(constraints, &options);
   options_.SetAll(options);
-  int max_frame_size = options_.twinlife_max_frame_size.GetWithDefaultIfUnset(INT_MAX);
-  int max_frame_rate = options_.twinlife_max_frame_rate.GetWithDefaultIfUnset(INT_MAX);
-  int64 min_interval = 0;
+  int max_frame_size = options_.twinlife_max_frame_size.value_or(INT_MAX);
+  int max_frame_rate = options_.twinlife_max_frame_rate.value_or(INT_MAX);
+  int64_t min_interval = 0;
   if (max_frame_rate < INT_MAX) {
     min_interval = FPS_TO_INTERVAL(max_frame_rate);
   }
@@ -553,7 +555,7 @@ void VideoSource::UpdateConstraints(const webrtc::MediaConstraintsInterface* con
       } else {
 	// The VideoCapturer implementation doesn't support capability
 	// enumeration. We need to guess what the camera supports.
-	for (int i = 0; i < ARRAY_SIZE(kVideoFormats); ++i) {
+	for (int i = 0; i < arraysize(kVideoFormats); ++i) {
 	  formats.push_back(cricket::VideoFormat(kVideoFormats[i]));
 	}
       }

@@ -16,11 +16,11 @@
 #include "webrtc/base/scoped_ptr.h"
 #include "webrtc/common_types.h"
 #include "webrtc/modules/rtp_rtcp/source/byte_io.h"
-#include "webrtc/system_wrappers/interface/atomic32.h"
-#include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
-#include "webrtc/system_wrappers/interface/event_wrapper.h"
-#include "webrtc/system_wrappers/interface/sleep.h"
-#include "webrtc/system_wrappers/interface/thread_wrapper.h"
+#include "webrtc/system_wrappers/include/atomic32.h"
+#include "webrtc/system_wrappers/include/critical_section_wrapper.h"
+#include "webrtc/system_wrappers/include/event_wrapper.h"
+#include "webrtc/system_wrappers/include/sleep.h"
+#include "webrtc/system_wrappers/include/thread_wrapper.h"
 #include "webrtc/voice_engine/test/auto_test/fixtures/before_initialization_fixture.h"
 
 class TestErrorObserver;
@@ -41,7 +41,9 @@ class LoopBackTransport : public webrtc::Transport {
 
   ~LoopBackTransport() { thread_->Stop(); }
 
-  bool SendRtp(const uint8_t* data, size_t len) override {
+  bool SendRtp(const uint8_t* data,
+               size_t len,
+               const webrtc::PacketOptions& options) override {
     StorePacket(Packet::Rtp, data, len);
     return true;
   }

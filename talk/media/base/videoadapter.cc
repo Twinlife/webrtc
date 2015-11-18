@@ -185,7 +185,7 @@ VideoAdapter::~VideoAdapter() {
 
 void VideoAdapter::SetInputFormat(const VideoFormat& format) {
   rtc::CritScope cs(&critical_section_);
-  int64 old_input_interval = input_format_.interval;
+  int64_t old_input_interval = input_format_.interval;
   input_format_ = format;
   output_format_.interval =
       std::max(output_format_.interval, input_format_.interval);
@@ -226,7 +226,7 @@ void CoordinatedVideoAdapter::set_cpu_smoothing(bool enable) {
 
 void VideoAdapter::SetOutputFormat(const VideoFormat& format) {
   rtc::CritScope cs(&critical_section_);
-  int64 old_output_interval = output_format_.interval;
+  int64_t old_output_interval = output_format_.interval;
   output_format_ = format;
   output_num_pixels_ = output_format_.width * output_format_.height;
   output_format_.interval =
@@ -371,7 +371,7 @@ void VideoAdapter::set_scale_third(bool enable) {
 }
 
 // --twinlife-- 150720
-void VideoAdapter::set_twinlife_limits(int max_num_pixels, int64 min_interval) {
+void VideoAdapter::set_twinlife_limits(int max_num_pixels, int64_t min_interval) {
   rtc::CritScope cs(&critical_section_);
   twinlife_max_num_pixels_ = max_num_pixels;
   twinlife_min_interval_ = min_interval;

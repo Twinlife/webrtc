@@ -15,22 +15,22 @@
 #include "webrtc/base/bind.h"
 #include "webrtc/base/checks.h"
 #include "webrtc/base/criticalsection.h"
+#include "webrtc/base/logging.h"
 #include "webrtc/base/scoped_ptr.h"
 #include "webrtc/call.h"
 #include "webrtc/call/transport_adapter.h"
 #include "webrtc/frame_callback.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_header_parser.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_header_parser.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_rtcp.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_sender.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_utility.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_format_vp9.h"
 #include "webrtc/modules/video_coding/codecs/vp9/include/vp9.h"
-#include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
-#include "webrtc/system_wrappers/interface/event_wrapper.h"
-#include "webrtc/system_wrappers/interface/logging.h"
-#include "webrtc/system_wrappers/interface/ref_count.h"
-#include "webrtc/system_wrappers/interface/sleep.h"
-#include "webrtc/system_wrappers/interface/thread_wrapper.h"
+#include "webrtc/system_wrappers/include/critical_section_wrapper.h"
+#include "webrtc/system_wrappers/include/event_wrapper.h"
+#include "webrtc/system_wrappers/include/ref_count.h"
+#include "webrtc/system_wrappers/include/sleep.h"
+#include "webrtc/system_wrappers/include/thread_wrapper.h"
 #include "webrtc/test/call_test.h"
 #include "webrtc/test/configurable_frame_size_encoder.h"
 #include "webrtc/test/fake_texture_frame.h"
@@ -120,7 +120,7 @@ TEST_F(VideoSendStreamTest, SupportsCName) {
     }
   } test;
 
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 TEST_F(VideoSendStreamTest, SupportsAbsoluteSendTime) {
@@ -159,11 +159,10 @@ TEST_F(VideoSendStreamTest, SupportsAbsoluteSendTime) {
     }
   } test;
 
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 TEST_F(VideoSendStreamTest, SupportsTransmissionTimeOffset) {
-  static const uint8_t kTOffsetExtensionId = 13;
   static const int kEncodeDelayMs = 5;
   class TransmissionTimeOffsetObserver : public test::SendTest {
    public:
@@ -171,7 +170,7 @@ TEST_F(VideoSendStreamTest, SupportsTransmissionTimeOffset) {
         : SendTest(kDefaultTimeoutMs),
           encoder_(Clock::GetRealTimeClock(), kEncodeDelayMs) {
       EXPECT_TRUE(parser_->RegisterRtpHeaderExtension(
-          kRtpExtensionTransmissionTimeOffset, kTOffsetExtensionId));
+          kRtpExtensionTransmissionTimeOffset, test::kTOffsetExtensionId));
     }
 
    private:
@@ -192,8 +191,9 @@ TEST_F(VideoSendStreamTest, SupportsTransmissionTimeOffset) {
                        std::vector<VideoReceiveStream::Config>* receive_configs,
                        VideoEncoderConfig* encoder_config) override {
       send_config->encoder_settings.encoder = &encoder_;
+      send_config->rtp.extensions.clear();
       send_config->rtp.extensions.push_back(
-          RtpExtension(RtpExtension::kTOffset, kTOffsetExtensionId));
+          RtpExtension(RtpExtension::kTOffset, test::kTOffsetExtensionId));
     }
 
     void PerformTest() override {
@@ -204,7 +204,7 @@ TEST_F(VideoSendStreamTest, SupportsTransmissionTimeOffset) {
     test::DelayedEncoder encoder_;
   } test;
 
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 TEST_F(VideoSendStreamTest, SupportsTransportWideSequenceNumbers) {
@@ -235,6 +235,7 @@ TEST_F(VideoSendStreamTest, SupportsTransportWideSequenceNumbers) {
                        std::vector<VideoReceiveStream::Config>* receive_configs,
                        VideoEncoderConfig* encoder_config) override {
       send_config->encoder_settings.encoder = &encoder_;
+      send_config->rtp.extensions.clear();
       send_config->rtp.extensions.push_back(
           RtpExtension(RtpExtension::kTransportSequenceNumber, kExtensionId));
     }
@@ -247,7 +248,7 @@ TEST_F(VideoSendStreamTest, SupportsTransportWideSequenceNumbers) {
     test::FakeEncoder encoder_;
   } test;
 
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 class FakeReceiveStatistics : public NullReceiveStatistics {
@@ -311,11 +312,9 @@ TEST_F(VideoSendStreamTest, SupportsFec) {
    public:
     FecObserver()
         : SendTest(kDefaultTimeoutMs),
-          transport_adapter_(SendTransport()),
           send_count_(0),
           received_media_(false),
           received_fec_(false) {
-      transport_adapter_.Enable();
     }
 
    private:
@@ -330,9 +329,9 @@ TEST_F(VideoSendStreamTest, SupportsFec) {
             kSendSsrcs[0], header.sequenceNumber, send_count_ / 2, 127);
         RTCPSender rtcp_sender(false, Clock::GetRealTimeClock(),
                                &lossy_receive_stats, nullptr,
-                               &transport_adapter_);
+                               transport_adapter_.get());
 
-        rtcp_sender.SetRTCPStatus(kRtcpNonCompound);
+        rtcp_sender.SetRTCPStatus(RtcpMode::kReducedSize);
         rtcp_sender.SetRemoteSSRC(kSendSsrcs[0]);
 
         RTCPSender::FeedbackState feedback_state;
@@ -367,6 +366,9 @@ TEST_F(VideoSendStreamTest, SupportsFec) {
     void ModifyConfigs(VideoSendStream::Config* send_config,
                        std::vector<VideoReceiveStream::Config>* receive_configs,
                        VideoEncoderConfig* encoder_config) override {
+      transport_adapter_.reset(
+          new internal::TransportAdapter(send_config->send_transport));
+      transport_adapter_->Enable();
       send_config->rtp.fec.red_payload_type = kRedPayloadType;
       send_config->rtp.fec.ulpfec_payload_type = kUlpfecPayloadType;
     }
@@ -375,13 +377,13 @@ TEST_F(VideoSendStreamTest, SupportsFec) {
       EXPECT_TRUE(Wait()) << "Timed out waiting for FEC and media packets.";
     }
 
-    internal::TransportAdapter transport_adapter_;
+    rtc::scoped_ptr<internal::TransportAdapter> transport_adapter_;
     int send_count_;
     bool received_media_;
     bool received_fec_;
   } test;
 
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 void VideoSendStreamTest::TestNackRetransmission(
@@ -392,12 +394,10 @@ void VideoSendStreamTest::TestNackRetransmission(
     explicit NackObserver(uint32_t retransmit_ssrc,
                           uint8_t retransmit_payload_type)
         : SendTest(kDefaultTimeoutMs),
-          transport_adapter_(SendTransport()),
           send_count_(0),
           retransmit_ssrc_(retransmit_ssrc),
           retransmit_payload_type_(retransmit_payload_type),
           nacked_sequence_number_(-1) {
-      transport_adapter_.Enable();
     }
 
    private:
@@ -411,9 +411,9 @@ void VideoSendStreamTest::TestNackRetransmission(
         nacked_sequence_number_ = nack_sequence_number;
         NullReceiveStatistics null_stats;
         RTCPSender rtcp_sender(false, Clock::GetRealTimeClock(), &null_stats,
-                               nullptr, &transport_adapter_);
+                               nullptr, transport_adapter_.get());
 
-        rtcp_sender.SetRTCPStatus(kRtcpNonCompound);
+        rtcp_sender.SetRTCPStatus(RtcpMode::kReducedSize);
         rtcp_sender.SetRemoteSSRC(kSendSsrcs[0]);
 
         RTCPSender::FeedbackState feedback_state;
@@ -445,6 +445,9 @@ void VideoSendStreamTest::TestNackRetransmission(
     void ModifyConfigs(VideoSendStream::Config* send_config,
                        std::vector<VideoReceiveStream::Config>* receive_configs,
                        VideoEncoderConfig* encoder_config) override {
+      transport_adapter_.reset(
+          new internal::TransportAdapter(send_config->send_transport));
+      transport_adapter_->Enable();
       send_config->rtp.nack.rtp_history_ms = kNackRtpHistoryMs;
       send_config->rtp.rtx.payload_type = retransmit_payload_type_;
       if (retransmit_ssrc_ != kSendSsrcs[0])
@@ -456,14 +459,14 @@ void VideoSendStreamTest::TestNackRetransmission(
           << "Timed out while waiting for NACK retransmission.";
     }
 
-    internal::TransportAdapter transport_adapter_;
+    rtc::scoped_ptr<internal::TransportAdapter> transport_adapter_;
     int send_count_;
     uint32_t retransmit_ssrc_;
     uint8_t retransmit_payload_type_;
     int nacked_sequence_number_;
   } test(retransmit_ssrc, retransmit_payload_type);
 
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 TEST_F(VideoSendStreamTest, RetransmitsNack) {
@@ -496,7 +499,6 @@ void VideoSendStreamTest::TestPacketFragmentationSize(VideoFormat format,
                            bool test_generic_packetization,
                            bool use_fec)
         : SendTest(kLongTimeoutMs),
-          transport_adapter_(SendTransport()),
           encoder_(stop),
           max_packet_size_(max_packet_size),
           stop_size_(stop_size),
@@ -511,7 +513,6 @@ void VideoSendStreamTest::TestPacketFragmentationSize(VideoFormat format,
       // Fragmentation required, this test doesn't make sense without it.
       encoder_.SetFrameSize(start_size);
       RTC_DCHECK_GT(stop_size, max_packet_size);
-      transport_adapter_.Enable();
     }
 
    private:
@@ -598,9 +599,9 @@ void VideoSendStreamTest::TestPacketFragmentationSize(VideoFormat format,
             kSendSsrcs[0], header.sequenceNumber, packet_count_ / 2, 127);
         RTCPSender rtcp_sender(false, Clock::GetRealTimeClock(),
                                &lossy_receive_stats, nullptr,
-                               &transport_adapter_);
+                               transport_adapter_.get());
 
-        rtcp_sender.SetRTCPStatus(kRtcpNonCompound);
+        rtcp_sender.SetRTCPStatus(RtcpMode::kReducedSize);
         rtcp_sender.SetRemoteSSRC(kSendSsrcs[0]);
 
         RTCPSender::FeedbackState feedback_state;
@@ -629,6 +630,9 @@ void VideoSendStreamTest::TestPacketFragmentationSize(VideoFormat format,
     void ModifyConfigs(VideoSendStream::Config* send_config,
                        std::vector<VideoReceiveStream::Config>* receive_configs,
                        VideoEncoderConfig* encoder_config) override {
+      transport_adapter_.reset(
+          new internal::TransportAdapter(send_config->send_transport));
+      transport_adapter_->Enable();
       if (use_fec_) {
         send_config->rtp.fec.red_payload_type = kRedPayloadType;
         send_config->rtp.fec.ulpfec_payload_type = kUlpfecPayloadType;
@@ -651,7 +655,7 @@ void VideoSendStreamTest::TestPacketFragmentationSize(VideoFormat format,
           << "Timed out while observing incoming RTP packets.";
     }
 
-    internal::TransportAdapter transport_adapter_;
+    rtc::scoped_ptr<internal::TransportAdapter> transport_adapter_;
     test::ConfigurableFrameSizeEncoder encoder_;
 
     const size_t max_packet_size_;
@@ -673,7 +677,7 @@ void VideoSendStreamTest::TestPacketFragmentationSize(VideoFormat format,
   FrameFragmentationTest test(
       kMaxPacketSize, start, stop, format == kGeneric, with_fec);
 
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 // TODO(sprang): Is there any way of speeding up these tests?
@@ -709,7 +713,6 @@ TEST_F(VideoSendStreamTest, SuspendBelowMinBitrate) {
    public:
     RembObserver()
         : SendTest(kDefaultTimeoutMs),
-          transport_adapter_(&transport_),
           clock_(Clock::GetRealTimeClock()),
           test_state_(kBeforeSuspend),
           rtp_count_(0),
@@ -717,18 +720,9 @@ TEST_F(VideoSendStreamTest, SuspendBelowMinBitrate) {
           suspended_frame_count_(0),
           low_remb_bps_(0),
           high_remb_bps_(0) {
-      transport_adapter_.Enable();
     }
 
    private:
-    Action OnSendRtcp(const uint8_t* packet, size_t length) override {
-      // Receive statistics reporting having lost 0% of the packets.
-      // This is needed for the send-side bitrate controller to work properly.
-      rtc::CritScope lock(&crit_);
-      SendRtcpFeedback(0);  // REMB is only sent if value is > 0.
-      return SEND_PACKET;
-    }
-
     Action OnSendRtp(const uint8_t* packet, size_t length) override {
       rtc::CritScope lock(&crit_);
       ++rtp_count_;
@@ -746,18 +740,21 @@ TEST_F(VideoSendStreamTest, SuspendBelowMinBitrate) {
           // counter.
           suspended_frame_count_ = 0;
         }
+        SendRtcpFeedback(0);  // REMB is only sent if value is > 0.
       } else if (test_state_ == kWaitingForPacket) {
         if (header.paddingLength == 0) {
           // Non-padding packet observed. Test is almost complete. Will just
           // have to wait for the stats to change.
           test_state_ = kWaitingForStats;
         }
+        SendRtcpFeedback(0);  // REMB is only sent if value is > 0.
       } else if (test_state_ == kWaitingForStats) {
         VideoSendStream::Stats stats = stream_->GetStats();
         if (stats.suspended == false) {
           // Stats flipped to false. Test is complete.
           observation_complete_->Set();
         }
+        SendRtcpFeedback(0);  // REMB is only sent if value is > 0.
       }
 
       return SEND_PACKET;
@@ -785,11 +782,6 @@ TEST_F(VideoSendStreamTest, SuspendBelowMinBitrate) {
       high_remb_bps_ = value;
     }
 
-    void SetReceivers(PacketReceiver* send_transport_receiver,
-                      PacketReceiver* receive_transport_receiver) override {
-      transport_.SetReceiver(send_transport_receiver);
-    }
-
     void OnStreamsCreated(
         VideoSendStream* send_stream,
         const std::vector<VideoReceiveStream*>& receive_streams) override {
@@ -799,6 +791,9 @@ TEST_F(VideoSendStreamTest, SuspendBelowMinBitrate) {
     void ModifyConfigs(VideoSendStream::Config* send_config,
                        std::vector<VideoReceiveStream::Config>* receive_configs,
                        VideoEncoderConfig* encoder_config) override {
+      transport_adapter_.reset(
+          new internal::TransportAdapter(send_config->send_transport));
+      transport_adapter_->Enable();
       send_config->rtp.nack.rtp_history_ms = kNackRtpHistoryMs;
       send_config->pre_encode_callback = this;
       send_config->suspend_below_min_bitrate = true;
@@ -813,7 +808,6 @@ TEST_F(VideoSendStreamTest, SuspendBelowMinBitrate) {
     void PerformTest() override {
       EXPECT_EQ(kEventSignaled, Wait())
           << "Timed out during suspend-below-min-bitrate test.";
-      transport_.StopSending();
     }
 
     enum TestState {
@@ -828,9 +822,9 @@ TEST_F(VideoSendStreamTest, SuspendBelowMinBitrate) {
       FakeReceiveStatistics receive_stats(
           kSendSsrcs[0], last_sequence_number_, rtp_count_, 0);
       RTCPSender rtcp_sender(false, clock_, &receive_stats, nullptr,
-                             &transport_adapter_);
+                             transport_adapter_.get());
 
-      rtcp_sender.SetRTCPStatus(kRtcpNonCompound);
+      rtcp_sender.SetRTCPStatus(RtcpMode::kReducedSize);
       rtcp_sender.SetRemoteSSRC(kSendSsrcs[0]);
       if (remb_value > 0) {
         rtcp_sender.SetREMBStatus(true);
@@ -840,8 +834,7 @@ TEST_F(VideoSendStreamTest, SuspendBelowMinBitrate) {
       EXPECT_EQ(0, rtcp_sender.SendRTCP(feedback_state, kRtcpRr));
     }
 
-    internal::TransportAdapter transport_adapter_;
-    test::DirectTransport transport_;
+    rtc::scoped_ptr<internal::TransportAdapter> transport_adapter_;
     Clock* const clock_;
     VideoSendStream* stream_;
 
@@ -854,7 +847,7 @@ TEST_F(VideoSendStreamTest, SuspendBelowMinBitrate) {
     int high_remb_bps_ GUARDED_BY(crit_);
   } test;
 
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 TEST_F(VideoSendStreamTest, NoPaddingWhenVideoIsMuted) {
@@ -863,10 +856,8 @@ TEST_F(VideoSendStreamTest, NoPaddingWhenVideoIsMuted) {
     NoPaddingWhenVideoIsMuted()
         : SendTest(kDefaultTimeoutMs),
           clock_(Clock::GetRealTimeClock()),
-          transport_adapter_(ReceiveTransport()),
           last_packet_time_ms_(-1),
           capturer_(nullptr) {
-      transport_adapter_.Enable();
     }
 
    private:
@@ -887,9 +878,9 @@ TEST_F(VideoSendStreamTest, NoPaddingWhenVideoIsMuted) {
       // Receive statistics reporting having lost 50% of the packets.
       FakeReceiveStatistics receive_stats(kSendSsrcs[0], 1, 1, 0);
       RTCPSender rtcp_sender(false, Clock::GetRealTimeClock(), &receive_stats,
-                             nullptr, &transport_adapter_);
+                             nullptr, transport_adapter_.get());
 
-      rtcp_sender.SetRTCPStatus(kRtcpNonCompound);
+      rtcp_sender.SetRTCPStatus(RtcpMode::kReducedSize);
       rtcp_sender.SetRemoteSSRC(kSendSsrcs[0]);
 
       RTCPSender::FeedbackState feedback_state;
@@ -898,10 +889,12 @@ TEST_F(VideoSendStreamTest, NoPaddingWhenVideoIsMuted) {
       return SEND_PACKET;
     }
 
-    void SetReceivers(PacketReceiver* send_transport_receiver,
-                      PacketReceiver* receive_transport_receiver) override {
-      RtpRtcpObserver::SetReceivers(send_transport_receiver,
-                                    send_transport_receiver);
+    void OnTransportsCreated(
+        test::PacketTransport* send_transport,
+        test::PacketTransport* receive_transport) override {
+      transport_adapter_.reset(
+          new internal::TransportAdapter(receive_transport));
+      transport_adapter_->Enable();
     }
 
     size_t GetNumStreams() const override { return 3; }
@@ -918,13 +911,13 @@ TEST_F(VideoSendStreamTest, NoPaddingWhenVideoIsMuted) {
     }
 
     Clock* const clock_;
-    internal::TransportAdapter transport_adapter_;
+    rtc::scoped_ptr<internal::TransportAdapter> transport_adapter_;
     rtc::CriticalSection crit_;
     int64_t last_packet_time_ms_ GUARDED_BY(crit_);
     test::FrameGeneratorCapturer* capturer_ GUARDED_BY(crit_);
   } test;
 
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 // This test first observes "high" bitrate use at which point it sends a REMB to
@@ -939,39 +932,21 @@ TEST_F(VideoSendStreamTest, MinTransmitBitrateRespectsRemb) {
   static const int kHighBitrateBps = 150000;
   static const int kRembBitrateBps = 80000;
   static const int kRembRespectedBitrateBps = 100000;
-  class BitrateObserver : public test::SendTest, public PacketReceiver {
+  class BitrateObserver : public test::SendTest {
    public:
     BitrateObserver()
         : SendTest(kDefaultTimeoutMs),
-          feedback_transport_(ReceiveTransport()),
           bitrate_capped_(false) {
-      RtpRtcp::Configuration config;
-      feedback_transport_.Enable();
-      config.outgoing_transport = &feedback_transport_;
-      rtp_rtcp_.reset(RtpRtcp::CreateRtpRtcp(config));
-      rtp_rtcp_->SetREMBStatus(true);
-      rtp_rtcp_->SetRTCPStatus(kRtcpNonCompound);
-    }
-
-    void OnStreamsCreated(
-        VideoSendStream* send_stream,
-        const std::vector<VideoReceiveStream*>& receive_streams) override {
-      stream_ = send_stream;
     }
 
    private:
-    DeliveryStatus DeliverPacket(MediaType media_type,
-                                 const uint8_t* packet,
-                                 size_t length,
-                                 const PacketTime& packet_time) override {
-      EXPECT_TRUE(media_type == MediaType::ANY ||
-                  media_type == MediaType::VIDEO);
+    virtual Action OnSendRtp(const uint8_t* packet, size_t length) {
       if (RtpHeaderParser::IsRtcp(packet, length))
-        return DELIVERY_OK;
+        return DROP_PACKET;
 
       RTPHeader header;
       if (!parser_->Parse(packet, length, &header))
-        return DELIVERY_PACKET_ERROR;
+        return DROP_PACKET;
       RTC_DCHECK(stream_ != nullptr);
       VideoSendStream::Stats stats = stream_->GetStats();
       if (!stats.substreams.empty()) {
@@ -994,17 +969,27 @@ TEST_F(VideoSendStreamTest, MinTransmitBitrateRespectsRemb) {
           observation_complete_->Set();
         }
       }
-      return DELIVERY_OK;
+      // Packets don't have to be delivered since the test is the receiver.
+      return DROP_PACKET;
     }
 
-    void SetReceivers(PacketReceiver* send_transport_receiver,
-                      PacketReceiver* receive_transport_receiver) override {
-      RtpRtcpObserver::SetReceivers(this, send_transport_receiver);
+    void OnStreamsCreated(
+        VideoSendStream* send_stream,
+        const std::vector<VideoReceiveStream*>& receive_streams) override {
+      stream_ = send_stream;
+      RtpRtcp::Configuration config;
+      config.outgoing_transport = feedback_transport_.get();
+      rtp_rtcp_.reset(RtpRtcp::CreateRtpRtcp(config));
+      rtp_rtcp_->SetREMBStatus(true);
+      rtp_rtcp_->SetRTCPStatus(RtcpMode::kReducedSize);
     }
 
     void ModifyConfigs(VideoSendStream::Config* send_config,
                        std::vector<VideoReceiveStream::Config>* receive_configs,
                        VideoEncoderConfig* encoder_config) override {
+      feedback_transport_.reset(
+          new internal::TransportAdapter(send_config->send_transport));
+      feedback_transport_->Enable();
       encoder_config->min_transmit_bitrate_bps = kMinTransmitBitrateBps;
     }
 
@@ -1014,12 +999,12 @@ TEST_F(VideoSendStreamTest, MinTransmitBitrateRespectsRemb) {
     }
 
     rtc::scoped_ptr<RtpRtcp> rtp_rtcp_;
-    internal::TransportAdapter feedback_transport_;
+    rtc::scoped_ptr<internal::TransportAdapter> feedback_transport_;
     VideoSendStream* stream_;
     bool bitrate_capped_;
   } test;
 
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 TEST_F(VideoSendStreamTest, CanReconfigureToUseStartBitrateAbovePreviousMax) {
@@ -1252,7 +1237,7 @@ TEST_F(VideoSendStreamTest, EncoderIsProperlyInitializedAndDestroyed) {
 
     int32_t Encode(const VideoFrame& inputImage,
                    const CodecSpecificInfo* codecSpecificInfo,
-                   const std::vector<VideoFrameType>* frame_types) override {
+                   const std::vector<FrameType>* frame_types) override {
       EXPECT_TRUE(IsReadyForEncode());
 
       observation_complete_->Set();
@@ -1329,7 +1314,7 @@ TEST_F(VideoSendStreamTest, EncoderIsProperlyInitializedAndDestroyed) {
     VideoEncoderConfig encoder_config_;
   } test_encoder;
 
-  RunBaseTest(&test_encoder);
+  RunBaseTest(&test_encoder, FakeNetworkPipe::Config());
 
   EXPECT_TRUE(test_encoder.IsReleased());
   EXPECT_EQ(1u, test_encoder.num_releases());
@@ -1387,7 +1372,7 @@ TEST_F(VideoSendStreamTest, EncoderSetupPropagatesCommonEncoderConfigValues) {
     VideoEncoderConfig encoder_config_;
   } test;
 
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 static const size_t kVideoCodecConfigObserverNumberOfTemporalLayers = 4;
@@ -1451,7 +1436,7 @@ class VideoCodecConfigObserver : public test::SendTest,
 
   int32_t Encode(const VideoFrame& input_image,
                  const CodecSpecificInfo* codec_specific_info,
-                 const std::vector<VideoFrameType>* frame_types) override {
+                 const std::vector<FrameType>* frame_types) override {
     // Silently skip the encode, FakeEncoder::Encode doesn't produce VP8.
     return 0;
   }
@@ -1515,17 +1500,17 @@ void VideoCodecConfigObserver<VideoCodecVP9>::VerifyCodecSpecifics(
 
 TEST_F(VideoSendStreamTest, EncoderSetupPropagatesVp8Config) {
   VideoCodecConfigObserver<VideoCodecVP8> test(kVideoCodecVP8, "VP8");
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 TEST_F(VideoSendStreamTest, EncoderSetupPropagatesVp9Config) {
   VideoCodecConfigObserver<VideoCodecVP9> test(kVideoCodecVP9, "VP9");
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 TEST_F(VideoSendStreamTest, EncoderSetupPropagatesH264Config) {
   VideoCodecConfigObserver<VideoCodecH264> test(kVideoCodecH264, "H264");
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 TEST_F(VideoSendStreamTest, RtcpSenderReportContainsMediaBytesSent) {
@@ -1537,6 +1522,7 @@ TEST_F(VideoSendStreamTest, RtcpSenderReportContainsMediaBytesSent) {
 
    private:
     Action OnSendRtp(const uint8_t* packet, size_t length) override {
+      rtc::CritScope lock(&crit_);
       RTPHeader header;
       EXPECT_TRUE(parser_->Parse(packet, length, &header));
       ++rtp_packets_sent_;
@@ -1545,6 +1531,7 @@ TEST_F(VideoSendStreamTest, RtcpSenderReportContainsMediaBytesSent) {
     }
 
     Action OnSendRtcp(const uint8_t* packet, size_t length) override {
+      rtc::CritScope lock(&crit_);
       RTCPUtility::RTCPParserV2 parser(packet, length, true);
       EXPECT_TRUE(parser.IsValid());
 
@@ -1571,11 +1558,12 @@ TEST_F(VideoSendStreamTest, RtcpSenderReportContainsMediaBytesSent) {
           << "Timed out while waiting for RTCP sender report.";
     }
 
-    size_t rtp_packets_sent_;
-    size_t media_bytes_sent_;
+    rtc::CriticalSection crit_;
+    size_t rtp_packets_sent_ GUARDED_BY(&crit_);
+    size_t media_bytes_sent_ GUARDED_BY(&crit_);
   } test;
 
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 TEST_F(VideoSendStreamTest, TranslatesTwoLayerScreencastToTargetBitrate) {
@@ -1615,7 +1603,7 @@ TEST_F(VideoSendStreamTest, TranslatesTwoLayerScreencastToTargetBitrate) {
     }
   } test;
 
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 TEST_F(VideoSendStreamTest, ReconfigureBitratesSetsEncoderBitratesCorrectly) {
@@ -1721,7 +1709,7 @@ TEST_F(VideoSendStreamTest, ReconfigureBitratesSetsEncoderBitratesCorrectly) {
     webrtc::VideoEncoderConfig encoder_config_;
   } test;
 
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 TEST_F(VideoSendStreamTest, ReportsSentResolution) {
@@ -1742,7 +1730,7 @@ TEST_F(VideoSendStreamTest, ReportsSentResolution) {
    private:
     int32_t Encode(const VideoFrame& input_image,
                    const CodecSpecificInfo* codecSpecificInfo,
-                   const std::vector<VideoFrameType>* frame_types) override {
+                   const std::vector<FrameType>* frame_types) override {
       CodecSpecificInfo specifics;
       memset(&specifics, 0, sizeof(specifics));
       specifics.codecType = kVideoCodecGeneric;
@@ -1800,7 +1788,7 @@ TEST_F(VideoSendStreamTest, ReportsSentResolution) {
     VideoSendStream* send_stream_;
   } test;
 
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 class VP9HeaderObeserver : public test::SendTest {
@@ -1808,7 +1796,10 @@ class VP9HeaderObeserver : public test::SendTest {
   VP9HeaderObeserver()
       : SendTest(VideoSendStreamTest::kDefaultTimeoutMs),
         vp9_encoder_(VP9Encoder::Create()),
-        vp9_settings_(VideoEncoder::GetDefaultVp9Settings()) {}
+        vp9_settings_(VideoEncoder::GetDefaultVp9Settings()) {
+    vp9_settings_.numberOfTemporalLayers = 1;
+    vp9_settings_.numberOfSpatialLayers = 2;
+  }
 
   virtual void ModifyConfigsHook(
       VideoSendStream::Config* send_config,
@@ -1824,6 +1815,7 @@ class VP9HeaderObeserver : public test::SendTest {
                      std::vector<VideoReceiveStream::Config>* receive_configs,
                      VideoEncoderConfig* encoder_config) override {
     encoder_config->encoder_specific_settings = &vp9_settings_;
+    encoder_config->content_type = VideoEncoderConfig::ContentType::kScreen;
     send_config->encoder_settings.encoder = vp9_encoder_.get();
     send_config->encoder_settings.payload_name = "VP9";
     send_config->encoder_settings.payload_type = kVp9PayloadType;
@@ -1872,17 +1864,6 @@ class VP9HeaderObeserver : public test::SendTest {
   VideoCodecVP9 vp9_settings_;
 };
 
-TEST_F(VideoSendStreamTest, VP9NoFlexMode) {
-  class NoFlexibleMode : public VP9HeaderObeserver {
-    void InspectHeader(RTPVideoHeaderVP9* vp9videoHeader) override {
-      EXPECT_FALSE(vp9videoHeader->flexible_mode);
-      observation_complete_->Set();
-    }
-  } test;
-
-  RunBaseTest(&test);
-}
-
 TEST_F(VideoSendStreamTest, DISABLED_VP9FlexMode) {
   class FlexibleMode : public VP9HeaderObeserver {
     void ModifyConfigsHook(
@@ -1896,10 +1877,70 @@ TEST_F(VideoSendStreamTest, DISABLED_VP9FlexMode) {
       EXPECT_TRUE(vp9videoHeader->flexible_mode);
       observation_complete_->Set();
     }
+  } test;
+
+  RunBaseTest(&test, FakeNetworkPipe::Config());
+}
+
+TEST_F(VideoSendStreamTest, VP9FlexModeHasPictureId) {
+  class FlexibleMode : public VP9HeaderObeserver {
+    void ModifyConfigsHook(
+        VideoSendStream::Config* send_config,
+        std::vector<VideoReceiveStream::Config>* receive_configs,
+        VideoEncoderConfig* encoder_config) override {
+      vp9_settings_.flexibleMode = true;
+    }
+
+    void InspectHeader(RTPVideoHeaderVP9* vp9videoHeader) override {
+      EXPECT_NE(vp9videoHeader->picture_id, kNoPictureId);
+      observation_complete_->Set();
+    }
+  } test;
+
+  RunBaseTest(&test, FakeNetworkPipe::Config());
+}
+
+TEST_F(VideoSendStreamTest, VP9FlexModeRefCount) {
+  class FlexibleMode : public VP9HeaderObeserver {
+    void ModifyConfigsHook(
+        VideoSendStream::Config* send_config,
+        std::vector<VideoReceiveStream::Config>* receive_configs,
+        VideoEncoderConfig* encoder_config) override {
+      vp9_settings_.flexibleMode = true;
+    }
+
+    void InspectHeader(RTPVideoHeaderVP9* vp9videoHeader) override {
+      EXPECT_TRUE(vp9videoHeader->flexible_mode);
+      if (vp9videoHeader->inter_pic_predicted) {
+        EXPECT_GT(vp9videoHeader->num_ref_pics, 0u);
+        observation_complete_->Set();
+      }
+    }
+  } test;
+
+  RunBaseTest(&test, FakeNetworkPipe::Config());
+}
+
+TEST_F(VideoSendStreamTest, VP9FlexModeRefs) {
+  class FlexibleMode : public VP9HeaderObeserver {
+    void ModifyConfigsHook(
+        VideoSendStream::Config* send_config,
+        std::vector<VideoReceiveStream::Config>* receive_configs,
+        VideoEncoderConfig* encoder_config) override {
+      vp9_settings_.flexibleMode = true;
+    }
+
+    void InspectHeader(RTPVideoHeaderVP9* vp9videoHeader) override {
+      EXPECT_TRUE(vp9videoHeader->flexible_mode);
+      if (vp9videoHeader->inter_pic_predicted) {
+        EXPECT_GT(vp9videoHeader->num_ref_pics, 0u);
+        observation_complete_->Set();
+      }
+    }
 
   } test;
 
-  RunBaseTest(&test);
+  RunBaseTest(&test, FakeNetworkPipe::Config());
 }
 
 }  // namespace webrtc

@@ -11,7 +11,7 @@
 #define WEBRTC_CALL_TRANSPORT_ADAPTER_H_
 
 #include "webrtc/common_types.h"
-#include "webrtc/system_wrappers/interface/atomic32.h"
+#include "webrtc/system_wrappers/include/atomic32.h"
 #include "webrtc/transport.h"
 
 namespace webrtc {
@@ -21,7 +21,9 @@ class TransportAdapter : public Transport {
  public:
   explicit TransportAdapter(Transport* transport);
 
-  bool SendRtp(const uint8_t* packet, size_t length) override;
+  bool SendRtp(const uint8_t* packet,
+               size_t length,
+               const PacketOptions& options) override;
   bool SendRtcp(const uint8_t* packet, size_t length) override;
 
   void Enable();

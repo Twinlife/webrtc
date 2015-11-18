@@ -29,6 +29,7 @@
       'target_name': 'rtc_base_approved',
       'type': 'static_library',
       'sources': [
+        'array_view.h',
         'atomicops.h',
         'basictypes.h',
         'bitbuffer.cc',
@@ -57,6 +58,7 @@
         'md5.h',
         'md5digest.cc',
         'md5digest.h',
+        'optional.h',
         'platform_file.cc',
         'platform_file.h',
         'platform_thread.cc',
@@ -87,8 +89,6 @@
             '../../webrtc_overrides',
           ],
           'sources!': [
-            'basictypes.h',
-            'constructormagic.h',
             'logging.cc',
             'logging.h',
           ],
@@ -221,6 +221,8 @@
         'nethelpers.h',
         'network.cc',
         'network.h',
+        'networkmonitor.cc',
+        'networkmonitor.h',
         'nullsocketserver.h',
         'openssl.h',
         'openssladapter.cc',
@@ -254,8 +256,6 @@
         'rollingaccumulator.h',
         'rtccertificate.cc',
         'rtccertificate.h',
-        'schanneladapter.cc',
-        'schanneladapter.h',
         'scoped_autorelease_pool.h',
         'scoped_autorelease_pool.mm',
         'scoped_ref_ptr.h',
@@ -349,9 +349,6 @@
         'worker.h',
         'x11windowpicker.cc',
         'x11windowpicker.h',
-        '../../webrtc_overrides/webrtc/base/logging.cc',
-        '../../webrtc_overrides/webrtc/base/logging.h',
-        '../../webrtc_overrides/webrtc/base/win32socketinit.cc',
       ],
       # TODO(henrike): issue 3307, make rtc_base build without disabling
       # these flags.
@@ -381,6 +378,11 @@
           'include_dirs': [
             '../../webrtc_overrides',
             '../../boringssl/src/include',
+          ],
+          'sources': [
+            '../../webrtc_overrides/webrtc/base/logging.cc',
+            '../../webrtc_overrides/webrtc/base/logging.h',
+            '../../webrtc_overrides/webrtc/base/win32socketinit.cc',
           ],
           'sources!': [
             'atomicops.h',
@@ -492,11 +494,6 @@
                 'WEBRTC_EXTERNAL_JSON',
               ],
             }],
-          ],
-          'sources!': [
-            '../../webrtc_overrides/webrtc/base/win32socketinit.cc',
-            '../../webrtc_overrides/webrtc/base/logging.cc',
-            '../../webrtc_overrides/webrtc/base/logging.h',
           ],
         }],
         ['OS == "android"', {
@@ -622,8 +619,6 @@
             ['exclude', 'win32[a-z0-9]*\\.(h|cc)$'],
           ],
           'sources!': [
-              'schanneladapter.cc',
-              'schanneladapter.h',
               'winping.cc',
               'winping.h',
               'winfirewall.cc',

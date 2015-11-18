@@ -19,8 +19,8 @@
 #include <Map>
 
 // Added
-#include "webrtc/modules/video_render/include/video_render_defines.h"
-#include "webrtc/system_wrappers/interface/thread_wrapper.h"
+#include "webrtc/modules/video_render/video_render_defines.h"
+#include "webrtc/system_wrappers/include/thread_wrapper.h"
 
 #pragma comment(lib, "d3d9.lib")       // located in DirectX SDK
 

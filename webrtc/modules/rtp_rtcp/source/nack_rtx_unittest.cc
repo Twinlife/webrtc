@@ -16,12 +16,12 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "webrtc/base/scoped_ptr.h"
 #include "webrtc/common_types.h"
-#include "webrtc/modules/rtp_rtcp/interface/receive_statistics.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_header_parser.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_payload_registry.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_receiver.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp_defines.h"
+#include "webrtc/modules/rtp_rtcp/include/receive_statistics.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_header_parser.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_payload_registry.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_receiver.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_rtcp.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "webrtc/transport.h"
 
 using namespace webrtc;
@@ -96,7 +96,9 @@ class RtxLoopBackTransport : public webrtc::Transport {
     packet_loss_ = 0;
   }
 
-  bool SendRtp(const uint8_t* data, size_t len) override {
+  bool SendRtp(const uint8_t* data,
+               size_t len,
+               const PacketOptions& options) override {
     count_++;
     const unsigned char* ptr = static_cast<const unsigned  char*>(data);
     uint32_t ssrc = (ptr[8] << 24) + (ptr[9] << 16) + (ptr[10] << 8) + ptr[11];
@@ -107,7 +109,6 @@ class RtxLoopBackTransport : public webrtc::Transport {
     // is hiding a bug either in test setup or other code.
     // https://code.google.com/p/webrtc/issues/detail?id=3183
     uint8_t restored_packet[1500] = {0};
-    uint8_t* restored_packet_ptr = restored_packet;
     RTPHeader header;
     rtc::scoped_ptr<RtpHeaderParser> parser(RtpHeaderParser::Create());
     if (!parser->Parse(ptr, len, &header)) {
@@ -131,23 +132,23 @@ class RtxLoopBackTransport : public webrtc::Transport {
     if (rtp_payload_registry_->IsRtx(header)) {
       // Remove the RTX header and parse the original RTP header.
       EXPECT_TRUE(rtp_payload_registry_->RestoreOriginalPacket(
-          &restored_packet_ptr, ptr, &packet_length, rtp_receiver_->SSRC(),
-          header));
-      if (!parser->Parse(restored_packet_ptr, packet_length, &header)) {
+          restored_packet, ptr, &packet_length, rtp_receiver_->SSRC(), header));
+      if (!parser->Parse(restored_packet, packet_length, &header)) {
         return false;
       }
     } else {
       rtp_payload_registry_->SetIncomingPayloadType(header);
     }
 
-    restored_packet_ptr += header.headerLength;
+    const uint8_t* restored_packet_payload =
+        restored_packet + header.headerLength;
     packet_length -= header.headerLength;
     PayloadUnion payload_specific;
     if (!rtp_payload_registry_->GetPayloadSpecifics(header.payloadType,
                                                     &payload_specific)) {
       return false;
     }
-    if (!rtp_receiver_->IncomingRtpPacket(header, restored_packet_ptr,
+    if (!rtp_receiver_->IncomingRtpPacket(header, restored_packet_payload,
                                           packet_length, payload_specific,
                                           true)) {
       return false;
@@ -197,7 +198,7 @@ class RtpRtcpRtxNackTest : public ::testing::Test {
         &rtp_payload_registry_));
 
     rtp_rtcp_module_->SetSSRC(kTestSsrc);
-    rtp_rtcp_module_->SetRTCPStatus(kRtcpCompound);
+    rtp_rtcp_module_->SetRTCPStatus(RtcpMode::kCompound);
     rtp_receiver_->SetNACKStatus(kNackRtcp);
     rtp_rtcp_module_->SetStorePacketsStatus(true, 600);
     EXPECT_EQ(0, rtp_rtcp_module_->SetSendingStatus(true));

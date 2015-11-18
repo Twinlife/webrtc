@@ -46,6 +46,7 @@
           'target_name': 'libjingle_peerconnection_so',
           'type': 'shared_library',
           'dependencies': [
+            '<(webrtc_root)/system_wrappers/system_wrappers.gyp:field_trial_default',
             'libjingle_peerconnection',
           ],
           'sources': [
@@ -53,6 +54,7 @@
             'app/webrtc/java/jni/classreferenceholder.h',
             'app/webrtc/java/jni/jni_helpers.cc',
             'app/webrtc/java/jni/jni_helpers.h',
+            'app/webrtc/java/jni/native_handle_impl.cc',
             'app/webrtc/java/jni/native_handle_impl.h',
             'app/webrtc/java/jni/peerconnection_jni.cc',
           ],
@@ -61,11 +63,6 @@
             '<(DEPTH)/third_party/libyuv/include',
           ],
           'conditions': [
-            ['build_icu==1', {
-              'dependencies': [
-                '<(DEPTH)/third_party/icu/icu.gyp:icuuc',
-              ],
-            }],
             ['OS=="linux"', {
               'defines': [
                 'HAVE_GTK',
@@ -103,6 +100,8 @@
                 'app/webrtc/java/jni/androidmediadecoder_jni.h',
                 'app/webrtc/java/jni/androidmediaencoder_jni.cc',
                 'app/webrtc/java/jni/androidmediaencoder_jni.h',
+                'app/webrtc/java/jni/androidnetworkmonitor_jni.cc',
+                'app/webrtc/java/jni/androidnetworkmonitor_jni.h',
                 'app/webrtc/java/jni/surfacetexturehelper_jni.cc',
                 'app/webrtc/java/jni/surfacetexturehelper_jni.h',
               ]
@@ -134,6 +133,8 @@
                   'app/webrtc/java/src/org/webrtc/MediaStreamTrack.java',
                   'app/webrtc/java/src/org/webrtc/PeerConnectionFactory.java',
                   'app/webrtc/java/src/org/webrtc/PeerConnection.java',
+                  'app/webrtc/java/src/org/webrtc/RtpReceiver.java',
+                  'app/webrtc/java/src/org/webrtc/RtpSender.java',
                   'app/webrtc/java/src/org/webrtc/SdpObserver.java',
                   'app/webrtc/java/src/org/webrtc/StatsObserver.java',
                   'app/webrtc/java/src/org/webrtc/StatsReport.java',
@@ -153,6 +154,8 @@
                   'app/webrtc/java/android/org/webrtc/GlShader.java',
                   'app/webrtc/java/android/org/webrtc/GlUtil.java',
                   'app/webrtc/java/android/org/webrtc/GlTextureFrameBuffer.java',
+                  'app/webrtc/java/android/org/webrtc/NetworkMonitor.java',
+                  'app/webrtc/java/android/org/webrtc/NetworkMonitorAutoDetect.java',
                   'app/webrtc/java/android/org/webrtc/RendererCommon.java',
                   'app/webrtc/java/android/org/webrtc/SurfaceTextureHelper.java',
                   'app/webrtc/java/android/org/webrtc/SurfaceViewRenderer.java',
@@ -430,8 +433,8 @@
         '<(webrtc_root)/webrtc.gyp:webrtc',
         '<(webrtc_root)/voice_engine/voice_engine.gyp:voice_engine',
         '<(webrtc_root)/sound/sound.gyp:rtc_sound',
+        '<(webrtc_root)/system_wrappers/system_wrappers.gyp:metrics_default',
         '<(webrtc_root)/system_wrappers/system_wrappers.gyp:system_wrappers',
-        '<(webrtc_root)/system_wrappers/system_wrappers.gyp:system_wrappers_default',
         '<(webrtc_root)/libjingle/xmllite/xmllite.gyp:rtc_xmllite',
         '<(webrtc_root)/libjingle/xmpp/xmpp.gyp:rtc_xmpp',
         '<(webrtc_root)/p2p/p2p.gyp:rtc_p2p',
@@ -710,8 +713,6 @@
       'sources': [
         'app/webrtc/audiotrack.cc',
         'app/webrtc/audiotrack.h',
-        'app/webrtc/audiotrackrenderer.cc',
-        'app/webrtc/audiotrackrenderer.h',
         'app/webrtc/datachannel.cc',
         'app/webrtc/datachannel.h',
         'app/webrtc/datachannelinterface.h',

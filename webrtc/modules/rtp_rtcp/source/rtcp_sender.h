@@ -20,8 +20,8 @@
 #include "webrtc/base/thread_annotations.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/bwe_defines.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/remote_bitrate_estimator.h"
-#include "webrtc/modules/rtp_rtcp/interface/receive_statistics.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp_defines.h"
+#include "webrtc/modules/rtp_rtcp/include/receive_statistics.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_utility.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_utility.h"
@@ -78,8 +78,8 @@ public:
             Transport* outgoing_transport);
  virtual ~RTCPSender();
 
- RTCPMethod Status() const;
- void SetRTCPStatus(RTCPMethod method);
+ RtcpMode Status() const;
+ void SetRTCPStatus(RtcpMode method);
 
  bool Sending() const;
  int32_t SetSendingStatus(const FeedbackState& feedback_state,
@@ -225,7 +225,7 @@ private:
 private:
  const bool audio_;
  Clock* const clock_;
- RTCPMethod method_ GUARDED_BY(critical_section_rtcp_sender_);
+ RtcpMode method_ GUARDED_BY(critical_section_rtcp_sender_);
 
  Transport* const transport_;
 
