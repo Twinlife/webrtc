@@ -18,12 +18,12 @@
 #include "webrtc/modules/audio_coding/codecs/audio_encoder.h"
 #include "webrtc/modules/audio_coding/codecs/g711/include/audio_decoder_pcm.h"
 #include "webrtc/modules/audio_coding/codecs/g711/include/audio_encoder_pcm.h"
-#include "webrtc/modules/audio_coding/codecs/isac/main/interface/audio_encoder_isac.h"
+#include "webrtc/modules/audio_coding/codecs/isac/main/include/audio_encoder_isac.h"
 #include "webrtc/modules/audio_coding/codecs/mock/mock_audio_encoder.h"
 #include "webrtc/modules/audio_coding/main/acm2/acm_receive_test_oldapi.h"
 #include "webrtc/modules/audio_coding/main/acm2/acm_send_test_oldapi.h"
-#include "webrtc/modules/audio_coding/main/interface/audio_coding_module.h"
-#include "webrtc/modules/audio_coding/main/interface/audio_coding_module_typedefs.h"
+#include "webrtc/modules/audio_coding/main/include/audio_coding_module.h"
+#include "webrtc/modules/audio_coding/main/include/audio_coding_module_typedefs.h"
 #include "webrtc/modules/audio_coding/neteq/audio_decoder_impl.h"
 #include "webrtc/modules/audio_coding/neteq/mock/mock_audio_decoder.h"
 #include "webrtc/modules/audio_coding/neteq/tools/audio_checksum.h"
@@ -33,12 +33,12 @@
 #include "webrtc/modules/audio_coding/neteq/tools/output_audio_file.h"
 #include "webrtc/modules/audio_coding/neteq/tools/packet.h"
 #include "webrtc/modules/audio_coding/neteq/tools/rtp_file_source.h"
-#include "webrtc/modules/interface/module_common_types.h"
-#include "webrtc/system_wrappers/interface/clock.h"
-#include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
-#include "webrtc/system_wrappers/interface/event_wrapper.h"
-#include "webrtc/system_wrappers/interface/sleep.h"
-#include "webrtc/system_wrappers/interface/thread_wrapper.h"
+#include "webrtc/modules/include/module_common_types.h"
+#include "webrtc/system_wrappers/include/clock.h"
+#include "webrtc/system_wrappers/include/critical_section_wrapper.h"
+#include "webrtc/system_wrappers/include/event_wrapper.h"
+#include "webrtc/system_wrappers/include/sleep.h"
+#include "webrtc/system_wrappers/include/thread_wrapper.h"
 #include "webrtc/test/testsupport/fileutils.h"
 #include "webrtc/test/testsupport/gtest_disable.h"
 
@@ -92,7 +92,7 @@ class PacketizationCallbackStubOldApi : public AudioPacketizationCallback {
  public:
   PacketizationCallbackStubOldApi()
       : num_calls_(0),
-        last_frame_type_(kFrameEmpty),
+        last_frame_type_(kEmptyFrame),
         last_payload_type_(-1),
         last_timestamp_(0),
         crit_sect_(CriticalSectionWrapper::CreateCriticalSection()) {}
@@ -249,30 +249,6 @@ TEST_F(AudioCodingModuleTestOldApi, DISABLED_ON_ANDROID(InitializedToZero)) {
   EXPECT_EQ(0, stats.decoded_plc_cng);
 }
 
-// Apply an initial playout delay. Calls to AudioCodingModule::PlayoutData10ms()
-// should result in generating silence, check the associated field.
-TEST_F(AudioCodingModuleTestOldApi,
-       DISABLED_ON_ANDROID(SilenceGeneratorCalled)) {
-  RegisterCodec();
-  AudioDecodingCallStats stats;
-  const int kInitialDelay = 100;
-
-  acm_->SetInitialPlayoutDelay(kInitialDelay);
-
-  int num_calls = 0;
-  for (int time_ms = 0; time_ms < kInitialDelay;
-       time_ms += kFrameSizeMs, ++num_calls) {
-    InsertPacketAndPullAudio();
-  }
-  acm_->GetDecodingCallStatistics(&stats);
-  EXPECT_EQ(0, stats.calls_to_neteq);
-  EXPECT_EQ(num_calls, stats.calls_to_silence_generator);
-  EXPECT_EQ(0, stats.decoded_normal);
-  EXPECT_EQ(0, stats.decoded_cng);
-  EXPECT_EQ(0, stats.decoded_plc);
-  EXPECT_EQ(0, stats.decoded_plc_cng);
-}
-
 // Insert some packets and pull audio. Check statistics are valid. Then,
 // simulate packet loss and check if PLC and PLC-to-CNG statistics are
 // correctly updated.
@@ -416,18 +392,18 @@ class AudioCodingModuleTestWithComfortNoiseOldApi
       int ix;
       FrameType type;
     } expectation[] = {{2, kAudioFrameCN},
-                       {5, kFrameEmpty},
-                       {8, kFrameEmpty},
+                       {5, kEmptyFrame},
+                       {8, kEmptyFrame},
                        {11, kAudioFrameCN},
-                       {14, kFrameEmpty},
-                       {17, kFrameEmpty},
+                       {14, kEmptyFrame},
+                       {17, kEmptyFrame},
                        {20, kAudioFrameCN},
-                       {23, kFrameEmpty},
-                       {26, kFrameEmpty},
-                       {29, kFrameEmpty},
+                       {23, kEmptyFrame},
+                       {26, kEmptyFrame},
+                       {29, kEmptyFrame},
                        {32, kAudioFrameCN},
-                       {35, kFrameEmpty},
-                       {38, kFrameEmpty}};
+                       {35, kEmptyFrame},
+                       {38, kEmptyFrame}};
     for (int i = 0; i < kLoops; ++i) {
       int num_calls_before = packet_cb_.num_calls();
       EXPECT_EQ(i / blocks_per_packet, num_calls_before);
@@ -447,7 +423,7 @@ class AudioCodingModuleTestWithComfortNoiseOldApi
 
 // Checks that the transport callback is invoked once per frame period of the
 // underlying speech encoder, even when comfort noise is produced.
-// Also checks that the frame type is kAudioFrameCN or kFrameEmpty.
+// Also checks that the frame type is kAudioFrameCN or kEmptyFrame.
 // This test and the next check the same thing, but differ in the order of
 // speech codec and CNG registration.
 TEST_F(AudioCodingModuleTestWithComfortNoiseOldApi,
@@ -680,7 +656,11 @@ class AcmIsacMtTestOldApi : public AudioCodingModuleMtTestOldApi {
   }
 
   void InsertAudio() {
-    memcpy(input_frame_.data_, audio_loop_.GetNextBlock(), kNumSamples10ms);
+    // TODO(kwiberg): Use std::copy here. Might be complications because AFAICS
+    // this call confuses the number of samples with the number of bytes, and
+    // ends up copying only half of what it should.
+    memcpy(input_frame_.data_, audio_loop_.GetNextBlock().data(),
+           kNumSamples10ms);
     AudioCodingModuleTestOldApi::InsertAudio();
   }
 
@@ -798,9 +778,9 @@ class AcmReRegisterIsacMtTestOldApi : public AudioCodingModuleTestOldApi {
       // Encode new frame.
       uint32_t input_timestamp = rtp_header_.header.timestamp;
       while (info.encoded_bytes == 0) {
-        info = isac_encoder_->Encode(
-            input_timestamp, audio_loop_.GetNextBlock(), kNumSamples10ms,
-            max_encoded_bytes, encoded.get());
+        info =
+            isac_encoder_->Encode(input_timestamp, audio_loop_.GetNextBlock(),
+                                  max_encoded_bytes, encoded.get());
         input_timestamp += 160;  // 10 ms at 16 kHz.
       }
       EXPECT_EQ(rtp_header_.header.timestamp + kPacketSizeSamples,
@@ -1667,6 +1647,9 @@ TEST_F(AcmSenderBitExactnessOldApi, External_Pcmu_20ms) {
   EXPECT_CALL(mock_encoder, EncodeInternal(_, _, _, _))
       .Times(AtLeast(1))
       .WillRepeatedly(Invoke(&encoder, &AudioEncoderPcmU::EncodeInternal));
+  EXPECT_CALL(mock_encoder, SetFec(_))
+      .Times(AtLeast(1))
+      .WillRepeatedly(Invoke(&encoder, &AudioEncoderPcmU::SetFec));
   ASSERT_NO_FATAL_FAILURE(
       SetUpTestExternalEncoder(&mock_encoder, codec_inst.pltype));
   Run("81a9d4c0bb72e9becc43aef124c981e9", "8f9b8750bd80fe26b6cbf6659b89f0f9",

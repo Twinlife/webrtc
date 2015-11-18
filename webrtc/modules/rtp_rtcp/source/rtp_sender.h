@@ -17,7 +17,7 @@
 
 #include "webrtc/base/thread_annotations.h"
 #include "webrtc/common_types.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp_defines.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "webrtc/modules/rtp_rtcp/source/bitrate.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_header_extension.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_packet_history.h"
@@ -283,8 +283,6 @@ class RTPSender : public RTPSenderInterface {
 
   uint32_t MaxConfiguredBitrateVideo() const;
 
-  int32_t SendRTPIntraRequest();
-
   // FEC.
   void SetGenericFECStatus(bool enable,
                            uint8_t payload_type_red,
@@ -350,7 +348,9 @@ class RTPSender : public RTPSenderInterface {
   void BuildRtxPacket(uint8_t* buffer, size_t* length,
                       uint8_t* buffer_rtx);
 
-  bool SendPacketToNetwork(const uint8_t *packet, size_t size);
+  bool SendPacketToNetwork(const uint8_t* packet,
+                           size_t size,
+                           const PacketOptions& options);
 
   void UpdateDelayStatistics(int64_t capture_time_ms, int64_t now_ms);
 

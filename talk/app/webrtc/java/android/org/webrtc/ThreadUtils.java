@@ -27,9 +27,34 @@
 
 package org.webrtc;
 
+import android.os.Handler;
+import android.os.SystemClock;
+
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 final class ThreadUtils {
+  /**
+   * Utility class to be used for checking that a method is called on the correct thread.
+   */
+  public static class ThreadChecker {
+    private Thread thread = Thread.currentThread();
+
+    public void checkIsOnValidThread() {
+      if (thread == null) {
+        thread = Thread.currentThread();
+      }
+      if (Thread.currentThread() != thread) {
+        throw new IllegalStateException("Wrong thread");
+      }
+    }
+
+    public void detachThread() {
+      thread = null;
+    }
+  }
+
   /**
    * Utility interface to be used with executeUninterruptibly() to wait for blocking operations
    * to complete without getting interrupted..
@@ -79,5 +104,66 @@ final class ThreadUtils {
         latch.await();
       }
     });
+  }
+
+  public static boolean awaitUninterruptibly(CountDownLatch barrier, long timeoutMs) {
+    final long startTimeMs = SystemClock.elapsedRealtime();
+    long timeRemainingMs = timeoutMs;
+    boolean wasInterrupted = false;
+    boolean result = false;
+    do {
+      try {
+        result = barrier.await(timeRemainingMs, TimeUnit.MILLISECONDS);
+        break;
+      } catch (InterruptedException e) {
+        // Someone is asking us to return early at our convenience. We can't cancel this operation,
+        // but we should preserve the information and pass it along.
+        wasInterrupted = true;
+        final long elapsedTimeMs = SystemClock.elapsedRealtime() - startTimeMs;
+        timeRemainingMs = timeoutMs - elapsedTimeMs;
+      }
+    } while (timeRemainingMs > 0);
+    // Pass interruption information along.
+    if (wasInterrupted) {
+      Thread.currentThread().interrupt();
+    }
+    return result;
+  }
+
+  /**
+   * Post |callable| to |handler| and wait for the result.
+   */
+  public static <V> V invokeUninterruptibly(final Handler handler, final Callable<V> callable) {
+    class Result {
+      public V value;
+    }
+    final Result result = new Result();
+    final CountDownLatch barrier = new CountDownLatch(1);
+    handler.post(new Runnable() {
+      @Override public void run() {
+        try {
+          result.value = callable.call();
+        } catch (Exception e) {
+          throw new RuntimeException("Callable threw exception: " + e);
+        }
+        barrier.countDown();
+      }
+    });
+    awaitUninterruptibly(barrier);
+    return result.value;
+  }
+
+  /**
+   * Post |runner| to |handler| and wait for the result.
+   */
+  public static void invokeUninterruptibly(final Handler handler, final Runnable runner) {
+    final CountDownLatch barrier = new CountDownLatch(1);
+    handler.post(new Runnable() {
+      @Override public void run() {
+          runner.run();
+        barrier.countDown();
+      }
+    });
+    awaitUninterruptibly(barrier);
   }
 }

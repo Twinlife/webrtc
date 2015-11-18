@@ -13,18 +13,20 @@
 
 #include "testing/gtest/include/gtest/gtest.h"
 
+#include "webrtc/audio_state.h"
 #include "webrtc/base/checks.h"
 #include "webrtc/base/scoped_ptr.h"
 #include "webrtc/base/thread_annotations.h"
 #include "webrtc/call.h"
-#include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
-#include "webrtc/system_wrappers/interface/event_wrapper.h"
-#include "webrtc/system_wrappers/interface/trace.h"
+#include "webrtc/system_wrappers/include/critical_section_wrapper.h"
+#include "webrtc/system_wrappers/include/event_wrapper.h"
+#include "webrtc/system_wrappers/include/trace.h"
 #include "webrtc/test/call_test.h"
 #include "webrtc/test/direct_transport.h"
 #include "webrtc/test/encoder_settings.h"
 #include "webrtc/test/fake_decoder.h"
 #include "webrtc/test/fake_encoder.h"
+#include "webrtc/test/mock_voice_engine.h"
 #include "webrtc/test/frame_generator_capturer.h"
 
 namespace webrtc {
@@ -42,9 +44,7 @@ class TraceObserver {
     // Call webrtc trace to initialize the tracer that would otherwise trigger a
     // data-race if left to be initialized by multiple threads (i.e. threads
     // spawned by test::DirectTransport members in BitrateEstimatorTest).
-    WEBRTC_TRACE(kTraceStateInfo,
-                 kTraceUtility,
-                 -1,
+    WEBRTC_TRACE(kTraceStateInfo, kTraceUtility, -1,
                  "Instantiate without data races.");
   }
 
@@ -57,9 +57,7 @@ class TraceObserver {
     callback_.PushExpectedLogLine(expected_log_line);
   }
 
-  EventTypeWrapper Wait() {
-    return callback_.Wait();
-  }
+  EventTypeWrapper Wait() { return callback_.Wait(); }
 
  private:
   class Callback : public TraceCallback {
@@ -115,28 +113,31 @@ static const int kASTExtensionId = 5;
 
 class BitrateEstimatorTest : public test::CallTest {
  public:
-  BitrateEstimatorTest()
-      : receiver_trace_(),
-        send_transport_(),
-        receive_transport_(),
-        sender_call_(),
-        receiver_call_(),
-        receive_config_(nullptr),
-        streams_() {
-  }
+  BitrateEstimatorTest() : receive_config_(nullptr) {}
 
-  virtual ~BitrateEstimatorTest() {
-    EXPECT_TRUE(streams_.empty());
-  }
+  virtual ~BitrateEstimatorTest() { EXPECT_TRUE(streams_.empty()); }
 
   virtual void SetUp() {
-    receiver_call_.reset(Call::Create(Call::Config()));
-    sender_call_.reset(Call::Create(Call::Config()));
+    EXPECT_CALL(mock_voice_engine_,
+        RegisterVoiceEngineObserver(testing::_)).WillOnce(testing::Return(0));
+    EXPECT_CALL(mock_voice_engine_,
+        DeRegisterVoiceEngineObserver()).WillOnce(testing::Return(0));
+    EXPECT_CALL(mock_voice_engine_, GetEventLog())
+        .WillRepeatedly(testing::Return(nullptr));
 
-    send_transport_.SetReceiver(receiver_call_->Receiver());
-    receive_transport_.SetReceiver(sender_call_->Receiver());
+    AudioState::Config audio_state_config;
+    audio_state_config.voice_engine = &mock_voice_engine_;
+    Call::Config config;
+    config.audio_state = AudioState::Create(audio_state_config);
+    receiver_call_.reset(Call::Create(config));
+    sender_call_.reset(Call::Create(config));
 
-    send_config_ = VideoSendStream::Config(&send_transport_);
+    send_transport_.reset(new test::DirectTransport(sender_call_.get()));
+    send_transport_->SetReceiver(receiver_call_->Receiver());
+    receive_transport_.reset(new test::DirectTransport(receiver_call_.get()));
+    receive_transport_->SetReceiver(sender_call_->Receiver());
+
+    send_config_ = VideoSendStream::Config(send_transport_.get());
     send_config_.rtp.ssrcs.push_back(kSendSsrcs[0]);
     // Encoders will be set separately per stream.
     send_config_.encoder_settings.encoder = nullptr;
@@ -144,7 +145,7 @@ class BitrateEstimatorTest : public test::CallTest {
     send_config_.encoder_settings.payload_type = kFakeSendPayloadType;
     encoder_config_.streams = test::CreateVideoStreams(1);
 
-    receive_config_ = VideoReceiveStream::Config(&receive_transport_);
+    receive_config_ = VideoReceiveStream::Config(receive_transport_.get());
     // receive_config_.decoders will be set by every stream separately.
     receive_config_.rtp.remote_ssrc = send_config_.rtp.ssrcs[0];
     receive_config_.rtp.local_ssrc = kReceiverLocalSsrc;
@@ -157,10 +158,10 @@ class BitrateEstimatorTest : public test::CallTest {
 
   virtual void TearDown() {
     std::for_each(streams_.begin(), streams_.end(),
-        std::mem_fun(&Stream::StopSending));
+                  std::mem_fun(&Stream::StopSending));
 
-    send_transport_.StopSending();
-    receive_transport_.StopSending();
+    send_transport_->StopSending();
+    receive_transport_->StopSending();
 
     while (!streams_.empty()) {
       delete streams_.back();
@@ -168,6 +169,7 @@ class BitrateEstimatorTest : public test::CallTest {
     }
 
     receiver_call_.reset();
+    sender_call_.reset();
   }
 
  protected:
@@ -190,10 +192,8 @@ class BitrateEstimatorTest : public test::CallTest {
           test_->send_config_, test_->encoder_config_);
       RTC_DCHECK_EQ(1u, test_->encoder_config_.streams.size());
       frame_generator_capturer_.reset(test::FrameGeneratorCapturer::Create(
-          send_stream_->Input(),
-          test_->encoder_config_.streams[0].width,
-          test_->encoder_config_.streams[0].height,
-          30,
+          send_stream_->Input(), test_->encoder_config_.streams[0].width,
+          test_->encoder_config_.streams[0].height, 30,
           Clock::GetRealTimeClock()));
       send_stream_->Start();
       frame_generator_capturer_->Start();
@@ -208,8 +208,8 @@ class BitrateEstimatorTest : public test::CallTest {
         receive_config.rtp.extensions.push_back(
             RtpExtension(RtpExtension::kAbsSendTime, kASTExtensionId));
         receive_config.combined_audio_video_bwe = true;
-        audio_receive_stream_ = test_->receiver_call_->CreateAudioReceiveStream(
-            receive_config);
+        audio_receive_stream_ =
+            test_->receiver_call_->CreateAudioReceiveStream(receive_config);
       } else {
         VideoReceiveStream::Decoder decoder;
         decoder.decoder = &fake_decoder_;
@@ -265,9 +265,10 @@ class BitrateEstimatorTest : public test::CallTest {
     test::FakeDecoder fake_decoder_;
   };
 
+  test::MockVoiceEngine mock_voice_engine_;
   TraceObserver receiver_trace_;
-  test::DirectTransport send_transport_;
-  test::DirectTransport receive_transport_;
+  rtc::scoped_ptr<test::DirectTransport> send_transport_;
+  rtc::scoped_ptr<test::DirectTransport> receive_transport_;
   rtc::scoped_ptr<Call> sender_call_;
   rtc::scoped_ptr<Call> receiver_call_;
   VideoReceiveStream::Config receive_config_;

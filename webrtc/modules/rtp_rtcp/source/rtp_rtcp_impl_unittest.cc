@@ -12,11 +12,11 @@
 #include "testing/gtest/include/gtest/gtest.h"
 
 #include "webrtc/common_types.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_header_parser.h"
-#include "webrtc/modules/rtp_rtcp/interface/rtp_rtcp_defines.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_header_parser.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_rtcp_impl.h"
-#include "webrtc/system_wrappers/interface/scoped_vector.h"
+#include "webrtc/system_wrappers/include/scoped_vector.h"
 #include "webrtc/test/rtcp_packet_parser.h"
 
 using ::testing::_;
@@ -61,7 +61,9 @@ class SendTransport : public Transport,
     clock_ = clock;
     delay_ms_ = delay_ms;
   }
-  bool SendRtp(const uint8_t* data, size_t len) override {
+  bool SendRtp(const uint8_t* data,
+               size_t len,
+               const PacketOptions& options) override {
     RTPHeader header;
     rtc::scoped_ptr<RtpHeaderParser> parser(RtpHeaderParser::Create());
     EXPECT_TRUE(parser->Parse(static_cast<const uint8_t*>(data), len, &header));
@@ -103,7 +105,7 @@ class RtpRtcpModule : public RtcpPacketTypeCounterObserver {
     config.rtt_stats = &rtt_stats_;
 
     impl_.reset(new ModuleRtpRtcpImpl(config));
-    impl_->SetRTCPStatus(kRtcpCompound);
+    impl_->SetRTCPStatus(RtcpMode::kCompound);
 
     transport_.SimulateNetworkDelay(kOneWayNetworkDelayMs, clock);
   }

@@ -45,9 +45,9 @@
 #endif
 
 #include "webrtc/common_types.h"
-#include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
-#include "webrtc/system_wrappers/interface/rw_lock_wrapper.h"
-#include "webrtc/system_wrappers/interface/trace.h"
+#include "webrtc/system_wrappers/include/critical_section_wrapper.h"
+#include "webrtc/system_wrappers/include/rw_lock_wrapper.h"
+#include "webrtc/system_wrappers/include/trace.h"
 #include "webrtc/test/channel_transport/udp_socket_manager_wrapper.h"
 #include "webrtc/typedefs.h"
 
@@ -1931,7 +1931,9 @@ int32_t UdpTransportImpl::SendRTCPPacketTo(const int8_t* data,
     return -1;
 }
 
-bool UdpTransportImpl::SendRtp(const uint8_t* data, size_t length) {
+bool UdpTransportImpl::SendRtp(const uint8_t* data,
+                               size_t length,
+                               const PacketOptions& packet_options) {
     WEBRTC_TRACE(kTraceStream, kTraceTransport, _id, "%s", __FUNCTION__);
 
     CriticalSectionScoped cs(_crit);

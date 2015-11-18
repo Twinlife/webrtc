@@ -30,34 +30,10 @@
 #include "talk/app/webrtc/java/jni/surfacetexturehelper_jni.h"
 
 #include "talk/app/webrtc/java/jni/classreferenceholder.h"
+#include "webrtc/base/bind.h"
 #include "webrtc/base/checks.h"
 
 namespace webrtc_jni {
-
-class SurfaceTextureHelper::TextureBuffer : public webrtc::NativeHandleBuffer {
- public:
-  TextureBuffer(int width,
-                int height,
-                const rtc::scoped_refptr<SurfaceTextureHelper>& pool,
-                const NativeHandleImpl& native_handle)
-      : webrtc::NativeHandleBuffer(&native_handle_, width, height),
-        native_handle_(native_handle),
-        pool_(pool) {}
-
-  ~TextureBuffer() {
-    pool_->ReturnTextureFrame();
-  }
-
-  rtc::scoped_refptr<VideoFrameBuffer> NativeToI420Buffer() override {
-    RTC_NOTREACHED()
-        << "SurfaceTextureHelper::NativeToI420Buffer not implemented.";
-    return nullptr;
-  }
-
- private:
-  NativeHandleImpl native_handle_;
-  const rtc::scoped_refptr<SurfaceTextureHelper> pool_;
-};
 
 SurfaceTextureHelper::SurfaceTextureHelper(JNIEnv* jni,
                                            jobject egl_shared_context)
@@ -66,17 +42,18 @@ SurfaceTextureHelper::SurfaceTextureHelper(JNIEnv* jni,
           FindClass(jni, "org/webrtc/SurfaceTextureHelper")),
       j_surface_texture_helper_(
           jni,
-          jni->NewObject(*j_surface_texture_helper_class_,
-                         GetMethodID(jni,
-                                     *j_surface_texture_helper_class_,
-                                     "<init>",
-                                     "(Landroid/opengl/EGLContext;)V"),
-                         egl_shared_context)),
-      j_return_texture_method_(
-          GetMethodID(jni,
-                      *j_surface_texture_helper_class_,
-                      "returnTextureFrame",
-                      "()V")) {
+          jni->CallStaticObjectMethod(
+              *j_surface_texture_helper_class_,
+              GetStaticMethodID(jni,
+                                *j_surface_texture_helper_class_,
+                                "create",
+                                "(Ljavax/microedition/khronos/egl/EGLContext;)"
+                                "Lorg/webrtc/SurfaceTextureHelper;"),
+              egl_shared_context)),
+      j_return_texture_method_(GetMethodID(jni,
+                                           *j_surface_texture_helper_class_,
+                                           "returnTextureFrame",
+                                           "()V")) {
   CHECK_EXCEPTION(jni) << "error during initialization of SurfaceTextureHelper";
 }
 
@@ -94,8 +71,9 @@ void SurfaceTextureHelper::ReturnTextureFrame() const {
 rtc::scoped_refptr<webrtc::VideoFrameBuffer>
 SurfaceTextureHelper::CreateTextureFrame(int width, int height,
     const NativeHandleImpl& native_handle) {
-  return new rtc::RefCountedObject<TextureBuffer>(
-      width, height, this, native_handle);
+  return new rtc::RefCountedObject<AndroidTextureBuffer>(
+      width, height, native_handle,
+      rtc::Bind(&SurfaceTextureHelper::ReturnTextureFrame, this));
 }
 
 }  // namespace webrtc_jni

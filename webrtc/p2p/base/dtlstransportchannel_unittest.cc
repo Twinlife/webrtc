@@ -33,8 +33,9 @@ static const char kIceUfrag1[] = "TESTICEUFRAG0001";
 static const char kIcePwd1[] = "TESTICEPWD00000000000001";
 static const size_t kPacketNumOffset = 8;
 static const size_t kPacketHeaderLen = 12;
+static const int kFakePacketId = 0x1234;
 
-static bool IsRtpLeadByte(uint8 b) {
+static bool IsRtpLeadByte(uint8_t b) {
   return ((b & 0xC0) == 0x80);
 }
 
@@ -86,6 +87,8 @@ class DtlsTestClient : public sigslot::has_slots<> {
         &DtlsTestClient::OnTransportChannelWritableState);
       channel->SignalReadPacket.connect(this,
         &DtlsTestClient::OnTransportChannelReadPacket);
+      channel->SignalSentPacket.connect(
+          this, &DtlsTestClient::OnTransportChannelSentPacket);
       channels_.push_back(channel);
 
       // Hook the raw packets so that we can verify they are encrypted.
@@ -228,10 +231,10 @@ class DtlsTestClient : public sigslot::has_slots<> {
     }
   }
 
-  void CheckSsl(uint16_t expected_cipher) {
+  void CheckSsl(int expected_cipher) {
     for (std::vector<cricket::DtlsTransportChannelWrapper*>::iterator it =
            channels_.begin(); it != channels_.end(); ++it) {
-      uint16_t cipher;
+      int cipher;
 
       bool rv = (*it)->GetSslCipherSuite(&cipher);
       if (negotiated_dtls_ && expected_cipher) {
@@ -254,11 +257,12 @@ class DtlsTestClient : public sigslot::has_slots<> {
       memset(packet.get(), sent & 0xff, size);
       packet[0] = (srtp) ? 0x80 : 0x00;
       rtc::SetBE32(packet.get() + kPacketNumOffset,
-                         static_cast<uint32>(sent));
+                   static_cast<uint32_t>(sent));
 
       // Only set the bypass flag if we've activated DTLS.
       int flags = (certificate_ && srtp) ? cricket::PF_SRTP_BYPASS : 0;
       rtc::PacketOptions packet_options;
+      packet_options.packet_id = kFakePacketId;
       int rv = channels_[channel]->SendPacket(
           packet.get(), size, packet_options, flags);
       ASSERT_GT(rv, 0);
@@ -287,14 +291,14 @@ class DtlsTestClient : public sigslot::has_slots<> {
     return received_.size();
   }
 
-  bool VerifyPacket(const char* data, size_t size, uint32* out_num) {
+  bool VerifyPacket(const char* data, size_t size, uint32_t* out_num) {
     if (size != packet_size_ ||
-        (data[0] != 0 && static_cast<uint8>(data[0]) != 0x80)) {
+        (data[0] != 0 && static_cast<uint8_t>(data[0]) != 0x80)) {
       return false;
     }
-    uint32 packet_num = rtc::GetBE32(data + kPacketNumOffset);
+    uint32_t packet_num = rtc::GetBE32(data + kPacketNumOffset);
     for (size_t i = kPacketHeaderLen; i < size; ++i) {
-      if (static_cast<uint8>(data[i]) != (packet_num & 0xff)) {
+      if (static_cast<uint8_t>(data[i]) != (packet_num & 0xff)) {
         return false;
       }
     }
@@ -309,10 +313,10 @@ class DtlsTestClient : public sigslot::has_slots<> {
     if (size <= packet_size_) {
       return false;
     }
-    uint32 packet_num = rtc::GetBE32(data + kPacketNumOffset);
+    uint32_t packet_num = rtc::GetBE32(data + kPacketNumOffset);
     int num_matches = 0;
     for (size_t i = kPacketNumOffset; i < size; ++i) {
-      if (static_cast<uint8>(data[i]) == (packet_num & 0xff)) {
+      if (static_cast<uint8_t>(data[i]) == (packet_num & 0xff)) {
         ++num_matches;
       }
     }
@@ -329,7 +333,7 @@ class DtlsTestClient : public sigslot::has_slots<> {
                                     const char* data, size_t size,
                                     const rtc::PacketTime& packet_time,
                                     int flags) {
-    uint32 packet_num = 0;
+    uint32_t packet_num = 0;
     ASSERT_TRUE(VerifyPacket(data, size, &packet_num));
     received_.insert(packet_num);
     // Only DTLS-SRTP packets should have the bypass flag set.
@@ -337,6 +341,13 @@ class DtlsTestClient : public sigslot::has_slots<> {
         (certificate_ && IsRtpLeadByte(data[0])) ? cricket::PF_SRTP_BYPASS : 0;
     ASSERT_EQ(expected_flags, flags);
   }
+
+  void OnTransportChannelSentPacket(cricket::TransportChannel* channel,
+                                    const rtc::SentPacket& sent_packet) {
+    sent_packet_ = sent_packet;
+  }
+
+  rtc::SentPacket sent_packet() const { return sent_packet_; }
 
   // Hook into the raw packet stream to make sure DTLS packets are encrypted.
   void OnFakeTransportChannelReadPacket(cricket::TransportChannel* channel,
@@ -378,6 +389,7 @@ class DtlsTestClient : public sigslot::has_slots<> {
   bool negotiated_dtls_;
   bool received_dtls_client_hello_;
   bool received_dtls_server_hello_;
+  rtc::SentPacket sent_packet_;
 };
 
 
@@ -556,6 +568,15 @@ TEST_F(DtlsTransportChannelTest, TestChannelSetupIce) {
 TEST_F(DtlsTransportChannelTest, TestTransfer) {
   ASSERT_TRUE(Connect());
   TestTransfer(0, 1000, 100, false);
+}
+
+// Connect without DTLS, and transfer some data.
+TEST_F(DtlsTransportChannelTest, TestOnSentPacket) {
+  ASSERT_TRUE(Connect());
+  EXPECT_EQ(client1_.sent_packet().send_time_ms, -1);
+  TestTransfer(0, 1000, 100, false);
+  EXPECT_EQ(kFakePacketId, client1_.sent_packet().packet_id);
+  EXPECT_GE(client1_.sent_packet().send_time_ms, 0);
 }
 
 // Create two channels without DTLS, and transfer some data.
