@@ -98,8 +98,9 @@ class NetEqExternalDecoderUnitTest : public test::NetEqExternalDecoderTest {
       next_arrival_time = GetArrivalTime(next_send_time);
     } while (Lost());  // If lost, immediately read the next packet.
 
-    EXPECT_CALL(*external_decoder_,
-                Decode(_, payload_size_bytes_, 1000 * samples_per_ms_, _, _, _))
+    EXPECT_CALL(
+        *external_decoder_,
+        DecodeInternal(_, payload_size_bytes_, 1000 * samples_per_ms_, _, _))
         .Times(NumExpectedDecodeCalls(num_loops));
 
     uint32_t time_now = 0;
@@ -179,15 +180,15 @@ class NetEqExternalVsInternalDecoderTest : public NetEqExternalDecoderUnitTest,
   }
 
   void SetUp() override {
-    ASSERT_EQ(NetEq::kOK,
-              neteq_internal_->RegisterPayloadType(
-                  NetEqDecoder::kDecoderPCM16Bswb32kHz, kPayloadType));
+    ASSERT_EQ(NetEq::kOK, neteq_internal_->RegisterPayloadType(
+                              NetEqDecoder::kDecoderPCM16Bswb32kHz,
+                              "pcm16-swb32", kPayloadType));
   }
 
   void GetAndVerifyOutput() override {
     NetEqOutputType output_type;
     size_t samples_per_channel;
-    int num_channels;
+    size_t num_channels;
     // Get audio from internal decoder instance.
     EXPECT_EQ(NetEq::kOK,
               neteq_internal_->GetAudio(kMaxBlockSize,
@@ -195,7 +196,7 @@ class NetEqExternalVsInternalDecoderTest : public NetEqExternalDecoderUnitTest,
                                         &samples_per_channel,
                                         &num_channels,
                                         &output_type));
-    EXPECT_EQ(1, num_channels);
+    EXPECT_EQ(1u, num_channels);
     EXPECT_EQ(static_cast<size_t>(kOutputLengthMs * sample_rate_hz_ / 1000),
               samples_per_channel);
 

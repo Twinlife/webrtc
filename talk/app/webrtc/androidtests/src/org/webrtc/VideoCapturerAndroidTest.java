@@ -36,8 +36,6 @@ import org.webrtc.CameraEnumerationAndroid.CaptureFormat;
 import java.util.HashSet;
 import java.util.Set;
 
-import javax.microedition.khronos.egl.EGL10;
-
 @SuppressWarnings("deprecation")
 public class VideoCapturerAndroidTest extends ActivityTestCase {
   static final String TAG = "VideoCapturerAndroidTest";
@@ -86,8 +84,10 @@ public class VideoCapturerAndroidTest extends ActivityTestCase {
 
   @SmallTest
   public void testCreateAndReleaseUsingTextures() {
+    EglBase eglBase = EglBase.create();
     VideoCapturerAndroidTestFixtures.release(
-        VideoCapturerAndroid.create("", null, EGL10.EGL_NO_CONTEXT));
+        VideoCapturerAndroid.create("", null, eglBase.getEglBaseContext()));
+    eglBase.release();
   }
 
   @SmallTest
@@ -109,9 +109,11 @@ public class VideoCapturerAndroidTest extends ActivityTestCase {
 
   @SmallTest
   public void testStartVideoCapturerUsingTextures() throws InterruptedException {
+    EglBase eglBase = EglBase.create();
     VideoCapturerAndroid capturer =
-        VideoCapturerAndroid.create("", null, EGL10.EGL_NO_CONTEXT);
+        VideoCapturerAndroid.create("", null, eglBase.getEglBaseContext());
     VideoCapturerAndroidTestFixtures.startCapturerAndRender(capturer);
+    eglBase.release();
   }
 
   @SmallTest
@@ -151,8 +153,11 @@ public class VideoCapturerAndroidTest extends ActivityTestCase {
 
   @SmallTest
   public void testSwitchVideoCapturerUsingTextures() throws InterruptedException {
-    VideoCapturerAndroid capturer = VideoCapturerAndroid.create("", null, EGL10.EGL_NO_CONTEXT);
+    EglBase eglBase = EglBase.create();
+    VideoCapturerAndroid capturer =
+        VideoCapturerAndroid.create("", null, eglBase.getEglBaseContext());
     VideoCapturerAndroidTestFixtures.switchCamera(capturer);
+    eglBase.release();
   }
 
   @MediumTest
@@ -176,12 +181,14 @@ public class VideoCapturerAndroidTest extends ActivityTestCase {
 
   @MediumTest
   public void testCameraCallsAfterStopUsingTextures() throws InterruptedException {
+    EglBase eglBase = EglBase.create();
     final String deviceName = CameraEnumerationAndroid.getDeviceName(0);
     final VideoCapturerAndroid capturer = VideoCapturerAndroid.create(deviceName, null,
-        EGL10.EGL_NO_CONTEXT);
+        eglBase.getEglBaseContext());
 
     VideoCapturerAndroidTestFixtures.cameraCallsAfterStop(capturer,
         getInstrumentation().getContext());
+    eglBase.release();
   }
 
   @SmallTest
@@ -194,8 +201,11 @@ public class VideoCapturerAndroidTest extends ActivityTestCase {
 
   @SmallTest
   public void testStopRestartVideoSourceUsingTextures() throws InterruptedException {
-    VideoCapturerAndroid capturer = VideoCapturerAndroid.create("", null, EGL10.EGL_NO_CONTEXT);
+    EglBase eglBase = EglBase.create();
+    VideoCapturerAndroid capturer =
+        VideoCapturerAndroid.create("", null, eglBase.getEglBaseContext());
     VideoCapturerAndroidTestFixtures.stopRestartVideoSource(capturer);
+    eglBase.release();
   }
 
   @SmallTest
@@ -211,11 +221,13 @@ public class VideoCapturerAndroidTest extends ActivityTestCase {
 
   @SmallTest
   public void testStartStopWithDifferentResolutionsUsingTextures() throws InterruptedException {
+    EglBase eglBase = EglBase.create();
     String deviceName = CameraEnumerationAndroid.getDeviceName(0);
     VideoCapturerAndroid capturer =
-        VideoCapturerAndroid.create(deviceName, null, EGL10.EGL_NO_CONTEXT);
+        VideoCapturerAndroid.create(deviceName, null, eglBase.getEglBaseContext());
     VideoCapturerAndroidTestFixtures.startStopWithDifferentResolutions(capturer,
         getInstrumentation().getContext());
+    eglBase.release();
   }
 
   @SmallTest
@@ -266,11 +278,13 @@ public class VideoCapturerAndroidTest extends ActivityTestCase {
 
   @SmallTest
   public void testReturnBufferLateUsingTextures() throws InterruptedException {
+    EglBase eglBase = EglBase.create();
     String deviceName = CameraEnumerationAndroid.getDeviceName(0);
     VideoCapturerAndroid capturer =
-        VideoCapturerAndroid.create(deviceName, null, EGL10.EGL_NO_CONTEXT);
+        VideoCapturerAndroid.create(deviceName, null, eglBase.getEglBaseContext());
     VideoCapturerAndroidTestFixtures.returnBufferLate(capturer,
         getInstrumentation().getContext());
+    eglBase.release();
   }
 
   @MediumTest
@@ -284,19 +298,43 @@ public class VideoCapturerAndroidTest extends ActivityTestCase {
 
   @MediumTest
   public void testReturnBufferLateEndToEndUsingTextures() throws InterruptedException {
+    EglBase eglBase = EglBase.create();
     final VideoCapturerAndroid capturer =
-        VideoCapturerAndroid.create("", null, EGL10.EGL_NO_CONTEXT);
+        VideoCapturerAndroid.create("", null, eglBase.getEglBaseContext());
     VideoCapturerAndroidTestFixtures.returnBufferLateEndToEnd(capturer);
+    eglBase.release();
   }
 
   @MediumTest
   // This test that CameraEventsHandler.onError is triggered if video buffers are not returned to
   // the capturer.
-  public void testCameraErrorEventOnBufferStarvation() throws InterruptedException {
+  public void testCameraFreezedEventOnBufferStarvationUsingTextures() throws InterruptedException {
+    EglBase eglBase = EglBase.create();
     VideoCapturerAndroidTestFixtures.CameraEvents cameraEvents =
         VideoCapturerAndroidTestFixtures.createCameraEvents();
-    VideoCapturerAndroid capturer = VideoCapturerAndroid.create("", cameraEvents);
-    VideoCapturerAndroidTestFixtures.cameraErrorEventOnBufferStarvation(capturer,
+    VideoCapturerAndroid capturer = VideoCapturerAndroid.create("", cameraEvents,
+        eglBase.getEglBaseContext());
+    VideoCapturerAndroidTestFixtures.cameraFreezedEventOnBufferStarvationUsingTextures(capturer,
         cameraEvents, getInstrumentation().getContext());
+    eglBase.release();
+  }
+
+  @MediumTest
+  // This test that frames forwarded to a renderer is scaled if onOutputFormatRequest is
+  // called. This test both Java and C++ parts of of the stack.
+  public void testScaleCameraOutput() throws InterruptedException {
+    VideoCapturerAndroid capturer = VideoCapturerAndroid.create("", null);
+    VideoCapturerAndroidTestFixtures.scaleCameraOutput(capturer);
+  }
+
+  @MediumTest
+  // This test that frames forwarded to a renderer is scaled if onOutputFormatRequest is
+  // called. This test both Java and C++ parts of of the stack.
+  public void testScaleCameraOutputUsingTextures() throws InterruptedException {
+    EglBase eglBase = EglBase.create();
+    VideoCapturerAndroid capturer =
+        VideoCapturerAndroid.create("", null, eglBase.getEglBaseContext());
+    VideoCapturerAndroidTestFixtures.scaleCameraOutput(capturer);
+    eglBase.release();
   }
 }

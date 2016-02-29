@@ -27,6 +27,7 @@
 
 package org.webrtc;
 
+import android.graphics.SurfaceTexture;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaCodecInfo.CodecCapabilities;
@@ -48,6 +49,7 @@ import java.util.concurrent.TimeUnit;
 
 // Java-side of peerconnection_jni.cc:MediaCodecVideoDecoder.
 // This class is an implementation detail of the Java PeerConnection API.
+@SuppressWarnings("deprecation")
 public class MediaCodecVideoDecoder {
   // This class is constructed, operated, and destroyed by its C++ incarnation,
   // so the class and its methods have non-public visibility.  The API this
@@ -83,7 +85,7 @@ public class MediaCodecVideoDecoder {
     {"OMX.qcom.", "OMX.Nvidia.", "OMX.Exynos.", "OMX.Intel." };
   // List of supported HW VP9 decoders.
   private static final String[] supportedVp9HwCodecPrefixes =
-    {"OMX.qcom."};
+    {"OMX.qcom.", "OMX.Exynos." };
   // List of supported HW H.264 decoders.
   private static final String[] supportedH264HwCodecPrefixes =
     {"OMX.qcom.", "OMX.Intel." };
@@ -103,7 +105,7 @@ public class MediaCodecVideoDecoder {
   private int stride;
   private int sliceHeight;
   private boolean hasDecodedFirstFrame;
-  private final Queue<Long> decodeStartTimeMs = new LinkedList<Long>();
+  private final Queue<TimeStamps> decodeStartTimeMs = new LinkedList<TimeStamps>();
   private boolean useSurface;
 
   // The below variables are only used when decoding to a Surface.
@@ -111,9 +113,6 @@ public class MediaCodecVideoDecoder {
   // Max number of output buffers queued before starting to drop decoded frames.
   private static final int MAX_QUEUED_OUTPUTBUFFERS = 3;
   private int droppedFrames;
-  // |isWaitingForTexture| is true when waiting for the transition:
-  // MediaCodec.releaseOutputBuffer() -> onTextureFrameAvailable().
-  private boolean isWaitingForTexture;
   private Surface surface = null;
   private final Queue<DecodedOutputBuffer>
       dequeuedSurfaceOutputBuffers = new LinkedList<DecodedOutputBuffer>();
@@ -289,7 +288,6 @@ public class MediaCodecVideoDecoder {
       hasDecodedFirstFrame = false;
       dequeuedSurfaceOutputBuffers.clear();
       droppedFrames = 0;
-      isWaitingForTexture = false;
       Logging.d(TAG, "Input buffers: " + inputBuffers.length +
           ". Output buffers: " + outputBuffers.length);
       return true;
@@ -355,14 +353,15 @@ public class MediaCodecVideoDecoder {
     }
   }
 
-  private boolean queueInputBuffer(
-      int inputBufferIndex, int size, long timestampUs) {
+  private boolean queueInputBuffer(int inputBufferIndex, int size, long presentationTimeStamUs,
+      long timeStampMs, long ntpTimeStamp) {
     checkOnMediaCodecThread();
     try {
       inputBuffers[inputBufferIndex].position(0);
       inputBuffers[inputBufferIndex].limit(size);
-      decodeStartTimeMs.add(SystemClock.elapsedRealtime());
-      mediaCodec.queueInputBuffer(inputBufferIndex, 0, size, timestampUs, 0);
+      decodeStartTimeMs.add(new TimeStamps(SystemClock.elapsedRealtime(), timeStampMs,
+          ntpTimeStamp));
+      mediaCodec.queueInputBuffer(inputBufferIndex, 0, size, presentationTimeStamUs, 0);
       return true;
     }
     catch (IllegalStateException e) {
@@ -371,14 +370,26 @@ public class MediaCodecVideoDecoder {
     }
   }
 
+  private static class TimeStamps {
+    public TimeStamps(long decodeStartTimeMs, long timeStampMs, long ntpTimeStampMs) {
+      this.decodeStartTimeMs = decodeStartTimeMs;
+      this.timeStampMs = timeStampMs;
+      this.ntpTimeStampMs = ntpTimeStampMs;
+    }
+    private final long decodeStartTimeMs; // Time when this frame was queued for decoding.
+    private final long timeStampMs; // Only used for bookkeeping in Java. Used in C++;
+    private final long ntpTimeStampMs; // Only used for bookkeeping in Java. Used in C++;
+  }
+
   // Helper struct for dequeueOutputBuffer() below.
   private static class DecodedOutputBuffer {
-    public DecodedOutputBuffer(int index, int offset, int size, long presentationTimestampUs,
-        long decodeTime, long endDecodeTime) {
+    public DecodedOutputBuffer(int index, int offset, int size, long timeStampMs,
+        long ntpTimeStampMs, long decodeTime, long endDecodeTime) {
       this.index = index;
       this.offset = offset;
       this.size = size;
-      this.presentationTimestampUs = presentationTimestampUs;
+      this.timeStampMs = timeStampMs;
+      this.ntpTimeStampMs = ntpTimeStampMs;
       this.decodeTimeMs = decodeTime;
       this.endDecodeTimeMs = endDecodeTime;
     }
@@ -386,7 +397,8 @@ public class MediaCodecVideoDecoder {
     private final int index;
     private final int offset;
     private final int size;
-    private final long presentationTimestampUs;
+    private final long timeStampMs;
+    private final long ntpTimeStampMs;
     // Number of ms it took to decode this frame.
     private final long decodeTimeMs;
     // System time when this frame finished decoding.
@@ -397,7 +409,8 @@ public class MediaCodecVideoDecoder {
   private static class DecodedTextureBuffer {
     private final int textureID;
     private final float[] transformMatrix;
-    private final long presentationTimestampUs;
+    private final long timeStampMs;
+    private final long ntpTimeStampMs;
     private final long decodeTimeMs;
     // Interval from when the frame finished decoding until this buffer has been created.
     // Since there is only one texture, this interval depend on the time from when
@@ -407,11 +420,12 @@ public class MediaCodecVideoDecoder {
 
     // A DecodedTextureBuffer with zero |textureID| has special meaning and represents a frame
     // that was dropped.
-    public DecodedTextureBuffer(int textureID, float[] transformMatrix,
-        long presentationTimestampUs, long decodeTimeMs, long frameDelay) {
+    public DecodedTextureBuffer(int textureID, float[] transformMatrix, long timeStampMs,
+        long ntpTimeStampMs, long decodeTimeMs, long frameDelay) {
       this.textureID = textureID;
       this.transformMatrix = transformMatrix;
-      this.presentationTimestampUs = presentationTimestampUs;
+      this.timeStampMs = timeStampMs;
+      this.ntpTimeStampMs = ntpTimeStampMs;
       this.decodeTimeMs = decodeTimeMs;
       this.frameDelayMs = frameDelay;
     }
@@ -420,23 +434,32 @@ public class MediaCodecVideoDecoder {
   // Poll based texture listener.
   private static class TextureListener
       implements SurfaceTextureHelper.OnTextureFrameAvailableListener {
-    public static class TextureInfo {
-      private final int textureID;
-      private final float[] transformMatrix;
-
-      TextureInfo(int textureId, float[] transformMatrix) {
-        this.textureID = textureId;
-        this.transformMatrix = transformMatrix;
-      }
-    }
     private final SurfaceTextureHelper surfaceTextureHelper;
-    private TextureInfo textureInfo;
     // |newFrameLock| is used to synchronize arrival of new frames with wait()/notifyAll().
     private final Object newFrameLock = new Object();
+    // |bufferToRender| is non-null when waiting for transition between addBufferToRender() to
+    // onTextureFrameAvailable().
+    private DecodedOutputBuffer bufferToRender;
+    private DecodedTextureBuffer renderedBuffer;
 
     public TextureListener(SurfaceTextureHelper surfaceTextureHelper) {
       this.surfaceTextureHelper = surfaceTextureHelper;
       surfaceTextureHelper.setListener(this);
+    }
+
+    public void addBufferToRender(DecodedOutputBuffer buffer) {
+      if (bufferToRender != null) {
+        Logging.e(TAG,
+            "Unexpected addBufferToRender() called while waiting for a texture.");
+        throw new IllegalStateException("Waiting for a texture.");
+      }
+      bufferToRender = buffer;
+    }
+
+    public boolean isWaitingForTexture() {
+      synchronized (newFrameLock) {
+        return bufferToRender != null;
+      }
     }
 
     // Callback from |surfaceTextureHelper|. May be called on an arbitrary thread.
@@ -444,21 +467,24 @@ public class MediaCodecVideoDecoder {
     public void onTextureFrameAvailable(
         int oesTextureId, float[] transformMatrix, long timestampNs) {
       synchronized (newFrameLock) {
-        if (textureInfo != null) {
+        if (renderedBuffer != null) {
           Logging.e(TAG,
               "Unexpected onTextureFrameAvailable() called while already holding a texture.");
           throw new IllegalStateException("Already holding a texture.");
         }
         // |timestampNs| is always zero on some Android versions.
-        textureInfo = new TextureInfo(oesTextureId, transformMatrix);
+        renderedBuffer = new DecodedTextureBuffer(oesTextureId, transformMatrix,
+            bufferToRender.timeStampMs, bufferToRender.ntpTimeStampMs, bufferToRender.decodeTimeMs,
+            SystemClock.elapsedRealtime() - bufferToRender.endDecodeTimeMs);
+        bufferToRender = null;
         newFrameLock.notifyAll();
       }
     }
 
-    // Dequeues and returns a TextureInfo if available, or null otherwise.
-    public TextureInfo dequeueTextureInfo(int timeoutMs) {
+    // Dequeues and returns a DecodedTextureBuffer if available, or null otherwise.
+    public DecodedTextureBuffer dequeueTextureBuffer(int timeoutMs) {
       synchronized (newFrameLock) {
-        if (textureInfo == null && timeoutMs > 0) {
+        if (renderedBuffer == null && timeoutMs > 0 && isWaitingForTexture()) {
           try {
             newFrameLock.wait(timeoutMs);
           } catch(InterruptedException e) {
@@ -466,9 +492,9 @@ public class MediaCodecVideoDecoder {
             Thread.currentThread().interrupt();
           }
         }
-        TextureInfo returnedInfo = textureInfo;
-        textureInfo = null;
-        return returnedInfo;
+        DecodedTextureBuffer returnedBuffer = renderedBuffer;
+        renderedBuffer = null;
+        return returnedBuffer;
       }
     }
 
@@ -478,9 +504,9 @@ public class MediaCodecVideoDecoder {
       // statement that is also used in the onTextureFrameAvailable() above to avoid deadlocks.
       surfaceTextureHelper.disconnect();
       synchronized (newFrameLock) {
-        if (textureInfo != null) {
+        if (renderedBuffer != null) {
           surfaceTextureHelper.returnTextureFrame();
-          textureInfo = null;
+          renderedBuffer = null;
         }
       }
     }
@@ -542,8 +568,10 @@ public class MediaCodecVideoDecoder {
           return null;
         default:
           hasDecodedFirstFrame = true;
-          return new DecodedOutputBuffer(result, info.offset, info.size, info.presentationTimeUs,
-              SystemClock.elapsedRealtime() - decodeStartTimeMs.remove(),
+          TimeStamps timeStamps = decodeStartTimeMs.remove();
+          return new DecodedOutputBuffer(result, info.offset, info.size, timeStamps.timeStampMs,
+              timeStamps.ntpTimeStampMs,
+              SystemClock.elapsedRealtime() - timeStamps.decodeStartTimeMs,
               SystemClock.elapsedRealtime());
         }
     }
@@ -552,61 +580,60 @@ public class MediaCodecVideoDecoder {
   // Returns null if no decoded buffer is available, and otherwise a DecodedTextureBuffer.
   // Throws IllegalStateException if call is made on the wrong thread, if color format changes to an
   // unsupported format, or if |mediaCodec| is not in the Executing state. Throws CodecException
-  // upon codec error.
+  // upon codec error. If |dequeueTimeoutMs| > 0, the oldest decoded frame will be dropped if
+  // a frame can't be returned.
   private DecodedTextureBuffer dequeueTextureBuffer(int dequeueTimeoutMs) {
     checkOnMediaCodecThread();
     if (!useSurface) {
       throw new IllegalStateException("dequeueTexture() called for byte buffer decoding.");
     }
-
     DecodedOutputBuffer outputBuffer = dequeueOutputBuffer(dequeueTimeoutMs);
     if (outputBuffer != null) {
-      if (dequeuedSurfaceOutputBuffers.size() >= Math.min(
-          MAX_QUEUED_OUTPUTBUFFERS, outputBuffers.length)) {
-        ++droppedFrames;
-        Logging.w(TAG, "Too many output buffers. Dropping frame. Total number of dropped frames: "
-            + droppedFrames);
-        // Drop the newest frame. Don't drop the oldest since if |isWaitingForTexture|
-        // releaseOutputBuffer has already been called. Dropping the newest frame will lead to a
-        // shift of timestamps by one frame in  MediaCodecVideoDecoder::DeliverPendingOutputs.
-        mediaCodec.releaseOutputBuffer(outputBuffer.index, false /* render */);
-        return new DecodedTextureBuffer(0, null, outputBuffer.presentationTimestampUs,
-            outputBuffer.decodeTimeMs,
-            SystemClock.elapsedRealtime() - outputBuffer.endDecodeTimeMs);
-      }
       dequeuedSurfaceOutputBuffers.add(outputBuffer);
     }
 
-    if (dequeuedSurfaceOutputBuffers.isEmpty()) {
-      return null;
+    MaybeRenderDecodedTextureBuffer();
+    // Check if there is texture ready now by waiting max |dequeueTimeoutMs|.
+    DecodedTextureBuffer renderedBuffer = textureListener.dequeueTextureBuffer(dequeueTimeoutMs);
+    if (renderedBuffer != null) {
+      MaybeRenderDecodedTextureBuffer();
+      return renderedBuffer;
     }
 
-    if (!isWaitingForTexture) {
-      // Get the first frame in the queue and render to the decoder output surface.
-      mediaCodec.releaseOutputBuffer(dequeuedSurfaceOutputBuffers.peek().index, true /* render */);
-      isWaitingForTexture = true;
-    }
-
-    // We are waiting for a frame to be rendered to the decoder surface.
-    // Check if it is ready now by waiting max |dequeueTimeoutMs|. There can only be one frame
-    // rendered at a time.
-    TextureListener.TextureInfo info = textureListener.dequeueTextureInfo(dequeueTimeoutMs);
-    if (info != null) {
-      isWaitingForTexture = false;
-      final DecodedOutputBuffer renderedBuffer =
-          dequeuedSurfaceOutputBuffers.remove();
-      if (!dequeuedSurfaceOutputBuffers.isEmpty()) {
-        // Get the next frame in the queue and render to the decoder output surface.
-        mediaCodec.releaseOutputBuffer(
-            dequeuedSurfaceOutputBuffers.peek().index, true /* render */);
-        isWaitingForTexture = true;
+    if ((dequeuedSurfaceOutputBuffers.size()
+         >= Math.min(MAX_QUEUED_OUTPUTBUFFERS, outputBuffers.length)
+         || (dequeueTimeoutMs > 0 && !dequeuedSurfaceOutputBuffers.isEmpty()))) {
+      ++droppedFrames;
+      // Drop the oldest frame still in dequeuedSurfaceOutputBuffers.
+      // The oldest frame is owned by |textureListener| and can't be dropped since
+      // mediaCodec.releaseOutputBuffer has already been called.
+      final DecodedOutputBuffer droppedFrame = dequeuedSurfaceOutputBuffers.remove();
+      if (dequeueTimeoutMs > 0) {
+        // TODO(perkj): Re-add the below log when VideoRenderGUI has been removed or fixed to
+        // return the one and only texture even if it does not render.
+        // Logging.w(TAG, "Draining decoder. Dropping frame with TS: "
+        //    + droppedFrame.timeStampMs + ". Total number of dropped frames: " + droppedFrames);
+      } else {
+        Logging.w(TAG, "Too many output buffers. Dropping frame with TS: "
+            + droppedFrame.timeStampMs + ". Total number of dropped frames: " + droppedFrames);
       }
 
-      return new DecodedTextureBuffer(info.textureID, info.transformMatrix,
-          renderedBuffer.presentationTimestampUs, renderedBuffer.decodeTimeMs,
-          SystemClock.elapsedRealtime() - renderedBuffer.endDecodeTimeMs);
+      mediaCodec.releaseOutputBuffer(droppedFrame.index, false /* render */);
+      return new DecodedTextureBuffer(0, null, droppedFrame.timeStampMs,
+          droppedFrame.ntpTimeStampMs, droppedFrame.decodeTimeMs,
+          SystemClock.elapsedRealtime() - droppedFrame.endDecodeTimeMs);
     }
     return null;
+  }
+
+  private void MaybeRenderDecodedTextureBuffer() {
+    if (dequeuedSurfaceOutputBuffers.isEmpty() || textureListener.isWaitingForTexture()) {
+      return;
+    }
+    // Get the first frame in the queue and render to the decoder output surface.
+    final DecodedOutputBuffer buffer = dequeuedSurfaceOutputBuffers.remove();
+    textureListener.addBufferToRender(buffer);
+    mediaCodec.releaseOutputBuffer(buffer.index, true /* render */);
   }
 
   // Release a dequeued output byte buffer back to the codec for re-use. Should only be called for

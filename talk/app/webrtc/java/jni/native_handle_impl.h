@@ -31,7 +31,8 @@
 
 #include <jni.h>
 
-#include "webrtc/common_video/interface/video_frame_buffer.h"
+#include "webrtc/common_video/include/video_frame_buffer.h"
+#include "webrtc/common_video/rotation.h"
 
 namespace webrtc_jni {
 
@@ -50,12 +51,24 @@ class AndroidTextureBuffer : public webrtc::NativeHandleBuffer {
   AndroidTextureBuffer(int width,
                        int height,
                        const NativeHandleImpl& native_handle,
+                       jobject surface_texture_helper,
                        const rtc::Callback0<void>& no_longer_used);
   ~AndroidTextureBuffer();
   rtc::scoped_refptr<VideoFrameBuffer> NativeToI420Buffer() override;
 
+  rtc::scoped_refptr<AndroidTextureBuffer> ScaleAndRotate(
+      int dst_widht,
+      int dst_height,
+      webrtc::VideoRotation rotation);
+
  private:
   NativeHandleImpl native_handle_;
+  // Raw object pointer, relying on the caller, i.e.,
+  // AndroidVideoCapturerJni or the C++ SurfaceTextureHelper, to keep
+  // a global reference. TODO(nisse): Make this a reference to the C++
+  // SurfaceTextureHelper instead, but that requires some refactoring
+  // of AndroidVideoCapturerJni.
+  jobject surface_texture_helper_;
   rtc::Callback0<void> no_longer_used_cb_;
 };
 

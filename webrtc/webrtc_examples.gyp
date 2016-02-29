@@ -103,6 +103,18 @@
                 },
               },
             }],  # OS=="win"
+            ['OS=="win" and clang==1', {
+              'msvs_settings': {
+                'VCCLCompilerTool': {
+                  'AdditionalOptions': [
+                    # Disable warnings failing when compiling with Clang on Windows.
+                    # https://bugs.chromium.org/p/webrtc/issues/detail?id=5366
+                    '-Wno-reorder',
+                    '-Wno-unused-function',
+                  ],
+                },
+              },
+            }], # OS=="win" and clang==1
             ['OS=="linux"', {
               'sources': [
                 'examples/peerconnection/client/linux/main.cc',
@@ -132,7 +144,7 @@
       ], # targets
     }],  # OS=="linux" or OS=="win"
 
-    ['OS=="ios" or (OS=="mac" and target_arch!="ia32" and mac_sdk>="10.8")', {
+    ['OS=="ios" or (OS=="mac" and target_arch!="ia32")', {
       'targets': [
         {
           'target_name': 'apprtc_common',
@@ -332,6 +344,7 @@
             'CLANG_ENABLE_OBJC_ARC': 'YES',
             'WARNING_CFLAGS': [
               '-Wno-deprecated-declarations',
+              '-Wno-nonnull',
             ],
           },
           'link_settings': {
@@ -344,7 +357,7 @@
           }
         },  # target socketrocket
       ],  # targets
-    }],  # OS=="ios" or (OS=="mac" and target_arch!="ia32" and mac_sdk>="10.8")
+    }],  # OS=="ios" or (OS=="mac" and target_arch!="ia32")
 
     ['OS=="android"', {
       'targets': [
