@@ -25,9 +25,6 @@ CHROMIUM_COMMIT_TEMPLATE = CHROMIUM_SRC_URL + '/+/%s'
 CHROMIUM_LOG_TEMPLATE = CHROMIUM_SRC_URL + '/+log/%s'
 CHROMIUM_FILE_TEMPLATE = CHROMIUM_SRC_URL + '/+/%s/%s'
 
-# Run these CQ trybots in addition to the default ones in infra/config/cq.cfg.
-EXTRA_TRYBOTS = 'tryserver.webrtc:win_baremetal,mac_baremetal,linux_baremetal'
-
 COMMIT_POSITION_RE = re.compile('^Cr-Commit-Position: .*#([0-9]+).*$')
 CLANG_REVISION_RE = re.compile(r'^CLANG_REVISION=(\d+)$')
 ROLL_BRANCH_NAME = 'roll_chromium_revision'
@@ -43,9 +40,9 @@ import find_depot_tools
 find_depot_tools.add_depot_tools_to_path()
 from gclient import GClientKeywords
 
-CLANG_UPDATE_SCRIPT_URL_PATH = 'tools/clang/scripts/update.sh'
+CLANG_UPDATE_SCRIPT_URL_PATH = 'tools/clang/scripts/update.py'
 CLANG_UPDATE_SCRIPT_LOCAL_PATH = os.path.join('tools', 'clang', 'scripts',
-                                              'update.sh')
+                                              'update.py')
 
 DepsEntry = collections.namedtuple('DepsEntry', 'path url revision')
 ChangedDep = collections.namedtuple('ChangedDep',
@@ -292,7 +289,6 @@ def GenerateCommitMessage(current_cr_rev, new_cr_rev, current_commit_pos,
     commit_msg.append('No update to Clang.\n')
 
   commit_msg.append('TBR=%s' % tbr_authors)
-  commit_msg.append('CQ_EXTRA_TRYBOTS=%s' % EXTRA_TRYBOTS)
   return '\n'.join(commit_msg)
 
 

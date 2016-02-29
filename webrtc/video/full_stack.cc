@@ -145,12 +145,36 @@ TEST_F(FullStackTest, ScreenshareSlidesVP8_2TL_Scroll) {
   RunTest(config);
 }
 
+TEST_F(FullStackTest, ScreenshareSlidesVP8_2TL_LossyNet) {
+  VideoQualityTest::Params screenshare = {
+      {1850, 1110, 5, 50000, 200000, 2000000, "VP8", 2, 1, 400000},
+      {},          // Video-specific.
+      {true, 10},  // Screenshare-specific.
+      {"screenshare_slides_lossy_net", 0.0, 0.0, kFullStackTestDurationSecs}};
+  screenshare.pipe.loss_percent = 5;
+  screenshare.pipe.queue_delay_ms = 200;
+  screenshare.pipe.link_capacity_kbps = 500;
+  RunTest(screenshare);
+}
+
+TEST_F(FullStackTest, ScreenshareSlidesVP8_2TL_VeryLossyNet) {
+  VideoQualityTest::Params screenshare = {
+      {1850, 1110, 5, 50000, 200000, 2000000, "VP8", 2, 1, 400000},
+      {},          // Video-specific.
+      {true, 10},  // Screenshare-specific.
+      {"screenshare_slides_very_lossy", 0.0, 0.0, kFullStackTestDurationSecs}};
+  screenshare.pipe.loss_percent = 10;
+  screenshare.pipe.queue_delay_ms = 200;
+  screenshare.pipe.link_capacity_kbps = 500;
+  RunTest(screenshare);
+}
+
 TEST_F(FullStackTest, ScreenshareSlidesVP9_2SL) {
   VideoQualityTest::Params screenshare = {
       {1850, 1110, 5, 50000, 200000, 2000000, "VP9", 1, 0, 400000},
       {},
       {true, 10},
-      {"screenshare_slides_vp9_2tl", 0.0, 0.0, kFullStackTestDurationSecs},
+      {"screenshare_slides_vp9_2sl", 0.0, 0.0, kFullStackTestDurationSecs},
       {},
       false,
       {std::vector<VideoStream>(), 0, 2, 1}};

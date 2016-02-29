@@ -11,6 +11,8 @@
 #ifndef WEBRTC_MODULES_AUDIO_CODING_NETEQ_TOOLS_NETEQ_EXTERNAL_DECODER_TEST_H_
 #define WEBRTC_MODULES_AUDIO_CODING_NETEQ_TOOLS_NETEQ_EXTERNAL_DECODER_TEST_H_
 
+#include <string>
+
 #include "webrtc/base/scoped_ptr.h"
 #include "webrtc/modules/audio_coding/codecs/audio_decoder.h"
 #include "webrtc/modules/audio_coding/neteq/include/neteq.h"
@@ -49,9 +51,10 @@ class NetEqExternalDecoderTest {
 
  private:
   NetEqDecoder codec_;
+  std::string name_ = "dummy name";
   AudioDecoder* decoder_;
   int sample_rate_hz_;
-  int channels_;
+  size_t channels_;
   rtc::scoped_ptr<NetEq> neteq_;
 };
 

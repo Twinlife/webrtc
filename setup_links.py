@@ -40,8 +40,10 @@ DIRECTORIES = [
   'third_party/colorama',
   'third_party/drmemory',
   'third_party/expat',
+  'third_party/ffmpeg',
   'third_party/instrumented_libraries',
   'third_party/jsoncpp',
+  'third_party/libc++-static',
   'third_party/libjpeg',
   'third_party/libjpeg_turbo',
   'third_party/libsrtp',
@@ -52,6 +54,7 @@ DIRECTORIES = [
   'third_party/lss',
   'third_party/nss',
   'third_party/ocmock',
+  'third_party/openh264',
   'third_party/openmax_dl',
   'third_party/opus',
   'third_party/proguard',
@@ -84,6 +87,7 @@ if 'android' in target_os:
     'third_party/android_tools',
     'third_party/appurify-python',
     'third_party/ashmem',
+    'third_party/catapult',
     'third_party/icu',
     'third_party/ijar',
     'third_party/jsr-305',
@@ -96,6 +100,7 @@ if 'android' in target_os:
     'third_party/robolectric',
     'tools/android',
     'tools/grit',
+    'tools/telemetry',
   ]
 if 'ios' in target_os:
   DIRECTORIES.append('third_party/class-dump')

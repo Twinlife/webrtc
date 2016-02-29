@@ -34,7 +34,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-final class ThreadUtils {
+public class ThreadUtils {
   /**
    * Utility class to be used for checking that a method is called on the correct thread.
    */
@@ -86,6 +86,29 @@ final class ThreadUtils {
     if (wasInterrupted) {
       Thread.currentThread().interrupt();
     }
+  }
+
+  public static boolean joinUninterruptibly(final Thread thread, long timeoutMs) {
+    final long startTimeMs = SystemClock.elapsedRealtime();
+    long timeRemainingMs = timeoutMs;
+    boolean wasInterrupted = false;
+    while (timeRemainingMs > 0) {
+      try {
+        thread.join(timeRemainingMs);
+        break;
+      } catch (InterruptedException e) {
+        // Someone is asking us to return early at our convenience. We can't cancel this operation,
+        // but we should preserve the information and pass it along.
+        wasInterrupted = true;
+        final long elapsedTimeMs = SystemClock.elapsedRealtime() - startTimeMs;
+        timeRemainingMs = timeoutMs - elapsedTimeMs;
+      }
+    }
+    // Pass interruption information along.
+    if (wasInterrupted) {
+      Thread.currentThread().interrupt();
+    }
+    return !thread.isAlive();
   }
 
   public static void joinUninterruptibly(final Thread thread) {

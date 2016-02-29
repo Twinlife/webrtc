@@ -12,6 +12,7 @@
 #define WEBRTC_AUDIO_MOCK_VOICE_ENGINE_H_
 
 #include "testing/gmock/include/gmock/gmock.h"
+#include "webrtc/test/mock_voe_channel_proxy.h"
 #include "webrtc/voice_engine/voice_engine_impl.h"
 
 namespace webrtc {
@@ -19,17 +20,31 @@ namespace test {
 
 // NOTE: This class inherits from VoiceEngineImpl so that its clients will be
 // able to get the various interfaces as usual, via T::GetInterface().
-class MockVoiceEngine final : public VoiceEngineImpl {
+class MockVoiceEngine : public VoiceEngineImpl {
  public:
   MockVoiceEngine() : VoiceEngineImpl(new Config(), true) {
     // Increase ref count so this object isn't automatically deleted whenever
     // interfaces are Release():d.
     ++_ref_count;
+    // We add this default behavior to make the mock easier to use in tests. It
+    // will create a NiceMock of a voe::ChannelProxy.
+    ON_CALL(*this, ChannelProxyFactory(testing::_))
+        .WillByDefault(
+            testing::Invoke([](int channel_id) {
+              return new testing::NiceMock<MockVoEChannelProxy>();
+            }));
   }
   ~MockVoiceEngine() override {
     // Decrease ref count before base class d-tor is called; otherwise it will
     // trigger an assertion.
     --_ref_count;
+  }
+  // Allows injecting a ChannelProxy factory.
+  MOCK_METHOD1(ChannelProxyFactory, voe::ChannelProxy*(int channel_id));
+
+  // VoiceEngineImpl
+  rtc::scoped_ptr<voe::ChannelProxy> GetChannelProxy(int channel_id) override {
+    return rtc::scoped_ptr<voe::ChannelProxy>(ChannelProxyFactory(channel_id));
   }
 
   // VoEAudioProcessing
