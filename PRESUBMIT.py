@@ -20,6 +20,8 @@ CPPLINT_DIRS = [
   'webrtc/call',
   'webrtc/common_video',
   'webrtc/examples',
+  'webrtc/modules/bitrate_controller',
+  'webrtc/modules/pacing',
   'webrtc/modules/remote_bitrate_estimator',
   'webrtc/modules/rtp_rtcp',
   'webrtc/modules/video_coding',
@@ -27,6 +29,17 @@ CPPLINT_DIRS = [
   'webrtc/sound',
   'webrtc/tools',
   'webrtc/video',
+]
+
+# These filters will always be removed, even if the caller specifies a filter
+# set, as they are problematic or broken in some way.
+#
+# Justifications for each filter:
+# - build/c++11         : Rvalue ref checks are unreliable (false positives),
+#                         include file and feature blacklists are
+#                         google3-specific.
+BLACKLIST_LINT_FILTERS = [
+  '-build/c++11',
 ]
 
 # List of directories of "supported" native APIs. That means changes to headers
@@ -170,6 +183,10 @@ def _CheckApprovedFilesLintClean(input_api, output_api,
   # pylint: disable=W0212
   cpplint._cpplint_state.ResetErrorCounts()
 
+  lint_filters = cpplint._Filters()
+  lint_filters.extend(BLACKLIST_LINT_FILTERS)
+  cpplint._SetFilters(','.join(lint_filters))
+
   # Create a platform independent whitelist for the CPPLINT_DIRS.
   whitelist_dirs = [input_api.os_path.join(*path.split('/'))
                     for path in CPPLINT_DIRS]
@@ -206,8 +223,6 @@ def _CheckNoRtcBaseDeps(input_api, gyp_files, output_api):
     gyp_exceptions = (
         'base_tests.gyp',
         'desktop_capture.gypi',
-        'libjingle.gyp',
-        'libjingle_tests.gyp',
         'p2p.gyp',
         'sound.gyp',
         'webrtc_test_common.gyp',
@@ -234,6 +249,10 @@ def _CheckNoSourcesAboveGyp(input_api, gyp_files, output_api):
   violating_gyp_files = set()
   violating_source_entries = []
   for gyp_file in gyp_files:
+    if 'supplement.gypi' in gyp_file.LocalPath():
+      # Exclude supplement.gypi from this check, as the LSan and TSan
+      # suppression files are located in a different location.
+      continue
     contents = input_api.ReadFile(gyp_file)
     for source_block_match in source_pattern.finditer(contents):
       # Find all source list entries starting with ../ in the source block
@@ -333,6 +352,31 @@ def _CheckUnwantedDependencies(input_api, output_api):
   return results
 
 
+def _CheckJSONParseErrors(input_api, output_api):
+  """Check that JSON files do not contain syntax errors."""
+
+  def FilterFile(affected_file):
+    return input_api.os_path.splitext(affected_file.LocalPath())[1] == '.json'
+
+  def GetJSONParseError(input_api, filename):
+    try:
+      contents = input_api.ReadFile(filename)
+      input_api.json.loads(contents)
+    except ValueError as e:
+      return e
+    return None
+
+  results = []
+  for affected_file in input_api.AffectedFiles(
+      file_filter=FilterFile, include_deletes=False):
+    parse_error = GetJSONParseError(input_api,
+                                    affected_file.AbsoluteLocalPath())
+    if parse_error:
+      results.append(output_api.PresubmitError('%s could not be parsed: %s' %
+          (affected_file.LocalPath(), parse_error)))
+  return results
+
+
 def _RunPythonTests(input_api, output_api):
   def join(*args):
     return input_api.os_path.join(input_api.PresubmitLocalPath(), *args)
@@ -397,6 +441,7 @@ def _CommonChecks(input_api, output_api):
                          'W0232',  # Class has no __init__ method
                         ],
       pylintrc='pylintrc'))
+
   # WebRTC can't use the presubmit_canned_checks.PanProjectChecks function since
   # we need to have different license checks in talk/ and webrtc/ directories.
   # Instead, hand-picked checks are included below.
@@ -417,6 +462,7 @@ def _CommonChecks(input_api, output_api):
   results.extend(_CheckNoFRIEND_TEST(input_api, output_api))
   results.extend(_CheckGypChanges(input_api, output_api))
   results.extend(_CheckUnwantedDependencies(input_api, output_api))
+  results.extend(_CheckJSONParseErrors(input_api, output_api))
   results.extend(_RunPythonTests(input_api, output_api))
   return results
 

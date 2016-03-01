@@ -138,9 +138,11 @@ static_library("rtc_base_approved") {
     "platform_thread_types.h",
     "random.cc",
     "random.h",
+    "refcount.h",
     "safe_conversions.h",
     "safe_conversions_impl.h",
     "scoped_ptr.h",
+    "scoped_ref_ptr.h",
     "stringencode.cc",
     "stringencode.h",
     "stringutils.cc",
@@ -388,10 +390,8 @@ static_library("rtc_base") {
       "profiler.h",
       "proxyserver.cc",
       "proxyserver.h",
-      "refcount.h",
       "referencecountedsingletonfactory.h",
       "rollingaccumulator.h",
-      "scoped_ref_ptr.h",
       "scopedptrcollection.h",
       "sec_buffer.h",
       "sharedexclusivelock.cc",
@@ -635,6 +635,17 @@ if (is_ios) {
       "objc/RTCDispatcher.m",
       "objc/RTCLogging.h",
       "objc/RTCLogging.mm",
+      "objc/RTCMacros.h",
+      "objc/RTCSSLAdapter.h",
+      "objc/RTCSSLAdapter.mm",
+      "objc/RTCTracing.h",
+      "objc/RTCTracing.mm",
     ]
   }
+}
+
+source_set("gtest_prod") {
+  sources = [
+    "gtest_prod_util.h",
+  ]
 }

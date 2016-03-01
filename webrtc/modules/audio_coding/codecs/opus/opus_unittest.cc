@@ -7,6 +7,8 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
+
+#include <memory>
 #include <string>
 
 #include "testing/gtest/include/gtest/gtest.h"
@@ -206,9 +208,9 @@ void OpusTest::TestDtxEffect(bool dtx, int block_length_ms) {
   const int kCheckTimeMs = 1500;
 
 #if defined(OPUS_FIXED_POINT)
-  const uint16_t kOutputValueBound = 20;
+  const uint16_t kOutputValueBound = 30;
 #else
-  const uint16_t kOutputValueBound = 2;
+  const uint16_t kOutputValueBound = 8;
 #endif
 
   int time = 0;
@@ -636,7 +638,7 @@ TEST_P(OpusTest, OpusDecodeRepacketized) {
 
   // Encode & decode.
   int16_t audio_type;
-  rtc::scoped_ptr<int16_t[]> output_data_decode(
+  std::unique_ptr<int16_t[]> output_data_decode(
       new int16_t[kPackets * kOpus20msFrameSamples * channels_]);
   OpusRepacketizer* rp = opus_repacketizer_create();
 

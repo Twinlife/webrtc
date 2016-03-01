@@ -35,9 +35,9 @@
           'type': 'executable',
           'dependencies': [
             '<(webrtc_root)/system_wrappers/system_wrappers.gyp:field_trial_default',
-            '../libjingle.gyp:libjingle_peerconnection_objc',
+            '../app/webrtc/legacy_objc_api.gyp:libjingle_peerconnection_objc',
           ],
-          'sources': ['<(DEPTH)/webrtc/build/no_op.cc',],
+          'sources': ['<(webrtc_root)/build/no_op.cc',],
         },
       ],
     }]

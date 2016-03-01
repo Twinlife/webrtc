@@ -78,6 +78,8 @@
         'echo_cancellation_impl.h',
         'echo_control_mobile_impl.cc',
         'echo_control_mobile_impl.h',
+        'gain_control_for_experimental_agc.cc',
+        'gain_control_for_experimental_agc.h',
         'gain_control_impl.cc',
         'gain_control_impl.h',
         'high_pass_filter_impl.cc',
@@ -229,7 +231,7 @@
             'proto_in_dir': '.',
             # Workaround to protect against gyp's pathname relativization when
             # this file is included by modules.gyp.
-            'proto_out_protected': 'webrtc/audio_processing',
+            'proto_out_protected': 'webrtc/modules/audio_processing',
             'proto_out_dir': '<(proto_out_protected)',
           },
           'includes': ['../../build/protoc.gypi',],

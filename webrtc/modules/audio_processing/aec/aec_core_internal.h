@@ -19,16 +19,12 @@
 
 // Number of partitions for the extended filter mode. The first one is an enum
 // to be used in array declarations, as it represents the maximum filter length.
-enum {
-  kExtendedNumPartitions = 32
-};
+enum { kExtendedNumPartitions = 32 };
 static const int kNormalNumPartitions = 12;
 
 // Delay estimator constants, used for logging and delay compensation if
 // if reported delays are disabled.
-enum {
-  kLookaheadBlocks = 15
-};
+enum { kLookaheadBlocks = 15 };
 enum {
   // 500 ms for 16 kHz which is equivalent with the limit of reported delays.
   kHistorySizeBlocks = 125
@@ -149,6 +145,9 @@ struct AecCore {
   int delay_agnostic_enabled;
   // 1 = extended filter mode enabled, 0 = disabled.
   int extended_filter_enabled;
+  // 1 = next generation aec mode enabled, 0 = disabled.
+  int next_generation_aec_enabled;
+
   // Runtime selection of number of filter partitions.
   int num_partitions;
 

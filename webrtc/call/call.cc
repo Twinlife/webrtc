@@ -27,7 +27,6 @@
 #include "webrtc/call/bitrate_allocator.h"
 #include "webrtc/call/congestion_controller.h"
 #include "webrtc/call/rtc_event_log.h"
-#include "webrtc/common.h"
 #include "webrtc/config.h"
 #include "webrtc/modules/bitrate_controller/include/bitrate_controller.h"
 #include "webrtc/modules/pacing/paced_sender.h"
@@ -42,6 +41,7 @@
 #include "webrtc/video/call_stats.h"
 #include "webrtc/video/video_receive_stream.h"
 #include "webrtc/video/video_send_stream.h"
+#include "webrtc/video/vie_remb.h"
 #include "webrtc/voice_engine/include/voe_codec.h"
 
 namespace webrtc {
@@ -166,6 +166,7 @@ class Call : public webrtc::Call, public PacketReceiver,
   int64_t pacer_bitrate_sum_kbits_ GUARDED_BY(&bitrate_crit_);
   int64_t num_bitrate_updates_ GUARDED_BY(&bitrate_crit_);
 
+  VieRemb remb_;
   const rtc::scoped_ptr<CongestionController> congestion_controller_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(Call);
@@ -197,10 +198,8 @@ Call::Call(const Call::Config& config)
       estimated_send_bitrate_sum_kbits_(0),
       pacer_bitrate_sum_kbits_(0),
       num_bitrate_updates_(0),
-      congestion_controller_(
-          new CongestionController(module_process_thread_.get(),
-                                   call_stats_.get(),
-                                   this)) {
+      remb_(clock_),
+      congestion_controller_(new CongestionController(clock_, this, &remb_)) {
   RTC_DCHECK(configuration_thread_checker_.CalledOnValidThread());
   RTC_DCHECK_GE(config.bitrate_config.min_bitrate_bps, 0);
   RTC_DCHECK_GE(config.bitrate_config.start_bitrate_bps,
@@ -217,6 +216,8 @@ Call::Call(const Call::Config& config)
   Trace::CreateTrace();
   module_process_thread_->Start();
   module_process_thread_->RegisterModule(call_stats_.get());
+  module_process_thread_->RegisterModule(congestion_controller_.get());
+  call_stats_->RegisterStatsObserver(congestion_controller_.get());
 
   congestion_controller_->SetBweBitrates(
       config_.bitrate_config.min_bitrate_bps,
@@ -227,6 +228,7 @@ Call::Call(const Call::Config& config)
 }
 
 Call::~Call() {
+  RTC_DCHECK(!remb_.InUse());
   RTC_DCHECK(configuration_thread_checker_.CalledOnValidThread());
   UpdateSendHistograms();
   UpdateReceiveHistograms();
@@ -237,6 +239,8 @@ Call::~Call() {
   RTC_CHECK(video_receive_ssrcs_.empty());
   RTC_CHECK(video_receive_streams_.empty());
 
+  call_stats_->DeregisterStatsObserver(congestion_controller_.get());
+  module_process_thread_->DeRegisterModule(congestion_controller_.get());
   module_process_thread_->DeRegisterModule(call_stats_.get());
   module_process_thread_->Stop();
   Trace::ReturnTrace();
@@ -253,12 +257,12 @@ void Call::UpdateSendHistograms() {
       estimated_send_bitrate_sum_kbits_ / num_bitrate_updates_;
   int pacer_bitrate_kbps = pacer_bitrate_sum_kbits_ / num_bitrate_updates_;
   if (send_bitrate_kbps > 0) {
-    RTC_HISTOGRAM_COUNTS_SPARSE_100000("WebRTC.Call.EstimatedSendBitrateInKbps",
-                                       send_bitrate_kbps);
+    RTC_HISTOGRAM_COUNTS_100000("WebRTC.Call.EstimatedSendBitrateInKbps",
+                                send_bitrate_kbps);
   }
   if (pacer_bitrate_kbps > 0) {
-    RTC_HISTOGRAM_COUNTS_SPARSE_100000("WebRTC.Call.PacerBitrateInKbps",
-                                       pacer_bitrate_kbps);
+    RTC_HISTOGRAM_COUNTS_100000("WebRTC.Call.PacerBitrateInKbps",
+                                pacer_bitrate_kbps);
   }
 }
 
@@ -273,18 +277,18 @@ void Call::UpdateReceiveHistograms() {
   int video_bitrate_kbps = received_video_bytes_ * 8 / elapsed_sec / 1000;
   int rtcp_bitrate_bps = received_rtcp_bytes_ * 8 / elapsed_sec;
   if (video_bitrate_kbps > 0) {
-    RTC_HISTOGRAM_COUNTS_SPARSE_100000("WebRTC.Call.VideoBitrateReceivedInKbps",
-                                       video_bitrate_kbps);
+    RTC_HISTOGRAM_COUNTS_100000("WebRTC.Call.VideoBitrateReceivedInKbps",
+                                video_bitrate_kbps);
   }
   if (audio_bitrate_kbps > 0) {
-    RTC_HISTOGRAM_COUNTS_SPARSE_100000("WebRTC.Call.AudioBitrateReceivedInKbps",
-                                       audio_bitrate_kbps);
+    RTC_HISTOGRAM_COUNTS_100000("WebRTC.Call.AudioBitrateReceivedInKbps",
+                                audio_bitrate_kbps);
   }
   if (rtcp_bitrate_bps > 0) {
-    RTC_HISTOGRAM_COUNTS_SPARSE_100000("WebRTC.Call.RtcpBitrateReceivedInBps",
-                                       rtcp_bitrate_bps);
+    RTC_HISTOGRAM_COUNTS_100000("WebRTC.Call.RtcpBitrateReceivedInBps",
+                                rtcp_bitrate_bps);
   }
-  RTC_HISTOGRAM_COUNTS_SPARSE_100000(
+  RTC_HISTOGRAM_COUNTS_100000(
       "WebRTC.Call.BitrateReceivedInKbps",
       audio_bitrate_kbps + video_bitrate_kbps + rtcp_bitrate_bps / 1000);
 }
@@ -380,7 +384,7 @@ webrtc::VideoSendStream* Call::CreateVideoSendStream(
   // the call has already started.
   VideoSendStream* send_stream = new VideoSendStream(
       num_cpu_cores_, module_process_thread_.get(), call_stats_.get(),
-      congestion_controller_.get(), bitrate_allocator_.get(), config,
+      congestion_controller_.get(), &remb_, bitrate_allocator_.get(), config,
       encoder_config, suspended_video_send_ssrcs_);
 
   if (!network_enabled_)
@@ -438,8 +442,8 @@ webrtc::VideoReceiveStream* Call::CreateVideoReceiveStream(
   TRACE_EVENT0("webrtc", "Call::CreateVideoReceiveStream");
   RTC_DCHECK(configuration_thread_checker_.CalledOnValidThread());
   VideoReceiveStream* receive_stream = new VideoReceiveStream(
-      num_cpu_cores_, congestion_controller_.get(), config,
-      voice_engine(), module_process_thread_.get(), call_stats_.get());
+      num_cpu_cores_, congestion_controller_.get(), config, voice_engine(),
+      module_process_thread_.get(), call_stats_.get(), &remb_);
 
   WriteLockScoped write_lock(*receive_crit_);
   RTC_DCHECK(video_receive_ssrcs_.find(config.rtp.remote_ssrc) ==
@@ -667,7 +671,8 @@ PacketReceiver::DeliveryStatus Call::DeliverRtcp(MediaType media_type,
       if (stream->DeliverRtcp(packet, length)) {
         rtcp_delivered = true;
         if (event_log_)
-          event_log_->LogRtcpPacket(true, media_type, packet, length);
+          event_log_->LogRtcpPacket(kIncomingPacket, media_type, packet,
+                                    length);
       }
     }
   }
@@ -677,7 +682,8 @@ PacketReceiver::DeliveryStatus Call::DeliverRtcp(MediaType media_type,
       if (stream->DeliverRtcp(packet, length)) {
         rtcp_delivered = true;
         if (event_log_)
-          event_log_->LogRtcpPacket(false, media_type, packet, length);
+          event_log_->LogRtcpPacket(kIncomingPacket, media_type, packet,
+                                    length);
       }
     }
   }
@@ -707,7 +713,7 @@ PacketReceiver::DeliveryStatus Call::DeliverRtp(MediaType media_type,
                         ? DELIVERY_OK
                         : DELIVERY_PACKET_ERROR;
       if (status == DELIVERY_OK && event_log_)
-        event_log_->LogRtpHeader(true, media_type, packet, length);
+        event_log_->LogRtpHeader(kIncomingPacket, media_type, packet, length);
       return status;
     }
   }
@@ -719,7 +725,7 @@ PacketReceiver::DeliveryStatus Call::DeliverRtp(MediaType media_type,
                         ? DELIVERY_OK
                         : DELIVERY_PACKET_ERROR;
       if (status == DELIVERY_OK && event_log_)
-        event_log_->LogRtpHeader(true, media_type, packet, length);
+        event_log_->LogRtpHeader(kIncomingPacket, media_type, packet, length);
       return status;
     }
   }

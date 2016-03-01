@@ -10,12 +10,12 @@
 
 #include "webrtc/video/vie_sync_module.h"
 
+#include "webrtc/base/checks.h"
 #include "webrtc/base/logging.h"
 #include "webrtc/base/trace_event.h"
 #include "webrtc/modules/rtp_rtcp/include/rtp_receiver.h"
 #include "webrtc/modules/rtp_rtcp/include/rtp_rtcp.h"
 #include "webrtc/modules/video_coding/include/video_coding.h"
-#include "webrtc/system_wrappers/include/critical_section_wrapper.h"
 #include "webrtc/video/stream_synchronization.h"
 #include "webrtc/voice_engine/include/voe_video_sync.h"
 
@@ -49,8 +49,7 @@ int UpdateMeasurements(StreamSynchronization::Measurements* stream,
 }
 
 ViESyncModule::ViESyncModule(VideoCodingModule* vcm)
-    : data_cs_(CriticalSectionWrapper::CreateCriticalSection()),
-      vcm_(vcm),
+    : vcm_(vcm),
       video_receiver_(NULL),
       video_rtp_rtcp_(NULL),
       voe_channel_id_(-1),
@@ -62,17 +61,19 @@ ViESyncModule::ViESyncModule(VideoCodingModule* vcm)
 ViESyncModule::~ViESyncModule() {
 }
 
-int ViESyncModule::ConfigureSync(int voe_channel_id,
-                                 VoEVideoSync* voe_sync_interface,
-                                 RtpRtcp* video_rtcp_module,
-                                 RtpReceiver* video_receiver) {
-  CriticalSectionScoped cs(data_cs_.get());
+void ViESyncModule::ConfigureSync(int voe_channel_id,
+                                  VoEVideoSync* voe_sync_interface,
+                                  RtpRtcp* video_rtcp_module,
+                                  RtpReceiver* video_receiver) {
+  if (voe_channel_id != -1)
+    RTC_DCHECK(voe_sync_interface);
+  rtc::CritScope lock(&data_cs_);
   // Prevent expensive no-ops.
   if (voe_channel_id_ == voe_channel_id &&
       voe_sync_interface_ == voe_sync_interface &&
       video_receiver_ == video_receiver &&
       video_rtp_rtcp_ == video_rtcp_module) {
-    return 0;
+    return;
   }
   voe_channel_id_ = voe_channel_id;
   voe_sync_interface_ = voe_sync_interface;
@@ -80,20 +81,6 @@ int ViESyncModule::ConfigureSync(int voe_channel_id,
   video_rtp_rtcp_ = video_rtcp_module;
   sync_.reset(
       new StreamSynchronization(video_rtp_rtcp_->SSRC(), voe_channel_id));
-
-  if (!voe_sync_interface) {
-    voe_channel_id_ = -1;
-    if (voe_channel_id >= 0) {
-      // Trying to set a voice channel but no interface exist.
-      return -1;
-    }
-    return 0;
-  }
-  return 0;
-}
-
-int ViESyncModule::VoiceChannel() {
-  return voe_channel_id_;
 }
 
 int64_t ViESyncModule::TimeUntilNextProcess() {
@@ -102,7 +89,7 @@ int64_t ViESyncModule::TimeUntilNextProcess() {
 }
 
 int32_t ViESyncModule::Process() {
-  CriticalSectionScoped cs(data_cs_.get());
+  rtc::CritScope lock(&data_cs_);
   last_sync_time_ = TickTime::Now();
 
   const int current_video_delay_ms = vcm_->Delay();
