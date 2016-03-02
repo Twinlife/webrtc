@@ -43,7 +43,8 @@ RtpRtcp::Configuration::Configuration()
       transport_sequence_number_allocator(nullptr),
       send_bitrate_observer(nullptr),
       send_frame_count_observer(nullptr),
-      send_side_delay_observer(nullptr) {}
+      send_side_delay_observer(nullptr),
+      event_log(nullptr) {}
 
 RtpRtcp* RtpRtcp::CreateRtpRtcp(const RtpRtcp::Configuration& configuration) {
   if (configuration.clock) {
@@ -68,11 +69,13 @@ ModuleRtpRtcpImpl::ModuleRtpRtcpImpl(const Configuration& configuration)
                   configuration.transport_feedback_callback,
                   configuration.send_bitrate_observer,
                   configuration.send_frame_count_observer,
-                  configuration.send_side_delay_observer),
+                  configuration.send_side_delay_observer,
+                  configuration.event_log),
       rtcp_sender_(configuration.audio,
                    configuration.clock,
                    configuration.receive_statistics,
                    configuration.rtcp_packet_type_counter_observer,
+                   configuration.event_log,
                    configuration.outgoing_transport),
       rtcp_receiver_(configuration.clock,
                      configuration.receiver_only,
@@ -215,10 +218,6 @@ void ModuleRtpRtcpImpl::SetRtxSendPayloadType(int payload_type,
   rtp_sender_.SetRtxPayloadType(payload_type, associated_payload_type);
 }
 
-std::pair<int, int> ModuleRtpRtcpImpl::RtxSendPayloadType() const {
-  return rtp_sender_.RtxPayloadType();
-}
-
 int32_t ModuleRtpRtcpImpl::IncomingRtcpPacket(
     const uint8_t* rtcp_packet,
     const size_t length) {
@@ -251,11 +250,8 @@ int32_t ModuleRtpRtcpImpl::RegisterSendPayload(
 
 int32_t ModuleRtpRtcpImpl::RegisterSendPayload(const VideoCodec& video_codec) {
   send_video_codec_ = video_codec;
-  return rtp_sender_.RegisterPayload(video_codec.plName,
-                                     video_codec.plType,
-                                     90000,
-                                     0,
-                                     video_codec.maxBitrate);
+  return rtp_sender_.RegisterPayload(video_codec.plName, video_codec.plType,
+                                     90000, 0, 0);
 }
 
 int32_t ModuleRtpRtcpImpl::DeRegisterSendPayload(const int8_t payload_type) {
@@ -288,6 +284,7 @@ void ModuleRtpRtcpImpl::SetSequenceNumber(const uint16_t seq_num) {
 bool ModuleRtpRtcpImpl::SetRtpStateForSsrc(uint32_t ssrc,
                                            const RtpState& rtp_state) {
   if (rtp_sender_.SSRC() == ssrc) {
+    SetStartTimestamp(rtp_state.start_timestamp);
     rtp_sender_.SetRtpState(rtp_state);
     return true;
   }
@@ -674,9 +671,7 @@ void ModuleRtpRtcpImpl::SetTMMBRStatus(const bool enable) {
 }
 
 int32_t ModuleRtpRtcpImpl::SetTMMBN(const TMMBRSet* bounding_set) {
-  uint32_t max_bitrate_kbit =
-      rtp_sender_.MaxConfiguredBitrateVideo() / 1000;
-  return rtcp_sender_.SetTMMBN(bounding_set, max_bitrate_kbit);
+  return rtcp_sender_.SetTMMBN(bounding_set);
 }
 
 // Returns the currently configured retransmission mode.

@@ -14,10 +14,11 @@
 #include <algorithm>  // std::swap (pre-C++11)
 #include <cassert>
 #include <cstring>
+#include <memory>
 #include <utility>  // std::swap (C++11 and later)
 
+#include "webrtc/base/constructormagic.h"
 #include "webrtc/base/deprecation.h"
-#include "webrtc/base/scoped_ptr.h"
 
 namespace rtc {
 
@@ -164,7 +165,7 @@ class Buffer {
     assert(IsConsistent());
     if (capacity <= capacity_)
       return;
-    scoped_ptr<uint8_t[]> new_data(new uint8_t[capacity]);
+    std::unique_ptr<uint8_t[]> new_data(new uint8_t[capacity]);
     std::memcpy(new_data.get(), data_.get(), size_);
     data_ = std::move(new_data);
     capacity_ = capacity;
@@ -179,12 +180,10 @@ class Buffer {
     return std::move(*this);
   }
 
-  // Resets the buffer to zero size and capacity. Works even if the buffer has
-  // been moved from.
+  // Resets the buffer to zero size without altering capacity. Works even if the
+  // buffer has been moved from.
   void Clear() {
-    data_.reset();
     size_ = 0;
-    capacity_ = 0;
     assert(IsConsistent());
   }
 
@@ -222,7 +221,7 @@ class Buffer {
 
   size_t size_;
   size_t capacity_;
-  scoped_ptr<uint8_t[]> data_;
+  std::unique_ptr<uint8_t[]> data_;
 };
 
 }  // namespace rtc

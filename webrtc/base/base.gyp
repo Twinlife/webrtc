@@ -22,13 +22,12 @@
         }],
       ],
     }],
-    # TODO(tkchin): Mac support. There are a bunch of problems right now because
-    # of some settings pulled down from Chromium.
-    ['OS=="ios"', {
+    ['OS=="ios" or (OS=="mac" and mac_deployment_target=="10.7")', {
       'targets': [
         {
           'target_name': 'rtc_base_objc',
           'type': 'static_library',
+          'includes': [ '../build/objc_common.gypi' ],
           'dependencies': [
             'rtc_base',
           ],
@@ -39,6 +38,11 @@
             'objc/RTCDispatcher.m',
             'objc/RTCLogging.h',
             'objc/RTCLogging.mm',
+            'objc/RTCMacros.h',
+            'objc/RTCSSLAdapter.h',
+            'objc/RTCSSLAdapter.mm',
+            'objc/RTCTracing.h',
+            'objc/RTCTracing.mm',
           ],
           'conditions': [
             ['OS=="ios"', {
@@ -55,10 +59,6 @@
               },
             }],
           ],
-          'xcode_settings': {
-            'CLANG_ENABLE_OBJC_ARC': 'YES',
-            'CLANG_WARN_OBJC_MISSING_PROPERTY_SYNTHESIS': 'YES',
-          },
         }
       ],
     }], # OS=="ios"
@@ -108,9 +108,11 @@
         'random.h',
         'ratetracker.cc',
         'ratetracker.h',
+        'refcount.h',
         'safe_conversions.h',
         'safe_conversions_impl.h',
         'scoped_ptr.h',
+        'scoped_ref_ptr.h',
         'stringencode.cc',
         'stringencode.h',
         'stringutils.cc',
@@ -306,14 +308,12 @@
         'proxyserver.h',
         'ratelimiter.cc',
         'ratelimiter.h',
-        'refcount.h',
         'referencecountedsingletonfactory.h',
         'rollingaccumulator.h',
         'rtccertificate.cc',
         'rtccertificate.h',
         'scoped_autorelease_pool.h',
         'scoped_autorelease_pool.mm',
-        'scoped_ref_ptr.h',
         'scopedptrcollection.h',
         'sec_buffer.h',
         'sha1.cc',
@@ -438,7 +438,6 @@
             '../../webrtc_overrides/webrtc/base/win32socketinit.cc',
           ],
           'sources!': [
-            'atomicops.h',
             'bandwidthsmoother.cc',
             'bandwidthsmoother.h',
             'bind.h',
@@ -490,13 +489,11 @@
             'profiler.h',
             'proxyserver.cc',
             'proxyserver.h',
-            'refcount.h',
             'referencecountedsingletonfactory.h',
             'rollingaccumulator.h',
             'safe_conversions.h',
             'safe_conversions_impl.h',
             'scopedptrcollection.h',
-            'scoped_ref_ptr.h',
             'sec_buffer.h',
             'sharedexclusivelock.cc',
             'sharedexclusivelock.h',
@@ -552,6 +549,7 @@
                   'AdditionalOptions': [
                     # Disable warnings failing when compiling with Clang on Windows.
                     # https://bugs.chromium.org/p/webrtc/issues/detail?id=5366
+                    '-Wno-sign-compare',
                     '-Wno-missing-braces',
                   ],
                 },
@@ -738,6 +736,13 @@
             '<(ssl_root)',
           ],
         }],
+      ],
+    },
+    {
+     'target_name': 'gtest_prod',
+      'type': 'static_library',
+      'sources': [
+        'gtest_prod_util.h',
       ],
     },
   ],

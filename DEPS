@@ -6,19 +6,14 @@
 vars = {
   'extra_gyp_flag': '-Dextra_gyp_flag=0',
   'chromium_git': 'https://chromium.googlesource.com',
-  'chromium_revision': '099be58b08dadb64b1dc9f359ae097e978df5416',
+  'chromium_revision': 'fa5d546954c631d87299cd9a3fd3cd1d4ebc1931',
 }
 
-# NOTE: Prefer revision numbers to tags for svn deps. Use http rather than
-# https; the latter can cause problems for users behind proxies.
+# NOTE: Use http rather than https; the latter can cause problems for users
+# behind proxies.
 deps = {
-  # When rolling gflags, also update
-  # https://chromium.googlesource.com/chromium/deps/webrtc/webrtc.DEPS
   'src/third_party/gflags/src':
-    Var('chromium_git') + '/external/gflags/src@e7390f9185c75f8d902c05ed7d20bb94eb914d0c', # from svn revision 82
-
-  'src/third_party/junit-jar':
-    Var('chromium_git') + '/external/webrtc/deps/third_party/junit@f35596b476aa6e62fd3b3857b9942ddcd13ce35e', # from svn revision 3367
+    Var('chromium_git') + '/external/github.com/gflags/gflags@03bebcb065c83beff83d50ae025a55a4bf94dfca',
 }
 
 deps_os = {
@@ -42,6 +37,7 @@ include_rules = [
   '+testing',
   '+third_party',
   '+unicode',
+  '+usrsctplib',
   '+webrtc',
   '+vpx',
 ]

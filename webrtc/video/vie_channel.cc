@@ -17,7 +17,6 @@
 #include "webrtc/base/checks.h"
 #include "webrtc/base/logging.h"
 #include "webrtc/base/platform_thread.h"
-#include "webrtc/common.h"
 #include "webrtc/common_video/include/incoming_video_stream.h"
 #include "webrtc/common_video/libyuv/include/webrtc_libyuv.h"
 #include "webrtc/frame_callback.h"
@@ -29,7 +28,6 @@
 #include "webrtc/modules/video_coding/include/video_coding.h"
 #include "webrtc/modules/video_processing/include/video_processing.h"
 #include "webrtc/modules/video_render/video_render_defines.h"
-#include "webrtc/system_wrappers/include/critical_section_wrapper.h"
 #include "webrtc/system_wrappers/include/metrics.h"
 #include "webrtc/video/call_stats.h"
 #include "webrtc/video/payload_router.h"
@@ -38,7 +36,6 @@
 
 namespace webrtc {
 
-const int kMaxDecodeWaitTimeMs = 50;
 static const int kMaxTargetDelayMs = 10000;
 const int kMinSendSidePacketHistorySize = 600;
 const int kMaxPacketAgeToNack = 450;
@@ -79,9 +76,10 @@ class ViEChannelProtectionCallback : public VCMProtectionCallback {
   ViEChannel* owner_;
 };
 
-ViEChannel::ViEChannel(uint32_t number_of_cores,
-                       Transport* transport,
+ViEChannel::ViEChannel(Transport* transport,
                        ProcessThread* module_process_thread,
+                       PayloadRouter* send_payload_router,
+                       VideoCodingModule* vcm,
                        RtcpIntraFrameObserver* intra_frame_observer,
                        RtcpBandwidthObserver* bandwidth_observer,
                        TransportFeedbackObserver* transport_feedback_observer,
@@ -91,17 +89,12 @@ ViEChannel::ViEChannel(uint32_t number_of_cores,
                        PacketRouter* packet_router,
                        size_t max_rtp_streams,
                        bool sender)
-    : number_of_cores_(number_of_cores),
-      sender_(sender),
+    : sender_(sender),
       module_process_thread_(module_process_thread),
-      crit_(CriticalSectionWrapper::CreateCriticalSection()),
-      send_payload_router_(new PayloadRouter()),
+      send_payload_router_(send_payload_router),
       vcm_protection_callback_(new ViEChannelProtectionCallback(this)),
-      vcm_(VideoCodingModule::Create(Clock::GetRealTimeClock(),
-                                     nullptr,
-                                     nullptr)),
+      vcm_(vcm),
       vie_receiver_(vcm_, remote_bitrate_estimator, this),
-      vie_sync_(vcm_),
       stats_observer_(new ChannelStatsObserver(this)),
       receive_stats_callback_(nullptr),
       incoming_video_stream_(nullptr),
@@ -111,7 +104,6 @@ ViEChannel::ViEChannel(uint32_t number_of_cores,
       packet_router_(packet_router),
       bandwidth_observer_(bandwidth_observer),
       transport_feedback_observer_(transport_feedback_observer),
-      decode_thread_(ChannelDecodeThreadFunction, this, "DecodingThread"),
       nack_history_size_sender_(kMinSendSidePacketHistorySize),
       max_nack_reordering_threshold_(kMaxPacketAgeToNack),
       pre_render_callback_(NULL),
@@ -138,7 +130,14 @@ ViEChannel::ViEChannel(uint32_t number_of_cores,
                                max_rtp_streams)),
       num_active_rtp_rtcp_modules_(1) {
   vie_receiver_.SetRtpRtcpModule(rtp_rtcp_modules_[0]);
-  vcm_->SetNackSettings(kMaxNackListSize, max_nack_reordering_threshold_, 0);
+  if (sender_) {
+    RTC_DCHECK(send_payload_router_);
+    RTC_DCHECK(!vcm_);
+  } else {
+    RTC_DCHECK(!send_payload_router_);
+    RTC_DCHECK(vcm_);
+    vcm_->SetNackSettings(kMaxNackListSize, max_nack_reordering_threshold_, 0);
+  }
 }
 
 int32_t ViEChannel::Init() {
@@ -153,23 +152,20 @@ int32_t ViEChannel::Init() {
     for (RtpRtcp* rtp_rtcp : rtp_rtcp_modules_)
       rtp_rtcp->SetStorePacketsStatus(true, nack_history_size_sender_);
   }
-  packet_router_->AddRtpModule(rtp_rtcp_modules_[0]);
+  packet_router_->AddRtpModule(rtp_rtcp_modules_[0], sender_);
   if (sender_) {
-    std::list<RtpRtcp*> send_rtp_modules(1, rtp_rtcp_modules_[0]);
-    send_payload_router_->SetSendingRtpModules(send_rtp_modules);
+    send_payload_router_->SetSendingRtpModules(
+        std::vector<RtpRtcp*>(1, rtp_rtcp_modules_[0]));
     RTC_DCHECK(!send_payload_router_->active());
+  } else {
+    if (vcm_->RegisterReceiveCallback(this) != 0) {
+      return -1;
+    }
+    vcm_->RegisterFrameTypeCallback(this);
+    vcm_->RegisterReceiveStatisticsCallback(this);
+    vcm_->RegisterDecoderTimingCallback(this);
+    vcm_->SetRenderDelay(kDefaultRenderDelayMs);
   }
-  if (vcm_->RegisterReceiveCallback(this) != 0) {
-    return -1;
-  }
-  vcm_->RegisterFrameTypeCallback(this);
-  vcm_->RegisterReceiveStatisticsCallback(this);
-  vcm_->RegisterDecoderTimingCallback(this);
-  vcm_->SetRenderDelay(kDefaultRenderDelayMs);
-
-  module_process_thread_->RegisterModule(vcm_);
-  module_process_thread_->RegisterModule(&vie_sync_);
-
   return 0;
 }
 
@@ -178,31 +174,27 @@ ViEChannel::~ViEChannel() {
   // Make sure we don't get more callbacks from the RTP module.
   module_process_thread_->DeRegisterModule(
       vie_receiver_.GetReceiveStatistics());
-  module_process_thread_->DeRegisterModule(vcm_);
-  module_process_thread_->DeRegisterModule(&vie_sync_);
-  send_payload_router_->SetSendingRtpModules(std::list<RtpRtcp*>());
+  if (sender_) {
+    send_payload_router_->SetSendingRtpModules(std::vector<RtpRtcp*>());
+  }
   for (size_t i = 0; i < num_active_rtp_rtcp_modules_; ++i)
-    packet_router_->RemoveRtpModule(rtp_rtcp_modules_[i]);
+    packet_router_->RemoveRtpModule(rtp_rtcp_modules_[i], sender_);
   for (RtpRtcp* rtp_rtcp : rtp_rtcp_modules_) {
     module_process_thread_->DeRegisterModule(rtp_rtcp);
     delete rtp_rtcp;
   }
-  if (!sender_)
-    StopDecodeThread();
-  // Release modules.
-  VideoCodingModule::Destroy(vcm_);
 }
 
 void ViEChannel::UpdateHistograms() {
   int64_t now = Clock::GetRealTimeClock()->TimeInMilliseconds();
 
   {
-    CriticalSectionScoped cs(crit_.get());
+    rtc::CritScope lock(&crit_);
     int64_t elapsed_sec = (now - time_of_first_rtt_ms_) / 1000;
     if (time_of_first_rtt_ms_ != -1 && num_rtts_ > 0 &&
         elapsed_sec > metrics::kMinRunTimeInSeconds) {
       int64_t avg_rtt_ms = (rtt_sum_ms_ + num_rtts_ / 2) / num_rtts_;
-      RTC_HISTOGRAM_COUNTS_SPARSE_10000(
+      RTC_HISTOGRAM_COUNTS_10000(
           "WebRTC.Video.AverageRoundTripTimeInMilliseconds", avg_rtt_ms);
     }
   }
@@ -212,24 +204,21 @@ void ViEChannel::UpdateHistograms() {
     GetSendRtcpPacketTypeCounter(&rtcp_counter);
     int64_t elapsed_sec = rtcp_counter.TimeSinceFirstPacketInMs(now) / 1000;
     if (elapsed_sec > metrics::kMinRunTimeInSeconds) {
-      RTC_HISTOGRAM_COUNTS_SPARSE_10000(
-          "WebRTC.Video.NackPacketsReceivedPerMinute",
-          rtcp_counter.nack_packets * 60 / elapsed_sec);
-      RTC_HISTOGRAM_COUNTS_SPARSE_10000(
-          "WebRTC.Video.FirPacketsReceivedPerMinute",
-          rtcp_counter.fir_packets * 60 / elapsed_sec);
-      RTC_HISTOGRAM_COUNTS_SPARSE_10000(
-          "WebRTC.Video.PliPacketsReceivedPerMinute",
-          rtcp_counter.pli_packets * 60 / elapsed_sec);
+      RTC_HISTOGRAM_COUNTS_10000("WebRTC.Video.NackPacketsReceivedPerMinute",
+                                 rtcp_counter.nack_packets * 60 / elapsed_sec);
+      RTC_HISTOGRAM_COUNTS_10000("WebRTC.Video.FirPacketsReceivedPerMinute",
+                                 rtcp_counter.fir_packets * 60 / elapsed_sec);
+      RTC_HISTOGRAM_COUNTS_10000("WebRTC.Video.PliPacketsReceivedPerMinute",
+                                 rtcp_counter.pli_packets * 60 / elapsed_sec);
       if (rtcp_counter.nack_requests > 0) {
-        RTC_HISTOGRAM_PERCENTAGE_SPARSE(
+        RTC_HISTOGRAM_PERCENTAGE(
             "WebRTC.Video.UniqueNackRequestsReceivedInPercent",
             rtcp_counter.UniqueNackRequestsInPercent());
       }
       int fraction_lost = report_block_stats_sender_->FractionLostInPercent();
       if (fraction_lost != -1) {
-        RTC_HISTOGRAM_PERCENTAGE_SPARSE("WebRTC.Video.SentPacketsLostInPercent",
-                                        fraction_lost);
+        RTC_HISTOGRAM_PERCENTAGE("WebRTC.Video.SentPacketsLostInPercent",
+                                 fraction_lost);
       }
     }
 
@@ -242,23 +231,23 @@ void ViEChannel::UpdateHistograms() {
                       Clock::GetRealTimeClock()->TimeInMilliseconds()) /
                   1000;
     if (elapsed_sec > metrics::kMinRunTimeInSeconds) {
-      RTC_HISTOGRAM_COUNTS_SPARSE_100000(
+      RTC_HISTOGRAM_COUNTS_100000(
           "WebRTC.Video.BitrateSentInKbps",
           static_cast<int>(rtp_rtx.transmitted.TotalBytes() * 8 / elapsed_sec /
                            1000));
-      RTC_HISTOGRAM_COUNTS_SPARSE_10000(
+      RTC_HISTOGRAM_COUNTS_10000(
           "WebRTC.Video.MediaBitrateSentInKbps",
           static_cast<int>(rtp.MediaPayloadBytes() * 8 / elapsed_sec / 1000));
-      RTC_HISTOGRAM_COUNTS_SPARSE_10000(
+      RTC_HISTOGRAM_COUNTS_10000(
           "WebRTC.Video.PaddingBitrateSentInKbps",
           static_cast<int>(rtp_rtx.transmitted.padding_bytes * 8 / elapsed_sec /
                            1000));
-      RTC_HISTOGRAM_COUNTS_SPARSE_10000(
+      RTC_HISTOGRAM_COUNTS_10000(
           "WebRTC.Video.RetransmittedBitrateSentInKbps",
           static_cast<int>(rtp_rtx.retransmitted.TotalBytes() * 8 /
                            elapsed_sec / 1000));
       if (rtp_rtcp_modules_[0]->RtxSendStatus() != kRtxOff) {
-        RTC_HISTOGRAM_COUNTS_SPARSE_10000(
+        RTC_HISTOGRAM_COUNTS_10000(
             "WebRTC.Video.RtxBitrateSentInKbps",
             static_cast<int>(rtx.transmitted.TotalBytes() * 8 / elapsed_sec /
                              1000));
@@ -269,10 +258,9 @@ void ViEChannel::UpdateHistograms() {
       rtp_rtcp_modules_[0]->GenericFECStatus(&fec_enabled, &pltype_red,
                                              &pltype_fec);
       if (fec_enabled) {
-        RTC_HISTOGRAM_COUNTS_SPARSE_10000(
-            "WebRTC.Video.FecBitrateSentInKbps",
-            static_cast<int>(rtp_rtx.fec.TotalBytes() * 8 / elapsed_sec /
-                             1000));
+        RTC_HISTOGRAM_COUNTS_10000("WebRTC.Video.FecBitrateSentInKbps",
+                                   static_cast<int>(rtp_rtx.fec.TotalBytes() *
+                                                    8 / elapsed_sec / 1000));
       }
     }
   } else if (vie_receiver_.GetRemoteSsrc() > 0) {
@@ -282,19 +270,15 @@ void ViEChannel::UpdateHistograms() {
     GetReceiveRtcpPacketTypeCounter(&rtcp_counter);
     int64_t elapsed_sec = rtcp_counter.TimeSinceFirstPacketInMs(now) / 1000;
     if (elapsed_sec > metrics::kMinRunTimeInSeconds) {
-      RTC_HISTOGRAM_COUNTS_SPARSE_10000(
-          "WebRTC.Video.NackPacketsSentPerMinute",
-          rtcp_counter.nack_packets * 60 / elapsed_sec);
-      RTC_HISTOGRAM_COUNTS_SPARSE_10000(
-          "WebRTC.Video.FirPacketsSentPerMinute",
-          rtcp_counter.fir_packets * 60 / elapsed_sec);
-      RTC_HISTOGRAM_COUNTS_SPARSE_10000(
-          "WebRTC.Video.PliPacketsSentPerMinute",
-          rtcp_counter.pli_packets * 60 / elapsed_sec);
+      RTC_HISTOGRAM_COUNTS_10000("WebRTC.Video.NackPacketsSentPerMinute",
+                                 rtcp_counter.nack_packets * 60 / elapsed_sec);
+      RTC_HISTOGRAM_COUNTS_10000("WebRTC.Video.FirPacketsSentPerMinute",
+                                 rtcp_counter.fir_packets * 60 / elapsed_sec);
+      RTC_HISTOGRAM_COUNTS_10000("WebRTC.Video.PliPacketsSentPerMinute",
+                                 rtcp_counter.pli_packets * 60 / elapsed_sec);
       if (rtcp_counter.nack_requests > 0) {
-        RTC_HISTOGRAM_PERCENTAGE_SPARSE(
-            "WebRTC.Video.UniqueNackRequestsSentInPercent",
-            rtcp_counter.UniqueNackRequestsInPercent());
+        RTC_HISTOGRAM_PERCENTAGE("WebRTC.Video.UniqueNackRequestsSentInPercent",
+                                 rtcp_counter.UniqueNackRequestsInPercent());
       }
     }
 
@@ -305,33 +289,32 @@ void ViEChannel::UpdateHistograms() {
     rtp_rtx.Add(rtx);
     elapsed_sec = rtp_rtx.TimeSinceFirstPacketInMs(now) / 1000;
     if (elapsed_sec > metrics::kMinRunTimeInSeconds) {
-      RTC_HISTOGRAM_COUNTS_SPARSE_10000(
+      RTC_HISTOGRAM_COUNTS_10000(
           "WebRTC.Video.BitrateReceivedInKbps",
           static_cast<int>(rtp_rtx.transmitted.TotalBytes() * 8 / elapsed_sec /
                            1000));
-      RTC_HISTOGRAM_COUNTS_SPARSE_10000(
+      RTC_HISTOGRAM_COUNTS_10000(
           "WebRTC.Video.MediaBitrateReceivedInKbps",
           static_cast<int>(rtp.MediaPayloadBytes() * 8 / elapsed_sec / 1000));
-      RTC_HISTOGRAM_COUNTS_SPARSE_10000(
+      RTC_HISTOGRAM_COUNTS_10000(
           "WebRTC.Video.PaddingBitrateReceivedInKbps",
           static_cast<int>(rtp_rtx.transmitted.padding_bytes * 8 / elapsed_sec /
                            1000));
-      RTC_HISTOGRAM_COUNTS_SPARSE_10000(
+      RTC_HISTOGRAM_COUNTS_10000(
           "WebRTC.Video.RetransmittedBitrateReceivedInKbps",
           static_cast<int>(rtp_rtx.retransmitted.TotalBytes() * 8 /
                            elapsed_sec / 1000));
       uint32_t ssrc = 0;
       if (vie_receiver_.GetRtxSsrc(&ssrc)) {
-        RTC_HISTOGRAM_COUNTS_SPARSE_10000(
+        RTC_HISTOGRAM_COUNTS_10000(
             "WebRTC.Video.RtxBitrateReceivedInKbps",
             static_cast<int>(rtx.transmitted.TotalBytes() * 8 / elapsed_sec /
                              1000));
       }
       if (vie_receiver_.IsFecEnabled()) {
-        RTC_HISTOGRAM_COUNTS_SPARSE_10000(
-            "WebRTC.Video.FecBitrateReceivedInKbps",
-            static_cast<int>(rtp_rtx.fec.TotalBytes() * 8 / elapsed_sec /
-                             1000));
+        RTC_HISTOGRAM_COUNTS_10000("WebRTC.Video.FecBitrateReceivedInKbps",
+                                   static_cast<int>(rtp_rtx.fec.TotalBytes() *
+                                                    8 / elapsed_sec / 1000));
       }
     }
   }
@@ -358,7 +341,7 @@ int32_t ViEChannel::SetSendCodec(const VideoCodec& video_codec,
   bool is_sending = rtp_rtcp_modules_[0]->Sending();
   bool router_was_active = send_payload_router_->active();
   send_payload_router_->set_active(false);
-  send_payload_router_->SetSendingRtpModules(std::list<RtpRtcp*>());
+  send_payload_router_->SetSendingRtpModules(std::vector<RtpRtcp*>());
 
   std::vector<RtpRtcp*> registered_modules;
   std::vector<RtpRtcp*> deregistered_modules;
@@ -368,7 +351,7 @@ int32_t ViEChannel::SetSendCodec(const VideoCodec& video_codec,
   size_t num_prev_active_modules;
   {
     // Cache which modules are active so StartSend can know which ones to start.
-    CriticalSectionScoped cs(crit_.get());
+    rtc::CritScope lock(&crit_);
     num_prev_active_modules = num_active_rtp_rtcp_modules_;
     num_active_rtp_rtcp_modules_ = num_active_modules;
   }
@@ -399,12 +382,7 @@ int32_t ViEChannel::SetSendCodec(const VideoCodec& video_codec,
   vie_receiver_.RegisterRtpRtcpModules(registered_modules);
 
   // Update the packet and payload routers with the sending RtpRtcp modules.
-  if (sender_) {
-    std::list<RtpRtcp*> active_send_modules;
-    for (RtpRtcp* rtp_rtcp : registered_modules)
-      active_send_modules.push_back(rtp_rtcp);
-    send_payload_router_->SetSendingRtpModules(active_send_modules);
-  }
+  send_payload_router_->SetSendingRtpModules(registered_modules);
 
   if (router_was_active)
     send_payload_router_->set_active(true);
@@ -412,60 +390,18 @@ int32_t ViEChannel::SetSendCodec(const VideoCodec& video_codec,
   // Deregister previously registered modules.
   for (size_t i = num_active_modules; i < num_prev_active_modules; ++i) {
     module_process_thread_->DeRegisterModule(rtp_rtcp_modules_[i]);
-    packet_router_->RemoveRtpModule(rtp_rtcp_modules_[i]);
+    packet_router_->RemoveRtpModule(rtp_rtcp_modules_[i], sender_);
   }
   // Register new active modules.
   for (size_t i = num_prev_active_modules; i < num_active_modules; ++i) {
     module_process_thread_->RegisterModule(rtp_rtcp_modules_[i]);
-    packet_router_->AddRtpModule(rtp_rtcp_modules_[i]);
+    packet_router_->AddRtpModule(rtp_rtcp_modules_[i], sender_);
   }
   return 0;
-}
-
-int32_t ViEChannel::SetReceiveCodec(const VideoCodec& video_codec) {
-  RTC_DCHECK(!sender_);
-  if (!vie_receiver_.SetReceiveCodec(video_codec)) {
-    return -1;
-  }
-
-  if (video_codec.codecType != kVideoCodecRED &&
-      video_codec.codecType != kVideoCodecULPFEC) {
-    // Register codec type with VCM, but do not register RED or ULPFEC.
-    if (vcm_->RegisterReceiveCodec(&video_codec, number_of_cores_, false) !=
-        VCM_OK) {
-      return -1;
-    }
-  }
-  return 0;
-}
-
-void ViEChannel::RegisterExternalDecoder(const uint8_t pl_type,
-                                         VideoDecoder* decoder) {
-  RTC_DCHECK(!sender_);
-  vcm_->RegisterExternalDecoder(decoder, pl_type);
-}
-
-int32_t ViEChannel::ReceiveCodecStatistics(uint32_t* num_key_frames,
-                                           uint32_t* num_delta_frames) {
-  CriticalSectionScoped cs(crit_.get());
-  *num_key_frames = receive_frame_counts_.key_frames;
-  *num_delta_frames = receive_frame_counts_.delta_frames;
-  return 0;
-}
-
-uint32_t ViEChannel::DiscardedPackets() const {
-  return vcm_->DiscardedPackets();
-}
-
-int ViEChannel::ReceiveDelay() const {
-  return vcm_->Delay();
-}
-
-void ViEChannel::SetExpectedRenderDelay(int delay_ms) {
-  vcm_->SetRenderDelay(delay_ms);
 }
 
 void ViEChannel::SetRTCPMode(const RtcpMode rtcp_mode) {
+  RTC_DCHECK(sender_);
   for (RtpRtcp* rtp_rtcp : rtp_rtcp_modules_)
     rtp_rtcp->SetRTCPStatus(rtcp_mode);
 }
@@ -474,13 +410,15 @@ void ViEChannel::SetProtectionMode(bool enable_nack,
                                    bool enable_fec,
                                    int payload_type_red,
                                    int payload_type_fec) {
-  // Validate payload types.
-  if (enable_fec) {
+  // Validate payload types. If either RED or FEC payload types are set then
+  // both should be. If FEC is enabled then they both have to be set.
+  if (enable_fec || payload_type_red != -1 || payload_type_fec != -1) {
     RTC_DCHECK_GE(payload_type_red, 0);
     RTC_DCHECK_GE(payload_type_fec, 0);
     RTC_DCHECK_LE(payload_type_red, 127);
     RTC_DCHECK_LE(payload_type_fec, 127);
   } else {
+    // Payload types unset.
     RTC_DCHECK_EQ(payload_type_red, -1);
     RTC_DCHECK_EQ(payload_type_fec, -1);
     // Set to valid uint8_ts to be castable later without signed overflows.
@@ -495,7 +433,8 @@ void ViEChannel::SetProtectionMode(bool enable_nack,
     protection_method = kProtectionNone;
   }
 
-  vcm_->SetVideoProtection(protection_method, true);
+  if (!sender_)
+    vcm_->SetVideoProtection(protection_method, true);
 
   // Set NACK.
   ProcessNACKRequest(enable_nack);
@@ -518,19 +457,21 @@ void ViEChannel::ProcessNACKRequest(const bool enable) {
     for (RtpRtcp* rtp_rtcp : rtp_rtcp_modules_)
       rtp_rtcp->SetStorePacketsStatus(true, nack_history_size_sender_);
 
-    vcm_->RegisterPacketRequestCallback(this);
-    // Don't introduce errors when NACK is enabled.
-    vcm_->SetDecodeErrorMode(kNoErrors);
+    if (!sender_) {
+      vcm_->RegisterPacketRequestCallback(this);
+      // Don't introduce errors when NACK is enabled.
+      vcm_->SetDecodeErrorMode(kNoErrors);
+    }
   } else {
-    vcm_->RegisterPacketRequestCallback(NULL);
-    if (paced_sender_ == nullptr) {
+    if (!sender_) {
+      vcm_->RegisterPacketRequestCallback(nullptr);
       for (RtpRtcp* rtp_rtcp : rtp_rtcp_modules_)
         rtp_rtcp->SetStorePacketsStatus(false, 0);
+      // When NACK is off, allow decoding with errors. Otherwise, the video
+      // will freeze, and will only recover with a complete key frame.
+      vcm_->SetDecodeErrorMode(kWithErrors);
     }
     vie_receiver_.SetNackStatus(false, max_nack_reordering_threshold_);
-    // When NACK is off, allow decoding with errors. Otherwise, the video
-    // will freeze, and will only recover with a complete key frame.
-    vcm_->SetDecodeErrorMode(kWithErrors);
   }
 }
 
@@ -591,10 +532,6 @@ int ViEChannel::SetSendTimestampOffsetStatus(bool enable, int id) {
   return error;
 }
 
-int ViEChannel::SetReceiveTimestampOffsetStatus(bool enable, int id) {
-  return vie_receiver_.SetReceiveTimestampOffsetStatus(enable, id) ? 0 : -1;
-}
-
 int ViEChannel::SetSendAbsoluteSendTimeStatus(bool enable, int id) {
   // Disable any previous registrations of this extension to avoid errors.
   for (RtpRtcp* rtp_rtcp : rtp_rtcp_modules_)
@@ -608,10 +545,6 @@ int ViEChannel::SetSendAbsoluteSendTimeStatus(bool enable, int id) {
         kRtpExtensionAbsoluteSendTime, id);
   }
   return error;
-}
-
-int ViEChannel::SetReceiveAbsoluteSendTimeStatus(bool enable, int id) {
-  return vie_receiver_.SetReceiveAbsoluteSendTimeStatus(enable, id) ? 0 : -1;
 }
 
 int ViEChannel::SetSendVideoRotationStatus(bool enable, int id) {
@@ -629,11 +562,8 @@ int ViEChannel::SetSendVideoRotationStatus(bool enable, int id) {
   return error;
 }
 
-int ViEChannel::SetReceiveVideoRotationStatus(bool enable, int id) {
-  return vie_receiver_.SetReceiveVideoRotationStatus(enable, id) ? 0 : -1;
-}
-
 int ViEChannel::SetSendTransportSequenceNumber(bool enable, int id) {
+  RTC_DCHECK(sender_);
   // Disable any previous registrations of this extension to avoid errors.
   for (RtpRtcp* rtp_rtcp : rtp_rtcp_modules_) {
     rtp_rtcp->DeregisterSendRtpHeaderExtension(
@@ -650,21 +580,10 @@ int ViEChannel::SetSendTransportSequenceNumber(bool enable, int id) {
   return error;
 }
 
-int ViEChannel::SetReceiveTransportSequenceNumber(bool enable, int id) {
-  return vie_receiver_.SetReceiveTransportSequenceNumber(enable, id) ? 0 : -1;
-}
-
-void ViEChannel::SetRtcpXrRrtrStatus(bool enable) {
-  rtp_rtcp_modules_[0]->SetRtcpXrRrtrStatus(enable);
-}
-
-void ViEChannel::EnableTMMBR(bool enable) {
-  rtp_rtcp_modules_[0]->SetTMMBRStatus(enable);
-}
-
 int32_t ViEChannel::SetSSRC(const uint32_t SSRC,
                             const StreamType usage,
                             const uint8_t simulcast_idx) {
+  RTC_DCHECK(sender_);
   RtpRtcp* rtp_rtcp = rtp_rtcp_modules_[simulcast_idx];
   if (usage == kViEStreamTypeRtx) {
     rtp_rtcp->SetRtxSsrc(SSRC);
@@ -674,24 +593,15 @@ int32_t ViEChannel::SetSSRC(const uint32_t SSRC,
   return 0;
 }
 
-int32_t ViEChannel::SetRemoteSSRCType(const StreamType usage,
-                                      const uint32_t SSRC) {
-  vie_receiver_.SetRtxSsrc(SSRC);
-  return 0;
-}
-
 int32_t ViEChannel::GetLocalSSRC(uint8_t idx, unsigned int* ssrc) {
   RTC_DCHECK_LE(idx, rtp_rtcp_modules_.size());
   *ssrc = rtp_rtcp_modules_[idx]->SSRC();
   return 0;
 }
 
-uint32_t ViEChannel::GetRemoteSSRC() {
-  return vie_receiver_.GetRemoteSsrc();
-}
-
 int ViEChannel::SetRtxSendPayloadType(int payload_type,
                                       int associated_payload_type) {
+  RTC_DCHECK(sender_);
   for (RtpRtcp* rtp_rtcp : rtp_rtcp_modules_)
     rtp_rtcp->SetRtxSendPayloadType(payload_type, associated_payload_type);
   SetRtxSendStatus(true);
@@ -705,15 +615,6 @@ void ViEChannel::SetRtxSendStatus(bool enable) {
     rtp_rtcp->SetRtxSendStatus(rtx_settings);
 }
 
-void ViEChannel::SetRtxReceivePayloadType(int payload_type,
-                                          int associated_payload_type) {
-  vie_receiver_.SetRtxPayloadType(payload_type, associated_payload_type);
-}
-
-void ViEChannel::SetUseRtxPayloadMappingOnRestore(bool val) {
-  vie_receiver_.SetUseRtxPayloadMappingOnRestore(val);
-}
-
 void ViEChannel::SetRtpStateForSsrc(uint32_t ssrc, const RtpState& rtp_state) {
   RTC_DCHECK(!rtp_rtcp_modules_[0]->Sending());
   for (RtpRtcp* rtp_rtcp : rtp_rtcp_modules_) {
@@ -722,7 +623,7 @@ void ViEChannel::SetRtpStateForSsrc(uint32_t ssrc, const RtpState& rtp_state) {
   }
 }
 
-RtpState ViEChannel::GetRtpStateForSsrc(uint32_t ssrc) {
+RtpState ViEChannel::GetRtpStateForSsrc(uint32_t ssrc) const {
   RTC_DCHECK(!rtp_rtcp_modules_[0]->Sending());
   RtpState rtp_state;
   for (RtpRtcp* rtp_rtcp : rtp_rtcp_modules_) {
@@ -748,7 +649,7 @@ int32_t ViEChannel::GetSendRtcpStatistics(uint16_t* fraction_lost,
                                           uint32_t* cumulative_lost,
                                           uint32_t* extended_max,
                                           uint32_t* jitter_samples,
-                                          int64_t* rtt_ms) {
+                                          int64_t* rtt_ms) const {
   // Aggregate the report blocks associated with streams sent on this channel.
   std::vector<RTCPReportBlock> report_blocks;
   for (RtpRtcp* rtp_rtcp : rtp_rtcp_modules_)
@@ -797,13 +698,6 @@ void ViEChannel::RegisterSendChannelRtcpStatisticsCallback(
     rtp_rtcp->RegisterRtcpStatisticsCallback(callback);
 }
 
-void ViEChannel::RegisterReceiveChannelRtcpStatisticsCallback(
-    RtcpStatisticsCallback* callback) {
-  vie_receiver_.GetReceiveStatistics()->RegisterRtcpStatisticsCallback(
-      callback);
-  rtp_rtcp_modules_[0]->RegisterRtcpStatisticsCallback(callback);
-}
-
 void ViEChannel::RegisterRtcpPacketTypeCounterObserver(
     RtcpPacketTypeCounterObserver* observer) {
   rtcp_packet_type_counter_observer_.Set(observer);
@@ -847,11 +741,6 @@ void ViEChannel::RegisterSendChannelRtpStatisticsCallback(
     rtp_rtcp->RegisterSendChannelRtpStatisticsCallback(callback);
 }
 
-void ViEChannel::RegisterReceiveChannelRtpStatisticsCallback(
-    StreamDataCountersCallback* callback) {
-  vie_receiver_.GetReceiveStatistics()->RegisterRtpStatisticsCallback(callback);
-}
-
 void ViEChannel::GetSendRtcpPacketTypeCounter(
     RtcpPacketTypeCounter* packet_counter) const {
   std::map<uint32_t, RtcpPacketTypeCounter> counter_map =
@@ -885,22 +774,25 @@ void ViEChannel::RegisterSendBitrateObserver(
 }
 
 int32_t ViEChannel::StartSend() {
-  CriticalSectionScoped cs(crit_.get());
+  rtc::CritScope lock(&crit_);
 
   if (rtp_rtcp_modules_[0]->Sending())
     return -1;
 
   for (size_t i = 0; i < num_active_rtp_rtcp_modules_; ++i) {
     RtpRtcp* rtp_rtcp = rtp_rtcp_modules_[i];
-    rtp_rtcp->SetSendingMediaStatus(true);
+    // Only have senders send media.
+    rtp_rtcp->SetSendingMediaStatus(sender_);
     rtp_rtcp->SetSendingStatus(true);
   }
-  send_payload_router_->set_active(true);
+  if (sender_)
+    send_payload_router_->set_active(true);
   return 0;
 }
 
 int32_t ViEChannel::StopSend() {
-  send_payload_router_->set_active(false);
+  if (sender_)
+    send_payload_router_->set_active(false);
   for (RtpRtcp* rtp_rtcp : rtp_rtcp_modules_)
     rtp_rtcp->SetSendingMediaStatus(false);
 
@@ -914,37 +806,8 @@ int32_t ViEChannel::StopSend() {
   return 0;
 }
 
-bool ViEChannel::Sending() {
-  return rtp_rtcp_modules_[0]->Sending();
-}
-
-void ViEChannel::StartReceive() {
-  if (!sender_)
-    StartDecodeThread();
-  vie_receiver_.StartReceive();
-}
-
-void ViEChannel::StopReceive() {
-  vie_receiver_.StopReceive();
-  if (!sender_) {
-    StopDecodeThread();
-    vcm_->ResetDecoder();
-  }
-}
-
-int32_t ViEChannel::ReceivedRTPPacket(const void* rtp_packet,
-                                      size_t rtp_packet_length,
-                                      const PacketTime& packet_time) {
-  return vie_receiver_.ReceivedRTPPacket(
-      rtp_packet, rtp_packet_length, packet_time);
-}
-
-int32_t ViEChannel::ReceivedRTCPPacket(const void* rtcp_packet,
-                                       size_t rtcp_packet_length) {
-  return vie_receiver_.ReceivedRTCPPacket(rtcp_packet, rtcp_packet_length);
-}
-
 int32_t ViEChannel::SetMTU(uint16_t mtu) {
+  RTC_DCHECK(sender_);
   for (RtpRtcp* rtp_rtcp : rtp_rtcp_modules_)
     rtp_rtcp->SetMaxTransferUnit(mtu);
   return 0;
@@ -954,8 +817,8 @@ RtpRtcp* ViEChannel::rtp_rtcp() {
   return rtp_rtcp_modules_[0];
 }
 
-rtc::scoped_refptr<PayloadRouter> ViEChannel::send_payload_router() {
-  return send_payload_router_;
+ViEReceiver* ViEChannel::vie_receiver() {
+  return &vie_receiver_;
 }
 
 VCMProtectionCallback* ViEChannel::vcm_protection_callback() {
@@ -971,7 +834,7 @@ CallStatsObserver* ViEChannel::GetStatsObserver() {
 // held the lock when calling VideoDecoder::Decode, Reset, or Release. Acquiring
 // the same lock in the path of decode callback can deadlock.
 int32_t ViEChannel::FrameToRender(VideoFrame& video_frame) {  // NOLINT
-  CriticalSectionScoped cs(crit_.get());
+  rtc::CritScope lock(&crit_);
 
   if (pre_render_callback_ != NULL)
     pre_render_callback_->FrameCallback(&video_frame);
@@ -987,31 +850,31 @@ int32_t ViEChannel::ReceivedDecodedReferenceFrame(
 }
 
 void ViEChannel::OnIncomingPayloadType(int payload_type) {
-  CriticalSectionScoped cs(crit_.get());
+  rtc::CritScope lock(&crit_);
   if (receive_stats_callback_)
     receive_stats_callback_->OnIncomingPayloadType(payload_type);
 }
 
 void ViEChannel::OnDecoderImplementationName(const char* implementation_name) {
-  CriticalSectionScoped cs(crit_.get());
+  rtc::CritScope lock(&crit_);
   if (receive_stats_callback_)
     receive_stats_callback_->OnDecoderImplementationName(implementation_name);
 }
 
 void ViEChannel::OnReceiveRatesUpdated(uint32_t bit_rate, uint32_t frame_rate) {
-  CriticalSectionScoped cs(crit_.get());
+  rtc::CritScope lock(&crit_);
   if (receive_stats_callback_)
     receive_stats_callback_->OnIncomingRate(frame_rate, bit_rate);
 }
 
 void ViEChannel::OnDiscardedPacketsUpdated(int discarded_packets) {
-  CriticalSectionScoped cs(crit_.get());
+  rtc::CritScope lock(&crit_);
   if (receive_stats_callback_)
     receive_stats_callback_->OnDiscardedPacketsUpdated(discarded_packets);
 }
 
 void ViEChannel::OnFrameCountsUpdated(const FrameCounts& frame_counts) {
-  CriticalSectionScoped cs(crit_.get());
+  rtc::CritScope lock(&crit_);
   receive_frame_counts_ = frame_counts;
   if (receive_stats_callback_)
     receive_stats_callback_->OnFrameCountsUpdated(frame_counts);
@@ -1024,7 +887,7 @@ void ViEChannel::OnDecoderTiming(int decode_ms,
                                  int jitter_buffer_ms,
                                  int min_playout_delay_ms,
                                  int render_delay_ms) {
-  CriticalSectionScoped cs(crit_.get());
+  rtc::CritScope lock(&crit_);
   if (!receive_stats_callback_)
     return;
   receive_stats_callback_->OnDecoderTiming(
@@ -1047,19 +910,11 @@ int32_t ViEChannel::ResendPackets(const uint16_t* sequence_numbers,
   return rtp_rtcp_modules_[0]->SendNACK(sequence_numbers, length);
 }
 
-bool ViEChannel::ChannelDecodeThreadFunction(void* obj) {
-  return static_cast<ViEChannel*>(obj)->ChannelDecodeProcess();
-}
-
-bool ViEChannel::ChannelDecodeProcess() {
-  vcm_->Decode(kMaxDecodeWaitTimeMs);
-  return true;
-}
-
 void ViEChannel::OnRttUpdate(int64_t avg_rtt_ms, int64_t max_rtt_ms) {
-  vcm_->SetReceiveChannelParameters(max_rtt_ms);
+  if (!sender_)
+    vcm_->SetReceiveChannelParameters(max_rtt_ms);
 
-  CriticalSectionScoped cs(crit_.get());
+  rtc::CritScope lock(&crit_);
   if (time_of_first_rtt_ms_ == -1)
     time_of_first_rtt_ms_ = Clock::GetRealTimeClock()->TimeInMilliseconds();
   rtt_sum_ms_ += avg_rtt_ms;
@@ -1141,55 +996,22 @@ std::vector<RtpRtcp*> ViEChannel::CreateRtpRtcpModules(
   return modules;
 }
 
-void ViEChannel::StartDecodeThread() {
-  RTC_DCHECK(!sender_);
-  if (decode_thread_.IsRunning())
-    return;
-  // Start the decode thread
-  decode_thread_.Start();
-  decode_thread_.SetPriority(rtc::kHighestPriority);
-}
-
-void ViEChannel::StopDecodeThread() {
-  vcm_->TriggerDecoderShutdown();
-
-  decode_thread_.Stop();
-}
-
-int32_t ViEChannel::SetVoiceChannel(int32_t ve_channel_id,
-                                    VoEVideoSync* ve_sync_interface) {
-  return vie_sync_.ConfigureSync(ve_channel_id, ve_sync_interface,
-                                 rtp_rtcp_modules_[0],
-                                 vie_receiver_.GetRtpReceiver());
-}
-
-int32_t ViEChannel::VoiceChannel() {
-  return vie_sync_.VoiceChannel();
-}
-
 void ViEChannel::RegisterPreRenderCallback(
     I420FrameCallback* pre_render_callback) {
-  CriticalSectionScoped cs(crit_.get());
+  RTC_DCHECK(!sender_);
+  rtc::CritScope lock(&crit_);
   pre_render_callback_ = pre_render_callback;
 }
 
-void ViEChannel::RegisterPreDecodeImageCallback(
-    EncodedImageCallback* pre_decode_callback) {
-  vcm_->RegisterPreDecodeImageCallback(pre_decode_callback);
-}
-
-// TODO(pbos): Remove OnInitializeDecoder which is called from the RTP module,
-// any decoder resetting should be handled internally within the VCM.
+// TODO(pbos): Remove as soon as audio can handle a changing payload type
+// without this callback.
 int32_t ViEChannel::OnInitializeDecoder(
     const int8_t payload_type,
     const char payload_name[RTP_PAYLOAD_NAME_SIZE],
     const int frequency,
     const size_t channels,
     const uint32_t rate) {
-  LOG(LS_INFO) << "OnInitializeDecoder " << static_cast<int>(payload_type)
-               << " " << payload_name;
-  vcm_->ResetDecoder();
-
+  RTC_NOTREACHED();
   return 0;
 }
 
@@ -1206,13 +1028,13 @@ void ViEChannel::RegisterSendFrameCountObserver(
 
 void ViEChannel::RegisterReceiveStatisticsProxy(
     ReceiveStatisticsProxy* receive_statistics_proxy) {
-  CriticalSectionScoped cs(crit_.get());
+  rtc::CritScope lock(&crit_);
   receive_stats_callback_ = receive_statistics_proxy;
 }
 
 void ViEChannel::SetIncomingVideoStream(
     IncomingVideoStream* incoming_video_stream) {
-  CriticalSectionScoped cs(crit_.get());
+  rtc::CritScope lock(&crit_);
   incoming_video_stream_ = incoming_video_stream;
 }
 }  // namespace webrtc

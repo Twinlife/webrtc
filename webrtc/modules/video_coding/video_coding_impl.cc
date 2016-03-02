@@ -219,8 +219,6 @@ class VideoCodingModuleImpl : public VideoCodingModule {
     return receiver_.Decode(maxWaitTimeMs);
   }
 
-  int32_t ResetDecoder() override { return receiver_.ResetDecoder(); }
-
   int32_t ReceiveCodec(VideoCodec* currentReceiveCodec) const override {
     return receiver_.ReceiveCodec(currentReceiveCodec);
   }
@@ -312,9 +310,4 @@ VideoCodingModule* VideoCodingModule::Create(Clock* clock,
                                    nullptr);
 }
 
-void VideoCodingModule::Destroy(VideoCodingModule* module) {
-  if (module != NULL) {
-    delete static_cast<VideoCodingModuleImpl*>(module);
-  }
-}
 }  // namespace webrtc
