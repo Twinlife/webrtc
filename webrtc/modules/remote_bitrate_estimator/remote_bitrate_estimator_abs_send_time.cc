@@ -16,7 +16,6 @@
 
 #include "webrtc/base/constructormagic.h"
 #include "webrtc/base/logging.h"
-#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/base/thread_annotations.h"
 #include "webrtc/modules/pacing/paced_sender.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/remote_bitrate_estimator.h"
@@ -333,9 +332,7 @@ void RemoteBitrateEstimatorAbsSendTime::IncomingPacketInfo(
   }
 }
 
-int32_t RemoteBitrateEstimatorAbsSendTime::Process() {
-  return 0;
-}
+void RemoteBitrateEstimatorAbsSendTime::Process() {}
 
 int64_t RemoteBitrateEstimatorAbsSendTime::TimeUntilNextProcess() {
   const int64_t kDisabledModuleTime = 1000;

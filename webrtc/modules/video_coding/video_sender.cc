@@ -53,9 +53,7 @@ VideoSender::VideoSender(Clock* clock,
 
 VideoSender::~VideoSender() {}
 
-int32_t VideoSender::Process() {
-  int32_t returnValue = VCM_OK;
-
+void VideoSender::Process() {
   if (_sendStatsTimer.TimeUntilProcess() == 0) {
     _sendStatsTimer.Processed();
     CriticalSectionScoped cs(process_crit_sect_.get());
@@ -72,8 +70,6 @@ int32_t VideoSender::Process() {
     // updated even if bandwidth hasn't changed.
     encoder_params_.input_frame_rate = _mediaOpt.InputFrameRate();
   }
-
-  return returnValue;
 }
 
 int64_t VideoSender::TimeUntilNextProcess() {
@@ -136,6 +132,10 @@ int32_t VideoSender::RegisterSendCodec(const VideoCodec* sendCodec,
     encoder_has_internal_source_ = _encoder->InternalSource();
   }
 
+  LOG(LS_VERBOSE) << " max bitrate " << sendCodec->maxBitrate
+                  << " start bitrate " << sendCodec->startBitrate
+                  << " max frame rate " << sendCodec->maxFramerate
+                  << " max payload size " << maxPayloadSize;
   _mediaOpt.SetEncodingData(sendCodec->codecType, sendCodec->maxBitrate * 1000,
                             sendCodec->startBitrate * 1000, sendCodec->width,
                             sendCodec->height, sendCodec->maxFramerate,
@@ -283,6 +283,11 @@ int32_t VideoSender::AddVideoFrame(const VideoFrame& videoFrame,
     return VCM_UNINITIALIZED;
   SetEncoderParameters(encoder_params);
   if (_mediaOpt.DropFrame()) {
+    LOG(LS_VERBOSE) << "Drop Frame "
+                    << "target bitrate " << encoder_params.target_bitrate
+                    << " loss rate " << encoder_params.loss_rate << " rtt "
+                    << encoder_params.rtt << " input frame rate "
+                    << encoder_params.input_frame_rate;
     _encoder->OnDroppedFrame();
     return VCM_OK;
   }

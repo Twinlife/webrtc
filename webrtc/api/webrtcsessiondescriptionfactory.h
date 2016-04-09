@@ -97,15 +97,15 @@ class WebRtcSessionDescriptionFactory : public rtc::MessageHandler,
   virtual ~WebRtcSessionDescriptionFactory();
 
   static void CopyCandidatesFromSessionDescription(
-    const SessionDescriptionInterface* source_desc,
-    SessionDescriptionInterface* dest_desc);
+      const SessionDescriptionInterface* source_desc,
+      const std::string& content_name,
+      SessionDescriptionInterface* dest_desc);
 
   void CreateOffer(
       CreateSessionDescriptionObserver* observer,
       const PeerConnectionInterface::RTCOfferAnswerOptions& options,
       const cricket::MediaSessionOptions& session_options);
   void CreateAnswer(CreateSessionDescriptionObserver* observer,
-                    const MediaConstraintsInterface* constraints,
                     const cricket::MediaSessionOptions& session_options);
 
   void SetSdesPolicy(cricket::SecurePolicy secure_policy);

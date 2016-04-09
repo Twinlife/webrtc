@@ -13,18 +13,18 @@
 
 #include <list>
 #include <map>
+#include <memory>
 #include <vector>
 
 #include "webrtc/base/checks.h"
 #include "webrtc/base/criticalsection.h"
-#include "webrtc/base/scoped_ptr.h"
+#include "webrtc/base/rate_statistics.h"
 #include "webrtc/base/thread_checker.h"
 #include "webrtc/modules/remote_bitrate_estimator/aimd_rate_control.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/remote_bitrate_estimator.h"
 #include "webrtc/modules/remote_bitrate_estimator/inter_arrival.h"
 #include "webrtc/modules/remote_bitrate_estimator/overuse_detector.h"
 #include "webrtc/modules/remote_bitrate_estimator/overuse_estimator.h"
-#include "webrtc/modules/remote_bitrate_estimator/rate_statistics.h"
 #include "webrtc/system_wrappers/include/critical_section_wrapper.h"
 
 namespace webrtc {
@@ -82,7 +82,7 @@ class RemoteBitrateEstimatorAbsSendTime : public RemoteBitrateEstimator {
   // every other second) for streams to be timed out properly. Therefore it
   // shouldn't be detached from the ProcessThread except if it's about to be
   // deleted.
-  int32_t Process() override;
+  void Process() override;
   int64_t TimeUntilNextProcess() override;
   void OnRttUpdate(int64_t avg_rtt_ms, int64_t max_rtt_ms) override;
   void RemoveStream(uint32_t ssrc) override;
@@ -120,7 +120,7 @@ class RemoteBitrateEstimatorAbsSendTime : public RemoteBitrateEstimator {
 
   rtc::ThreadChecker network_thread_;
   RemoteBitrateObserver* const observer_;
-  rtc::scoped_ptr<InterArrival> inter_arrival_;
+  std::unique_ptr<InterArrival> inter_arrival_;
   OveruseEstimator estimator_;
   OveruseDetector detector_;
   RateStatistics incoming_bitrate_;

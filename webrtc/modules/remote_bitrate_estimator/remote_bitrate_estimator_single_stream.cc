@@ -14,7 +14,6 @@
 
 #include "webrtc/base/constructormagic.h"
 #include "webrtc/base/logging.h"
-#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/base/thread_annotations.h"
 #include "webrtc/modules/remote_bitrate_estimator/aimd_rate_control.h"
 #include "webrtc/modules/remote_bitrate_estimator/inter_arrival.h"
@@ -118,16 +117,15 @@ void RemoteBitrateEstimatorSingleStream::IncomingPacket(int64_t arrival_time_ms,
   }
 }
 
-int32_t RemoteBitrateEstimatorSingleStream::Process() {
+void RemoteBitrateEstimatorSingleStream::Process() {
   if (TimeUntilNextProcess() > 0) {
-    return 0;
+    return;
   }
   {
     CriticalSectionScoped cs(crit_sect_.get());
     UpdateEstimate(clock_->TimeInMilliseconds());
   }
   last_process_time_ = clock_->TimeInMilliseconds();
-  return 0;
 }
 
 int64_t RemoteBitrateEstimatorSingleStream::TimeUntilNextProcess() {

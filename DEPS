@@ -6,7 +6,7 @@
 vars = {
   'extra_gyp_flag': '-Dextra_gyp_flag=0',
   'chromium_git': 'https://chromium.googlesource.com',
-  'chromium_revision': 'fa5d546954c631d87299cd9a3fd3cd1d4ebc1931',
+  'chromium_revision': 'ae459e084f702f116959a296e30cc6550ea84d24',
 }
 
 # NOTE: Use http rather than https; the latter can cause problems for users
@@ -22,25 +22,6 @@ deps_os = {
       Var('chromium_git') + '/external/webrtc/deps/third_party/winsdk_samples_v71@e71b549167a665d7424d6f1dadfbff4b4aad1589',
   },
 }
-
-# Define rules for which include paths are allowed in our source.
-include_rules = [
-  # Base is only used to build Android APK tests and may not be referenced by
-  # WebRTC production code.
-  '-base',
-  '-chromium',
-  '+external/webrtc/webrtc',  # Android platform build.
-  '+gflags',
-  '+libyuv',
-  '+net',
-  '+talk',
-  '+testing',
-  '+third_party',
-  '+unicode',
-  '+usrsctplib',
-  '+webrtc',
-  '+vpx',
-]
 
 hooks = [
   {

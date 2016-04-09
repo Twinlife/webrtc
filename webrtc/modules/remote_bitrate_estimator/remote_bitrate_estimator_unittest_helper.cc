@@ -446,13 +446,14 @@ void RemoteBitrateEstimatorTest::CapacityDropTestHelper(
       if (i > 0) {
         bitrate = (kStartBitrate * i + kBitrateDenom / 2) / kBitrateDenom;
       }
-      stream_generator_->AddStream(new testing::RtpStream(
-          kFramerate,                     // Frames per second.
-          bitrate,                        // Bitrate.
-          kDefaultSsrc + i,               // SSRC.
-          90000,                          // RTP frequency.
-          0xFFFFF000 ^ (~0 << (32 - i)),  // Timestamp offset.
-          0));                            // RTCP receive time.
+      uint32_t mask = ~0ull << (32 - i);
+      stream_generator_->AddStream(
+          new testing::RtpStream(kFramerate,          // Frames per second.
+                                 bitrate,             // Bitrate.
+                                 kDefaultSsrc + i,    // SSRC.
+                                 90000,               // RTP frequency.
+                                 0xFFFFF000u ^ mask,  // Timestamp offset.
+                                 0));                 // RTCP receive time.
       bitrate_sum += bitrate;
     }
     ASSERT_EQ(bitrate_sum, kStartBitrate);
@@ -582,7 +583,7 @@ void RemoteBitrateEstimatorTest::TestWrappingHelper(
   absolute_send_time = AddAbsSendTime(absolute_send_time,
                                       AbsSendTime(silence_time_s, 1));
   bitrate_estimator_->Process();
-  for (size_t i = 0; i < 100; ++i) {
+  for (size_t i = 0; i < 10; ++i) {
     IncomingPacket(kDefaultSsrc, 1000, clock_.TimeInMilliseconds(), timestamp,
                    absolute_send_time, true);
     timestamp += kFrameIntervalMs;

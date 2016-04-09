@@ -13,12 +13,12 @@
 #include <string>
 #include <utility>
 
-#include "webrtc/audio/audio_sink.h"
+#include "webrtc/audio_sink.h"
 #include "webrtc/audio/audio_state.h"
 #include "webrtc/audio/conversion.h"
 #include "webrtc/base/checks.h"
 #include "webrtc/base/logging.h"
-#include "webrtc/call/congestion_controller.h"
+#include "webrtc/modules/congestion_controller/include/congestion_controller.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/remote_bitrate_estimator.h"
 #include "webrtc/system_wrappers/include/tick_util.h"
 #include "webrtc/voice_engine/channel_proxy.h"
@@ -93,8 +93,7 @@ AudioReceiveStream::AudioReceiveStream(
   RTC_DCHECK(rtp_header_parser_);
 
   VoiceEngineImpl* voe_impl = static_cast<VoiceEngineImpl*>(voice_engine());
-  channel_proxy_ =
-      rtc::UniqueToScoped(voe_impl->GetChannelProxy(config_.voe_channel_id));
+  channel_proxy_ = voe_impl->GetChannelProxy(config_.voe_channel_id);
   channel_proxy_->SetLocalSSRC(config.rtp.local_ssrc);
   for (const auto& extension : config.rtp.extensions) {
     if (extension.name == RtpExtension::kAudioLevel) {
@@ -229,9 +228,9 @@ webrtc::AudioReceiveStream::Stats AudioReceiveStream::GetStats() const {
   return stats;
 }
 
-void AudioReceiveStream::SetSink(rtc::scoped_ptr<AudioSinkInterface> sink) {
+void AudioReceiveStream::SetSink(std::unique_ptr<AudioSinkInterface> sink) {
   RTC_DCHECK(thread_checker_.CalledOnValidThread());
-  channel_proxy_->SetSink(rtc::ScopedToUnique(std::move(sink)));
+  channel_proxy_->SetSink(std::move(sink));
 }
 
 const webrtc::AudioReceiveStream::Config& AudioReceiveStream::config() const {

@@ -45,6 +45,8 @@
         'source/rtcp_packet/app.h',
         'source/rtcp_packet/bye.cc',
         'source/rtcp_packet/bye.h',
+        'source/rtcp_packet/common_header.cc',
+        'source/rtcp_packet/common_header.h',
         'source/rtcp_packet/compound_packet.cc',
         'source/rtcp_packet/compound_packet.h',
         'source/rtcp_packet/dlrr.cc',
@@ -109,6 +111,8 @@
         'source/rtp_utility.h',
         'source/ssrc_database.cc',
         'source/ssrc_database.h',
+        'source/time_util.cc',
+        'source/time_util.h',
         'source/tmmbr_help.cc',
         'source/tmmbr_help.h',
         # Audio Files

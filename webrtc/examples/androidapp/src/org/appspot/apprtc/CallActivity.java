@@ -32,6 +32,7 @@ import android.widget.Toast;
 
 import org.webrtc.EglBase;
 import org.webrtc.IceCandidate;
+import org.webrtc.PeerConnectionFactory;
 import org.webrtc.SessionDescription;
 import org.webrtc.StatsReport;
 import org.webrtc.RendererCommon.ScalingType;
@@ -131,10 +132,13 @@ public class CallActivity extends Activity
   private boolean isError;
   private boolean callControlFragmentVisible = true;
   private long callStartedTimeMs = 0;
+  private boolean micEnabled = true;
 
   // Controls
-  CallFragment callFragment;
-  HudFragment hudFragment;
+  private CallFragment callFragment;
+  private HudFragment hudFragment;
+  private CpuMonitor cpuMonitor;
+
 
   @Override
   public void onCreate(Bundle savedInstanceState) {
@@ -241,6 +245,10 @@ public class CallActivity extends Activity
     roomConnectionParameters = new RoomConnectionParameters(
         roomUri.toString(), roomId, loopback);
 
+    // Create CPU monitor
+    cpuMonitor = new CpuMonitor(this);
+    hudFragment.setCpuMonitor(cpuMonitor);
+
     // Send intent arguments to fragments.
     callFragment.setArguments(intent.getExtras());
     hudFragment.setArguments(intent.getExtras());
@@ -262,6 +270,11 @@ public class CallActivity extends Activity
     }
 
     peerConnectionClient = PeerConnectionClient.getInstance();
+    if (loopback) {
+      PeerConnectionFactory.Options options = new PeerConnectionFactory.Options();
+      options.networkIgnoreMask = 0;
+      peerConnectionClient.setPeerConnectionFactoryOptions(options);
+    }
     peerConnectionClient.createPeerConnectionFactory(
         CallActivity.this, peerConnectionParameters, CallActivity.this);
   }
@@ -274,6 +287,7 @@ public class CallActivity extends Activity
     if (peerConnectionClient != null) {
       peerConnectionClient.stopVideoSource();
     }
+    cpuMonitor.pause();
   }
 
   @Override
@@ -283,6 +297,7 @@ public class CallActivity extends Activity
     if (peerConnectionClient != null) {
       peerConnectionClient.startVideoSource();
     }
+    cpuMonitor.resume();
   }
 
   @Override
@@ -293,6 +308,7 @@ public class CallActivity extends Activity
     }
     activityRunning = false;
     rootEglBase.release();
+    cpuMonitor.release();
     super.onDestroy();
   }
 
@@ -320,6 +336,15 @@ public class CallActivity extends Activity
     if (peerConnectionClient != null) {
       peerConnectionClient.changeCaptureFormat(width, height, framerate);
     }
+  }
+
+  @Override
+  public boolean onToggleMic() {
+    if (peerConnectionClient != null) {
+      micEnabled = !micEnabled;
+      peerConnectionClient.setAudioEnabled(micEnabled);
+    }
+    return micEnabled;
   }
 
   // Helper functions.
@@ -552,11 +577,24 @@ public class CallActivity extends Activity
       @Override
       public void run() {
         if (peerConnectionClient == null) {
-          Log.e(TAG,
-              "Received ICE candidate for non-initilized peer connection.");
+          Log.e(TAG, "Received ICE candidate for a non-initialized peer connection.");
           return;
         }
         peerConnectionClient.addRemoteIceCandidate(candidate);
+      }
+    });
+  }
+
+  @Override
+  public void onRemoteIceCandidatesRemoved(final IceCandidate[] candidates) {
+    runOnUiThread(new Runnable() {
+      @Override
+      public void run() {
+        if (peerConnectionClient == null) {
+          Log.e(TAG, "Received ICE candidate removals for a non-initialized peer connection.");
+          return;
+        }
+        peerConnectionClient.removeRemoteIceCandidates(candidates);
       }
     });
   }
@@ -606,6 +644,18 @@ public class CallActivity extends Activity
       public void run() {
         if (appRtcClient != null) {
           appRtcClient.sendLocalIceCandidate(candidate);
+        }
+      }
+    });
+  }
+
+  @Override
+  public void onIceCandidatesRemoved(final IceCandidate[] candidates) {
+    runOnUiThread(new Runnable() {
+      @Override
+      public void run() {
+        if (appRtcClient != null) {
+          appRtcClient.sendLocalIceCandidateRemovals(candidates);
         }
       }
     });

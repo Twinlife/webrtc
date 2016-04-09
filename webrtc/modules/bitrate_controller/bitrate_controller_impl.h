@@ -21,7 +21,6 @@
 #include <utility>
 
 #include "webrtc/base/criticalsection.h"
-#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/modules/bitrate_controller/send_side_bandwidth_estimation.h"
 
 namespace webrtc {
@@ -45,7 +44,7 @@ class BitrateControllerImpl : public BitrateController {
   void SetEventLog(RtcEventLog* event_log) override;
 
   int64_t TimeUntilNextProcess() override;
-  int32_t Process() override;
+  void Process() override;
 
  private:
   class RtcpBandwidthObserverImpl;

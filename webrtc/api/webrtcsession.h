@@ -11,6 +11,7 @@
 #ifndef WEBRTC_API_WEBRTCSESSION_H_
 #define WEBRTC_API_WEBRTCSESSION_H_
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,7 @@
 #include "webrtc/base/sslidentity.h"
 #include "webrtc/base/thread.h"
 #include "webrtc/media/base/mediachannel.h"
+#include "webrtc/p2p/base/candidate.h"
 #include "webrtc/p2p/base/transportcontroller.h"
 #include "webrtc/pc/mediasession.h"
 
@@ -79,6 +81,10 @@ class IceObserver {
       PeerConnectionInterface::IceGatheringState new_state) {}
   // New Ice candidate have been found.
   virtual void OnIceCandidate(const IceCandidateInterface* candidate) = 0;
+
+  // Some local ICE candidates have been removed.
+  virtual void OnIceCandidatesRemoved(
+      const std::vector<cricket::Candidate>& candidates) = 0;
 
   // Called whenever the state changes between receiving and not receiving.
   virtual void OnIceConnectionReceivingChange(bool receiving) {}
@@ -146,7 +152,6 @@ class WebRtcSession : public AudioProviderInterface,
 
   bool Initialize(
       const PeerConnectionFactoryInterface::Options& options,
-      const MediaConstraintsInterface* constraints,
       rtc::scoped_ptr<DtlsIdentityStoreInterface> dtls_identity_store,
       const PeerConnectionInterface::RTCConfiguration& rtc_configuration);
   // Deletes the voice, video and data channel and changes the session state
@@ -179,6 +184,8 @@ class WebRtcSession : public AudioProviderInterface,
     return data_channel_.get();
   }
 
+  cricket::BaseChannel* GetChannel(const std::string& content_name);
+
   void SetSdesPolicy(cricket::SecurePolicy secure_policy);
   cricket::SecurePolicy SdesPolicy() const;
 
@@ -194,7 +201,6 @@ class WebRtcSession : public AudioProviderInterface,
       const PeerConnectionInterface::RTCOfferAnswerOptions& options,
       const cricket::MediaSessionOptions& session_options);
   void CreateAnswer(CreateSessionDescriptionObserver* observer,
-                    const MediaConstraintsInterface* constraints,
                     const cricket::MediaSessionOptions& session_options);
   // The ownership of |desc| will be transferred after this call.
   bool SetLocalDescription(SessionDescriptionInterface* desc,
@@ -203,6 +209,9 @@ class WebRtcSession : public AudioProviderInterface,
   bool SetRemoteDescription(SessionDescriptionInterface* desc,
                             std::string* err_desc);
   bool ProcessIceMessage(const IceCandidateInterface* ice_candidate);
+
+  bool RemoveRemoteIceCandidates(
+      const std::vector<cricket::Candidate>& candidates);
 
   bool SetIceTransports(PeerConnectionInterface::IceTransportsType type);
 
@@ -231,10 +240,14 @@ class WebRtcSession : public AudioProviderInterface,
   void SetAudioSend(uint32_t ssrc,
                     bool enable,
                     const cricket::AudioOptions& options,
-                    cricket::AudioRenderer* renderer) override;
+                    cricket::AudioSource* source) override;
   void SetAudioPlayoutVolume(uint32_t ssrc, double volume) override;
   void SetRawAudioSink(uint32_t ssrc,
                        rtc::scoped_ptr<AudioSinkInterface> sink) override;
+
+  RtpParameters GetAudioRtpParameters(uint32_t ssrc) const override;
+  bool SetAudioRtpParameters(uint32_t ssrc,
+                             const RtpParameters& parameters) override;
 
   // Implements VideoMediaProviderInterface.
   bool SetCaptureDevice(uint32_t ssrc, cricket::VideoCapturer* camera) override;
@@ -246,6 +259,10 @@ class WebRtcSession : public AudioProviderInterface,
                     bool enable,
                     const cricket::VideoOptions* options) override;
 
+  RtpParameters GetVideoRtpParameters(uint32_t ssrc) const override;
+  bool SetVideoRtpParameters(uint32_t ssrc,
+                             const RtpParameters& parameters) override;
+
   // Implements DtmfProviderInterface.
   virtual bool CanInsertDtmf(const std::string& track_id);
   virtual bool InsertDtmf(const std::string& track_id,
@@ -254,7 +271,7 @@ class WebRtcSession : public AudioProviderInterface,
 
   // Implements DataChannelProviderInterface.
   bool SendData(const cricket::SendDataParams& params,
-                const rtc::Buffer& payload,
+                const rtc::CopyOnWriteBuffer& payload,
                 cricket::SendDataResult* result) override;
   bool ConnectDataChannel(DataChannel* webrtc_data_channel) override;
   void DisconnectDataChannel(DataChannel* webrtc_data_channel) override;
@@ -275,14 +292,12 @@ class WebRtcSession : public AudioProviderInterface,
       rtc::scoped_refptr<rtc::RTCCertificate>* certificate);
 
   // Caller owns returned certificate
-  virtual bool GetRemoteSSLCertificate(const std::string& transport_name,
-                                       rtc::SSLCertificate** cert);
+  virtual rtc::scoped_ptr<rtc::SSLCertificate> GetRemoteSSLCertificate(
+      const std::string& transport_name);
 
   cricket::DataChannelType data_channel_type() const;
 
-  bool IceRestartPending() const;
-
-  void ResetIceRestartLatch();
+  bool IceRestartPending(const std::string& content_name) const;
 
   // Called when an RTCCertificate is generated or retrieved by
   // WebRTCSessionDescriptionFactory. Should happen before setLocalDescription.
@@ -364,7 +379,6 @@ class WebRtcSession : public AudioProviderInterface,
       const std::string& content_name,
       cricket::TransportDescription* info);
 
-  cricket::BaseChannel* GetChannel(const std::string& content_name);
   // Cause all the BaseChannels in the bundle group to have the same
   // transport channel.
   bool EnableBundle(const cricket::ContentGroup& bundle);
@@ -399,7 +413,7 @@ class WebRtcSession : public AudioProviderInterface,
   // messages.
   void OnDataChannelMessageReceived(cricket::DataChannel* channel,
                                     const cricket::ReceiveDataParams& params,
-                                    const rtc::Buffer& payload);
+                                    const rtc::CopyOnWriteBuffer& payload);
 
   std::string BadStateErrMsg(State state);
   void SetIceConnectionState(PeerConnectionInterface::IceConnectionState state);
@@ -433,7 +447,9 @@ class WebRtcSession : public AudioProviderInterface,
   void OnTransportControllerGatheringState(cricket::IceGatheringState state);
   void OnTransportControllerCandidatesGathered(
       const std::string& transport_name,
-      const cricket::Candidates& candidates);
+      const std::vector<cricket::Candidate>& candidates);
+  void OnTransportControllerCandidatesRemoved(
+      const std::vector<cricket::Candidate>& candidates);
 
   std::string GetSessionErrorMsg();
 
@@ -482,7 +498,8 @@ class WebRtcSession : public AudioProviderInterface,
   // 2. If constraint kEnableRtpDataChannels is true, RTP is allowed (DCT_RTP);
   // 3. If both 1&2 are false, data channel is not allowed (DCT_NONE).
   cricket::DataChannelType data_channel_type_;
-  rtc::scoped_ptr<IceRestartAnswerLatch> ice_restart_latch_;
+  // List of content names for which the remote side triggered an ICE restart.
+  std::set<std::string> pending_ice_restarts_;
 
   rtc::scoped_ptr<WebRtcSessionDescriptionFactory>
       webrtc_session_desc_factory_;

@@ -43,7 +43,6 @@
             'objc/RTCDataChannel.mm',
             'objc/RTCEnumConverter.h',
             'objc/RTCEnumConverter.mm',
-            'objc/RTCFileLogger.mm',
             'objc/RTCI420Frame+Internal.h',
             'objc/RTCI420Frame.mm',
             'objc/RTCICECandidate+Internal.h',
@@ -179,6 +178,7 @@
                 'xcode_settings': {
                   'OTHER_LDFLAGS': [
                     '-framework Cocoa',
+                    '-framework OpenGL',
                   ],
                 },
               },

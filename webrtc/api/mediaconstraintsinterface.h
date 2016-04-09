@@ -13,11 +13,18 @@
 // http://www.w3.org/TR/mediacapture-streams/#mediastreamconstraints and also
 // used in WebRTC: http://dev.w3.org/2011/webrtc/editor/webrtc.html#constraints.
 
+// This interface is being deprecated in Chrome, and may be removed
+// from WebRTC too.
+// https://bugs.chromium.org/p/webrtc/issues/detail?id=5617
+
 #ifndef WEBRTC_API_MEDIACONSTRAINTSINTERFACE_H_
 #define WEBRTC_API_MEDIACONSTRAINTSINTERFACE_H_
 
 #include <string>
 #include <vector>
+
+#include "webrtc/base/optional.h"
+#include "webrtc/api/peerconnectioninterface.h"
 
 namespace webrtc {
 
@@ -69,7 +76,6 @@ class MediaConstraintsInterface {
   static const char kHighpassFilter[];  // googHighpassFilter
   static const char kTypingNoiseDetection[];  // googTypingNoiseDetection
   static const char kAudioMirroring[];  // googAudioMirroring
-  static const char kAecDump[];               // audioDebugRecording
 
   // Google-specific constraint keys for a local video source
   static const char kNoiseReduction[];  // googNoiseReduction
@@ -118,6 +124,16 @@ class MediaConstraintsInterface {
 bool FindConstraint(const MediaConstraintsInterface* constraints,
                     const std::string& key, bool* value,
                     size_t* mandatory_constraints);
+
+bool FindConstraint(const MediaConstraintsInterface* constraints,
+                    const std::string& key,
+                    int* value,
+                    size_t* mandatory_constraints);
+
+// Copy all relevant constraints into an RTCConfiguration object.
+void CopyConstraintsIntoRtcConfiguration(
+    const MediaConstraintsInterface* constraints,
+    PeerConnectionInterface::RTCConfiguration* configuration);
 
 }  // namespace webrtc
 
