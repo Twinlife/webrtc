@@ -25,12 +25,12 @@
 #include "webrtc/base/messagedigest.h"
 #include "webrtc/base/stringutils.h"
 #include "webrtc/media/base/codec.h"
-#include "webrtc/media/base/constants.h"
 #include "webrtc/media/base/cryptoparams.h"
+#include "webrtc/media/base/mediaconstants.h"
 #include "webrtc/media/base/rtputils.h"
 #include "webrtc/media/sctp/sctpdataengine.h"
 #include "webrtc/p2p/base/candidate.h"
-#include "webrtc/p2p/base/constants.h"
+#include "webrtc/p2p/base/p2pconstants.h"
 #include "webrtc/p2p/base/port.h"
 #include "webrtc/pc/mediasession.h"
 
@@ -127,6 +127,7 @@ static const char kAttributeCandidateRport[] = "rport";
 static const char kAttributeCandidateUfrag[] = "ufrag";
 static const char kAttributeCandidatePwd[] = "pwd";
 static const char kAttributeCandidateGeneration[] = "generation";
+static const char kAttributeCandidateNetworkId[] = "network-id";
 static const char kAttributeCandidateNetworkCost[] = "network-cost";
 static const char kAttributeFingerprint[] = "fingerprint";
 static const char kAttributeSetup[] = "setup";
@@ -154,8 +155,7 @@ static const char kValueConference[] = "conference";
 // Candidate
 static const char kCandidateHost[] = "host";
 static const char kCandidateSrflx[] = "srflx";
-// TODO: How to map the prflx with circket candidate type
-// static const char kCandidatePrflx[] = "prflx";
+static const char kCandidatePrflx[] = "prflx";
 static const char kCandidateRelay[] = "relay";
 static const char kTcpCandidateType[] = "tcptype";
 
@@ -212,11 +212,6 @@ static const char kDefaultSctpmapProtocol[] = "webrtc-datachannel";
 const int kWildcardPayloadType = -1;
 
 struct SsrcInfo {
-  SsrcInfo()
-      : stream_id(kDefaultMsid),
-        // TODO(ronghuawu): What should we do if the track id doesn't appear?
-        // Create random string (which will be used as track label later)?
-        track_id(rtc::CreateRandomString(8)) {}
   uint32_t ssrc_id;
   std::string cname;
   std::string stream_id;
@@ -573,30 +568,47 @@ static bool GetPayloadTypeFromString(const std::string& line,
       cricket::IsValidRtpPayloadType(*payload_type);
 }
 
+// |msid_stream_id| and |msid_track_id| represent the stream/track ID from the
+// "a=msid" attribute, if it exists. They are empty if the attribute does not
+// exist.
 void CreateTracksFromSsrcInfos(const SsrcInfoVec& ssrc_infos,
+                               const std::string& msid_stream_id,
+                               const std::string& msid_track_id,
                                StreamParamsVec* tracks) {
   ASSERT(tracks != NULL);
+  ASSERT(msid_stream_id.empty() == msid_track_id.empty());
   for (SsrcInfoVec::const_iterator ssrc_info = ssrc_infos.begin();
        ssrc_info != ssrc_infos.end(); ++ssrc_info) {
     if (ssrc_info->cname.empty()) {
       continue;
     }
 
-    std::string sync_label;
+    std::string stream_id;
     std::string track_id;
-    if (ssrc_info->stream_id == kDefaultMsid && !ssrc_info->mslabel.empty()) {
+    if (ssrc_info->stream_id.empty() && !ssrc_info->mslabel.empty()) {
       // If there's no msid and there's mslabel, we consider this is a sdp from
       // a older version of client that doesn't support msid.
       // In that case, we use the mslabel and label to construct the track.
-      sync_label = ssrc_info->mslabel;
+      stream_id = ssrc_info->mslabel;
       track_id = ssrc_info->label;
+    } else if (ssrc_info->stream_id.empty() && !msid_stream_id.empty()) {
+      // If there's no msid in the SSRC attributes, but there's a global one
+      // (from a=msid), use that. This is the case with unified plan SDP.
+      stream_id = msid_stream_id;
+      track_id = msid_track_id;
     } else {
-      sync_label = ssrc_info->stream_id;
+      stream_id = ssrc_info->stream_id;
       track_id = ssrc_info->track_id;
     }
-    if (sync_label.empty() || track_id.empty()) {
-      ASSERT(false);
-      continue;
+    // If a stream/track ID wasn't populated from the SSRC attributes OR the
+    // msid attribute, use default/random values.
+    if (stream_id.empty()) {
+      stream_id = kDefaultMsid;
+    }
+    if (track_id.empty()) {
+      // TODO(ronghuawu): What should we do if the track id doesn't appear?
+      // Create random string (which will be used as track label later)?
+      track_id = rtc::CreateRandomString(8);
     }
 
     StreamParamsVec::iterator track = tracks->begin();
@@ -612,7 +624,7 @@ void CreateTracksFromSsrcInfos(const SsrcInfoVec& ssrc_infos,
     }
     track->add_ssrc(ssrc_info->ssrc_id);
     track->cname = ssrc_info->cname;
-    track->sync_label = sync_label;
+    track->sync_label = stream_id;
     track->id = track_id;
   }
 }
@@ -859,11 +871,14 @@ std::string SdpSerialize(const JsepSessionDescription& jdesc,
 
 // Serializes the passed in IceCandidateInterface to a SDP string.
 // candidate - The candidate to be serialized.
-std::string SdpSerializeCandidate(
-    const IceCandidateInterface& candidate) {
+std::string SdpSerializeCandidate(const IceCandidateInterface& candidate) {
+  return SdpSerializeCandidate(candidate.candidate());
+}
+
+// Serializes a cricket Candidate.
+std::string SdpSerializeCandidate(const cricket::Candidate& candidate) {
   std::string message;
-  std::vector<cricket::Candidate> candidates;
-  candidates.push_back(candidate.candidate());
+  std::vector<cricket::Candidate> candidates(1, candidate);
   BuildCandidate(candidates, true, &message);
   // From WebRTC draft section 4.8.1.1 candidate-attribute will be
   // just candidate:<candidate> not a=candidate:<blah>CRLF
@@ -923,6 +938,18 @@ bool SdpDeserializeCandidate(const std::string& message,
     return false;
   }
   jcandidate->SetCandidate(candidate);
+  return true;
+}
+
+bool SdpDeserializeCandidate(const std::string& transport_name,
+                             const std::string& message,
+                             cricket::Candidate* candidate,
+                             SdpParseError* error) {
+  ASSERT(candidate != nullptr);
+  if (!ParseCandidate(message, candidate, error, true)) {
+    return false;
+  }
+  candidate->set_transport_name(transport_name);
   return true;
 }
 
@@ -1014,6 +1041,8 @@ bool ParseCandidate(const std::string& message, Candidate* candidate,
     candidate_type = cricket::STUN_PORT_TYPE;
   } else if (type == kCandidateRelay) {
     candidate_type = cricket::RELAY_PORT_TYPE;
+  } else if (type == kCandidatePrflx) {
+    candidate_type = cricket::PRFLX_PORT_TYPE;
   } else {
     return ParseFailed(first_line, "Unsupported candidate type.", error);
   }
@@ -1064,7 +1093,8 @@ bool ParseCandidate(const std::string& message, Candidate* candidate,
   std::string username;
   std::string password;
   uint32_t generation = 0;
-  uint32_t network_cost = 0;
+  uint16_t network_id = 0;
+  uint16_t network_cost = 0;
   for (size_t i = current_position; i + 1 < fields.size(); ++i) {
     // RFC 5245
     // *(SP extension-att-name SP extension-att-value)
@@ -1076,10 +1106,15 @@ bool ParseCandidate(const std::string& message, Candidate* candidate,
       username = fields[++i];
     } else if (fields[i] == kAttributeCandidatePwd) {
       password = fields[++i];
+    } else if (fields[i] == kAttributeCandidateNetworkId) {
+      if (!GetValueFromString(first_line, fields[++i], &network_id, error)) {
+        return false;
+      }
     } else if (fields[i] == kAttributeCandidateNetworkCost) {
       if (!GetValueFromString(first_line, fields[++i], &network_cost, error)) {
         return false;
       }
+      network_cost = std::min(network_cost, cricket::kMaxNetworkCost);
     } else {
       // Skip the unknown extension.
       ++i;
@@ -1088,10 +1123,9 @@ bool ParseCandidate(const std::string& message, Candidate* candidate,
 
   *candidate = Candidate(component_id, cricket::ProtoToString(protocol),
                          address, priority, username, password, candidate_type,
-                         generation, foundation);
+                         generation, foundation, network_id, network_cost);
   candidate->set_related_address(related_address);
   candidate->set_tcptype(tcptype);
-  candidate->set_network_cost(std::min(network_cost, cricket::kMaxNetworkCost));
   return true;
 }
 
@@ -1402,7 +1436,6 @@ void BuildRtpContentAttributes(const MediaContentDescription* media_desc,
     } else {
       auto track = media_desc->streams().begin();
       const std::string& stream_id = track->sync_label;
-      std::ostringstream os;
       InitAttrLine(kAttributeMsid, &os);
       os << kSdpDelimiterColon << stream_id << kSdpDelimiterSpace << track->id;
       AddLine(os.str(), message);
@@ -1457,7 +1490,6 @@ void BuildRtpContentAttributes(const MediaContentDescription* media_desc,
       if (track->ssrc_groups[i].ssrcs.empty()) {
         continue;
       }
-      std::ostringstream os;
       InitAttrLine(kAttributeSsrcGroup, &os);
       os << kSdpDelimiterColon << track->ssrc_groups[i].semantics;
       std::vector<uint32_t>::const_iterator ssrc =
@@ -1480,7 +1512,6 @@ void BuildRtpContentAttributes(const MediaContentDescription* media_desc,
       // The appdata consists of the "id" attribute of a MediaStreamTrack,
       // which corresponds to the "id" attribute of StreamParams.
       const std::string& stream_id = track->sync_label;
-      std::ostringstream os;
       InitAttrLine(kAttributeSsrc, &os);
       os << kSdpDelimiterColon << ssrc << kSdpDelimiterSpace
          << kSsrcAttributeMsid << kSdpDelimiterColon << stream_id
@@ -1752,6 +1783,9 @@ void BuildCandidate(const std::vector<Candidate>& candidates,
       type = kCandidateSrflx;
     } else if (it->type() == cricket::RELAY_PORT_TYPE) {
       type = kCandidateRelay;
+    } else if (it->type() == cricket::PRFLX_PORT_TYPE) {
+      type = kCandidatePrflx;
+      // Peer reflexive candidate may be signaled for being removed.
     } else {
       ASSERT(false);
       // Never write out candidates if we don't know the type.
@@ -1785,6 +1819,9 @@ void BuildCandidate(const std::vector<Candidate>& candidates,
     os << kAttributeCandidateGeneration << " " << it->generation();
     if (include_ufrag && !it->username().empty()) {
       os << " " << kAttributeCandidateUfrag << " " << it->username();
+    }
+    if (it->network_id() > 0) {
+      os << " " << kAttributeCandidateNetworkId << " " << it->network_id();
     }
     if (it->network_cost() > 0) {
       os << " " << kAttributeCandidateNetworkCost << " " << it->network_cost();
@@ -2673,19 +2710,11 @@ bool ParseContent(const std::string& message,
     }
   }
 
-  // Found an msid attribute.
-  // Setting the stream_id/track_id will cause only one StreamParams
-  // to be created in CreateTracksFromSsrcInfos, containing all the SSRCs from
-  // the m= section.
-  if (!stream_id.empty() && !track_id.empty()) {
-    for (SsrcInfo& ssrc_info : ssrc_infos) {
-      ssrc_info.stream_id = stream_id;
-      ssrc_info.track_id = track_id;
-    }
-  }
-
   // Create tracks from the |ssrc_infos|.
-  CreateTracksFromSsrcInfos(ssrc_infos, &tracks);
+  // If the stream_id/track_id for all SSRCS are identical, one StreamParams
+  // will be created in CreateTracksFromSsrcInfos, containing all the SSRCs from
+  // the m= section.
+  CreateTracksFromSsrcInfos(ssrc_infos, stream_id, track_id, &tracks);
 
   // Add the ssrc group to the track.
   for (SsrcGroupVec::iterator ssrc_group = ssrc_groups.begin();

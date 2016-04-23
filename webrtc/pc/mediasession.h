@@ -14,14 +14,14 @@
 #define TALK_SESSION_MEDIA_MEDIASESSION_H_
 
 #include <algorithm>
+#include <map>
 #include <string>
 #include <vector>
 
-#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/media/base/codec.h"
-#include "webrtc/media/base/constants.h"
 #include "webrtc/media/base/cryptoparams.h"
 #include "webrtc/media/base/mediachannel.h"
+#include "webrtc/media/base/mediaconstants.h"
 #include "webrtc/media/base/mediaengine.h"  // For DataChannelType
 #include "webrtc/media/base/streamparams.h"
 #include "webrtc/p2p/base/sessiondescription.h"
@@ -131,12 +131,8 @@ struct MediaSessionOptions {
   // bps. -1 == auto.
   int video_bandwidth;
   int data_bandwidth;
-  TransportOptions audio_transport_options;
-  TransportOptions video_transport_options;
-  TransportOptions data_transport_options;
-  // --twinlife-- 150721
-  bool twinlife_exclude_opus_codec;
-  bool twinlife_exclude_isac_codec;
+  // content name ("mid") => options.
+  std::map<std::string, TransportOptions> transport_options;
 
   struct Stream {
     Stream(MediaType type,
@@ -522,6 +518,8 @@ bool IsMediaContent(const ContentInfo* content);
 bool IsAudioContent(const ContentInfo* content);
 bool IsVideoContent(const ContentInfo* content);
 bool IsDataContent(const ContentInfo* content);
+const ContentInfo* GetFirstMediaContent(const ContentInfos& contents,
+                                        MediaType media_type);
 const ContentInfo* GetFirstAudioContent(const ContentInfos& contents);
 const ContentInfo* GetFirstVideoContent(const ContentInfos& contents);
 const ContentInfo* GetFirstDataContent(const ContentInfos& contents);

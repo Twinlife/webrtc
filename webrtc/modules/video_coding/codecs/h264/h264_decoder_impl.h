@@ -12,13 +12,14 @@
 #ifndef WEBRTC_MODULES_VIDEO_CODING_CODECS_H264_H264_DECODER_IMPL_H_
 #define WEBRTC_MODULES_VIDEO_CODING_CODECS_H264_H264_DECODER_IMPL_H_
 
+#include <memory>
+
 #include "webrtc/modules/video_coding/codecs/h264/include/h264.h"
 
 extern "C" {
 #include "third_party/ffmpeg/libavcodec/avcodec.h"
 }  // extern "C"
 
-#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/common_video/include/i420_buffer_pool.h"
 
 namespace webrtc {
@@ -62,11 +63,18 @@ class H264DecoderImpl : public H264Decoder {
 
   bool IsInitialized() const;
 
+  // Reports statistics with histograms.
+  void ReportInit();
+  void ReportError();
+
   I420BufferPool pool_;
-  rtc::scoped_ptr<AVCodecContext, AVCodecContextDeleter> av_context_;
-  rtc::scoped_ptr<AVFrame, AVFrameDeleter> av_frame_;
+  std::unique_ptr<AVCodecContext, AVCodecContextDeleter> av_context_;
+  std::unique_ptr<AVFrame, AVFrameDeleter> av_frame_;
 
   DecodedImageCallback* decoded_image_callback_;
+
+  bool has_reported_init_;
+  bool has_reported_error_;
 };
 
 }  // namespace webrtc

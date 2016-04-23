@@ -95,18 +95,30 @@ void WebRtcIdentityRequestObserver::OnSuccess(
 // static
 void WebRtcSessionDescriptionFactory::CopyCandidatesFromSessionDescription(
     const SessionDescriptionInterface* source_desc,
+    const std::string& content_name,
     SessionDescriptionInterface* dest_desc) {
-  if (!source_desc)
+  if (!source_desc) {
     return;
-  for (size_t m = 0; m < source_desc->number_of_mediasections() &&
-                     m < dest_desc->number_of_mediasections(); ++m) {
-    const IceCandidateCollection* source_candidates =
-        source_desc->candidates(m);
-    const IceCandidateCollection* dest_candidates = dest_desc->candidates(m);
-    for  (size_t n = 0; n < source_candidates->count(); ++n) {
-      const IceCandidateInterface* new_candidate = source_candidates->at(n);
-      if (!dest_candidates->HasCandidate(new_candidate))
-        dest_desc->AddCandidate(source_candidates->at(n));
+  }
+  const cricket::ContentInfos& contents =
+      source_desc->description()->contents();
+  const cricket::ContentInfo* cinfo =
+      source_desc->description()->GetContentByName(content_name);
+  if (!cinfo) {
+    return;
+  }
+  size_t mediasection_index = static_cast<int>(cinfo - &contents[0]);
+  const IceCandidateCollection* source_candidates =
+      source_desc->candidates(mediasection_index);
+  const IceCandidateCollection* dest_candidates =
+      dest_desc->candidates(mediasection_index);
+  if (!source_candidates || !dest_candidates) {
+    return;
+  }
+  for (size_t n = 0; n < source_candidates->count(); ++n) {
+    const IceCandidateInterface* new_candidate = source_candidates->at(n);
+    if (!dest_candidates->HasCandidate(new_candidate)) {
+      dest_desc->AddCandidate(source_candidates->at(n));
     }
   }
 }
@@ -176,13 +188,15 @@ WebRtcSessionDescriptionFactory::WebRtcSessionDescriptionFactory(
   identity_request_observer_->SignalCertificateReady.connect(
       this, &WebRtcSessionDescriptionFactory::SetCertificate);
 
-  rtc::KeyType key_type = rtc::KT_DEFAULT;
+  rtc::KeyParams key_params = rtc::KeyParams();
   LOG(LS_VERBOSE) << "DTLS-SRTP enabled; sending DTLS identity request (key "
-                  << "type: " << key_type << ").";
+                  << "type: " << key_params.type() << ").";
 
   // Request identity. This happens asynchronously, so the caller will have a
   // chance to connect to SignalIdentityReady.
-  dtls_identity_store_->RequestIdentity(key_type, identity_request_observer_);
+  dtls_identity_store_->RequestIdentity(key_params,
+                                        rtc::Optional<uint64_t>(),
+                                        identity_request_observer_);
 }
 
 WebRtcSessionDescriptionFactory::WebRtcSessionDescriptionFactory(
@@ -268,7 +282,6 @@ void WebRtcSessionDescriptionFactory::CreateOffer(
 
 void WebRtcSessionDescriptionFactory::CreateAnswer(
     CreateSessionDescriptionObserver* observer,
-    const MediaConstraintsInterface* constraints,
     const cricket::MediaSessionOptions& session_options) {
   std::string error = "CreateAnswer";
   if (certificate_request_state_ == CERTIFICATE_FAILED) {
@@ -374,42 +387,38 @@ void WebRtcSessionDescriptionFactory::InternalCreateOffer(
                                        "Failed to initialize the offer.");
     return;
   }
-  if (session_->local_description() &&
-      !request.options.audio_transport_options.ice_restart &&
-      !request.options.video_transport_options.ice_restart &&
-      !request.options.data_transport_options.ice_restart) {
-    // Include all local ice candidates in the SessionDescription unless
-    // the an ice restart has been requested.
-    CopyCandidatesFromSessionDescription(session_->local_description(), offer);
+  if (session_->local_description()) {
+    for (const cricket::ContentInfo& content :
+         session_->local_description()->description()->contents()) {
+      // Include all local ICE candidates in the SessionDescription unless
+      // the remote peer has requested an ICE restart.
+      if (!request.options.transport_options[content.name].ice_restart) {
+        CopyCandidatesFromSessionDescription(session_->local_description(),
+                                             content.name, offer);
+      }
+    }
   }
   PostCreateSessionDescriptionSucceeded(request.observer, offer);
 }
 
 void WebRtcSessionDescriptionFactory::InternalCreateAnswer(
     CreateSessionDescriptionRequest request) {
-  // According to http://tools.ietf.org/html/rfc5245#section-9.2.1.1
-  // an answer should also contain new ice ufrag and password if an offer has
-  // been received with new ufrag and password.
-  request.options.audio_transport_options.ice_restart =
-      session_->IceRestartPending();
-  request.options.video_transport_options.ice_restart =
-      session_->IceRestartPending();
-  request.options.data_transport_options.ice_restart =
-      session_->IceRestartPending();
-  // We should pass current ssl role to the transport description factory, if
-  // there is already an existing ongoing session.
-  rtc::SSLRole ssl_role;
-  if (session_->GetSslRole(session_->voice_channel(), &ssl_role)) {
-    request.options.audio_transport_options.prefer_passive_role =
-        (rtc::SSL_SERVER == ssl_role);
-  }
-  if (session_->GetSslRole(session_->video_channel(), &ssl_role)) {
-    request.options.video_transport_options.prefer_passive_role =
-        (rtc::SSL_SERVER == ssl_role);
-  }
-  if (session_->GetSslRole(session_->data_channel(), &ssl_role)) {
-    request.options.data_transport_options.prefer_passive_role =
-        (rtc::SSL_SERVER == ssl_role);
+  if (session_->remote_description()) {
+    for (const cricket::ContentInfo& content :
+         session_->remote_description()->description()->contents()) {
+      // According to http://tools.ietf.org/html/rfc5245#section-9.2.1.1
+      // an answer should also contain new ICE ufrag and password if an offer
+      // has been received with new ufrag and password.
+      request.options.transport_options[content.name].ice_restart =
+          session_->IceRestartPending(content.name);
+      // We should pass the current SSL role to the transport description
+      // factory, if there is already an existing ongoing session.
+      rtc::SSLRole ssl_role;
+      if (session_->GetSslRole(session_->GetChannel(content.name), &ssl_role)) {
+        request.options.transport_options[content.name].prefer_passive_role =
+            (rtc::SSL_SERVER == ssl_role);
+      }
+    }
   }
 
   cricket::SessionDescription* desc(session_desc_factory_.CreateAnswer(
@@ -436,15 +445,17 @@ void WebRtcSessionDescriptionFactory::InternalCreateAnswer(
                                        "Failed to initialize the answer.");
     return;
   }
-  if (session_->local_description() &&
-      !request.options.audio_transport_options.ice_restart &&
-      !request.options.video_transport_options.ice_restart &&
-      !request.options.data_transport_options.ice_restart) {
-    // Include all local ice candidates in the SessionDescription unless
-    // the remote peer has requested an ice restart.
-    CopyCandidatesFromSessionDescription(session_->local_description(), answer);
+  if (session_->local_description()) {
+    for (const cricket::ContentInfo& content :
+         session_->local_description()->description()->contents()) {
+      // Include all local ICE candidates in the SessionDescription unless
+      // the remote peer has requested an ICE restart.
+      if (!request.options.transport_options[content.name].ice_restart) {
+        CopyCandidatesFromSessionDescription(session_->local_description(),
+                                             content.name, answer);
+      }
+    }
   }
-  session_->ResetIceRestartLatch();
   PostCreateSessionDescriptionSucceeded(request.observer, answer);
 }
 

@@ -25,12 +25,19 @@
 namespace webrtc {
 namespace vcm {
 
-VideoReceiver::VideoReceiver(Clock* clock, EventFactory* event_factory)
+VideoReceiver::VideoReceiver(Clock* clock,
+                             EventFactory* event_factory,
+                             NackSender* nack_sender,
+                             KeyFrameRequestSender* keyframe_request_sender)
     : clock_(clock),
       process_crit_sect_(CriticalSectionWrapper::CreateCriticalSection()),
       _receiveCritSect(CriticalSectionWrapper::CreateCriticalSection()),
       _timing(clock_),
-      _receiver(&_timing, clock_, event_factory),
+      _receiver(&_timing,
+                clock_,
+                event_factory,
+                nack_sender,
+                keyframe_request_sender),
       _decodedFrameCallback(&_timing, clock_),
       _frameTypeCallback(NULL),
       _receiveStatsCallback(NULL),
@@ -63,9 +70,7 @@ VideoReceiver::~VideoReceiver() {
 #endif
 }
 
-int32_t VideoReceiver::Process() {
-  int32_t returnValue = VCM_OK;
-
+void VideoReceiver::Process() {
   // Receive-side statistics
   if (_receiveStatsTimer.TimeUntilProcess() == 0) {
     _receiveStatsTimer.Processed();
@@ -108,12 +113,12 @@ int32_t VideoReceiver::Process() {
       CriticalSectionScoped cs(process_crit_sect_.get());
       request_key_frame = _scheduleKeyRequest && _frameTypeCallback != NULL;
     }
-    if (request_key_frame) {
-      const int32_t ret = RequestKeyFrame();
-      if (ret != VCM_OK && returnValue == VCM_OK) {
-        returnValue = ret;
-      }
-    }
+    if (request_key_frame)
+      RequestKeyFrame();
+  }
+
+  if (_receiver.TimeUntilNextProcess() == 0) {
+    _receiver.Process();
   }
 
   // Packet retransmission requests
@@ -135,9 +140,6 @@ int32_t VideoReceiver::Process() {
       int32_t ret = VCM_OK;
       if (request_key_frame) {
         ret = RequestKeyFrame();
-        if (ret != VCM_OK && returnValue == VCM_OK) {
-          returnValue = ret;
-        }
       }
       if (ret == VCM_OK && !nackList.empty()) {
         CriticalSectionScoped cs(process_crit_sect_.get());
@@ -147,8 +149,6 @@ int32_t VideoReceiver::Process() {
       }
     }
   }
-
-  return returnValue;
 }
 
 int64_t VideoReceiver::TimeUntilNextProcess() {
@@ -161,6 +161,8 @@ int64_t VideoReceiver::TimeUntilNextProcess() {
   }
   timeUntilNextProcess =
       VCM_MIN(timeUntilNextProcess, _keyRequestTimer.TimeUntilProcess());
+  timeUntilNextProcess =
+      VCM_MIN(timeUntilNextProcess, _receiver.TimeUntilNextProcess());
 
   return timeUntilNextProcess;
 }

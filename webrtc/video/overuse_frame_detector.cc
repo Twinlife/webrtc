@@ -166,8 +166,8 @@ class OveruseFrameDetector::SendProcessingUsage {
   const float kMaxSampleDiffMs;
   uint64_t count_;
   const CpuOveruseOptions options_;
-  rtc::scoped_ptr<rtc::ExpFilter> filtered_processing_ms_;
-  rtc::scoped_ptr<rtc::ExpFilter> filtered_frame_diff_ms_;
+  std::unique_ptr<rtc::ExpFilter> filtered_processing_ms_;
+  std::unique_ptr<rtc::ExpFilter> filtered_frame_diff_ms_;
 };
 
 OveruseFrameDetector::OveruseFrameDetector(
@@ -193,7 +193,7 @@ OveruseFrameDetector::OveruseFrameDetector(
       in_quick_rampup_(false),
       current_rampup_delay_ms_(kStandardRampUpDelayMs),
       usage_(new SendProcessingUsage(options)) {
-  RTC_DCHECK(metrics_observer != nullptr);
+  RTC_DCHECK(metrics_observer);
   processing_thread_.DetachFromThread();
 }
 
@@ -297,14 +297,14 @@ void OveruseFrameDetector::FrameSent(uint32_t timestamp) {
   }
 }
 
-int32_t OveruseFrameDetector::Process() {
+void OveruseFrameDetector::Process() {
   RTC_DCHECK(processing_thread_.CalledOnValidThread());
 
   int64_t now = clock_->TimeInMilliseconds();
 
   // Used to protect against Process() being called too often.
   if (now < next_process_time_ms_)
-    return 0;
+    return;
 
   next_process_time_ms_ = now + kProcessIntervalMs;
 
@@ -313,7 +313,7 @@ int32_t OveruseFrameDetector::Process() {
     rtc::CritScope cs(&crit_);
     ++num_process_times_;
     if (num_process_times_ <= options_.min_process_count || !metrics_)
-      return 0;
+      return;
 
     current_metrics = *metrics_;
   }
@@ -341,13 +341,13 @@ int32_t OveruseFrameDetector::Process() {
     checks_above_threshold_ = 0;
     ++num_overuse_detections_;
 
-    if (observer_ != NULL)
+    if (observer_)
       observer_->OveruseDetected();
   } else if (IsUnderusing(current_metrics, now)) {
     last_rampup_time_ms_ = now;
     in_quick_rampup_ = true;
 
-    if (observer_ != NULL)
+    if (observer_)
       observer_->NormalUsage();
   }
 
@@ -358,8 +358,6 @@ int32_t OveruseFrameDetector::Process() {
                   << " encode usage " << current_metrics.encode_usage_percent
                   << " overuse detections " << num_overuse_detections_
                   << " rampup delay " << rampup_delay;
-
-  return 0;
 }
 
 bool OveruseFrameDetector::IsOverusing(const CpuOveruseMetrics& metrics) {

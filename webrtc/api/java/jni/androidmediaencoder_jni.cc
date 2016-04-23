@@ -45,6 +45,7 @@ using webrtc::VideoCodecType;
 using webrtc::kVideoCodecH264;
 using webrtc::kVideoCodecVP8;
 using webrtc::kVideoCodecVP9;
+using webrtc::QualityScaler;
 
 namespace webrtc_jni {
 
@@ -242,7 +243,7 @@ class MediaCodecVideoEncoder : public webrtc::VideoEncoder,
   bool drop_next_input_frame_;
   // Global references; must be deleted in Release().
   std::vector<jobject> input_buffers_;
-  webrtc::QualityScaler quality_scaler_;
+  QualityScaler quality_scaler_;
   // Dynamic resolution change, off by default.
   bool scale_;
 
@@ -353,9 +354,7 @@ int32_t MediaCodecVideoEncoder::InitEncode(
     const webrtc::VideoCodec* codec_settings,
     int32_t /* number_of_cores */,
     size_t /* max_payload_size */) {
-  const int kMinWidth = 320;
-  const int kMinHeight = 180;
-  const int kLowQpThresholdDenominator = 3;
+  const int kMinDimension = 180;
   if (codec_settings == NULL) {
     ALOGE << "NULL VideoCodec instance";
     return WEBRTC_VIDEO_CODEC_ERR_PARAMETER;
@@ -365,40 +364,53 @@ int32_t MediaCodecVideoEncoder::InitEncode(
       << "Unsupported codec " << codec_settings->codecType << " for "
       << codecType_;
 
-  ALOGD << "InitEncode request";
   codec_mode_ = codec_settings->mode;
+  int init_width = codec_settings->width;
+  int init_height = codec_settings->height;
   scale_ = (codecType_ != kVideoCodecVP9) && (webrtc::field_trial::FindFullName(
         "WebRTC-MediaCodecVideoEncoder-AutomaticResize") == "Enabled");
+
+  ALOGD << "InitEncode request: " << init_width << " x " << init_height;
   ALOGD << "Encoder automatic resize " << (scale_ ? "enabled" : "disabled");
+
   if (scale_) {
     if (codecType_ == kVideoCodecVP8) {
       // QP is obtained from VP8-bitstream for HW, so the QP corresponds to the
       // (internal) range: [0, 127]. And we cannot change QP_max in HW, so it is
       // always = 127. Note that in SW, QP is that of the user-level range [0,
       // 63].
-      const int kMaxQp = 127;
-      const int kBadQpThreshold = 95;
-      quality_scaler_.Init(
-          kMaxQp / kLowQpThresholdDenominator, kBadQpThreshold, false);
+      const int kLowQpThreshold = 32;
+      const int kBadQpThreshold = 92;
+      quality_scaler_.Init(kLowQpThreshold, kBadQpThreshold, false,
+                           codec_settings->startBitrate, codec_settings->width,
+                           codec_settings->height,
+                           codec_settings->maxFramerate);
     } else if (codecType_ == kVideoCodecH264) {
       // H264 QP is in the range [0, 51].
-      const int kMaxQp = 51;
-      const int kBadQpThreshold = 40;
-      quality_scaler_.Init(
-          kMaxQp / kLowQpThresholdDenominator, kBadQpThreshold, false);
+      const int kLowQpThreshold = 21;
+      const int kBadQpThreshold = 36;
+      quality_scaler_.Init(kLowQpThreshold, kBadQpThreshold, false,
+                           codec_settings->startBitrate, codec_settings->width,
+                           codec_settings->height,
+                           codec_settings->maxFramerate);
     } else {
       // When adding codec support to additional hardware codecs, also configure
       // their QP thresholds for scaling.
       RTC_NOTREACHED() << "Unsupported codec without configured QP thresholds.";
+      scale_ = false;
     }
-    quality_scaler_.SetMinResolution(kMinWidth, kMinHeight);
-    quality_scaler_.ReportFramerate(codec_settings->maxFramerate);
+    quality_scaler_.SetMinResolution(kMinDimension, kMinDimension);
+    QualityScaler::Resolution res = quality_scaler_.GetScaledResolution();
+    init_width = std::max(res.width, kMinDimension);
+    init_height = std::max(res.height, kMinDimension);
+    ALOGD << "Scaled resolution: " << init_width << " x " << init_height;
   }
+
   return codec_thread_->Invoke<int32_t>(
       Bind(&MediaCodecVideoEncoder::InitEncodeOnCodecThread,
            this,
-           codec_settings->width,
-           codec_settings->height,
+           init_width,
+           init_height,
            codec_settings->startBitrate,
            codec_settings->maxFramerate,
            false /* use_surface */));

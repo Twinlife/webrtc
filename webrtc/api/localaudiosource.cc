@@ -50,8 +50,7 @@ void FromConstraints(const MediaConstraintsInterface::Constraints& constraints,
       {MediaConstraintsInterface::kHighpassFilter, options->highpass_filter},
       {MediaConstraintsInterface::kTypingNoiseDetection,
        options->typing_detection},
-      {MediaConstraintsInterface::kAudioMirroring, options->stereo_swapping},
-      {MediaConstraintsInterface::kAecDump, options->aec_dump}
+      {MediaConstraintsInterface::kAudioMirroring, options->stereo_swapping}
   };
 
   for (const auto& constraint : constraints) {
@@ -77,6 +76,15 @@ rtc::scoped_refptr<LocalAudioSource> LocalAudioSource::Create(
   return source;
 }
 
+rtc::scoped_refptr<LocalAudioSource> LocalAudioSource::Create(
+    const PeerConnectionFactoryInterface::Options& options,
+    const cricket::AudioOptions* audio_options) {
+  rtc::scoped_refptr<LocalAudioSource> source(
+      new rtc::RefCountedObject<LocalAudioSource>());
+  source->Initialize(options, audio_options);
+  return source;
+}
+
 void LocalAudioSource::Initialize(
     const PeerConnectionFactoryInterface::Options& options,
     const MediaConstraintsInterface* constraints) {
@@ -90,7 +98,15 @@ void LocalAudioSource::Initialize(
   cricket::AudioOptions mandatory_options;
   FromConstraints(constraints->GetMandatory(), &mandatory_options);
   options_.SetAll(mandatory_options);
-  source_state_ = kLive;
+}
+
+void LocalAudioSource::Initialize(
+    const PeerConnectionFactoryInterface::Options& options,
+    const cricket::AudioOptions* audio_options) {
+  if (!audio_options)
+    return;
+
+  options_ = *audio_options;
 }
 
 }  // namespace webrtc

@@ -14,8 +14,9 @@
 #ifndef WEBRTC_VIDEO_VIE_SYNC_MODULE_H_
 #define WEBRTC_VIDEO_VIE_SYNC_MODULE_H_
 
+#include <memory>
+
 #include "webrtc/base/criticalsection.h"
-#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/modules/include/module.h"
 #include "webrtc/system_wrappers/include/tick_util.h"
 #include "webrtc/video/stream_synchronization.h"
@@ -23,8 +24,10 @@
 
 namespace webrtc {
 
+class Clock;
 class RtpRtcp;
 class VideoCodingModule;
+class VideoFrame;
 class ViEChannel;
 class VoEVideoSync;
 
@@ -40,17 +43,23 @@ class ViESyncModule : public Module {
 
   // Implements Module.
   int64_t TimeUntilNextProcess() override;
-  int32_t Process() override;
+  void Process() override;
+
+  // Gets the sync offset between the current played out audio frame and the
+  // video |frame|. Returns true on success, false otherwise.
+  bool GetStreamSyncOffsetInMs(const VideoFrame& frame,
+                               int64_t* stream_offset_ms) const;
 
  private:
   rtc::CriticalSection data_cs_;
   VideoCodingModule* const vcm_;
+  Clock* const clock_;
   RtpReceiver* video_receiver_;
   RtpRtcp* video_rtp_rtcp_;
   int voe_channel_id_;
   VoEVideoSync* voe_sync_interface_;
   TickTime last_sync_time_;
-  rtc::scoped_ptr<StreamSynchronization> sync_;
+  std::unique_ptr<StreamSynchronization> sync_;
   StreamSynchronization::Measurements audio_measurement_;
   StreamSynchronization::Measurements video_measurement_;
 };

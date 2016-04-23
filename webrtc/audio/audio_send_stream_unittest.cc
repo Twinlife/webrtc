@@ -16,8 +16,8 @@
 #include "webrtc/audio/audio_send_stream.h"
 #include "webrtc/audio/audio_state.h"
 #include "webrtc/audio/conversion.h"
-#include "webrtc/call/congestion_controller.h"
 #include "webrtc/modules/bitrate_controller/include/mock/mock_bitrate_controller.h"
+#include "webrtc/modules/congestion_controller/include/congestion_controller.h"
 #include "webrtc/modules/pacing/paced_sender.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/mock/mock_remote_bitrate_estimator.h"
 #include "webrtc/test/mock_voe_channel_proxy.h"
@@ -46,8 +46,8 @@ const CallStatistics kCallStats = {
 const CodecInst kCodecInst = {-121, "codec_name_send", 48000, -231, 0, -671};
 const ReportBlock kReportBlock = {456, 780, 123, 567, 890, 132, 143, 13354};
 const int kTelephoneEventPayloadType = 123;
-const uint8_t kTelephoneEventCode = 45;
-const uint32_t kTelephoneEventDuration = 6789;
+const int kTelephoneEventCode = 45;
+const int kTelephoneEventDuration = 6789;
 
 struct ConfigHelper {
   ConfigHelper()
