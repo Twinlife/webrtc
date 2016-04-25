@@ -97,6 +97,10 @@ VideoAdapter::VideoAdapter()
       previous_width_(0),
       previous_height_(0),
       interval_next_frame_(0),
+      // --twinlife-- 150720
+      twinlife_max_num_pixels_(INT_MAX),
+      twinlife_min_interval_(0),
+      // --twinlife-- 150720
       format_request_max_pixel_count_(std::numeric_limits<int>::max()),
       resolution_request_max_pixel_count_(std::numeric_limits<int>::max()) {}
 
@@ -116,6 +120,10 @@ void VideoAdapter::SetInputFormat(const VideoFormat& format) {
   input_format_ = format;
   output_format_.interval =
       std::max(output_format_.interval, input_format_.interval);
+  // --twinlife-- 150720
+  output_format_.interval =
+      std::max(output_format_.interval, twinlife_min_interval_);
+  // --twinlife-- 150720
   if (old_input_interval != input_format_.interval) {
     LOG(LS_INFO) << "VAdapt input interval changed from "
       << old_input_interval << " to " << input_format_.interval;
@@ -176,6 +184,12 @@ VideoFormat VideoAdapter::AdaptFrameResolution(int in_width, int in_height) {
 
     return VideoFormat();  // Drop frame.
   }
+
+  // --twinlife-- 150720
+  if (output_num_pixels_ > twinlife_max_num_pixels_) {
+    output_num_pixels_ = twinlife_max_num_pixels_;
+  }
+  // --twinlife-- 150720
 
   const float scale = FindScaleLessThanOrEqual(in_width, in_height,
                                                output_num_pixels_, nullptr);
@@ -259,5 +273,12 @@ bool VideoAdapter::Adapt(int max_num_pixels, int max_pixel_count_step_up) {
 
   return changed;
 }
+
+// --twinlife-- 150720
+void VideoAdapter::SetTwinlifeLimits(int max_num_pixels, int64_t min_interval) {
+  twinlife_max_num_pixels_ = max_num_pixels;
+  twinlife_min_interval_ = min_interval;
+}
+// --twinlife-- 150720
 
 }  // namespace cricket

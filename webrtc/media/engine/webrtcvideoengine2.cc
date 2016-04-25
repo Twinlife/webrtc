@@ -2255,6 +2255,9 @@ WebRtcVideoChannel2::WebRtcVideoReceiveStream::CreateOrReuseVideoDecoder(
     const VideoCodec& codec) {
   webrtc::VideoCodecType type = CodecTypeFromName(codec.name);
 
+  // --twinlife-- 160302
+  // cached hw decoder do not have correct eglContext
+  /*
   for (size_t i = 0; i < old_decoders->size(); ++i) {
     if ((*old_decoders)[i].type == type) {
       AllocatedDecoder decoder = (*old_decoders)[i];
@@ -2263,6 +2266,8 @@ WebRtcVideoChannel2::WebRtcVideoReceiveStream::CreateOrReuseVideoDecoder(
       return decoder;
     }
   }
+  */
+  // --twinlife-- 160302
 
   if (external_decoder_factory_ != NULL) {
     webrtc::VideoDecoder* decoder =

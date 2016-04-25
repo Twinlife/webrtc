@@ -61,6 +61,10 @@ class VideoAdapter {
   int previous_width_;    // Previous adapter output width.
   int previous_height_;   // Previous adapter output height.
   int64_t interval_next_frame_;
+  // --twinlife-- 150720
+  int twinlife_max_num_pixels_;
+  int64_t twinlife_min_interval_;
+  // --twinlife-- 150720
 
   // Max number of pixels requested via calls to OnOutputFormatRequest,
   // OnResolutionRequest respectively.
@@ -72,6 +76,10 @@ class VideoAdapter {
   rtc::CriticalSection critical_section_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(VideoAdapter);
+  // --twinlife-- 150720
+ public:
+  void SetTwinlifeLimits(int max_num_pixels, int64_t min_interval);
+  // --twinlife-- 150720
 };
 
 }  // namespace cricket

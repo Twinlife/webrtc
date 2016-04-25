@@ -70,6 +70,10 @@ class VideoCapturerTrackSource : public VideoTrackSource,
   virtual ~VideoCapturerTrackSource();
   void Initialize(const webrtc::MediaConstraintsInterface* constraints);
 
+  // --twinlife-- 150720
+  void UpdateConstraints(const webrtc::MediaConstraintsInterface* constraints);
+  // --twinlife-- 150720
+
  private:
   void OnStateChange(cricket::VideoCapturer* capturer,
                      cricket::CaptureState capture_state);

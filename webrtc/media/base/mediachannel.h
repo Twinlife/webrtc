@@ -273,12 +273,20 @@ struct VideoOptions {
     SetFrom(&video_noise_reduction, change.video_noise_reduction);
     SetFrom(&screencast_min_bitrate_kbps, change.screencast_min_bitrate_kbps);
     SetFrom(&is_screencast, change.is_screencast);
+    // --twinlife-- 150720
+    SetFrom(&twinlife_max_frame_size, change.twinlife_max_frame_size);
+    SetFrom(&twinlife_max_frame_rate, change.twinlife_max_frame_rate);
+    // --twinlife-- 150720
   }
 
   bool operator==(const VideoOptions& o) const {
     return video_noise_reduction == o.video_noise_reduction &&
            screencast_min_bitrate_kbps == o.screencast_min_bitrate_kbps &&
-           is_screencast == o.is_screencast;
+           is_screencast == o.is_screencast &&
+           // --twinlife-- 150720
+           twinlife_max_frame_size == o.twinlife_max_frame_size &&
+           twinlife_max_frame_rate == o.twinlife_max_frame_rate;
+           // --twinlife-- 150720
   }
   bool operator!=(const VideoOptions& o) const { return !(*this == o); }
 
@@ -289,6 +297,10 @@ struct VideoOptions {
     ost << ToStringIfSet("screencast min bitrate kbps",
                          screencast_min_bitrate_kbps);
     ost << ToStringIfSet("is_screencast ", is_screencast);
+    // --twinlife-- 150720
+    ost << ToStringIfSet("twinlife max frame size", twinlife_max_frame_size);
+    ost << ToStringIfSet("twinlife max frame rate", twinlife_max_frame_rate);
+    // --twinlife-- 150720
     ost << "}";
     return ost.str();
   }
@@ -306,6 +318,10 @@ struct VideoOptions {
   // things, e.g., screencast of a text document and screencast of a
   // youtube video have different needs.
   rtc::Optional<bool> is_screencast;
+  // --twinlife-- 150720
+  rtc::Optional<int> twinlife_max_frame_size;
+  rtc::Optional<int> twinlife_max_frame_rate;
+  // --twinlife-- 150720
 
  private:
   template <typename T>

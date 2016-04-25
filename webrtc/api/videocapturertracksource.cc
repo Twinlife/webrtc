@@ -40,6 +40,10 @@ static const cricket::VideoFormatPod kVideoFormats[] = {
     {320, 240, FPS_TO_INTERVAL(30), cricket::FOURCC_ANY},
     {320, 180, FPS_TO_INTERVAL(30), cricket::FOURCC_ANY}};
 
+// --twinlife-- 141010
+static const cricket::VideoFormatPod kMinimumFormat =
+  {160, 120, FPS_TO_INTERVAL(30), cricket::FOURCC_ANY};
+
 MediaSourceInterface::SourceState GetReadyState(cricket::CaptureState state) {
   switch (state) {
     case cricket::CS_STARTING:
@@ -153,6 +157,27 @@ bool NewFormatWithConstraints(
     // These are actually options, not constraints, so they can be satisfied
     // regardless of the format.
     return true;
+    // --twinlife-- 150720
+  } else if (constraint.key == MediaConstraintsInterface::kTwinlifeMaxFrameRate) {
+    int value = rtc::FromString<int>(constraint.value);
+    if (value == 0) {
+      if (mandatory) {
+	return false;
+      } else {
+	value = 1;
+      }
+    }
+    if (value <= cricket::VideoFormat::IntervalToFps(format_in.interval)) {
+      format_out->interval = cricket::VideoFormat::FpsToInterval(value);
+      return true;
+    } else {
+      return false;
+    }
+    return true;
+  } else if (constraint.key == MediaConstraintsInterface::kTwinlifeMaxFrameSize) {
+    int value = rtc::FromString<int>(constraint.value);
+    return (value >= format_in.width * format_in.height);
+    // --twinlife-- 150720
   }
   LOG(LS_WARNING) << "Found unknown MediaStream constraint. Name:"
                   << constraint.key << " Value:" << constraint.value;
@@ -251,6 +276,44 @@ bool ExtractOption(const MediaConstraintsInterface* all_constraints,
   return mandatory == 0;
 }
 
+// --twinlife-- 150720
+bool ExtractTwinlifeVideoOptions(const MediaConstraintsInterface* all_constraints,
+				 cricket::VideoOptions* options) {
+  bool changed = false;
+  for (MediaConstraintsInterface::Constraints::const_iterator iter = all_constraints->GetMandatory().begin();
+       iter != all_constraints->GetMandatory().end(); ++iter) {
+    if (iter->key == MediaConstraintsInterface::kTwinlifeMaxFrameSize) {
+      int twinlife_max_frame_size = rtc::FromString<int>(iter->value);
+      if (twinlife_max_frame_size > 0) {
+	if ((bool)options->twinlife_max_frame_size) {
+	  int old_twinlife_max_frame_size = *options->twinlife_max_frame_size;
+	  if (old_twinlife_max_frame_size != twinlife_max_frame_size) {
+	    changed = true;
+	  }
+	} else {
+	  changed = true;
+	}
+	options->twinlife_max_frame_size = rtc::Optional<int>(twinlife_max_frame_size);
+      }
+    } else if (iter->key == MediaConstraintsInterface::kTwinlifeMaxFrameRate) {
+      int twinlife_max_frame_rate = rtc::FromString<int>(iter->value);
+      if (twinlife_max_frame_rate > 0) {
+	if ((bool)options->twinlife_max_frame_rate) {
+	  int old_twinlife_max_frame_rate = *options->twinlife_max_frame_rate;
+	  if (old_twinlife_max_frame_rate != twinlife_max_frame_rate) {
+	    changed = true;
+	  }
+	} else {
+	  changed = true;
+	}
+	options->twinlife_max_frame_rate= rtc::Optional<int>(twinlife_max_frame_rate);
+      }
+    }
+  }
+  return changed;
+}
+// --twinlife-- 150720
+
 }  // anonymous namespace
 
 namespace webrtc {
@@ -319,6 +382,9 @@ void VideoCapturerTrackSource::Initialize(
     }
   }
 
+  // --twinlife-- 141010
+  formats.push_back(cricket::VideoFormat(kMinimumFormat));
+
   if (constraints) {
     MediaConstraintsInterface::Constraints mandatory_constraints =
         constraints->GetMandatory();
@@ -348,6 +414,20 @@ void VideoCapturerTrackSource::Initialize(
     return;
   }
 
+  // --twinlife-- 150720
+  if (constraints) {
+    cricket::VideoOptions options;
+    ExtractTwinlifeVideoOptions(constraints, &options);
+    int max_frame_size = options.twinlife_max_frame_size.value_or(INT_MAX);
+    int max_frame_rate = options.twinlife_max_frame_rate.value_or(INT_MAX);
+    int64_t min_interval = 0;
+    if (max_frame_rate < INT_MAX) {
+      min_interval = FPS_TO_INTERVAL(max_frame_rate);
+    }
+    video_capturer_.get()->video_adapter()->SetTwinlifeLimits(max_frame_size, min_interval);
+  }
+  // --twinlife-- 150720
+
   format_ = GetBestCaptureFormat(formats);
   // Start the camera with our best guess.
   if (!worker_thread()->Invoke<bool>(
@@ -359,6 +439,60 @@ void VideoCapturerTrackSource::Initialize(
   started_ = true;
   // Initialize hasn't succeeded until a successful state change has occurred.
 }
+
+// --twinlife-- 150720
+void VideoCapturerTrackSource::UpdateConstraints(const webrtc::MediaConstraintsInterface* constraints) {
+  cricket::VideoOptions options;
+  bool changed = ExtractTwinlifeVideoOptions(constraints, &options);
+  int max_frame_size = options.twinlife_max_frame_size.value_or(INT_MAX);
+  int max_frame_rate = options.twinlife_max_frame_rate.value_or(INT_MAX);
+  int64_t min_interval = 0;
+  if (max_frame_rate < INT_MAX) {
+    min_interval = FPS_TO_INTERVAL(max_frame_rate);
+  }
+  video_capturer_.get()->video_adapter()->SetTwinlifeLimits(max_frame_size, min_interval);
+  if (changed) {
+    std::vector<cricket::VideoFormat> formats =
+      *video_capturer_->GetSupportedFormats();
+    if (formats.empty()) {
+      if (video_capturer_->IsScreencast()) {
+	// The screen capturer can accept any resolution and we will derive the
+	// format from the constraints if any.
+	// Note that this only affects tab capturing, not desktop capturing,
+	// since the desktop capturer does not respect the VideoFormat passed in.
+	formats.push_back(cricket::VideoFormat(kDefaultFormat));
+      } else {
+	// The VideoCapturer implementation doesn't support capability
+	// enumeration. We need to guess what the camera supports.
+	for (int i = 0; i < arraysize(kVideoFormats); ++i) {
+	  formats.push_back(cricket::VideoFormat(kVideoFormats[i]));
+	}
+      }
+    }
+
+    MediaConstraintsInterface::Constraints mandatory_constraints =
+        constraints->GetMandatory();
+    MediaConstraintsInterface::Constraints optional_constraints;
+    optional_constraints = constraints->GetOptional();
+
+    if (video_capturer_->IsScreencast()) {
+      // Use the maxWidth and maxHeight allowed by constraints for screencast.
+      FromConstraintsForScreencast(mandatory_constraints, &(formats[0]));
+    }
+
+    formats = FilterFormats(mandatory_constraints, optional_constraints,
+                            formats);
+
+    if (formats.size() == 0) {
+      return;
+    }
+
+    format_ = GetBestCaptureFormat(formats);
+
+    Restart();
+  }
+}
+// --twinlife-- 150720
 
 bool VideoCapturerTrackSource::GetStats(Stats* stats) {
   return video_capturer_->GetInputSize(&stats->input_width,

@@ -102,6 +102,10 @@ class MediaStreamTrackInterface : public rtc::RefCountInterface,
   virtual ~MediaStreamTrackInterface() {}
 };
 
+  // --twinlife-- 160422
+class MediaConstraintsInterface;
+  // --twinlife-- 160422
+
 // VideoTrackSourceInterface is a reference counted source used for VideoTracks.
 // The same source can be used in multiple VideoTracks.
 class VideoTrackSourceInterface
@@ -143,6 +147,10 @@ class VideoTrackSourceInterface
   // source, or a source which has not seen its first frame yet.
   // Should avoid blocking.
   virtual bool GetStats(Stats* stats) = 0;
+
+  // --twinlife-- 160422
+  virtual void UpdateConstraints(const webrtc::MediaConstraintsInterface* constraints) {};
+  // --twinlife-- 160422
 
  protected:
   virtual ~VideoTrackSourceInterface() {}

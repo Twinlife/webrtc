@@ -60,6 +60,9 @@ class MediaConstraintsInterface {
   static const char kMinHeight[];  // minHeight
   static const char kMaxFrameRate[];  // maxFrameRate
   static const char kMinFrameRate[];  // minFrameRate
+  // --twinlife-- 150720
+  static const char kTwinlifeMaxFrameRate[];
+  static const char kTwinlifeMaxFrameSize[];
 
   // Constraint keys used by a local audio source.
   static const char kEchoCancellation[];  // echoCancellation

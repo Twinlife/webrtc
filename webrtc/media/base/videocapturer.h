@@ -230,7 +230,13 @@ class VideoCapturer : public sigslot::has_slots<>,
   // SignalFrameCaptured or OnFrameCaptured.
   void OnFrame(VideoCapturer* capturer, const VideoFrame* frame);
 
+  // --twinlife-- 160410
+ public:
+  // --twinlife-- 160410
   VideoAdapter* video_adapter() { return &video_adapter_; }
+  // --twinlife-- 160410
+ protected:
+  // --twinlife-- 160410
 
   void SetCaptureState(CaptureState state);
 
