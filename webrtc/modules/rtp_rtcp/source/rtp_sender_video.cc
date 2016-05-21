@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <memory>
 #include <vector>
 
 #include "webrtc/base/checks.h"
@@ -24,14 +25,12 @@
 #include "webrtc/modules/rtp_rtcp/source/rtp_format_video_generic.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_format_vp8.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_format_vp9.h"
-#include "webrtc/system_wrappers/include/critical_section_wrapper.h"
 
 namespace webrtc {
 enum { REDForFECHeaderLength = 1 };
 
 RTPSenderVideo::RTPSenderVideo(Clock* clock, RTPSenderInterface* rtpSender)
     : _rtpSender(*rtpSender),
-      crit_(CriticalSectionWrapper::CreateCriticalSection()),
       _videoType(kRtpVideoGeneric),
       _retransmissionSettings(kRetransmitBaseLayer),
       // Generic FEC
@@ -113,13 +112,13 @@ void RTPSenderVideo::SendVideoPacketAsRed(uint8_t* data_buffer,
                                           int64_t capture_time_ms,
                                           StorageType media_packet_storage,
                                           bool protect) {
-  rtc::scoped_ptr<RedPacket> red_packet;
+  std::unique_ptr<RedPacket> red_packet;
   std::vector<RedPacket*> fec_packets;
   StorageType fec_storage = kDontRetransmit;
   uint16_t next_fec_sequence_number = 0;
   {
     // Only protect while creating RED and FEC packets, not when sending.
-    CriticalSectionScoped cs(crit_.get());
+    rtc::CritScope cs(&crit_);
     red_packet.reset(producer_fec_.BuildRedPacket(
         data_buffer, payload_length, rtp_header_length, red_payload_type_));
     if (protect) {
@@ -170,7 +169,7 @@ void RTPSenderVideo::SendVideoPacketAsRed(uint8_t* data_buffer,
 void RTPSenderVideo::SetGenericFECStatus(const bool enable,
                                          const uint8_t payloadTypeRED,
                                          const uint8_t payloadTypeFEC) {
-  CriticalSectionScoped cs(crit_.get());
+  rtc::CritScope cs(&crit_);
   fec_enabled_ = enable;
   red_payload_type_ = payloadTypeRED;
   fec_payload_type_ = payloadTypeFEC;
@@ -184,14 +183,14 @@ void RTPSenderVideo::SetGenericFECStatus(const bool enable,
 void RTPSenderVideo::GenericFECStatus(bool* enable,
                                       uint8_t* payloadTypeRED,
                                       uint8_t* payloadTypeFEC) const {
-  CriticalSectionScoped cs(crit_.get());
+  rtc::CritScope cs(&crit_);
   *enable = fec_enabled_;
   *payloadTypeRED = red_payload_type_;
   *payloadTypeFEC = fec_payload_type_;
 }
 
 size_t RTPSenderVideo::FECPacketOverhead() const {
-  CriticalSectionScoped cs(crit_.get());
+  rtc::CritScope cs(&crit_);
   if (fec_enabled_) {
     // Overhead is FEC headers plus RED for FEC header plus anything in RTP
     // header beyond the 12 bytes base header (CSRC list, extensions...)
@@ -206,7 +205,7 @@ size_t RTPSenderVideo::FECPacketOverhead() const {
 
 void RTPSenderVideo::SetFecParameters(const FecProtectionParams* delta_params,
                                       const FecProtectionParams* key_params) {
-  CriticalSectionScoped cs(crit_.get());
+  rtc::CritScope cs(&crit_);
   RTC_DCHECK(delta_params);
   RTC_DCHECK(key_params);
   delta_fec_params_ = *delta_params;
@@ -226,14 +225,15 @@ int32_t RTPSenderVideo::SendVideo(const RtpVideoCodecTypes videoType,
     return -1;
   }
 
-  rtc::scoped_ptr<RtpPacketizer> packetizer(RtpPacketizer::Create(
+  std::unique_ptr<RtpPacketizer> packetizer(RtpPacketizer::Create(
       videoType, _rtpSender.MaxDataPayloadLength(),
       video_header ? &(video_header->codecHeader) : nullptr, frameType));
 
   StorageType storage;
   bool fec_enabled;
+  bool first_frame = first_frame_sent_();
   {
-    CriticalSectionScoped cs(crit_.get());
+    rtc::CritScope cs(&crit_);
     FecProtectionParams* fec_params =
         frameType == kVideoFrameKey ? &key_fec_params_ : &delta_fec_params_;
     producer_fec_.SetFecParameters(fec_params, 0);
@@ -260,6 +260,7 @@ int32_t RTPSenderVideo::SendVideo(const RtpVideoCodecTypes videoType,
 
   packetizer->SetPayloadData(data, payload_bytes_to_send, frag);
 
+  bool first = true;
   bool last = false;
   while (!last) {
     uint8_t dataBuffer[IP_PACKET_SIZE] = {0};
@@ -268,6 +269,7 @@ int32_t RTPSenderVideo::SendVideo(const RtpVideoCodecTypes videoType,
                                 &payload_bytes_in_packet, &last)) {
       return -1;
     }
+
     // Write RTP header.
     // Set marker bit true if this is the last packet in frame.
     _rtpSender.BuildRTPheader(
@@ -309,6 +311,18 @@ int32_t RTPSenderVideo::SendVideo(const RtpVideoCodecTypes videoType,
                       _rtpSender.SequenceNumber(), captureTimeStamp,
                       capture_time_ms, storage);
     }
+
+    if (first_frame) {
+      if (first) {
+        LOG(LS_INFO)
+            << "Sent first RTP packet of the first video frame (pre-pacer)";
+      }
+      if (last) {
+        LOG(LS_INFO)
+            << "Sent last RTP packet of the first video frame (pre-pacer)";
+      }
+    }
+    first = false;
   }
 
   TRACE_EVENT_ASYNC_END1(
@@ -330,12 +344,12 @@ uint32_t RTPSenderVideo::FecOverheadRate() const {
 }
 
 int RTPSenderVideo::SelectiveRetransmissions() const {
-  CriticalSectionScoped cs(crit_.get());
+  rtc::CritScope cs(&crit_);
   return _retransmissionSettings;
 }
 
 void RTPSenderVideo::SetSelectiveRetransmissions(uint8_t settings) {
-  CriticalSectionScoped cs(crit_.get());
+  rtc::CritScope cs(&crit_);
   _retransmissionSettings = settings;
 }
 

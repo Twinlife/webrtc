@@ -80,6 +80,18 @@ struct EchoCanceller3 {
   bool enabled;
 };
 
+// Enables the refined linear filter adaptation in the echo canceller.
+// This configuration only applies to EchoCancellation and not
+// EchoControlMobile. It can be set in the constructor
+// or using AudioProcessing::SetExtraOptions().
+struct RefinedAdaptiveFilter {
+  RefinedAdaptiveFilter() : enabled(false) {}
+  explicit RefinedAdaptiveFilter(bool enabled) : enabled(enabled) {}
+  static const ConfigOptionID identifier =
+      ConfigOptionID::kAecRefinedAdaptiveFilter;
+  bool enabled;
+};
+
 // Enables delay-agnostic echo cancellation. This feature relies on internally
 // estimated delays between the process and reverse streams, thus not relying
 // on reported system delays. This configuration only applies to
@@ -148,9 +160,7 @@ struct Beamforming {
   const SphericalPointf target_direction;
 };
 
-// Use to enable intelligibility enhancer in audio processing. Must be provided
-// though the constructor. It will have no impact if used with
-// AudioProcessing::SetExtraOptions().
+// Use to enable intelligibility enhancer in audio processing.
 //
 // Note: If enabled and the reverse stream has more than one output channel,
 // the reverse stream will become an upmixed mono signal.
@@ -673,7 +683,7 @@ class EchoCancellation {
     // (Pre non-linear processing suppression) A_NLP = 10log_10(P_echo / P_a)
     AudioProcessing::Statistic a_nlp;
 
-    // Fraction of time that the AEC linear filter is divergent, in a 0.5-second
+    // Fraction of time that the AEC linear filter is divergent, in a 1-second
     // non-overlapped aggregation window.
     float divergent_filter_fraction;
   };

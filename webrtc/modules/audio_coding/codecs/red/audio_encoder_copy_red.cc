@@ -19,12 +19,7 @@
 namespace webrtc {
 
 AudioEncoderCopyRed::Config::Config() = default;
-
-// TODO(kwiberg): =default this when Visual Studio learns to handle it.
-AudioEncoderCopyRed::Config::Config(Config&& c)
-    : payload_type(c.payload_type),
-      speech_encoder(std::move(c.speech_encoder)) {}
-
+AudioEncoderCopyRed::Config::Config(Config&&) = default;
 AudioEncoderCopyRed::Config::~Config() = default;
 
 AudioEncoderCopyRed::AudioEncoderCopyRed(Config&& config)
@@ -34,10 +29,6 @@ AudioEncoderCopyRed::AudioEncoderCopyRed(Config&& config)
 }
 
 AudioEncoderCopyRed::~AudioEncoderCopyRed() = default;
-
-size_t AudioEncoderCopyRed::MaxEncodedBytes() const {
-  return 2 * speech_encoder_->MaxEncodedBytes();
-}
 
 int AudioEncoderCopyRed::SampleRateHz() const {
   return speech_encoder_->SampleRateHz();

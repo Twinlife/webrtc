@@ -8,10 +8,8 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include <memory>
 
-/*
- * This file includes unit tests for the RTCPReceiver.
- */
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -29,6 +27,7 @@
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/pli.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/receiver_report.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/remb.h"
+#include "webrtc/modules/rtp_rtcp/source/rtcp_packet/rpsi.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/sdes.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/sender_report.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/sli.h"
@@ -135,7 +134,7 @@ class RtcpReceiverTest : public ::testing::Test {
     rtcp_packet_info_.rtp_timestamp = rtcpPacketInformation.rtp_timestamp;
     rtcp_packet_info_.xr_dlrr_item = rtcpPacketInformation.xr_dlrr_item;
     if (rtcpPacketInformation.VoIPMetric)
-      rtcp_packet_info_.AddVoIPMetric(rtcpPacketInformation.VoIPMetric);
+      rtcp_packet_info_.AddVoIPMetric(rtcpPacketInformation.VoIPMetric.get());
     rtcp_packet_info_.transport_feedback_.reset(
         rtcpPacketInformation.transport_feedback_.release());
     return 0;
@@ -148,7 +147,7 @@ class RtcpReceiverTest : public ::testing::Test {
   TestTransport* test_transport_;
   RTCPHelp::RTCPPacketInformation rtcp_packet_info_;
   MockRemoteBitrateObserver remote_bitrate_observer_;
-  rtc::scoped_ptr<RemoteBitrateEstimator> remote_bitrate_estimator_;
+  std::unique_ptr<RemoteBitrateEstimator> remote_bitrate_estimator_;
 };
 
 
@@ -163,6 +162,50 @@ TEST_F(RtcpReceiverTest, InvalidFeedbackPacketIsIgnored) {
   const uint8_t bad_packet[] = {0x80, RTCPUtility::PT_RTPFB, 0, 0};
   EXPECT_EQ(0, InjectRtcpPacket(bad_packet, sizeof(bad_packet)));
   EXPECT_EQ(0U, rtcp_packet_info_.rtcpPacketTypeFlags);
+}
+
+TEST_F(RtcpReceiverTest, RpsiWithFractionalPaddingIsIgnored) {
+  // Padding size represent fractional number of bytes.
+  const uint8_t kPaddingSizeBits = 0x0b;
+  const uint8_t bad_packet[] = {0x83, RTCPUtility::PT_PSFB, 0, 3,
+                                0x12, 0x34, 0x56, 0x78,
+                                0x98, 0x76, 0x54, 0x32,
+                                kPaddingSizeBits, 0x00, 0x00, 0x00};
+  EXPECT_EQ(0, InjectRtcpPacket(bad_packet, sizeof(bad_packet)));
+  EXPECT_EQ(0U, rtcp_packet_info_.rtcpPacketTypeFlags);
+}
+
+TEST_F(RtcpReceiverTest, RpsiWithTooLargePaddingIsIgnored) {
+  // Padding size exceeds packet size.
+  const uint8_t kPaddingSizeBits = 0xa8;
+  const uint8_t bad_packet[] = {0x83, RTCPUtility::PT_PSFB, 0, 3,
+                                0x12, 0x34, 0x56, 0x78,
+                                0x98, 0x76, 0x54, 0x32,
+                                kPaddingSizeBits, 0x00, 0x00, 0x00};
+  EXPECT_EQ(0, InjectRtcpPacket(bad_packet, sizeof(bad_packet)));
+  EXPECT_EQ(0U, rtcp_packet_info_.rtcpPacketTypeFlags);
+}
+
+// With parsing using rtcp classes this test will make no sense.
+// With current stateful parser this test was failing.
+TEST_F(RtcpReceiverTest, TwoHalfValidRpsiAreIgnored) {
+  const uint8_t bad_packet[] = {0x83, RTCPUtility::PT_PSFB, 0, 2,
+                                0x12, 0x34, 0x56, 0x78,
+                                0x98, 0x76, 0x54, 0x32,
+                                0x83, RTCPUtility::PT_PSFB, 0, 2,
+                                0x12, 0x34, 0x56, 0x78,
+                                0x98, 0x76, 0x54, 0x32};
+  EXPECT_EQ(0, InjectRtcpPacket(bad_packet, sizeof(bad_packet)));
+  EXPECT_EQ(0U, rtcp_packet_info_.rtcpPacketTypeFlags);
+}
+
+TEST_F(RtcpReceiverTest, InjectRpsiPacket) {
+  const uint64_t kPictureId = 0x123456789;
+  rtcp::Rpsi rpsi;
+  rpsi.WithPictureId(kPictureId);
+  rtc::Buffer packet = rpsi.Build();
+  EXPECT_EQ(0, InjectRtcpPacket(packet.data(), packet.size()));
+  EXPECT_EQ(kRtcpRpsi, rtcp_packet_info_.rtcpPacketTypeFlags);
 }
 
 TEST_F(RtcpReceiverTest, InjectSrPacket) {
@@ -1199,6 +1242,20 @@ TEST_F(RtcpReceiverTest, ReceivesTransportFeedback) {
   EXPECT_TRUE(rtcp_packet_info_.transport_feedback_.get() != nullptr);
 }
 
+TEST_F(RtcpReceiverTest, ReceivesRemb) {
+  const uint32_t kSenderSsrc = 0x123456;
+  const uint32_t kBitrateBps = 500000;
+  rtcp::Remb remb;
+  remb.From(kSenderSsrc);
+  remb.WithBitrateBps(kBitrateBps);
+  rtc::Buffer built_packet = remb.Build();
+
+  EXPECT_EQ(0, InjectRtcpPacket(built_packet.data(), built_packet.size()));
+
+  EXPECT_EQ(kRtcpRemb, rtcp_packet_info_.rtcpPacketTypeFlags & kRtcpRemb);
+  EXPECT_EQ(kBitrateBps, rtcp_packet_info_.receiverEstimatedMaxBitrate);
+}
+
 TEST_F(RtcpReceiverTest, HandlesInvalidTransportFeedback) {
   const uint32_t kSenderSsrc = 0x10203;
   const uint32_t kSourceSsrc = 0x123456;
@@ -1216,7 +1273,7 @@ TEST_F(RtcpReceiverTest, HandlesInvalidTransportFeedback) {
 
   static uint32_t kBitrateBps = 50000;
   rtcp::Remb remb;
-  remb.From(kSourceSsrc);
+  remb.From(kSenderSsrc);
   remb.WithBitrateBps(kBitrateBps);
   rtcp::CompoundPacket compound;
   compound.Append(&packet);

@@ -413,6 +413,20 @@ bool EchoCancellationImpl::is_aec3_enabled() const {
   return aec3_enabled_;
 }
 
+std::string EchoCancellationImpl::GetExperimentsDescription() {
+  rtc::CritScope cs(crit_capture_);
+  std::string description = (aec3_enabled_ ? "AEC3;" : "");
+  if (refined_adaptive_filter_enabled_) {
+    description += "RefinedAdaptiveFilter;";
+  }
+  return description;
+}
+
+bool EchoCancellationImpl::is_refined_adaptive_filter_enabled() const {
+  rtc::CritScope cs(crit_capture_);
+  return refined_adaptive_filter_enabled_;
+}
+
 bool EchoCancellationImpl::is_extended_filter_enabled() const {
   rtc::CritScope cs(crit_capture_);
   return extended_filter_enabled_;
@@ -529,6 +543,8 @@ void EchoCancellationImpl::SetExtraOptions(const Config& config) {
     rtc::CritScope cs(crit_capture_);
     extended_filter_enabled_ = config.Get<ExtendedFilter>().enabled;
     delay_agnostic_enabled_ = config.Get<DelayAgnostic>().enabled;
+    refined_adaptive_filter_enabled_ =
+        config.Get<RefinedAdaptiveFilter>().enabled;
     aec3_enabled_ = config.Get<EchoCanceller3>().enabled;
   }
   Configure();
@@ -551,6 +567,9 @@ int EchoCancellationImpl::Configure() {
                                     delay_agnostic_enabled_ ? 1 : 0);
     WebRtcAec_enable_aec3(WebRtcAec_aec_core(canceller->state()),
                           aec3_enabled_ ? 1 : 0);
+    WebRtcAec_enable_refined_adaptive_filter(
+        WebRtcAec_aec_core(canceller->state()),
+        refined_adaptive_filter_enabled_);
     const int handle_error = WebRtcAec_set_config(canceller->state(), config);
     if (handle_error != AudioProcessing::kNoError) {
       error = AudioProcessing::kNoError;

@@ -150,13 +150,15 @@
                 'objc/public/RTCAVFoundationVideoSource.h',
               ],
               'dependencies': [
-                '<(webrtc_root)/base/base.gyp:rtc_base_objc',
+                '<(webrtc_root)/sdk/sdk.gyp:rtc_sdk_common_objc',
               ],
               'link_settings': {
                 'xcode_settings': {
                   'OTHER_LDFLAGS': [
                     '-framework CoreGraphics',
                     '-framework GLKit',
+                    '-framework OpenGLES',
+                    '-framework QuartzCore',
                   ],
                 },
               },
