@@ -8,6 +8,7 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
@@ -20,11 +21,12 @@
 #include "webrtc/base/gunit.h"
 #include "webrtc/base/logging.h"
 #include "webrtc/base/messagedigest.h"
-#include "webrtc/base/scoped_ptr.h"
 #include "webrtc/base/sslfingerprint.h"
 #include "webrtc/base/stringencode.h"
 #include "webrtc/base/stringutils.h"
 #include "webrtc/media/base/mediaconstants.h"
+#include "webrtc/media/engine/webrtcvideoengine2.h"
+#include "webrtc/modules/video_coding/codecs/h264/include/h264.h"
 #include "webrtc/p2p/base/p2pconstants.h"
 #include "webrtc/pc/mediasession.h"
 
@@ -1028,10 +1030,10 @@ class WebRtcSdpTest : public testing::Test {
         "inline:NzB4d1BINUAvLEw6UzF3WSJ+PSdFcGdUJShpX1Zj|2^20|1:32",
         "dummy_session_params"));
     audio->set_protocol(cricket::kMediaProtocolSavpf);
-    AudioCodec opus(111, "opus", 48000, 0, 2, 3);
+    AudioCodec opus(111, "opus", 48000, 0, 2);
     audio->AddCodec(opus);
-    audio->AddCodec(AudioCodec(103, "ISAC", 16000, 32000, 1, 2));
-    audio->AddCodec(AudioCodec(104, "ISAC", 32000, 56000, 1, 1));
+    audio->AddCodec(AudioCodec(103, "ISAC", 16000, 32000, 1));
+    audio->AddCodec(AudioCodec(104, "ISAC", 32000, 56000, 1));
     return audio;
   }
 
@@ -1047,8 +1049,7 @@ class WebRtcSdpTest : public testing::Test {
         VideoCodec(120, JsepSessionDescription::kDefaultVideoCodecName,
                    JsepSessionDescription::kMaxVideoCodecWidth,
                    JsepSessionDescription::kMaxVideoCodecHeight,
-                   JsepSessionDescription::kDefaultVideoCodecFramerate,
-                   JsepSessionDescription::kDefaultVideoCodecPreference));
+                   JsepSessionDescription::kDefaultVideoCodecFramerate));
     return video;
   }
 
@@ -1393,12 +1394,11 @@ class WebRtcSdpTest : public testing::Test {
   }
 
   void AddSctpDataChannel() {
-    rtc::scoped_ptr<DataContentDescription> data(
-        new DataContentDescription());
+    std::unique_ptr<DataContentDescription> data(new DataContentDescription());
     data_desc_ = data.get();
     data_desc_->set_protocol(cricket::kMediaProtocolDtlsSctp);
     DataCodec codec(cricket::kGoogleSctpDataCodecId,
-                    cricket::kGoogleSctpDataCodecName, 0);
+                    cricket::kGoogleSctpDataCodecName);
     codec.SetParam(cricket::kCodecParamPort, kDefaultSctpPort);
     data_desc_->AddCodec(codec);
     desc_.AddContent(kDataContentName, NS_JINGLE_DRAFT_SCTP, data.release());
@@ -1407,11 +1407,10 @@ class WebRtcSdpTest : public testing::Test {
   }
 
   void AddRtpDataChannel() {
-    rtc::scoped_ptr<DataContentDescription> data(
-        new DataContentDescription());
+    std::unique_ptr<DataContentDescription> data(new DataContentDescription());
     data_desc_ = data.get();
 
-    data_desc_->AddCodec(DataCodec(101, "google-data", 1));
+    data_desc_->AddCodec(DataCodec(101, "google-data"));
     StreamParams data_stream;
     data_stream.id = kDataChannelMsid;
     data_stream.cname = kDataChannelCname;
@@ -1678,7 +1677,7 @@ class WebRtcSdpTest : public testing::Test {
   VideoContentDescription* video_desc_;
   DataContentDescription* data_desc_;
   Candidates candidates_;
-  rtc::scoped_ptr<IceCandidateInterface> jcandidate_;
+  std::unique_ptr<IceCandidateInterface> jcandidate_;
   JsepSessionDescription jdesc_;
 };
 
@@ -1993,8 +1992,8 @@ TEST_F(WebRtcSdpTest, SerializeWithSctpDataChannelAndNewPort) {
       jsep_desc.description()->GetContentDescriptionByName(kDataContentName));
 
   const int kNewPort = 1234;
-  cricket::DataCodec codec(
-        cricket::kGoogleSctpDataCodecId, cricket::kGoogleSctpDataCodecName, 0);
+  cricket::DataCodec codec(cricket::kGoogleSctpDataCodecId,
+                           cricket::kGoogleSctpDataCodecName);
   codec.SetParam(cricket::kCodecParamPort, kNewPort);
   dcdesc->AddOrReplaceCodec(codec);
 
@@ -2081,11 +2080,41 @@ TEST_F(WebRtcSdpTest, SerializeTcpCandidates) {
                       "", "", LOCAL_PORT_TYPE, kCandidateGeneration,
                       kCandidateFoundation1);
   candidate.set_tcptype(cricket::TCPTYPE_ACTIVE_STR);
-  rtc::scoped_ptr<IceCandidateInterface> jcandidate(
-    new JsepIceCandidate(std::string("audio_content_name"), 0, candidate));
+  std::unique_ptr<IceCandidateInterface> jcandidate(
+      new JsepIceCandidate(std::string("audio_content_name"), 0, candidate));
 
   std::string message = webrtc::SdpSerializeCandidate(*jcandidate);
   EXPECT_EQ(std::string(kSdpTcpActiveCandidate), message);
+}
+
+TEST_F(WebRtcSdpTest, SerializeSessionDescriptionWithH264) {
+  if (!webrtc::H264Encoder::IsSupported())
+    return;
+  for (const auto& codec : cricket::DefaultVideoCodecList()) {
+    video_desc_->AddCodec(codec);
+  }
+  jdesc_.Initialize(desc_.Copy(), kSessionId, kSessionVersion);
+
+  std::string message = webrtc::SdpSerialize(jdesc_, false);
+  size_t after_pt = message.find(" H264/90000");
+  ASSERT_NE(after_pt, std::string::npos);
+  size_t before_pt = message.rfind("a=rtpmap:", after_pt);
+  ASSERT_NE(before_pt, std::string::npos);
+  before_pt += strlen("a=rtpmap:");
+  std::string pt = message.substr(before_pt, after_pt - before_pt);
+  // TODO(hta): Check if payload type |pt| occurs in the m=video line.
+  std::string to_find = "a=fmtp:" + pt + " ";
+  size_t fmtp_pos = message.find(to_find);
+  ASSERT_NE(std::string::npos, fmtp_pos) << "Failed to find " << to_find;
+  size_t fmtp_endpos = message.find("\n", fmtp_pos);
+  ASSERT_NE(std::string::npos, fmtp_endpos);
+  std::string fmtp_value = message.substr(fmtp_pos, fmtp_endpos);
+  EXPECT_NE(std::string::npos, fmtp_value.find("level-asymmetry-allowed=1"));
+  EXPECT_NE(std::string::npos, fmtp_value.find("packetization-mode=1"));
+  EXPECT_NE(std::string::npos, fmtp_value.find("profile-level-id=42e01f"));
+  // Check that there are no spaces after semicolons.
+  // https://bugs.webrtc.org/5793
+  EXPECT_EQ(std::string::npos, fmtp_value.find("; "));
 }
 
 TEST_F(WebRtcSdpTest, DeserializeSessionDescription) {
@@ -2148,10 +2177,11 @@ TEST_F(WebRtcSdpTest, DeserializeSessionDescriptionWithoutRtpmap) {
     static_cast<AudioContentDescription*>(
         jdesc.description()->GetContentDescriptionByName(cricket::CN_AUDIO));
   AudioCodecs ref_codecs;
-  // The codecs in the AudioContentDescription will be sorted by preference.
-  ref_codecs.push_back(AudioCodec(0, "PCMU", 8000, 0, 1, 3));
-  ref_codecs.push_back(AudioCodec(18, "G729", 16000, 0, 1, 2));
-  ref_codecs.push_back(AudioCodec(103, "ISAC", 16000, 32000, 1, 1));
+  // The codecs in the AudioContentDescription should be in the same order as
+  // the payload types (<fmt>s) on the m= line.
+  ref_codecs.push_back(AudioCodec(0, "PCMU", 8000, 0, 1));
+  ref_codecs.push_back(AudioCodec(18, "G729", 16000, 0, 1));
+  ref_codecs.push_back(AudioCodec(103, "ISAC", 16000, 32000, 1));
   EXPECT_EQ(ref_codecs, audio->codecs());
 }
 
@@ -2373,8 +2403,8 @@ TEST_F(WebRtcSdpTest, DeserializeCandidate) {
                       rtc::SocketAddress("192.168.1.5", 9), kCandidatePriority,
                       "", "", LOCAL_PORT_TYPE, kCandidateGeneration,
                       kCandidateFoundation1);
-  rtc::scoped_ptr<IceCandidateInterface> jcandidate_template(
-    new JsepIceCandidate(std::string("audio_content_name"), 0, candidate));
+  std::unique_ptr<IceCandidateInterface> jcandidate_template(
+      new JsepIceCandidate(std::string("audio_content_name"), 0, candidate));
   EXPECT_TRUE(jcandidate.candidate().IsEquivalent(
                     jcandidate_template->candidate()));
   sdp = kSdpTcpPassiveCandidate;

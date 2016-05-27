@@ -207,8 +207,8 @@ TEST_F(TransportFeedbackAdapterTest, SendTimeWrapsBothWays) {
         packets[i].sequence_number, packets[i].arrival_time_ms * 1000));
 
     rtc::Buffer raw_packet = feedback->Build();
-    feedback = rtc::ScopedToUnique(rtcp::TransportFeedback::ParseFrom(
-        raw_packet.data(), raw_packet.size()));
+    feedback = rtcp::TransportFeedback::ParseFrom(raw_packet.data(),
+                                                  raw_packet.size());
 
     std::vector<PacketInfo> expected_packets;
     expected_packets.push_back(packets[i]);
@@ -221,6 +221,39 @@ TEST_F(TransportFeedbackAdapterTest, SendTimeWrapsBothWays) {
         }));
     adapter_->OnTransportFeedback(*feedback.get());
   }
+}
+
+TEST_F(TransportFeedbackAdapterTest, HandlesReordering) {
+  std::vector<PacketInfo> packets;
+  packets.push_back(PacketInfo(120, 200, 0, 1500, true));
+  packets.push_back(PacketInfo(110, 210, 1, 1500, true));
+  packets.push_back(PacketInfo(100, 220, 2, 1500, true));
+  std::vector<PacketInfo> expected_packets;
+  expected_packets.push_back(packets[2]);
+  expected_packets.push_back(packets[1]);
+  expected_packets.push_back(packets[0]);
+
+  for (const PacketInfo& packet : packets)
+    OnSentPacket(packet);
+
+  rtcp::TransportFeedback feedback;
+  feedback.WithBase(packets[0].sequence_number,
+                    packets[0].arrival_time_ms * 1000);
+
+  for (const PacketInfo& packet : packets) {
+    EXPECT_TRUE(feedback.WithReceivedPacket(packet.sequence_number,
+                                            packet.arrival_time_ms * 1000));
+  }
+
+  feedback.Build();
+
+  EXPECT_CALL(*bitrate_estimator_, IncomingPacketFeedbackVector(_))
+      .Times(1)
+      .WillOnce(Invoke([expected_packets,
+                        this](const std::vector<PacketInfo>& feedback_vector) {
+        ComparePacketVectors(expected_packets, feedback_vector);
+      }));
+  adapter_->OnTransportFeedback(feedback);
 }
 
 TEST_F(TransportFeedbackAdapterTest, TimestampDeltas) {
@@ -257,6 +290,14 @@ TEST_F(TransportFeedbackAdapterTest, TimestampDeltas) {
   info.arrival_time_ms += (kLargePositiveDeltaUs + 1000) / 1000;
   ++info.sequence_number;
 
+  // Expected to be ordered on arrival time when the feedback message has been
+  // parsed.
+  std::vector<PacketInfo> expected_packets;
+  expected_packets.push_back(sent_packets[0]);
+  expected_packets.push_back(sent_packets[3]);
+  expected_packets.push_back(sent_packets[1]);
+  expected_packets.push_back(sent_packets[2]);
+
   // Packets will be added to send history.
   for (const PacketInfo& packet : sent_packets)
     OnSentPacket(packet);
@@ -276,17 +317,17 @@ TEST_F(TransportFeedbackAdapterTest, TimestampDeltas) {
                                             info.arrival_time_ms * 1000));
 
   rtc::Buffer raw_packet = feedback->Build();
-  feedback = rtc::ScopedToUnique(
-      rtcp::TransportFeedback::ParseFrom(raw_packet.data(), raw_packet.size()));
+  feedback =
+      rtcp::TransportFeedback::ParseFrom(raw_packet.data(), raw_packet.size());
 
   std::vector<PacketInfo> received_feedback;
 
   EXPECT_TRUE(feedback.get() != nullptr);
   EXPECT_CALL(*bitrate_estimator_, IncomingPacketFeedbackVector(_))
       .Times(1)
-      .WillOnce(Invoke([sent_packets, &received_feedback](
+      .WillOnce(Invoke([expected_packets, &received_feedback](
           const std::vector<PacketInfo>& feedback_vector) {
-        EXPECT_EQ(sent_packets.size(), feedback_vector.size());
+        EXPECT_EQ(expected_packets.size(), feedback_vector.size());
         received_feedback = feedback_vector;
       }));
   adapter_->OnTransportFeedback(*feedback.get());
@@ -297,8 +338,8 @@ TEST_F(TransportFeedbackAdapterTest, TimestampDeltas) {
   EXPECT_TRUE(feedback->WithReceivedPacket(info.sequence_number,
                                            info.arrival_time_ms * 1000));
   raw_packet = feedback->Build();
-  feedback = rtc::ScopedToUnique(
-      rtcp::TransportFeedback::ParseFrom(raw_packet.data(), raw_packet.size()));
+  feedback =
+      rtcp::TransportFeedback::ParseFrom(raw_packet.data(), raw_packet.size());
 
   EXPECT_TRUE(feedback.get() != nullptr);
   EXPECT_CALL(*bitrate_estimator_, IncomingPacketFeedbackVector(_))
@@ -310,9 +351,9 @@ TEST_F(TransportFeedbackAdapterTest, TimestampDeltas) {
           }));
   adapter_->OnTransportFeedback(*feedback.get());
 
-  sent_packets.push_back(info);
+  expected_packets.push_back(info);
 
-  ComparePacketVectors(sent_packets, received_feedback);
+  ComparePacketVectors(expected_packets, received_feedback);
 }
 
 }  // namespace test

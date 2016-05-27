@@ -13,6 +13,7 @@
 
 #include "webrtc/api/mediastreaminterface.h"
 #include "webrtc/api/notifier.h"
+#include "webrtc/base/thread_checker.h"
 #include "webrtc/media/base/mediachannel.h"
 #include "webrtc/media/base/videosinkinterface.h"
 
@@ -24,7 +25,6 @@ class MediaConstraintsInterface;
 class VideoTrackSource : public Notifier<VideoTrackSourceInterface> {
  public:
   VideoTrackSource(rtc::VideoSourceInterface<cricket::VideoFrame>* source,
-                   rtc::Thread* worker_thread,
                    bool remote);
   void SetState(SourceState new_state);
   // OnSourceDestroyed clears this instance pointer to |source_|. It is useful
@@ -38,8 +38,8 @@ class VideoTrackSource : public Notifier<VideoTrackSourceInterface> {
   void Stop() override{};
   void Restart() override{};
 
-  virtual bool is_screencast() const { return false; }
-  virtual rtc::Optional<bool> needs_denoising() const {
+  bool is_screencast() const override { return false; }
+  rtc::Optional<bool> needs_denoising() const override {
     return rtc::Optional<bool>(); }
 
   bool GetStats(Stats* stats) override { return false; }
@@ -47,19 +47,13 @@ class VideoTrackSource : public Notifier<VideoTrackSourceInterface> {
   void AddOrUpdateSink(rtc::VideoSinkInterface<cricket::VideoFrame>* sink,
                        const rtc::VideoSinkWants& wants) override;
   void RemoveSink(rtc::VideoSinkInterface<cricket::VideoFrame>* sink) override;
-
-  cricket::VideoCapturer* GetVideoCapturer() override { return nullptr; }
-
   // --twinlife-- 160422
   void UpdateConstraints(const webrtc::MediaConstraintsInterface* constraints) {};
   // --twinlife-- 160422
-
- protected:
-  rtc::Thread* worker_thread() { return worker_thread_; }
-
+  
  private:
+  rtc::ThreadChecker worker_thread_checker_;
   rtc::VideoSourceInterface<cricket::VideoFrame>* source_;
-  rtc::Thread* worker_thread_;
   cricket::VideoOptions options_;
   SourceState state_;
   const bool remote_;

@@ -68,6 +68,7 @@ DIRECTORIES = [
   'tools/generate_stubs',
   'tools/gn',
   'tools/gyp',
+  'tools/luci-go',
   'tools/mb',
   'tools/memory',
   'tools/protoc_wrapper',
@@ -93,7 +94,6 @@ if 'android' in target_os:
     'third_party/ijar',
     'third_party/jsr-305',
     'third_party/junit',
-    'third_party/libevent',
     'third_party/libxml',
     'third_party/mockito',
     'third_party/modp_b64',
@@ -104,6 +104,11 @@ if 'android' in target_os:
     'tools/grit',
     'tools/telemetry',
   ]
+else:
+  DIRECTORIES += [
+    'base/third_party/libevent',
+  ]
+
 if 'ios' in target_os:
   DIRECTORIES.append('third_party/class-dump')
 

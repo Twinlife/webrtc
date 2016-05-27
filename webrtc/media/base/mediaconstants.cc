@@ -64,7 +64,7 @@ const int kOpusDefaultUseInbandFec = 0;
 const int kOpusDefaultUseDtx = 0;
 const int kOpusDefaultMaxPlaybackRate = 48000;
 
-const int kPreferredMaxPTime = 60;
+const int kPreferredMaxPTime = 120;
 const int kPreferredMinPTime = 10;
 const int kPreferredSPropStereo = 0;
 const int kPreferredStereo = 0;
@@ -115,6 +115,12 @@ const char kRtpTransportSequenceNumberHeaderExtension[] =
 const char kVp8CodecName[] = "VP8";
 const char kVp9CodecName[] = "VP9";
 const char kH264CodecName[] = "H264";
+
+// RFC 6184 RTP Payload Format for H.264 video
+const char kH264FmtpProfileLevelId[] = "profile-level-id";
+const char kH264FmtpLevelAsymmetryAllowed[] = "level-asymmetry-allowed";
+const char kH264FmtpPacketizationMode[] = "packetization-mode";
+const char kH264ProfileLevelConstrainedBaseline[] = "42e01f";
 
 const int kDefaultVp8PlType = 100;
 const int kDefaultVp9PlType = 101;
