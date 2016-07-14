@@ -465,7 +465,7 @@ void VideoCapturerTrackSource::UpdateConstraints(const webrtc::MediaConstraintsI
       } else {
 	// The VideoCapturer implementation doesn't support capability
 	// enumeration. We need to guess what the camera supports.
-	for (int i = 0; i < arraysize(kVideoFormats); ++i) {
+	for (uint32_t i = 0; i < arraysize(kVideoFormats); ++i) {
 	  formats.push_back(cricket::VideoFormat(kVideoFormats[i]));
 	}
       }
