@@ -36,8 +36,8 @@ RTPSenderVideo::RTPSenderVideo(Clock* clock, RTPSenderInterface* rtpSender)
       // Generic FEC
       fec_(),
       fec_enabled_(false),
-      red_payload_type_(-1),
-      fec_payload_type_(-1),
+      red_payload_type_(0),
+      fec_payload_type_(0),
       delta_fec_params_(),
       key_fec_params_(),
       producer_fec_(&fec_),
@@ -169,6 +169,7 @@ void RTPSenderVideo::SendVideoPacketAsRed(uint8_t* data_buffer,
 void RTPSenderVideo::SetGenericFECStatus(const bool enable,
                                          const uint8_t payloadTypeRED,
                                          const uint8_t payloadTypeFEC) {
+  RTC_DCHECK(!enable || payloadTypeRED > 0);
   rtc::CritScope cs(&crit_);
   fec_enabled_ = enable;
   red_payload_type_ = payloadTypeRED;
@@ -191,16 +192,19 @@ void RTPSenderVideo::GenericFECStatus(bool* enable,
 
 size_t RTPSenderVideo::FECPacketOverhead() const {
   rtc::CritScope cs(&crit_);
-  if (fec_enabled_) {
+  size_t overhead = 0;
+  if (red_payload_type_ != 0) {
     // Overhead is FEC headers plus RED for FEC header plus anything in RTP
     // header beyond the 12 bytes base header (CSRC list, extensions...)
     // This reason for the header extensions to be included here is that
     // from an FEC viewpoint, they are part of the payload to be protected.
     // (The base RTP header is already protected by the FEC header.)
     return ForwardErrorCorrection::PacketOverhead() + REDForFECHeaderLength +
-           (_rtpSender.RTPHeaderLength() - kRtpHeaderSize);
+           (_rtpSender.RtpHeaderLength() - kRtpHeaderSize);
   }
-  return 0;
+  if (fec_enabled_)
+    overhead += ForwardErrorCorrection::PacketOverhead();
+  return overhead;
 }
 
 void RTPSenderVideo::SetFecParameters(const FecProtectionParams* delta_params,
@@ -208,8 +212,10 @@ void RTPSenderVideo::SetFecParameters(const FecProtectionParams* delta_params,
   rtc::CritScope cs(&crit_);
   RTC_DCHECK(delta_params);
   RTC_DCHECK(key_params);
-  delta_fec_params_ = *delta_params;
-  key_fec_params_ = *key_params;
+  if (fec_enabled_) {
+    delta_fec_params_ = *delta_params;
+    key_fec_params_ = *key_params;
+  }
 }
 
 int32_t RTPSenderVideo::SendVideo(const RtpVideoCodecTypes videoType,
@@ -230,7 +236,7 @@ int32_t RTPSenderVideo::SendVideo(const RtpVideoCodecTypes videoType,
       video_header ? &(video_header->codecHeader) : nullptr, frameType));
 
   StorageType storage;
-  bool fec_enabled;
+  int red_payload_type;
   bool first_frame = first_frame_sent_();
   {
     rtc::CritScope cs(&crit_);
@@ -238,17 +244,17 @@ int32_t RTPSenderVideo::SendVideo(const RtpVideoCodecTypes videoType,
         frameType == kVideoFrameKey ? &key_fec_params_ : &delta_fec_params_;
     producer_fec_.SetFecParameters(fec_params, 0);
     storage = packetizer->GetStorageType(_retransmissionSettings);
-    fec_enabled = fec_enabled_;
+    red_payload_type = red_payload_type_;
   }
 
   // Register CVO rtp header extension at the first time when we receive a frame
   // with pending rotation.
-  RTPSenderInterface::CVOMode cvo_mode = RTPSenderInterface::kCVONone;
+  bool video_rotation_active = false;
   if (video_header && video_header->rotation != kVideoRotation_0) {
-    cvo_mode = _rtpSender.ActivateCVORtpHeaderExtension();
+    video_rotation_active = _rtpSender.ActivateCVORtpHeaderExtension();
   }
 
-  uint16_t rtp_header_length = _rtpSender.RTPHeaderLength();
+  int rtp_header_length = _rtpSender.RtpHeaderLength();
   size_t payload_bytes_to_send = payloadSize;
   const uint8_t* data = payloadData;
 
@@ -265,15 +271,16 @@ int32_t RTPSenderVideo::SendVideo(const RtpVideoCodecTypes videoType,
   while (!last) {
     uint8_t dataBuffer[IP_PACKET_SIZE] = {0};
     size_t payload_bytes_in_packet = 0;
+
     if (!packetizer->NextPacket(&dataBuffer[rtp_header_length],
                                 &payload_bytes_in_packet, &last)) {
       return -1;
     }
 
     // Write RTP header.
-    // Set marker bit true if this is the last packet in frame.
     _rtpSender.BuildRTPheader(
         dataBuffer, payloadType, last, captureTimeStamp, capture_time_ms);
+
     // According to
     // http://www.etsi.org/deliver/etsi_ts/126100_126199/126114/12.07.00_60/
     // ts_126114v120700p.pdf Section 7.4.5:
@@ -288,7 +295,7 @@ int32_t RTPSenderVideo::SendVideo(const RtpVideoCodecTypes videoType,
     if (!video_header) {
       RTC_DCHECK(!_rtpSender.IsRtpHeaderExtensionRegistered(
           kRtpExtensionVideoRotation));
-    } else if (cvo_mode == RTPSenderInterface::kCVOActivated) {
+    } else if (video_rotation_active) {
       // Checking whether CVO header extension is registered will require taking
       // a lock. It'll be a no-op if it's not registered.
       // TODO(guoweis): For now, all packets sent will carry the CVO such that
@@ -301,7 +308,7 @@ int32_t RTPSenderVideo::SendVideo(const RtpVideoCodecTypes videoType,
       _rtpSender.UpdateVideoRotation(dataBuffer, packetSize, rtp_header,
                                      video_header->rotation);
     }
-    if (fec_enabled) {
+    if (red_payload_type != 0) {
       SendVideoPacketAsRed(dataBuffer, payload_bytes_in_packet,
                            rtp_header_length, _rtpSender.SequenceNumber(),
                            captureTimeStamp, capture_time_ms, storage,

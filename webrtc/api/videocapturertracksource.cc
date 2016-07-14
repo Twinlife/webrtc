@@ -377,7 +377,7 @@ void VideoCapturerTrackSource::Initialize(
     } else {
       // The VideoCapturer implementation doesn't support capability
       // enumeration. We need to guess what the camera supports.
-      for (int i = 0; i < arraysize(kVideoFormats); ++i) {
+      for (uint32_t i = 0; i < arraysize(kVideoFormats); ++i) {
         formats.push_back(cricket::VideoFormat(kVideoFormats[i]));
       }
     }
@@ -432,8 +432,8 @@ void VideoCapturerTrackSource::Initialize(
   format_ = GetBestCaptureFormat(formats);
   // Start the camera with our best guess.
   if (!worker_thread_->Invoke<bool>(
-          rtc::Bind(&cricket::VideoCapturer::StartCapturing,
-                    video_capturer_.get(), format_))) {
+          RTC_FROM_HERE, rtc::Bind(&cricket::VideoCapturer::StartCapturing,
+                                   video_capturer_.get(), format_))) {
     SetState(kEnded);
     return;
   }
@@ -506,6 +506,7 @@ void VideoCapturerTrackSource::Stop() {
   }
   started_ = false;
   worker_thread_->Invoke<void>(
+      RTC_FROM_HERE,
       rtc::Bind(&cricket::VideoCapturer::Stop, video_capturer_.get()));
 }
 
@@ -514,8 +515,8 @@ void VideoCapturerTrackSource::Restart() {
     return;
   }
   if (!worker_thread_->Invoke<bool>(
-          rtc::Bind(&cricket::VideoCapturer::StartCapturing,
-                    video_capturer_.get(), format_))) {
+          RTC_FROM_HERE, rtc::Bind(&cricket::VideoCapturer::StartCapturing,
+                                   video_capturer_.get(), format_))) {
     SetState(kEnded);
     return;
   }
@@ -528,8 +529,9 @@ void VideoCapturerTrackSource::OnStateChange(
     cricket::CaptureState capture_state) {
   if (rtc::Thread::Current() != signaling_thread_) {
     invoker_.AsyncInvoke<void>(
-        signaling_thread_, rtc::Bind(&VideoCapturerTrackSource::OnStateChange,
-                                     this, capturer, capture_state));
+        RTC_FROM_HERE, signaling_thread_,
+        rtc::Bind(&VideoCapturerTrackSource::OnStateChange, this, capturer,
+                  capture_state));
     return;
   }
 
