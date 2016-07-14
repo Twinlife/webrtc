@@ -52,32 +52,38 @@ BLACKLIST_LINT_FILTERS = [
 # 3. Deprecation is announced to discuss-webrtc@googlegroups.com and
 #    webrtc-users@google.com (internal list).
 # 4. (later) The deprecated APIs are removed.
-# Directories marked as DEPRECATED should not be used. They're only present in
-# the list to support legacy downstream code.
 NATIVE_API_DIRS = (
-  'talk/app/webrtc',
   'webrtc',
-  'webrtc/base',  # DEPRECATED.
-  'webrtc/common_audio/include',  # DEPRECATED.
-  'webrtc/modules/audio_coding/include',
-  'webrtc/modules/audio_conference_mixer/include',  # DEPRECATED.
+  'webrtc/api',
+  'webrtc/media',
   'webrtc/modules/audio_device/include',
+  'webrtc/pc',
+)
+# These directories should not be used but are maintained only to avoid breaking
+# some legacy downstream code.
+LEGACY_API_DIRS = (
+  'talk/app/webrtc',
+  'webrtc/base',
+  'webrtc/common_audio/include',
+  'webrtc/modules/audio_coding/include',
+  'webrtc/modules/audio_conference_mixer/include',
   'webrtc/modules/audio_processing/include',
   'webrtc/modules/bitrate_controller/include',
   'webrtc/modules/congestion_controller/include',
   'webrtc/modules/include',
   'webrtc/modules/remote_bitrate_estimator/include',
   'webrtc/modules/rtp_rtcp/include',
-  'webrtc/modules/rtp_rtcp/source',  # DEPRECATED.
+  'webrtc/modules/rtp_rtcp/source',
   'webrtc/modules/utility/include',
   'webrtc/modules/video_coding/codecs/h264/include',
   'webrtc/modules/video_coding/codecs/i420/include',
   'webrtc/modules/video_coding/codecs/vp8/include',
   'webrtc/modules/video_coding/codecs/vp9/include',
   'webrtc/modules/video_coding/include',
-  'webrtc/system_wrappers/include',  # DEPRECATED.
+  'webrtc/system_wrappers/include',
   'webrtc/voice_engine/include',
 )
+API_DIRS = NATIVE_API_DIRS[:] + LEGACY_API_DIRS[:]
 
 
 def _VerifyNativeApiHeadersListIsValid(input_api, output_api):
@@ -85,7 +91,7 @@ def _VerifyNativeApiHeadersListIsValid(input_api, output_api):
   non_existing_paths = []
   native_api_full_paths = [
       input_api.os_path.join(input_api.PresubmitLocalPath(),
-                             *path.split('/')) for path in NATIVE_API_DIRS]
+                             *path.split('/')) for path in API_DIRS]
   for path in native_api_full_paths:
     if not os.path.isdir(path):
       non_existing_paths.append(path)
@@ -120,7 +126,7 @@ def _CheckNativeApiHeaderChanges(input_api, output_api):
   files = []
   for f in input_api.AffectedSourceFiles(input_api.FilterSourceFile):
     if f.LocalPath().endswith('.h'):
-      for path in NATIVE_API_DIRS:
+      for path in API_DIRS:
         if os.path.dirname(f.LocalPath()) == path:
           files.append(f)
 
@@ -251,7 +257,7 @@ def _CheckNoRtcBaseDeps(input_api, gyp_files, output_api):
 
 def _CheckNoSourcesAboveGyp(input_api, gyp_files, output_api):
   # Disallow referencing source files with paths above the GYP file location.
-  source_pattern = input_api.re.compile(r'sources.*?\[(.*?)\]',
+  source_pattern = input_api.re.compile(r'\'sources\'.*?\[(.*?)\]',
                                         re.MULTILINE | re.DOTALL)
   file_pattern = input_api.re.compile(r"'((\.\./.*?)|(<\(webrtc_root\).*?))'")
   violating_gyp_files = set()
@@ -265,8 +271,8 @@ def _CheckNoSourcesAboveGyp(input_api, gyp_files, output_api):
     for source_block_match in source_pattern.finditer(contents):
       # Find all source list entries starting with ../ in the source block
       # (exclude overrides entries).
-      for file_list_match in file_pattern.finditer(source_block_match.group(0)):
-        source_file = file_list_match.group(0)
+      for file_list_match in file_pattern.finditer(source_block_match.group(1)):
+        source_file = file_list_match.group(1)
         if 'overrides/' not in source_file:
           violating_source_entries.append(source_file)
           violating_gyp_files.add(gyp_file)
@@ -391,6 +397,7 @@ def _RunPythonTests(input_api, output_api):
 
   test_directories = [
     join('tools', 'autoroller', 'unittests'),
+    join('webrtc', 'tools', 'py_event_log_analyzer'),
   ]
 
   tests = []
@@ -454,11 +461,22 @@ def _CommonChecks(input_api, output_api):
   # we need to have different license checks in talk/ and webrtc/ directories.
   # Instead, hand-picked checks are included below.
 
+  # .m and .mm files are ObjC files. For simplicity we will consider .h files in
+  # ObjC subdirectories ObjC headers.
+  objc_filter_list = (r'.+\.m$', r'.+\.mm$', r'.+objc\/.+\.h$')
   # Skip long-lines check for DEPS, GN and GYP files.
-  long_lines_sources = lambda x: input_api.FilterSourceFile(x,
-      black_list=(r'.+\.gyp$', r'.+\.gypi$', r'.+\.gn$', r'.+\.gni$', 'DEPS'))
+  build_file_filter_list = (r'.+\.gyp$', r'.+\.gypi$', r'.+\.gn$', r'.+\.gni$',
+      'DEPS')
+  eighty_char_sources = lambda x: input_api.FilterSourceFile(x,
+      black_list=build_file_filter_list + objc_filter_list)
+  hundred_char_sources = lambda x: input_api.FilterSourceFile(x,
+      white_list=objc_filter_list)
   results.extend(input_api.canned_checks.CheckLongLines(
-      input_api, output_api, maxlen=80, source_file_filter=long_lines_sources))
+      input_api, output_api, maxlen=80, source_file_filter=eighty_char_sources))
+  results.extend(input_api.canned_checks.CheckLongLines(
+      input_api, output_api, maxlen=100,
+      source_file_filter=hundred_char_sources))
+
   results.extend(input_api.canned_checks.CheckChangeHasNoTabs(
       input_api, output_api))
   results.extend(input_api.canned_checks.CheckChangeHasNoStrayWhitespace(
