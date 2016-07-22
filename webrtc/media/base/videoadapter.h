@@ -65,10 +65,6 @@ class VideoAdapter {
   int previous_height_;   // Previous adapter output height.
   // The target timestamp for the next frame based on requested format.
   rtc::Optional<int64_t> next_frame_timestamp_ns_ GUARDED_BY(critical_section_);
-  // --twinlife-- 150720
-  int twinlife_max_num_pixels_;
-  int64_t twinlife_min_interval_;
-  // --twinlife-- 150720
 
   // Max number of pixels requested via calls to OnOutputFormatRequest,
   // OnResolutionRequest respectively.
@@ -81,10 +77,6 @@ class VideoAdapter {
   rtc::CriticalSection critical_section_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(VideoAdapter);
-  // --twinlife-- 150720
- public:
-  void SetTwinlifeLimits(int max_num_pixels, int64_t min_interval);
-  // --twinlife-- 150720
 };
 
 }  // namespace cricket

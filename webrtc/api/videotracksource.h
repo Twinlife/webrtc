@@ -19,9 +19,7 @@
 
 // VideoTrackSource implements VideoTrackSourceInterface.
 namespace webrtc {
-  // --twinlife-- 160422
-class MediaConstraintsInterface;
-  // --twinlife-- 160422
+
 class VideoTrackSource : public Notifier<VideoTrackSourceInterface> {
  public:
   VideoTrackSource(rtc::VideoSourceInterface<cricket::VideoFrame>* source,
@@ -47,10 +45,7 @@ class VideoTrackSource : public Notifier<VideoTrackSourceInterface> {
   void AddOrUpdateSink(rtc::VideoSinkInterface<cricket::VideoFrame>* sink,
                        const rtc::VideoSinkWants& wants) override;
   void RemoveSink(rtc::VideoSinkInterface<cricket::VideoFrame>* sink) override;
-  // --twinlife-- 160422
-  void UpdateConstraints(const webrtc::MediaConstraintsInterface* constraints) {};
-  // --twinlife-- 160422
-  
+
  private:
   rtc::ThreadChecker worker_thread_checker_;
   rtc::VideoSourceInterface<cricket::VideoFrame>* source_;

@@ -261,13 +261,7 @@ class VideoCapturer : public sigslot::has_slots<>,
   // orig_width and orig_height are used only to produce stats.
   void OnFrame(const VideoFrame& frame, int orig_width, int orig_height);
 
-  // --twinlife-- 160410
- public:
-  // --twinlife-- 160410
   VideoAdapter* video_adapter() { return &video_adapter_; }
-  // --twinlife-- 160410
- protected:
-  // --twinlife-- 160410
 
   void SetCaptureState(CaptureState state);
 

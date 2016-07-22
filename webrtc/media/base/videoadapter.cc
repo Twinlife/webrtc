@@ -119,10 +119,6 @@ VideoAdapter::VideoAdapter()
       adaption_changes_(0),
       previous_width_(0),
       previous_height_(0),
-       // --twinlife-- 150720
-      twinlife_max_num_pixels_(INT_MAX),
-      twinlife_min_interval_(0),
-      // --twinlife-- 150720
       resolution_request_max_pixel_count_(std::numeric_limits<int>::max()),
       resolution_request_max_pixel_count_step_up_(0) {}
 
@@ -216,12 +212,6 @@ bool VideoAdapter::AdaptFrameResolution(int in_width,
         std::min(in_height, static_cast<int>(in_width / requested_aspect));
   }
 
-  // --twinlife-- 150720
-  if (max_pixel_count > twinlife_max_num_pixels_) {
-    max_pixel_count = twinlife_max_num_pixels_;
-  }
-  // --twinlife-- 150720
-
   // Find best scale factor.
   const Fraction scale =
       FindScale(*cropped_width * *cropped_height,
@@ -275,12 +265,5 @@ void VideoAdapter::OnResolutionRequest(
   resolution_request_max_pixel_count_step_up_ =
       max_pixel_count_step_up.value_or(0);
 }
-
-// --twinlife-- 150720
-void VideoAdapter::SetTwinlifeLimits(int max_num_pixels, int64_t min_interval) {
-  twinlife_max_num_pixels_ = max_num_pixels;
-  twinlife_min_interval_ = min_interval;
-}
-// --twinlife-- 150720
 
 }  // namespace cricket

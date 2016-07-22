@@ -1973,17 +1973,6 @@ JOW(void, VideoSource_restart)(
   reinterpret_cast<VideoTrackSourceInterface*>(j_p_source)->Restart();
 }
 
-// --twinlife-- 160425
-JOW(void, VideoSource_nativeUpdateConstraints)(
-    JNIEnv* jni, jclass, jlong j_p_source, jobject j_constraints) {
-  RTC_CHECK(j_p_source);
-  std::unique_ptr<ConstraintsWrapper> constraints(
-      new ConstraintsWrapper(jni, j_constraints));
-  reinterpret_cast<VideoTrackSourceInterface*>(j_p_source)->
-    UpdateConstraints(constraints.get());
-}
-// --twinlife-- 160425
-
 JOW(jstring, MediaStreamTrack_nativeId)(JNIEnv* jni, jclass, jlong j_p) {
   return JavaStringFromStdString(
       jni, reinterpret_cast<MediaStreamTrackInterface*>(j_p)->id());
