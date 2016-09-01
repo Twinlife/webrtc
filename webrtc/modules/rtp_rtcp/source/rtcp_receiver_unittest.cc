@@ -13,6 +13,7 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
+#include "webrtc/base/rate_limiter.h"
 #include "webrtc/common_types.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/mock/mock_remote_bitrate_observer.h"
 #include "webrtc/modules/remote_bitrate_estimator/remote_bitrate_estimator_single_stream.h"
@@ -80,24 +81,24 @@ class RtcpReceiverTest : public ::testing::Test {
         remote_bitrate_observer_(),
         remote_bitrate_estimator_(
             new RemoteBitrateEstimatorSingleStream(&remote_bitrate_observer_,
-                                                   &system_clock_)) {
-    test_transport_ = new TestTransport();
+                                                   &system_clock_)),
+        retransmission_rate_limiter_(&system_clock_, 1000) {
+    test_transport_.reset(new TestTransport());
 
     RtpRtcp::Configuration configuration;
     configuration.audio = false;
     configuration.clock = &system_clock_;
-    configuration.outgoing_transport = test_transport_;
+    configuration.outgoing_transport = test_transport_.get();
     configuration.remote_bitrate_estimator = remote_bitrate_estimator_.get();
-    rtp_rtcp_impl_ = new ModuleRtpRtcpImpl(configuration);
-    rtcp_receiver_ = new RTCPReceiver(&system_clock_, false, nullptr, nullptr,
-                                      nullptr, nullptr, rtp_rtcp_impl_);
-    test_transport_->SetRTCPReceiver(rtcp_receiver_);
+    configuration.retransmission_rate_limiter = &retransmission_rate_limiter_;
+    rtp_rtcp_impl_.reset(new ModuleRtpRtcpImpl(configuration));
+    rtcp_receiver_.reset(new RTCPReceiver(&system_clock_, false, nullptr,
+                                          nullptr, nullptr, nullptr,
+                                          rtp_rtcp_impl_.get()));
+    test_transport_->SetRTCPReceiver(rtcp_receiver_.get());
   }
-  ~RtcpReceiverTest() {
-    delete rtcp_receiver_;
-    delete rtp_rtcp_impl_;
-    delete test_transport_;
-  }
+
+  ~RtcpReceiverTest() {}
 
   // Injects an RTCP packet into the receiver.
   // Returns 0 for OK, non-0 for failure.
@@ -142,12 +143,13 @@ class RtcpReceiverTest : public ::testing::Test {
 
   OverUseDetectorOptions over_use_detector_options_;
   SimulatedClock system_clock_;
-  ModuleRtpRtcpImpl* rtp_rtcp_impl_;
-  RTCPReceiver* rtcp_receiver_;
-  TestTransport* test_transport_;
+  std::unique_ptr<TestTransport> test_transport_;
+  std::unique_ptr<ModuleRtpRtcpImpl> rtp_rtcp_impl_;
+  std::unique_ptr<RTCPReceiver> rtcp_receiver_;
   RTCPHelp::RTCPPacketInformation rtcp_packet_info_;
   MockRemoteBitrateObserver remote_bitrate_observer_;
   std::unique_ptr<RemoteBitrateEstimator> remote_bitrate_estimator_;
+  RateLimiter retransmission_rate_limiter_;
 };
 
 
@@ -1031,7 +1033,7 @@ TEST_F(RtcpReceiverTest, ReceiveReportTimeout) {
 
 TEST_F(RtcpReceiverTest, TmmbrReceivedWithNoIncomingPacket) {
   // This call is expected to fail because no data has arrived.
-  EXPECT_EQ(-1, rtcp_receiver_->TMMBRReceived(0, 0, nullptr));
+  EXPECT_EQ(0u, rtcp_receiver_->TmmbrReceived().size());
 }
 
 TEST_F(RtcpReceiverTest, TmmbrPacketAccepted) {
@@ -1053,12 +1055,10 @@ TEST_F(RtcpReceiverTest, TmmbrPacketAccepted) {
   rtc::Buffer packet = compound.Build();
   EXPECT_EQ(0, InjectRtcpPacket(packet.data(), packet.size()));
 
-  EXPECT_EQ(1, rtcp_receiver_->TMMBRReceived(0, 0, nullptr));
-  TMMBRSet candidate_set;
-  candidate_set.VerifyAndAllocateSet(1);
-  EXPECT_EQ(1, rtcp_receiver_->TMMBRReceived(1, 0, &candidate_set));
-  EXPECT_LT(0U, candidate_set.Tmmbr(0));
-  EXPECT_EQ(kSenderSsrc, candidate_set.Ssrc(0));
+  std::vector<rtcp::TmmbItem> candidate_set = rtcp_receiver_->TmmbrReceived();
+  EXPECT_EQ(1u, candidate_set.size());
+  EXPECT_LT(0U, candidate_set[0].bitrate_bps());
+  EXPECT_EQ(kSenderSsrc, candidate_set[0].ssrc());
 }
 
 TEST_F(RtcpReceiverTest, TmmbrPacketNotForUsIgnored) {
@@ -1081,7 +1081,7 @@ TEST_F(RtcpReceiverTest, TmmbrPacketNotForUsIgnored) {
   ssrcs.insert(kMediaFlowSsrc);
   rtcp_receiver_->SetSsrcs(kMediaFlowSsrc, ssrcs);
   EXPECT_EQ(0, InjectRtcpPacket(packet.data(), packet.size()));
-  EXPECT_EQ(0, rtcp_receiver_->TMMBRReceived(0, 0, nullptr));
+  EXPECT_EQ(0u, rtcp_receiver_->TmmbrReceived().size());
 }
 
 TEST_F(RtcpReceiverTest, TmmbrPacketZeroRateIgnored) {
@@ -1103,7 +1103,7 @@ TEST_F(RtcpReceiverTest, TmmbrPacketZeroRateIgnored) {
   rtc::Buffer packet = compound.Build();
 
   EXPECT_EQ(0, InjectRtcpPacket(packet.data(), packet.size()));
-  EXPECT_EQ(0, rtcp_receiver_->TMMBRReceived(0, 0, nullptr));
+  EXPECT_EQ(0u, rtcp_receiver_->TmmbrReceived().size());
 }
 
 TEST_F(RtcpReceiverTest, TmmbrThreeConstraintsTimeOut) {
@@ -1131,18 +1131,15 @@ TEST_F(RtcpReceiverTest, TmmbrThreeConstraintsTimeOut) {
     system_clock_.AdvanceTimeMilliseconds(5000);
   }
   // It is now starttime + 15.
-  EXPECT_EQ(3, rtcp_receiver_->TMMBRReceived(0, 0, nullptr));
-  TMMBRSet candidate_set;
-  candidate_set.VerifyAndAllocateSet(3);
-  EXPECT_EQ(3, rtcp_receiver_->TMMBRReceived(3, 0, &candidate_set));
-  EXPECT_LT(0U, candidate_set.Tmmbr(0));
+  std::vector<rtcp::TmmbItem> candidate_set = rtcp_receiver_->TmmbrReceived();
+  EXPECT_EQ(3u, candidate_set.size());
+  EXPECT_LT(0U, candidate_set[0].bitrate_bps());
   // We expect the timeout to be 25 seconds. Advance the clock by 12
   // seconds, timing out the first packet.
   system_clock_.AdvanceTimeMilliseconds(12000);
-  // Odd behaviour: Just counting them does not trigger the timeout.
-  EXPECT_EQ(3, rtcp_receiver_->TMMBRReceived(0, 0, nullptr));
-  EXPECT_EQ(2, rtcp_receiver_->TMMBRReceived(3, 0, &candidate_set));
-  EXPECT_EQ(kSenderSsrc + 1, candidate_set.Ssrc(0));
+  candidate_set = rtcp_receiver_->TmmbrReceived();
+  EXPECT_EQ(2u, candidate_set.size());
+  EXPECT_EQ(kSenderSsrc + 1, candidate_set[0].ssrc());
 }
 
 TEST_F(RtcpReceiverTest, Callbacks) {

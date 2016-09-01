@@ -93,13 +93,13 @@ class EncodedImageCallbackImpl : public EncodedImageCallback {
 
   virtual ~EncodedImageCallbackImpl() {}
 
-  int32_t Encoded(const EncodedImage& encoded_image,
-                  const CodecSpecificInfo* codec_specific_info,
-                  const RTPFragmentationHeader* fragmentation) override {
+  Result OnEncodedImage(const EncodedImage& encoded_image,
+                        const CodecSpecificInfo* codec_specific_info,
+                        const RTPFragmentationHeader* fragmentation) override {
     assert(codec_specific_info);
     frame_data_.push_back(
         FrameData(encoded_image._length, *codec_specific_info));
-    return 0;
+    return Result(Result::OK, encoded_image._timeStamp);
   }
 
   void Reset() {
@@ -180,8 +180,7 @@ class TestVideoSender : public ::testing::Test {
   TestVideoSender() : clock_(1000), encoded_frame_callback_(&clock_) {}
 
   void SetUp() override {
-    sender_.reset(
-        new VideoSender(&clock_, &encoded_frame_callback_, nullptr, nullptr));
+    sender_.reset(new VideoSender(&clock_, &encoded_frame_callback_, nullptr));
   }
 
   void AddFrame() {

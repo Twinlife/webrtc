@@ -92,6 +92,8 @@ source_set("rtc_media") {
     "base/videosourcebase.h",
     "devices/videorendererfactory.h",
     "engine/nullwebrtcvideoengine.h",
+    "engine/payload_type_mapper.cc",
+    "engine/payload_type_mapper.h",
     "engine/simulcast.cc",
     "engine/simulcast.h",
     "engine/webrtccommon.h",
@@ -139,6 +141,7 @@ source_set("rtc_media") {
     ]
   }
 
+  include_dirs = []
   if (rtc_build_libyuv) {
     deps += [ "$rtc_libyuv_dir" ]
     public_deps = [
@@ -150,7 +153,7 @@ source_set("rtc_media") {
   }
 
   if (rtc_build_usrsctp) {
-    include_dirs = [
+    include_dirs += [
       # TODO(jiayl): move this into the public_configs of
       # //third_party/usrsctp/BUILD.gn.
       "//third_party/usrsctp/usrsctplib",
@@ -220,6 +223,8 @@ if (rtc_include_tests) {
   source_set("rtc_unittest_main") {
     testonly = true
 
+    include_dirs = []
+    public_deps = []
     deps = []
     sources = [
       "base/fakemediaengine.h",
@@ -227,6 +232,7 @@ if (rtc_include_tests) {
       "base/fakertp.h",
       "base/fakevideocapturer.h",
       "base/fakevideorenderer.h",
+      "base/test/mock_mediachannel.h",
       "base/testutils.cc",
       "base/testutils.h",
       "engine/fakewebrtccall.cc",
@@ -247,9 +253,7 @@ if (rtc_include_tests) {
 
     if (rtc_build_libyuv) {
       deps += [ "$rtc_libyuv_dir" ]
-      public_deps = [
-        "$rtc_libyuv_dir",
-      ]
+      public_deps += [ "$rtc_libyuv_dir" ]
     } else {
       # Need to add a directory normally exported by libyuv.
       include_dirs += [ "$rtc_libyuv_dir/include" ]
@@ -301,6 +305,7 @@ if (rtc_include_tests) {
       "base/videoengine_unittest.h",
       "base/videoframe_unittest.h",
       "engine/nullwebrtcvideoengine_unittest.cc",
+      "engine/payload_type_mapper_unittest.cc",
       "engine/simulcast_unittest.cc",
       "engine/webrtcmediaengine_unittest.cc",
       "engine/webrtcvideocapturer_unittest.cc",

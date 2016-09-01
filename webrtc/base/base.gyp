@@ -68,10 +68,14 @@
         'platform_thread.cc',
         'platform_thread.h',
         'platform_thread_types.h',
+        'race_checker.cc',
+        'race_checker.h',
         'random.cc',
         'random.h',
         'rate_statistics.cc',
         'rate_statistics.h',
+        'rate_limiter.cc',
+        'rate_limiter.h',
         'ratetracker.cc',
         'ratetracker.h',
         'refcount.h',
@@ -125,6 +129,13 @@
             },
           },
         }], # OS=="mac" and build_with_chromium==0
+        ['OS=="android"', {
+          'link_settings': {
+            'libraries': [
+              '-llog',
+            ],
+          },
+        }],
       ],
     },
     {
@@ -134,6 +145,9 @@
         'rtc_base_approved',
       ],
       'sources': [
+        'sequenced_task_checker.h',
+        'sequenced_task_checker_impl.cc',
+        'sequenced_task_checker_impl.h',
         'task_queue.h',
         'task_queue_posix.h',
       ],
@@ -148,6 +162,10 @@
             'task_queue_libevent.cc',
             'task_queue_posix.cc',
           ],
+          'defines': [ 'WEBRTC_BUILD_LIBEVENT' ],
+          'all_dependent_settings': {
+            'defines': [ 'WEBRTC_BUILD_LIBEVENT' ]
+          },
         }, {
           # If not libevent, fall back to the other task queues.
           'conditions': [

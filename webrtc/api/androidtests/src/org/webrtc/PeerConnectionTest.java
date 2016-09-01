@@ -10,12 +10,12 @@
 
 package org.webrtc;
 
-import org.webrtc.Metrics;
 import org.webrtc.Metrics.HistogramInfo;
 import org.webrtc.PeerConnection.IceConnectionState;
 import org.webrtc.PeerConnection.IceGatheringState;
 import org.webrtc.PeerConnection.SignalingState;
 
+import android.test.ActivityTestCase;
 import android.test.suitebuilder.annotation.MediumTest;
 
 import java.io.File;
@@ -23,18 +23,16 @@ import java.lang.ref.WeakReference;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.TreeSet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /** End-to-end tests for PeerConnection.java. */
-import android.test.ActivityTestCase;
-
 public class PeerConnectionTest extends ActivityTestCase {
   private static final int TIMEOUT_SECONDS = 20;
   private TreeSet<String> threadsBeforeTest = null;
@@ -569,8 +567,11 @@ public class PeerConnectionTest extends ActivityTestCase {
 
     // We want to use the same camera for offerer & answerer, so create it here
     // instead of in addTracksToPC.
-    VideoSource videoSource = factory.createVideoSource(
-        VideoCapturerAndroid.create("", null), new MediaConstraints());
+    final CameraEnumerator enumerator = new Camera1Enumerator(false /* captureToTexture */);
+    final VideoCapturer videoCapturer =
+        enumerator.createCapturer(enumerator.getDeviceNames()[0], null);
+    final VideoSource videoSource = factory.createVideoSource(videoCapturer);
+    videoCapturer.startCapture(640, 480, 30);
 
     offeringExpectations.expectRenegotiationNeeded();
     WeakReference<MediaStream> oLMS = addTracksToPC(
@@ -744,13 +745,15 @@ public class PeerConnectionTest extends ActivityTestCase {
     answeringExpectations.expectStateChange(DataChannel.State.CLOSED);
     answeringExpectations.dataChannel.close();
     offeringExpectations.dataChannel.close();
-    getMetrics();
 
     // Free the Java-land objects and collect them.
     shutdownPC(offeringPC, offeringExpectations);
     offeringPC = null;
     shutdownPC(answeringPC, answeringExpectations);
     answeringPC = null;
+    getMetrics();
+    videoCapturer.stopCapture();
+    videoCapturer.dispose();
     videoSource.dispose();
     factory.dispose();
     System.gc();
@@ -787,8 +790,11 @@ public class PeerConnectionTest extends ActivityTestCase {
 
     // We want to use the same camera for offerer & answerer, so create it here
     // instead of in addTracksToPC.
-    VideoSource videoSource = factory.createVideoSource(
-        VideoCapturerAndroid.create("", null), new MediaConstraints());
+    final CameraEnumerator enumerator = new Camera1Enumerator(false /* captureToTexture */);
+    final VideoCapturer videoCapturer =
+        enumerator.createCapturer(enumerator.getDeviceNames()[0], null);
+    final VideoSource videoSource = factory.createVideoSource(videoCapturer);
+    videoCapturer.startCapture(640, 480, 30);
 
     // Add offerer media stream.
     offeringExpectations.expectRenegotiationNeeded();
@@ -1018,6 +1024,8 @@ public class PeerConnectionTest extends ActivityTestCase {
     answeringPC = null;
     offererVideoTrack.dispose();
     offererAudioTrack.dispose();
+    videoCapturer.stopCapture();
+    videoCapturer.dispose();
     videoSource.dispose();
     factory.dispose();
     System.gc();
@@ -1026,13 +1034,11 @@ public class PeerConnectionTest extends ActivityTestCase {
   private static void getMetrics() {
     Metrics metrics = Metrics.getAndReset();
     assertTrue(metrics.map.size() > 0);
-    // Test for example that the configured video codec is recorded when a
-    // VideoSendStream is created.
-    String name = "WebRTC.Video.Encoder.CodecType";
+    // Test for example that the lifetime of a Call is recorded.
+    String name = "WebRTC.Call.LifetimeInSeconds";
     assertTrue(metrics.map.containsKey(name));
     HistogramInfo info = metrics.map.get(name);
-    assertEquals(1, info.samples.size());       // samples: <sample value, # of events>
-    assertTrue(info.samples.containsValue(2));  // <codec type, 2>, same codec configured
+    assertTrue(info.samples.size() > 0);
   }
 
   private static void shutdownPC(

@@ -169,22 +169,8 @@ BaseChannel::BaseChannel(rtc::Thread* worker_thread,
       content_name_(content_name),
 
       transport_controller_(transport_controller),
-      rtcp_transport_enabled_(rtcp),
-      transport_channel_(nullptr),
-      rtcp_transport_channel_(nullptr),
-      rtp_ready_to_send_(false),
-      rtcp_ready_to_send_(false),
-      writable_(false),
-      was_ever_writable_(false),
-      has_received_packet_(false),
-      dtls_keyed_(false),
-      secure_required_(false),
-      rtp_abs_sendtime_extn_id_(-1),
-
-      media_channel_(media_channel),
-      enabled_(false),
-      local_content_direction_(MD_INACTIVE),
-      remote_content_direction_(MD_INACTIVE) {
+      rtcp_enabled_(rtcp),
+      media_channel_(media_channel) {
   ASSERT(worker_thread_ == rtc::Thread::Current());
   if (transport_controller) {
     RTC_DCHECK_EQ(network_thread, transport_controller->network_thread());
@@ -268,7 +254,7 @@ bool BaseChannel::InitNetwork_n(const std::string* bundle_transport_name) {
   if (!SetDtlsSrtpCryptoSuites_n(transport_channel_, false)) {
     return false;
   }
-  if (rtcp_transport_enabled() &&
+  if (rtcp_transport_channel_ &&
       !SetDtlsSrtpCryptoSuites_n(rtcp_transport_channel_, true)) {
     return false;
   }
@@ -308,10 +294,12 @@ bool BaseChannel::SetTransport_n(const std::string& transport_name) {
     srtp_filter_.ResetParams();
   }
 
-  // TODO(guoweis): Remove this grossness when we remove non-muxed RTCP.
-  if (rtcp_transport_enabled()) {
+  // If this BaseChannel uses RTCP and we haven't fully negotiated RTCP mux,
+  // we need an RTCP channel.
+  if (rtcp_enabled_ && !rtcp_mux_filter_.IsFullyActive()) {
     LOG(LS_INFO) << "Create RTCP TransportChannel for " << content_name()
                  << " on " << transport_name << " transport ";
+    // TODO(deadbeef): Remove this grossness when we remove non-muxed RTCP.
     SetRtcpTransportChannel_n(
         transport_controller_->CreateTransportChannel_n(
             transport_name, cricket::ICE_CANDIDATE_COMPONENT_RTCP),
@@ -328,12 +316,11 @@ bool BaseChannel::SetTransport_n(const std::string& transport_name) {
     return false;
   }
 
-  // TODO(guoweis): Remove this grossness when we remove non-muxed RTCP.
-  if (rtcp_transport_enabled()) {
+  // TODO(deadbeef): Remove this grossness when we remove non-muxed RTCP.
+  if (rtcp_transport_channel_) {
     // We can only update the RTCP ready to send after set_transport_channel has
     // handled channel writability.
-    SetReadyToSend(
-        true, rtcp_transport_channel_ && rtcp_transport_channel_->writable());
+    SetReadyToSend(true, rtcp_transport_channel_->writable());
   }
   transport_name_ = transport_name;
   return true;
@@ -555,6 +542,11 @@ int BaseChannel::SetOption_n(SocketType type,
   return channel ? channel->SetOption(opt, value) : -1;
 }
 
+bool BaseChannel::SetCryptoOptions(const rtc::CryptoOptions& crypto_options) {
+  crypto_options_ = crypto_options;
+  return true;
+}
+
 void BaseChannel::OnWritableState(TransportChannel* channel) {
   RTC_DCHECK(channel == transport_channel_ ||
              channel == rtcp_transport_channel_);
@@ -758,8 +750,8 @@ bool BaseChannel::SendPacket(bool rtcp,
   int ret = channel->SendPacket(packet->data<char>(), packet->size(),
                                 updated_options, flags);
   if (ret != static_cast<int>(packet->size())) {
-    if (channel->GetError() == EWOULDBLOCK) {
-      LOG(LS_WARNING) << "Got EWOULDBLOCK from socket.";
+    if (channel->GetError() == ENOTCONN) {
+      LOG(LS_WARNING) << "Got ENOTCONN from transport.";
       SetReadyToSend(rtcp, false);
     }
     return false;
@@ -964,7 +956,7 @@ bool BaseChannel::SetDtlsSrtpCryptoSuites_n(TransportChannel* tc, bool rtcp) {
   if (!rtcp) {
     GetSrtpCryptoSuites_n(&crypto_suites);
   } else {
-    GetDefaultSrtpCryptoSuites(&crypto_suites);
+    GetDefaultSrtpCryptoSuites(crypto_options(), &crypto_suites);
   }
   return tc->SetSrtpCryptoSuites(crypto_suites);
 }
@@ -996,9 +988,16 @@ bool BaseChannel::SetupDtlsSrtp_n(bool rtcp_channel) {
                << content_name() << " "
                << PacketType(rtcp_channel);
 
+  int key_len;
+  int salt_len;
+  if (!rtc::GetSrtpKeyAndSaltLengths(selected_crypto_suite, &key_len,
+      &salt_len)) {
+    LOG(LS_ERROR) << "Unknown DTLS-SRTP crypto suite" << selected_crypto_suite;
+    return false;
+  }
+
   // OK, we're now doing DTLS (RFC 5764)
-  std::vector<unsigned char> dtls_buffer(SRTP_MASTER_KEY_KEY_LEN * 2 +
-                                         SRTP_MASTER_KEY_SALT_LEN * 2);
+  std::vector<unsigned char> dtls_buffer(key_len * 2 + salt_len * 2);
 
   // RFC 5705 exporter using the RFC 5764 parameters
   if (!channel->ExportKeyingMaterial(
@@ -1011,22 +1010,16 @@ bool BaseChannel::SetupDtlsSrtp_n(bool rtcp_channel) {
   }
 
   // Sync up the keys with the DTLS-SRTP interface
-  std::vector<unsigned char> client_write_key(SRTP_MASTER_KEY_KEY_LEN +
-    SRTP_MASTER_KEY_SALT_LEN);
-  std::vector<unsigned char> server_write_key(SRTP_MASTER_KEY_KEY_LEN +
-    SRTP_MASTER_KEY_SALT_LEN);
+  std::vector<unsigned char> client_write_key(key_len + salt_len);
+  std::vector<unsigned char> server_write_key(key_len + salt_len);
   size_t offset = 0;
-  memcpy(&client_write_key[0], &dtls_buffer[offset],
-    SRTP_MASTER_KEY_KEY_LEN);
-  offset += SRTP_MASTER_KEY_KEY_LEN;
-  memcpy(&server_write_key[0], &dtls_buffer[offset],
-    SRTP_MASTER_KEY_KEY_LEN);
-  offset += SRTP_MASTER_KEY_KEY_LEN;
-  memcpy(&client_write_key[SRTP_MASTER_KEY_KEY_LEN],
-    &dtls_buffer[offset], SRTP_MASTER_KEY_SALT_LEN);
-  offset += SRTP_MASTER_KEY_SALT_LEN;
-  memcpy(&server_write_key[SRTP_MASTER_KEY_KEY_LEN],
-    &dtls_buffer[offset], SRTP_MASTER_KEY_SALT_LEN);
+  memcpy(&client_write_key[0], &dtls_buffer[offset], key_len);
+  offset += key_len;
+  memcpy(&server_write_key[0], &dtls_buffer[offset], key_len);
+  offset += key_len;
+  memcpy(&client_write_key[key_len], &dtls_buffer[offset], salt_len);
+  offset += salt_len;
+  memcpy(&server_write_key[key_len], &dtls_buffer[offset], salt_len);
 
   std::vector<unsigned char> *send_key, *recv_key;
   rtc::SSLRole role;
@@ -1202,7 +1195,6 @@ void BaseChannel::ActivateRtcpMux_n() {
   if (!rtcp_mux_filter_.IsActive()) {
     rtcp_mux_filter_.SetActive();
     SetRtcpTransportChannel_n(nullptr, true);
-    rtcp_transport_enabled_ = false;
   }
 }
 
@@ -1226,7 +1218,6 @@ bool BaseChannel::SetRtcpMux_n(bool enable,
                      << " by destroying RTCP transport channel for "
                      << transport_name();
         SetRtcpTransportChannel_n(nullptr, true);
-        rtcp_transport_enabled_ = false;
       }
       break;
     case CA_UPDATE:
@@ -1846,7 +1837,7 @@ void VoiceChannel::OnAudioMonitorUpdate(AudioMonitor* monitor,
 
 void VoiceChannel::GetSrtpCryptoSuites_n(
     std::vector<int>* crypto_suites) const {
-  GetSupportedAudioCryptoSuites(crypto_suites);
+  GetSupportedAudioCryptoSuites(crypto_options(), crypto_suites);
 }
 
 VideoChannel::VideoChannel(rtc::Thread* worker_thread,
@@ -2107,7 +2098,7 @@ void VideoChannel::OnMediaMonitorUpdate(
 
 void VideoChannel::GetSrtpCryptoSuites_n(
     std::vector<int>* crypto_suites) const {
-  GetSupportedVideoCryptoSuites(crypto_suites);
+  GetSupportedVideoCryptoSuites(crypto_options(), crypto_suites);
 }
 
 DataChannel::DataChannel(rtc::Thread* worker_thread,
@@ -2420,7 +2411,7 @@ void DataChannel::OnDataChannelReadyToSend(bool writable) {
 }
 
 void DataChannel::GetSrtpCryptoSuites_n(std::vector<int>* crypto_suites) const {
-  GetSupportedDataCryptoSuites(crypto_suites);
+  GetSupportedDataCryptoSuites(crypto_options(), crypto_suites);
 }
 
 bool DataChannel::ShouldSetupDtlsSrtp_n() const {

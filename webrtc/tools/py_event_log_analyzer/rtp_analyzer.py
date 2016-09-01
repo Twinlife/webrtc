@@ -12,6 +12,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import optparse
 import sys
 
 import matplotlib.pyplot as plt
@@ -25,6 +26,7 @@ class RTPStatistics(object):
   """Has methods for calculating and plotting RTP stream statistics."""
 
   BANDWIDTH_SMOOTHING_WINDOW_SIZE = 10
+  PLOT_RESOLUTION_MS = 50
 
   def __init__(self, data_points):
     """Initializes object with data_points and computes simple statistics.
@@ -44,6 +46,15 @@ class RTPStatistics(object):
     self.ssrc_size_table = misc.ssrc_normalized_size_table(self.data_points)
     self.bandwidth_kbps = None
     self.smooth_bw_kbps = None
+
+  def print_header_statistics(self):
+    print("{:>6}{:>11}{:>11}{:>6}{:>6}{:>3}{:>11}".format(
+        "SeqNo", "TimeStamp", "SendTime", "Size", "PT", "M", "SSRC"))
+    for point in self.data_points:
+      print("{:>6}{:>11}{:>11}{:>6}{:>6}{:>3}{:>11}".format(
+          point.sequence_number, point.timestamp,
+          int(point.arrival_timestamp_ms), point.size, point.payload_type,
+          point.marker_bit, "0x{:x}".format(point.ssrc)))
 
   def print_ssrc_info(self, ssrc_id, ssrc):
     """Prints packet and size statistics for a given SSRC.
@@ -116,9 +127,12 @@ class RTPStatistics(object):
   def print_sequence_number_statistics(self):
     seq_no_set = set(point.sequence_number for point in
                      self.data_points)
-    print("Missing sequence numbers: {} out of {}".format(
-        max(seq_no_set) - min(seq_no_set) + 1 - len(seq_no_set),
-        len(seq_no_set)
+    missing_sequence_numbers = max(seq_no_set) - min(seq_no_set) + (
+        1 - len(seq_no_set))
+    print("Missing sequence numbers: {} out of {}  ({:.2f}%)".format(
+        missing_sequence_numbers,
+        len(seq_no_set),
+        100 * missing_sequence_numbers / len(seq_no_set)
     ))
     print("Duplicated packets: {}".format(len(self.data_points) -
                                           len(seq_no_set)))
@@ -126,7 +140,7 @@ class RTPStatistics(object):
         misc.count_reordered([point.sequence_number for point in
                               self.data_points])))
 
-  def estimate_frequency(self):
+  def estimate_frequency(self, always_query_sample_rate):
     """Estimates frequency and updates data.
 
     Guesses the most probable frequency by looking at changes in
@@ -146,17 +160,18 @@ class RTPStatistics(object):
       if abs((freq_est - f) / f) < 0.05:
         freq = f
 
-    print("Estimated frequency: {}kHz".format(freq_est))
-    if freq is None:
-      freq = int(misc.get_input(
-          "Frequency could not be guessed. Input frequency (in kHz)> "))
+    print("Estimated frequency: {:.3f}kHz".format(freq_est))
+    if freq is None or always_query_sample_rate:
+      if not always_query_sample_rate:
+        print ("Frequency could not be guessed.", end=" ")
+      freq = int(misc.get_input("Input frequency (in kHz)> "))
     else:
       print("Guessed frequency: {}kHz".format(freq))
 
     for point in self.data_points:
       point.real_send_time_ms = (point.timestamp -
                                  self.data_points[0].timestamp) / freq
-      point.delay = point.arrival_timestamp_ms -point.real_send_time_ms
+      point.delay = point.arrival_timestamp_ms - point.real_send_time_ms
 
   def print_duration_statistics(self):
     """Prints delay, clock drift and bitrate statistics."""
@@ -207,13 +222,15 @@ class RTPStatistics(object):
     BANDWIDTH_SMOOTHING_WINDOW_SIZE. Averaging is done with
     numpy.correlate.
     """
-    self.bandwidth_kbps = []
-    for i in range(len(self.data_points) - 1):
-      self.bandwidth_kbps.append(self.data_points[i].size * 8 /
-                                 (self.data_points[i +
-                                                   1].real_send_time_ms -
-                                  self.data_points[i].real_send_time_ms)
-                                )
+    start_ms = self.data_points[0].real_send_time_ms
+    stop_ms = self.data_points[-1].real_send_time_ms
+    (self.bandwidth_kbps, _) = numpy.histogram(
+        [point.real_send_time_ms for point in self.data_points],
+        bins=numpy.arange(start_ms, stop_ms,
+                          RTPStatistics.PLOT_RESOLUTION_MS),
+        weights=[point.size * 8 / RTPStatistics.PLOT_RESOLUTION_MS
+                 for point in self.data_points]
+    )
     correlate_filter = (numpy.ones(
         RTPStatistics.BANDWIDTH_SMOOTHING_WINDOW_SIZE) /
                         RTPStatistics.BANDWIDTH_SMOOTHING_WINDOW_SIZE)
@@ -221,36 +238,80 @@ class RTPStatistics(object):
 
   def plot_statistics(self):
     """Plots changes in delay and average bandwidth."""
+
+    start_ms = self.data_points[0].real_send_time_ms
+    stop_ms = self.data_points[-1].real_send_time_ms
+    time_axis = numpy.arange(start_ms / 1000, stop_ms / 1000,
+                             RTPStatistics.PLOT_RESOLUTION_MS / 1000)
+
+    delay = calculate_delay(start_ms, stop_ms,
+                            RTPStatistics.PLOT_RESOLUTION_MS,
+                            self.data_points)
+
     plt.figure(1)
-    plt.plot([f.real_send_time_ms / 1000 for f in self.data_points],
-             [f.absdelay for f in self.data_points])
+    plt.plot(time_axis, delay)
     plt.xlabel("Send time [s]")
     plt.ylabel("Relative transport delay [ms]")
 
     plt.figure(2)
-    plt.plot([f.real_send_time_ms / 1000 for f in
-              self.data_points][:len(self.smooth_bw_kbps)],
-             self.smooth_bw_kbps[:len(self.data_points)])
+    plt.plot(time_axis[:len(self.smooth_bw_kbps)], self.smooth_bw_kbps)
     plt.xlabel("Send time [s]")
     plt.ylabel("Bandwidth [kbps]")
 
     plt.show()
 
 
+def calculate_delay(start, stop, step, points):
+  """Quantizes the time coordinates for the delay.
+
+  Quantizes points by rounding the timestamps downwards to the nearest
+  point in the time sequence start, start+step, start+2*step... Takes
+  the average of the delays of points rounded to the same. Returns
+  masked array, in which time points with no value are masked.
+
+  """
+  grouped_delays = [[] for _ in numpy.arange(start, stop, step)]
+  rounded_value_index = lambda x: int((x - start) / step)
+  for point in points:
+    grouped_delays[rounded_value_index(point.real_send_time_ms)
+                  ].append(point.absdelay)
+  regularized_delays = [numpy.average(arr) if arr else None for arr in
+                        grouped_delays]
+  return numpy.ma.masked_values(regularized_delays, None)
+
+
 def main():
-  if len(sys.argv) < 2:
-    print("Usage: python rtp_analyzer.py <filename of rtc event log>")
+  usage = "Usage: %prog [options] <filename of rtc event log>"
+  parser = optparse.OptionParser(usage=usage)
+  parser.add_option("--dump_header_to_stdout",
+                    default=False, action="store_true",
+                    help="print header info to stdout; similar to rtp_analyze")
+  parser.add_option("--query_sample_rate",
+                    default=False, action="store_true",
+                    help="always query user for real sample rate")
+
+  (options, args) = parser.parse_args()
+
+  if len(args) < 1:
+    parser.print_help()
     sys.exit(0)
 
-  data_points = pb_parse.parse_protobuf(sys.argv[1])
+  data_points = pb_parse.parse_protobuf(args[0])
   rtp_stats = RTPStatistics(data_points)
+
+  if options.dump_header_to_stdout:
+    print("Printing header info to stdout.", file=sys.stderr)
+    rtp_stats.print_header_statistics()
+    sys.exit(0)
+
   chosen_ssrc = rtp_stats.choose_ssrc()
   print("Chosen SSRC: 0X{:X}".format(chosen_ssrc))
 
   rtp_stats.filter_ssrc(chosen_ssrc)
+
   print("Statistics:")
   rtp_stats.print_sequence_number_statistics()
-  rtp_stats.estimate_frequency()
+  rtp_stats.estimate_frequency(options.query_sample_rate)
   rtp_stats.print_duration_statistics()
   rtp_stats.remove_reordered()
   rtp_stats.compute_bandwidth()

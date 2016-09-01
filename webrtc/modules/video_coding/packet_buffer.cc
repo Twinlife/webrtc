@@ -12,30 +12,46 @@
 
 #include <algorithm>
 #include <limits>
+#include <utility>
 
+#include "webrtc/base/atomicops.h"
 #include "webrtc/base/checks.h"
 #include "webrtc/base/logging.h"
 #include "webrtc/modules/video_coding/frame_object.h"
+#include "webrtc/system_wrappers/include/clock.h"
 
 namespace webrtc {
 namespace video_coding {
 
-PacketBuffer::PacketBuffer(size_t start_buffer_size,
+rtc::scoped_refptr<PacketBuffer> PacketBuffer::Create(
+    Clock* clock,
+    size_t start_buffer_size,
+    size_t max_buffer_size,
+    OnReceivedFrameCallback* received_frame_callback) {
+  return rtc::scoped_refptr<PacketBuffer>(new PacketBuffer(
+      clock, start_buffer_size, max_buffer_size, received_frame_callback));
+}
+
+PacketBuffer::PacketBuffer(Clock* clock,
+                           size_t start_buffer_size,
                            size_t max_buffer_size,
-                           OnCompleteFrameCallback* frame_callback)
-    : size_(start_buffer_size),
+                           OnReceivedFrameCallback* received_frame_callback)
+    : clock_(clock),
+      size_(start_buffer_size),
       max_size_(max_buffer_size),
       first_seq_num_(0),
       last_seq_num_(0),
       first_packet_received_(false),
       data_buffer_(start_buffer_size),
       sequence_buffer_(start_buffer_size),
-      reference_finder_(frame_callback) {
+      received_frame_callback_(received_frame_callback) {
   RTC_DCHECK_LE(start_buffer_size, max_buffer_size);
   // Buffer size must always be a power of 2.
   RTC_DCHECK((start_buffer_size & (start_buffer_size - 1)) == 0);
   RTC_DCHECK((max_buffer_size & (max_buffer_size - 1)) == 0);
 }
+
+PacketBuffer::~PacketBuffer() {}
 
 bool PacketBuffer::InsertPacket(const VCMPacket& packet) {
   rtc::CritScope lock(&crit_);
@@ -157,9 +173,11 @@ void PacketBuffer::FindFrames(uint16_t seq_num) {
         start_seq_num--;
       }
 
-      std::unique_ptr<RtpFrameObject> frame(new RtpFrameObject(
-          this, start_seq_num, seq_num, frame_size, max_nack_count));
-      reference_finder_.ManageFrame(std::move(frame));
+      std::unique_ptr<RtpFrameObject> frame(
+          new RtpFrameObject(this, start_seq_num, seq_num, frame_size,
+                             max_nack_count, clock_->TimeInMilliseconds()));
+
+      received_frame_callback_->OnReceivedFrame(std::move(frame));
     }
 
     index = (index + 1) % size_;
@@ -227,6 +245,18 @@ void PacketBuffer::Clear() {
     sequence_buffer_[i].used = false;
 
   first_packet_received_ = false;
+}
+
+int PacketBuffer::AddRef() const {
+  return rtc::AtomicOps::Increment(&ref_count_);
+}
+
+int PacketBuffer::Release() const {
+  int count = rtc::AtomicOps::Decrement(&ref_count_);
+  if (!count) {
+    delete this;
+  }
+  return count;
 }
 
 }  // namespace video_coding

@@ -14,8 +14,10 @@ import android.app.Activity;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
 import android.os.Bundle;
+import android.preference.ListPreference;
 import android.preference.Preference;
 
+import org.webrtc.Camera2Enumerator;
 import org.webrtc.voiceengine.WebRtcAudioUtils;
 
 /**
@@ -25,6 +27,7 @@ public class SettingsActivity extends Activity
     implements OnSharedPreferenceChangeListener{
   private SettingsFragment settingsFragment;
   private String keyprefVideoCall;
+  private String keyprefCamera2;
   private String keyprefResolution;
   private String keyprefFps;
   private String keyprefCaptureQualitySlider;
@@ -41,6 +44,10 @@ public class SettingsActivity extends Activity
   private String keyprefAecDump;
   private String keyprefOpenSLES;
   private String keyprefDisableBuiltInAEC;
+  private String keyprefDisableBuiltInAGC;
+  private String keyprefDisableBuiltInNS;
+  private String keyprefEnableLevelControl;
+  private String keyprefSpeakerphone;
 
   private String keyPrefRoomServerUrl;
   private String keyPrefDisplayHud;
@@ -50,6 +57,7 @@ public class SettingsActivity extends Activity
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     keyprefVideoCall = getString(R.string.pref_videocall_key);
+    keyprefCamera2 = getString(R.string.pref_camera2_key);
     keyprefResolution = getString(R.string.pref_resolution_key);
     keyprefFps = getString(R.string.pref_fps_key);
     keyprefCaptureQualitySlider = getString(R.string.pref_capturequalityslider_key);
@@ -66,6 +74,10 @@ public class SettingsActivity extends Activity
     keyprefAecDump = getString(R.string.pref_aecdump_key);
     keyprefOpenSLES = getString(R.string.pref_opensles_key);
     keyprefDisableBuiltInAEC = getString(R.string.pref_disable_built_in_aec_key);
+    keyprefDisableBuiltInAGC = getString(R.string.pref_disable_built_in_agc_key);
+    keyprefDisableBuiltInNS = getString(R.string.pref_disable_built_in_ns_key);
+    keyprefEnableLevelControl = getString(R.string.pref_enable_level_control_key);
+    keyprefSpeakerphone = getString(R.string.pref_speakerphone_key);
 
     keyPrefRoomServerUrl = getString(R.string.pref_room_server_url_key);
     keyPrefDisplayHud = getString(R.string.pref_displayhud_key);
@@ -86,6 +98,7 @@ public class SettingsActivity extends Activity
         settingsFragment.getPreferenceScreen().getSharedPreferences();
     sharedPreferences.registerOnSharedPreferenceChangeListener(this);
     updateSummaryB(sharedPreferences, keyprefVideoCall);
+    updateSummaryB(sharedPreferences, keyprefCamera2);
     updateSummary(sharedPreferences, keyprefResolution);
     updateSummary(sharedPreferences, keyprefFps);
     updateSummaryB(sharedPreferences, keyprefCaptureQualitySlider);
@@ -104,10 +117,22 @@ public class SettingsActivity extends Activity
     updateSummaryB(sharedPreferences, keyprefAecDump);
     updateSummaryB(sharedPreferences, keyprefOpenSLES);
     updateSummaryB(sharedPreferences, keyprefDisableBuiltInAEC);
+    updateSummaryB(sharedPreferences, keyprefDisableBuiltInAGC);
+    updateSummaryB(sharedPreferences, keyprefDisableBuiltInNS);
+    updateSummaryB(sharedPreferences, keyprefEnableLevelControl);
+    updateSummaryList(sharedPreferences, keyprefSpeakerphone);
 
     updateSummary(sharedPreferences, keyPrefRoomServerUrl);
     updateSummaryB(sharedPreferences, keyPrefDisplayHud);
     updateSummaryB(sharedPreferences, keyPrefTracing);
+
+    if (!Camera2Enumerator.isSupported()) {
+      Preference camera2Preference =
+          settingsFragment.findPreference(keyprefCamera2);
+
+      camera2Preference.setSummary(getString(R.string.pref_camera2_not_supported));
+      camera2Preference.setEnabled(false);
+    }
 
     // Disable forcing WebRTC based AEC so it won't affect our value.
     // Otherwise, if it was enabled, isAcousticEchoCancelerSupported would always return false.
@@ -116,9 +141,26 @@ public class SettingsActivity extends Activity
       Preference disableBuiltInAECPreference =
           settingsFragment.findPreference(keyprefDisableBuiltInAEC);
 
-
       disableBuiltInAECPreference.setSummary(getString(R.string.pref_built_in_aec_not_available));
       disableBuiltInAECPreference.setEnabled(false);
+    }
+
+    WebRtcAudioUtils.setWebRtcBasedAutomaticGainControl(false);
+    if (!WebRtcAudioUtils.isAutomaticGainControlSupported()) {
+      Preference disableBuiltInAGCPreference =
+          settingsFragment.findPreference(keyprefDisableBuiltInAGC);
+
+      disableBuiltInAGCPreference.setSummary(getString(R.string.pref_built_in_agc_not_available));
+      disableBuiltInAGCPreference.setEnabled(false);
+    }
+
+    WebRtcAudioUtils.setWebRtcBasedNoiseSuppressor(false);
+    if (!WebRtcAudioUtils.isNoiseSuppressorSupported()) {
+      Preference disableBuiltInNSPreference =
+          settingsFragment.findPreference(keyprefDisableBuiltInNS);
+
+      disableBuiltInNSPreference.setSummary(getString(R.string.pref_built_in_ns_not_available));
+      disableBuiltInNSPreference.setEnabled(false);
     }
   }
 
@@ -145,6 +187,7 @@ public class SettingsActivity extends Activity
         || key.equals(keyprefStartAudioBitrateValue)) {
       updateSummaryBitrate(sharedPreferences, key);
     } else if (key.equals(keyprefVideoCall)
+        || key.equals(keyprefCamera2)
         || key.equals(keyPrefTracing)
         || key.equals(keyprefCaptureQualitySlider)
         || key.equals(keyprefHwCodec)
@@ -153,8 +196,13 @@ public class SettingsActivity extends Activity
         || key.equals(keyprefAecDump)
         || key.equals(keyprefOpenSLES)
         || key.equals(keyprefDisableBuiltInAEC)
+        || key.equals(keyprefDisableBuiltInAGC)
+        || key.equals(keyprefDisableBuiltInNS)
+        || key.equals(keyprefEnableLevelControl)
         || key.equals(keyPrefDisplayHud)) {
       updateSummaryB(sharedPreferences, key);
+    } else if (key.equals(keyprefSpeakerphone)) {
+      updateSummaryList(sharedPreferences, key);
     }
     if (key.equals(keyprefStartVideoBitrateType)) {
       setVideoBitrateEnable(sharedPreferences);
@@ -181,6 +229,11 @@ public class SettingsActivity extends Activity
     updatedPref.setSummary(sharedPreferences.getBoolean(key, true)
         ? getString(R.string.pref_value_enabled)
         : getString(R.string.pref_value_disabled));
+  }
+
+  private void updateSummaryList(SharedPreferences sharedPreferences, String key) {
+    ListPreference updatedPref = (ListPreference) settingsFragment.findPreference(key);
+    updatedPref.setSummary(updatedPref.getEntry());
   }
 
   private void setVideoBitrateEnable(SharedPreferences sharedPreferences) {

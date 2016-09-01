@@ -70,11 +70,18 @@ class VCMJitterEstimatorMock : public VCMJitterEstimator {
                void(int64_t frameDelayMs,
                     uint32_t frameSizeBytes,
                     bool incompleteFrame));
+  MOCK_METHOD1(GetJitterEstimate, int(double rttMultiplier));
 };
 
-class FrameObjectMock : public FrameObject {
+class FrameObjectFake : public FrameObject {
  public:
-  MOCK_CONST_METHOD1(GetBitstream, bool(uint8_t* destination));
+  bool GetBitstream(uint8_t* destination) const override { return true; }
+
+  uint32_t Timestamp() const override { return timestamp; }
+
+  int64_t ReceivedTime() const override { return 0; }
+
+  int64_t RenderTime() const override { return _renderTimeMs; }
 };
 
 class TestFrameBuffer2 : public ::testing::Test {
@@ -113,7 +120,7 @@ class TestFrameBuffer2 : public ::testing::Test {
                   "To many references specified for FrameObject.");
     std::array<uint16_t, sizeof...(refs)> references = {{refs...}};
 
-    std::unique_ptr<FrameObjectMock> frame(new FrameObjectMock());
+    std::unique_ptr<FrameObjectFake> frame(new FrameObjectFake());
     frame->picture_id = picture_id;
     frame->spatial_layer = spatial_layer;
     frame->timestamp = ts_ms * 90;
@@ -172,7 +179,7 @@ class TestFrameBuffer2 : public ::testing::Test {
 
   SimulatedClock clock_;
   VCMTimingFake timing_;
-  VCMJitterEstimatorMock jitter_estimator_;
+  ::testing::NiceMock<VCMJitterEstimatorMock> jitter_estimator_;
   FrameBuffer buffer_;
   std::vector<std::unique_ptr<FrameObject>> frames_;
   Random rand_;
@@ -328,6 +335,20 @@ TEST_F(TestFrameBuffer2, InsertLateFrame) {
   CheckFrame(0, pid, 0);
   CheckFrame(1, pid + 2, 0);
   CheckNoFrame(2);
+}
+
+TEST_F(TestFrameBuffer2, ProtectionMode) {
+  uint16_t pid = Rand();
+  uint32_t ts = Rand();
+
+  EXPECT_CALL(jitter_estimator_, GetJitterEstimate(1.0));
+  InsertFrame(pid, 0, ts, false);
+  ExtractFrame();
+
+  buffer_.SetProtectionMode(kProtectionNackFEC);
+  EXPECT_CALL(jitter_estimator_, GetJitterEstimate(0.0));
+  InsertFrame(pid + 1, 0, ts, false);
+  ExtractFrame();
 }
 
 }  // namespace video_coding

@@ -46,24 +46,7 @@ RTPExtensionType StringToRtpExtensionType(const std::string& extension) {
 }
 
 RtpRtcp::Configuration::Configuration()
-    : audio(false),
-      receiver_only(false),
-      clock(nullptr),
-      receive_statistics(NullObjectReceiveStatistics()),
-      outgoing_transport(nullptr),
-      intra_frame_callback(nullptr),
-      bandwidth_callback(nullptr),
-      transport_feedback_callback(nullptr),
-      rtt_stats(nullptr),
-      rtcp_packet_type_counter_observer(nullptr),
-      remote_bitrate_estimator(nullptr),
-      paced_sender(nullptr),
-      transport_sequence_number_allocator(nullptr),
-      send_bitrate_observer(nullptr),
-      send_frame_count_observer(nullptr),
-      send_side_delay_observer(nullptr),
-      event_log(nullptr),
-      send_packet_observer(nullptr) {}
+    : receive_statistics(NullObjectReceiveStatistics()) {}
 
 RtpRtcp* RtpRtcp::CreateRtpRtcp(const RtpRtcp::Configuration& configuration) {
   if (configuration.clock) {
@@ -89,7 +72,8 @@ ModuleRtpRtcpImpl::ModuleRtpRtcpImpl(const Configuration& configuration)
                   configuration.send_frame_count_observer,
                   configuration.send_side_delay_observer,
                   configuration.event_log,
-                  configuration.send_packet_observer),
+                  configuration.send_packet_observer,
+                  configuration.retransmission_rate_limiter),
       rtcp_sender_(configuration.audio,
                    configuration.clock,
                    configuration.receive_statistics,
@@ -121,6 +105,11 @@ ModuleRtpRtcpImpl::ModuleRtpRtcpImpl(const Configuration& configuration)
   uint32_t SSRC = rtp_sender_.SSRC();
   rtcp_sender_.SetSSRC(SSRC);
   SetRtcpReceiverSsrcs(SSRC);
+
+  // Make sure rtcp sender use same timestamp offset as rtp sender.
+  rtcp_sender_.SetTimestampOffset(rtp_sender_.TimestampOffset());
+
+  // Set default packet size limit.
   SetMaxTransferUnit(IP_PACKET_SIZE);
 }
 
@@ -205,17 +194,12 @@ void ModuleRtpRtcpImpl::Process() {
     }
   }
 
-  // For sending streams, make sure to not send a SR before media has been sent.
-  if (rtcp_sender_.TimeToSendRTCPReport()) {
-    RTCPSender::FeedbackState state = GetFeedbackState();
-    // Prevent sending streams to send SR before any media has been sent.
-    if (!rtcp_sender_.Sending() || state.packets_sent > 0)
-      rtcp_sender_.SendRTCP(state, kRtcpReport);
-  }
+  if (rtcp_sender_.TimeToSendRTCPReport())
+    rtcp_sender_.SendRTCP(GetFeedbackState(), kRtcpReport);
 
   if (UpdateRTCPReceiveInformationTimers()) {
-    // A receiver has timed out
-    rtcp_receiver_.UpdateTMMBR();
+    // A receiver has timed out.
+    rtcp_receiver_.UpdateTmmbr();
   }
 }
 
@@ -248,8 +232,8 @@ int32_t ModuleRtpRtcpImpl::IncomingRtcpPacket(
     return -1;
   }
   RTCPHelp::RTCPPacketInformation rtcp_packet_information;
-  int32_t ret_val = rtcp_receiver_.IncomingRTCPPacket(
-      rtcp_packet_information, &rtcp_parser);
+  int32_t ret_val =
+      rtcp_receiver_.IncomingRTCPPacket(rtcp_packet_information, &rtcp_parser);
   if (ret_val == 0) {
     rtcp_receiver_.TriggerCallbacksFromRTCPPacket(rtcp_packet_information);
   }
@@ -259,11 +243,8 @@ int32_t ModuleRtpRtcpImpl::IncomingRtcpPacket(
 int32_t ModuleRtpRtcpImpl::RegisterSendPayload(
     const CodecInst& voice_codec) {
   return rtp_sender_.RegisterPayload(
-           voice_codec.plname,
-           voice_codec.pltype,
-           voice_codec.plfreq,
-           voice_codec.channels,
-           (voice_codec.rate < 0) ? 0 : voice_codec.rate);
+      voice_codec.plname, voice_codec.pltype, voice_codec.plfreq,
+      voice_codec.channels, (voice_codec.rate < 0) ? 0 : voice_codec.rate);
 }
 
 int32_t ModuleRtpRtcpImpl::RegisterSendPayload(const VideoCodec& video_codec) {
@@ -286,13 +267,13 @@ int8_t ModuleRtpRtcpImpl::SendPayloadType() const {
 }
 
 uint32_t ModuleRtpRtcpImpl::StartTimestamp() const {
-  return rtp_sender_.StartTimestamp();
+  return rtp_sender_.TimestampOffset();
 }
 
 // Configure start timestamp, default is a random number.
 void ModuleRtpRtcpImpl::SetStartTimestamp(const uint32_t timestamp) {
-  rtcp_sender_.SetStartTimestamp(timestamp);
-  rtp_sender_.SetStartTimestamp(timestamp, true);
+  rtcp_sender_.SetTimestampOffset(timestamp);
+  rtp_sender_.SetTimestampOffset(timestamp);
 }
 
 uint16_t ModuleRtpRtcpImpl::SequenceNumber() const {
@@ -305,8 +286,8 @@ void ModuleRtpRtcpImpl::SetSequenceNumber(const uint16_t seq_num) {
 }
 
 void ModuleRtpRtcpImpl::SetRtpState(const RtpState& rtp_state) {
-  SetStartTimestamp(rtp_state.start_timestamp);
   rtp_sender_.SetRtpState(rtp_state);
+  rtcp_sender_.SetTimestampOffset(rtp_state.start_timestamp);
 }
 
 void ModuleRtpRtcpImpl::SetRtxState(const RtpState& rtp_state) {
@@ -377,13 +358,8 @@ int32_t ModuleRtpRtcpImpl::SetSendingStatus(const bool sending) {
 
     collision_detected_ = false;
 
-    // Generate a new time_stamp if true and not configured via API
     // Generate a new SSRC for the next "call" if false
     rtp_sender_.SetSendingStatus(sending);
-    if (sending) {
-      // Make sure the RTCP sender has the same timestamp offset.
-      rtcp_sender_.SetStartTimestamp(rtp_sender_.StartTimestamp());
-    }
 
     // Make sure that RTCP objects are aware of our SSRC (it could have changed
     // Due to collision)
@@ -408,7 +384,7 @@ bool ModuleRtpRtcpImpl::SendingMedia() const {
   return rtp_sender_.SendingMedia();
 }
 
-int32_t ModuleRtpRtcpImpl::SendOutgoingData(
+bool ModuleRtpRtcpImpl::SendOutgoingData(
     FrameType frame_type,
     int8_t payload_type,
     uint32_t time_stamp,
@@ -416,7 +392,8 @@ int32_t ModuleRtpRtcpImpl::SendOutgoingData(
     const uint8_t* payload_data,
     size_t payload_size,
     const RTPFragmentationHeader* fragmentation,
-    const RTPVideoHeader* rtp_video_hdr) {
+    const RTPVideoHeader* rtp_video_header,
+    uint32_t* transport_frame_id_out) {
   rtcp_sender_.SetLastRtpTime(time_stamp, capture_time_ms);
   // Make sure an RTCP report isn't queued behind a key frame.
   if (rtcp_sender_.TimeToSendRTCPReport(kVideoFrameKey == frame_type)) {
@@ -424,7 +401,7 @@ int32_t ModuleRtpRtcpImpl::SendOutgoingData(
   }
   return rtp_sender_.SendOutgoingData(
       frame_type, payload_type, time_stamp, capture_time_ms, payload_data,
-      payload_size, fragmentation, rtp_video_hdr);
+      payload_size, fragmentation, rtp_video_header, transport_frame_id_out);
 }
 
 bool ModuleRtpRtcpImpl::TimeToSendPacket(uint32_t ssrc,
@@ -684,9 +661,8 @@ void ModuleRtpRtcpImpl::SetTMMBRStatus(const bool enable) {
   rtcp_sender_.SetTMMBRStatus(enable);
 }
 
-void ModuleRtpRtcpImpl::SetTMMBN(
-    const std::vector<rtcp::TmmbItem>* bounding_set) {
-  rtcp_sender_.SetTMMBN(bounding_set);
+void ModuleRtpRtcpImpl::SetTmmbn(std::vector<rtcp::TmmbItem> bounding_set) {
+  rtcp_sender_.SetTmmbn(std::move(bounding_set));
 }
 
 // Returns the currently configured retransmission mode.
@@ -807,21 +783,6 @@ int32_t ModuleRtpRtcpImpl::SetAudioPacketSize(
 int32_t ModuleRtpRtcpImpl::SetAudioLevel(
     const uint8_t level_d_bov) {
   return rtp_sender_.SetAudioLevel(level_d_bov);
-}
-
-// Set payload type for Redundant Audio Data RFC 2198.
-int32_t ModuleRtpRtcpImpl::SetSendREDPayloadType(
-    const int8_t payload_type) {
-  return rtp_sender_.SetRED(payload_type);
-}
-
-// Get payload type for Redundant Audio Data RFC 2198.
-int32_t ModuleRtpRtcpImpl::SendREDPayloadType(int8_t* payload_type) const {
-  return rtp_sender_.RED(payload_type);
-}
-
-void ModuleRtpRtcpImpl::SetTargetSendBitrate(uint32_t bitrate_bps) {
-  rtp_sender_.SetTargetBitrate(bitrate_bps);
 }
 
 int32_t ModuleRtpRtcpImpl::SetKeyFrameRequestMethod(
@@ -963,9 +924,8 @@ bool ModuleRtpRtcpImpl::UpdateRTCPReceiveInformationTimers() {
 }
 
 // Called from RTCPsender.
-int32_t ModuleRtpRtcpImpl::BoundingSet(bool* tmmbr_owner,
-                                       TMMBRSet* bounding_set) {
-  return rtcp_receiver_.BoundingSet(tmmbr_owner, bounding_set);
+std::vector<rtcp::TmmbItem> ModuleRtpRtcpImpl::BoundingSet(bool* tmmbr_owner) {
+  return rtcp_receiver_.BoundingSet(tmmbr_owner);
 }
 
 int64_t ModuleRtpRtcpImpl::RtcpReportInterval() {

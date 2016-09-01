@@ -938,6 +938,113 @@ if (rtc_include_tests) {
            ]
   }
 
+  executable("delay_test") {
+    testonly = true
+    sources = [
+      "test/Channel.cc",
+      "test/PCMFile.cc",
+      "test/delay_test.cc",
+      "test/utility.cc",
+    ]
+
+    configs += [ "../..:common_config" ]
+    public_configs = [ "../..:common_inherited_config" ]
+
+    if (is_clang) {
+      # Suppress warnings from Chrome's Clang plugins.
+      # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
+      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    }
+
+    deps = [
+      ":audio_coding",
+      "../../:webrtc_common",
+      "../../system_wrappers",
+      "../../system_wrappers:system_wrappers_default",
+      "../../test:test_support",
+      "../rtp_rtcp",
+      "//build/config/sanitizers:deps",
+      "//testing/gtest",
+      "//third_party/gflags:gflags",
+    ]
+  }  # delay_test
+
+  executable("insert_packet_with_timing") {
+    testonly = true
+    sources = [
+      "test/Channel.cc",
+      "test/PCMFile.cc",
+      "test/insert_packet_with_timing.cc",
+    ]
+
+    configs += [ "../..:common_config" ]
+    public_configs = [ "../..:common_inherited_config" ]
+
+    if (is_clang) {
+      # Suppress warnings from Chrome's Clang plugins.
+      # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
+      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    }
+
+    deps = [
+      ":audio_coding",
+      "../../:webrtc_common",
+      "../../system_wrappers",
+      "../../system_wrappers:system_wrappers_default",
+      "../../test:test_support",
+      "../rtp_rtcp",
+      "//build/config/sanitizers:deps",
+      "//testing/gtest",
+      "//third_party/gflags:gflags",
+    ]
+  }  # insert_packet_with_timing
+
+  test("audio_decoder_unittests") {
+    testonly = true
+    sources = [
+      "neteq/audio_decoder_unittest.cc",
+    ]
+
+    configs += [ "../..:common_config" ]
+    public_configs = [ "../..:common_inherited_config" ]
+
+    if (is_clang) {
+      # Suppress warnings from the Chromium Clang plugins (bugs.webrtc.org/163).
+      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    }
+
+    deps = []
+
+    defines = neteq_defines
+
+    deps += audio_coding_deps
+    deps += [
+      ":audio_decoder_interface",
+      ":isac",
+      ":isac_fix",
+      ":neteq",
+      ":neteq_unittest_tools",
+      "../../common_audio/",
+      "../../test:test_support_main",
+      "//testing/gtest",
+    ]
+
+    if (is_android) {
+      deps += [ "//testing/android/native_test:native_test_native_code" ]
+      shard_timeout = 900
+
+      data = [
+        "//resources/audio_coding/testfile32kHz.pcm",
+      ]
+    }
+
+    if (is_ios) {
+      data = [
+        "//resources/audio_coding/testfile32kHz.pcm",
+      ]
+    }
+  }  # audio_decoder_unittests
+
   if (rtc_enable_protobuf) {
     proto_library("neteq_unittest_proto") {
       sources = [
@@ -998,6 +1105,38 @@ if (rtc_include_tests) {
     }
   }
 
+  test("audio_codec_speed_tests") {
+    testonly = true
+    defines = []
+    deps = []
+    sources = [
+      "codecs/isac/fix/test/isac_speed_test.cc",
+      "codecs/opus/opus_speed_test.cc",
+      "codecs/tools/audio_codec_speed_test.cc",
+      "codecs/tools/audio_codec_speed_test.h",
+    ]
+
+    if (is_clang) {
+      # Suppress warnings from the Chromium Clang plugins
+      # (bugs.webrtc.org/163).
+      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    }
+
+    if (is_android) {
+      deps += [ "//testing/android/native_test:native_test_native_code" ]
+      shard_timeout = 900
+    }
+
+    deps += [
+      ":isac_fix",
+      ":webrtc_opus",
+      "../../system_wrappers:system_wrappers_default",
+      "../../test:test_support_main",
+      "../audio_processing/",
+      "//testing/gtest",
+    ]
+  }
+
   source_set("neteq_test_support") {
     testonly = true
     sources = [
@@ -1005,8 +1144,6 @@ if (rtc_include_tests) {
       "neteq/tools/neteq_external_decoder_test.h",
       "neteq/tools/neteq_performance_test.cc",
       "neteq/tools/neteq_performance_test.h",
-      "neteq/tools/neteq_quality_test.cc",
-      "neteq/tools/neteq_quality_test.h",
     ]
 
     configs += [ "../..:common_config" ]
@@ -1026,6 +1163,29 @@ if (rtc_include_tests) {
     ]
   }
 
+  source_set("neteq_quality_test_support") {
+    testonly = true
+    sources = [
+      "neteq/tools/neteq_quality_test.cc",
+      "neteq/tools/neteq_quality_test.h",
+    ]
+
+    configs += [ "../..:common_config" ]
+    public_configs = [ "../..:common_inherited_config" ]
+
+    if (is_clang) {
+      # Suppress warnings from the Chromium Clang plugins (bugs.webrtc.org/163).
+      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    }
+
+    deps = [
+      ":neteq",
+      ":neteq_unittest_tools",
+      "//testing/gtest",
+      "//third_party/gflags",
+    ]
+  }
+
   config("neteq_unittest_tools_config") {
     include_dirs = [ "tools" ]
   }
@@ -1036,6 +1196,7 @@ if (rtc_include_tests) {
       "neteq/tools/audio_checksum.h",
       "neteq/tools/audio_loop.cc",
       "neteq/tools/audio_loop.h",
+      "neteq/tools/audio_sink.cc",
       "neteq/tools/audio_sink.h",
       "neteq/tools/constant_pcm_packet_source.cc",
       "neteq/tools/constant_pcm_packet_source.h",
@@ -1083,5 +1244,330 @@ if (rtc_include_tests) {
     if (rtc_enable_protobuf) {
       deps += [ ":rtc_event_log_source" ]
     }
+  }
+
+  source_set("neteq_test_tools") {
+    testonly = true
+    sources = [
+      "neteq/test/NETEQTEST_DummyRTPpacket.cc",
+      "neteq/test/NETEQTEST_DummyRTPpacket.h",
+      "neteq/test/NETEQTEST_RTPpacket.cc",
+      "neteq/test/NETEQTEST_RTPpacket.h",
+    ]
+
+    deps = [
+      ":cng",
+      ":g711",
+      ":g722",
+      ":ilbc",
+      ":isac",
+      ":pcm16b",
+      "../..:webrtc_common",
+      "//testing/gtest",
+    ]
+
+    include_dirs = [
+      "neteq/include",
+      "neteq/test",
+      "../../",
+    ]
+
+    if (is_win) {
+      cflags = [
+        # Disable warnings to enable Win64 build, issue 1323.
+        "/wd4267",  # size_t to int truncation
+      ]
+    }
+  }
+
+  config("RTPencode_config") {
+    defines = [
+      "CODEC_ILBC",
+      "CODEC_PCM16B",
+      "CODEC_G711",
+      "CODEC_G722",
+      "CODEC_ISAC",
+      "CODEC_PCM16B_WB",
+      "CODEC_ISAC_SWB",
+      "CODEC_PCM16B_32KHZ",
+      "CODEC_PCM16B_48KHZ",
+      "CODEC_CNGCODEC8",
+      "CODEC_CNGCODEC16",
+      "CODEC_CNGCODEC32",
+      "CODEC_ATEVENT_DECODE",
+      "CODEC_RED",
+      "CODEC_OPUS",
+    ]
+  }
+
+  executable("RTPencode") {
+    testonly = true
+
+    deps = [
+      # TODO(hlundin): Make RTPencode use ACM to encode files.
+      ":cng",
+      ":g711",
+      ":g722",
+      ":ilbc",
+      ":isac",
+      ":neteq_test_tools",
+      ":pcm16b",
+      ":webrtc_opus",
+      "../../common_audio",
+      "//build/config/sanitizers:deps",
+    ]
+
+    configs += [ ":RTPencode_config" ]
+
+    sources = [
+      "neteq/test/RTPencode.cc",
+    ]
+
+    include_dirs = [
+      "neteq/include",
+      "neteq/test",
+    ]
+
+    if (is_win) {
+      cflags = [
+        # Disable warnings to enable Win64 build, issue 1323.
+        "/wd4267",  # size_t to int truncation
+      ]
+    }
+  }
+
+  executable("RTPchange") {
+    testonly = true
+
+    sources = [
+      "neteq/test/RTPchange.cc",
+    ]
+
+    deps = [
+      ":neteq_test_tools",
+      "//build/config/sanitizers:deps",
+    ]
+  }
+
+  executable("rtpcat") {
+    testonly = true
+
+    sources = [
+      "neteq/tools/rtpcat.cc",
+    ]
+
+    deps = [
+      "../../system_wrappers:system_wrappers_default",
+      "../../test:rtp_test_utils",
+      "//build/config/sanitizers:deps",
+      "//testing/gtest",
+    ]
+  }
+
+  executable("RTPtimeshift") {
+    testonly = true
+
+    sources = [
+      "neteq/test/RTPtimeshift.cc",
+    ]
+
+    deps = [
+      ":neteq_test_tools",
+      "//build/config/sanitizers:deps",
+      "//testing/gtest",
+    ]
+  }
+
+  executable("RTPjitter") {
+    testonly = true
+    deps = [
+      "../..:webrtc_common",
+      "//build/config/sanitizers:deps",
+      "//testing/gtest",
+    ]
+    sources = [
+      "neteq/test/RTPjitter.cc",
+    ]
+  }
+
+  executable("rtp_analyze") {
+    testonly = true
+
+    sources = [
+      "neteq/tools/rtp_analyze.cc",
+    ]
+
+    deps = [
+      ":neteq",
+      ":neteq_unittest_tools",
+      ":pcm16b",
+      "../../system_wrappers:system_wrappers_default",
+      "//build/config/sanitizers:deps",
+      "//testing/gtest",
+      "//third_party/gflags:gflags",
+    ]
+
+    if (is_clang) {
+      # Suppress warnings from Chrome's Clang plugins.
+      # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
+      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    }
+  }
+
+  executable("neteq_opus_quality_test") {
+    testonly = true
+
+    sources = [
+      "neteq/test/neteq_opus_quality_test.cc",
+    ]
+
+    deps = [
+      ":neteq",
+      ":neteq_quality_test_support",
+      ":neteq_unittest_tools",
+      ":webrtc_opus",
+      "../../test:test_support_main",
+      "//build/config/sanitizers:deps",
+      "//testing/gtest",
+      "//third_party/gflags",
+    ]
+  }
+
+  executable("neteq_speed_test") {
+    testonly = true
+
+    sources = [
+      "neteq/test/neteq_speed_test.cc",
+    ]
+
+    deps = [
+      ":neteq",
+      ":neteq_test_support",
+      "../../system_wrappers:system_wrappers_default",
+      "../../test:test_support",
+      "//build/config/sanitizers:deps",
+      "//third_party/gflags",
+    ]
+  }
+
+  executable("audio_classifier_test") {
+    testonly = true
+    sources = [
+      "neteq/test/audio_classifier_test.cc",
+    ]
+    deps = [
+      ":neteq",
+      ":webrtc_opus",
+      "../../system_wrappers:system_wrappers_default",
+      "//build/config/sanitizers:deps",
+    ]
+  }
+
+  executable("neteq_ilbc_quality_test") {
+    testonly = true
+
+    sources = [
+      "neteq/test/neteq_ilbc_quality_test.cc",
+    ]
+
+    deps = [
+      ":ilbc",
+      ":neteq",
+      ":neteq_quality_test_support",
+      ":neteq_unittest_tools",
+      "../../system_wrappers:system_wrappers_default",
+      "../../test:test_support_main",
+      "//build/config/sanitizers:deps",
+      "//testing/gtest",
+      "//third_party/gflags",
+    ]
+  }
+
+  executable("neteq_isac_quality_test") {
+    testonly = true
+
+    sources = [
+      "neteq/test/neteq_isac_quality_test.cc",
+    ]
+
+    deps = [
+      ":isac_fix",
+      ":neteq",
+      ":neteq_quality_test_support",
+      "../../test:test_support_main",
+      "//build/config/sanitizers:deps",
+      "//testing/gtest",
+      "//third_party/gflags",
+    ]
+  }
+
+  executable("neteq_pcmu_quality_test") {
+    testonly = true
+
+    sources = [
+      "neteq/test/neteq_pcmu_quality_test.cc",
+    ]
+
+    deps = [
+      ":g711",
+      ":neteq",
+      ":neteq_quality_test_support",
+      "../../test:test_support_main",
+      "//build/config/sanitizers:deps",
+      "//testing/gtest",
+      "//third_party/gflags",
+    ]
+  }
+
+  executable("isac_fix_test") {
+    testonly = true
+
+    sources = [
+      "codecs/isac/fix/test/kenny.cc",
+    ]
+
+    deps = [
+      ":isac_fix",
+      "../../test:test_support",
+      "//build/config/sanitizers:deps",
+    ]
+
+    if (is_win) {
+      cflags = [
+        # Disable warnings to enable Win64 build, issue 1323.
+        "/wd4267",  # size_t to int truncation
+      ]
+    }
+  }
+
+  executable("g711_test") {
+    testonly = true
+
+    sources = [
+      "codecs/g711/test/testG711.cc",
+    ]
+
+    configs += [ "../..:common_config" ]
+    public_configs = [ "../..:common_inherited_config" ]
+
+    deps = [
+      ":g711",
+    ]
+  }
+
+  executable("g722_test") {
+    testonly = true
+
+    sources = [
+      "codecs/g722/test/testG722.cc",
+    ]
+
+    configs += [ "../..:common_config" ]
+    public_configs = [ "../..:common_inherited_config" ]
+
+    deps = [
+      ":g722",
+      "../..:webrtc_common",
+    ]
   }
 }

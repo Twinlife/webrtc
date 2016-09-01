@@ -31,10 +31,12 @@
 #include "webrtc/api/videocapturertracksource.h"
 #include "webrtc/api/videotrack.h"
 #include "webrtc/base/arraysize.h"
+#include "webrtc/base/bind.h"
 #include "webrtc/base/logging.h"
 #include "webrtc/base/stringencode.h"
 #include "webrtc/base/stringutils.h"
 #include "webrtc/base/trace_event.h"
+#include "webrtc/call.h"
 #include "webrtc/media/sctp/sctpdataengine.h"
 #include "webrtc/pc/channelmanager.h"
 #include "webrtc/system_wrappers/include/field_trial.h"
@@ -620,10 +622,13 @@ bool PeerConnection::Initialize(
   media_controller_.reset(
       factory_->CreateMediaController(configuration.media_config));
 
-  session_.reset(
-      new WebRtcSession(media_controller_.get(), factory_->network_thread(),
-                        factory_->worker_thread(), factory_->signaling_thread(),
-                        port_allocator_.get()));
+  session_.reset(new WebRtcSession(
+      media_controller_.get(), factory_->network_thread(),
+      factory_->worker_thread(), factory_->signaling_thread(),
+      port_allocator_.get(),
+      std::unique_ptr<cricket::TransportController>(
+          factory_->CreateTransportController(port_allocator_.get()))));
+
   stats_.reset(new StatsCollector(this));
 
   // Initialize the WebRtcSession. It creates transport channels etc.
@@ -798,6 +803,9 @@ bool PeerConnection::RemoveTrack(RtpSenderInterface* sender) {
 rtc::scoped_refptr<DtmfSenderInterface> PeerConnection::CreateDtmfSender(
     AudioTrackInterface* track) {
   TRACE_EVENT0("webrtc", "PeerConnection::CreateDtmfSender");
+  if (IsClosed()) {
+    return nullptr;
+  }
   if (!track) {
     LOG(LS_ERROR) << "CreateDtmfSender - track is NULL.";
     return NULL;
@@ -820,6 +828,9 @@ rtc::scoped_refptr<RtpSenderInterface> PeerConnection::CreateSender(
     const std::string& kind,
     const std::string& stream_id) {
   TRACE_EVENT0("webrtc", "PeerConnection::CreateSender");
+  if (IsClosed()) {
+    return nullptr;
+  }
   rtc::scoped_refptr<RtpSenderProxyWithInternal<RtpSenderInternal>> new_sender;
   if (kind == MediaStreamTrackInterface::kAudioKind) {
     new_sender = RtpSenderProxyWithInternal<RtpSenderInternal>::Create(
@@ -896,6 +907,23 @@ PeerConnection::CreateDataChannel(
     const std::string& label,
     const DataChannelInit* config) {
   TRACE_EVENT0("webrtc", "PeerConnection::CreateDataChannel");
+#ifdef HAVE_QUIC
+  if (session_->data_channel_type() == cricket::DCT_QUIC) {
+    // TODO(zhihuang): Handle case when config is NULL.
+    if (!config) {
+      LOG(LS_ERROR) << "Missing config for QUIC data channel.";
+      return nullptr;
+    }
+    // TODO(zhihuang): Allow unreliable or ordered QUIC data channels.
+    if (!config->reliable || config->ordered) {
+      LOG(LS_ERROR) << "QUIC data channel does not implement unreliable or "
+                       "ordered delivery.";
+      return nullptr;
+    }
+    return session_->quic_data_transport()->CreateDataChannel(label, config);
+  }
+#endif  // HAVE_QUIC
+
   bool first_datachannel = !HasDataChannels();
 
   std::unique_ptr<InternalDataChannelInit> internal_config;
@@ -1031,6 +1059,9 @@ void PeerConnection::SetLocalDescription(
     SetSessionDescriptionObserver* observer,
     SessionDescriptionInterface* desc) {
   TRACE_EVENT0("webrtc", "PeerConnection::SetLocalDescription");
+  if (IsClosed()) {
+    return;
+  }
   if (!VERIFY(observer != nullptr)) {
     LOG(LS_ERROR) << "SetLocalDescription - observer is NULL.";
     return;
@@ -1110,6 +1141,9 @@ void PeerConnection::SetRemoteDescription(
     SetSessionDescriptionObserver* observer,
     SessionDescriptionInterface* desc) {
   TRACE_EVENT0("webrtc", "PeerConnection::SetRemoteDescription");
+  if (IsClosed()) {
+    return;
+  }
   if (!VERIFY(observer != nullptr)) {
     LOG(LS_ERROR) << "SetRemoteDescription - observer is NULL.";
     return;
@@ -1232,6 +1266,9 @@ bool PeerConnection::SetConfiguration(const RTCConfiguration& configuration) {
 bool PeerConnection::AddIceCandidate(
     const IceCandidateInterface* ice_candidate) {
   TRACE_EVENT0("webrtc", "PeerConnection::AddIceCandidate");
+  if (IsClosed()) {
+    return false;
+  }
   return session_->ProcessIceMessage(ice_candidate);
 }
 
@@ -1261,6 +1298,18 @@ void PeerConnection::RegisterUMAObserver(UMAObserver* observer) {
           kPeerConnectionAddressFamilyCounter_Max);
     }
   }
+}
+
+bool PeerConnection::StartRtcEventLog(rtc::PlatformFile file,
+                                      int64_t max_size_bytes) {
+  return factory_->worker_thread()->Invoke<bool>(
+      RTC_FROM_HERE, rtc::Bind(&PeerConnection::StartRtcEventLog_w, this, file,
+                               max_size_bytes));
+}
+
+void PeerConnection::StopRtcEventLog() {
+  factory_->worker_thread()->Invoke<void>(
+      RTC_FROM_HERE, rtc::Bind(&PeerConnection::StopRtcEventLog_w, this));
 }
 
 const SessionDescriptionInterface* PeerConnection::local_description() const {
@@ -1406,17 +1455,26 @@ void PeerConnection::OnIceGatheringChange(
 
 void PeerConnection::OnIceCandidate(const IceCandidateInterface* candidate) {
   RTC_DCHECK(signaling_thread()->IsCurrent());
+  if (IsClosed()) {
+    return;
+  }
   observer_->OnIceCandidate(candidate);
 }
 
 void PeerConnection::OnIceCandidatesRemoved(
     const std::vector<cricket::Candidate>& candidates) {
   RTC_DCHECK(signaling_thread()->IsCurrent());
+  if (IsClosed()) {
+    return;
+  }
   observer_->OnIceCandidatesRemoved(candidates);
 }
 
 void PeerConnection::OnIceConnectionReceivingChange(bool receiving) {
   RTC_DCHECK(signaling_thread()->IsCurrent());
+  if (IsClosed()) {
+    return;
+  }
   observer_->OnIceConnectionReceivingChange(receiving);
 }
 
@@ -1436,6 +1494,9 @@ void PeerConnection::ChangeSignalingState(
 
 void PeerConnection::OnAudioTrackAdded(AudioTrackInterface* track,
                                        MediaStreamInterface* stream) {
+  if (IsClosed()) {
+    return;
+  }
   auto sender = FindSenderForTrack(track);
   if (sender != senders_.end()) {
     // We already have a sender for this track, so just change the stream_id
@@ -1468,6 +1529,9 @@ void PeerConnection::OnAudioTrackAdded(AudioTrackInterface* track,
 // indefinitely, when we have unified plan SDP.
 void PeerConnection::OnAudioTrackRemoved(AudioTrackInterface* track,
                                          MediaStreamInterface* stream) {
+  if (IsClosed()) {
+    return;
+  }
   auto sender = FindSenderForTrack(track);
   if (sender == senders_.end()) {
     LOG(LS_WARNING) << "RtpSender for track with id " << track->id()
@@ -1480,6 +1544,9 @@ void PeerConnection::OnAudioTrackRemoved(AudioTrackInterface* track,
 
 void PeerConnection::OnVideoTrackAdded(VideoTrackInterface* track,
                                        MediaStreamInterface* stream) {
+  if (IsClosed()) {
+    return;
+  }
   auto sender = FindSenderForTrack(track);
   if (sender != senders_.end()) {
     // We already have a sender for this track, so just change the stream_id
@@ -1503,6 +1570,9 @@ void PeerConnection::OnVideoTrackAdded(VideoTrackInterface* track,
 
 void PeerConnection::OnVideoTrackRemoved(VideoTrackInterface* track,
                                          MediaStreamInterface* stream) {
+  if (IsClosed()) {
+    return;
+  }
   auto sender = FindSenderForTrack(track);
   if (sender == senders_.end()) {
     LOG(LS_WARNING) << "RtpSender for track with id " << track->id()
@@ -1565,11 +1635,17 @@ bool PeerConnection::GetOptionsForOffer(
       (session_options->has_audio() || session_options->has_video() ||
        session_options->has_data());
 
-  if (session_->data_channel_type() == cricket::DCT_SCTP && HasDataChannels()) {
-    session_options->data_channel_type = cricket::DCT_SCTP;
+  // Intentionally unset the data channel type for RTP data channel with the
+  // second condition. Otherwise the RTP data channels would be successfully
+  // negotiated by default and the unit tests in WebRtcDataBrowserTest will fail
+  // when building with chromium. We want to leave RTP data channels broken, so
+  // people won't try to use them.
+  if (HasDataChannels() && session_->data_channel_type() != cricket::DCT_RTP) {
+    session_options->data_channel_type = session_->data_channel_type();
   }
 
   session_options->rtcp_cname = rtcp_cname_;
+  session_options->crypto_options = factory_->options().crypto_options;
   return true;
 }
 
@@ -1594,9 +1670,14 @@ void PeerConnection::FinishOptionsForAnswer(
   // RTP data channel is handled in MediaSessionOptions::AddStream. SCTP streams
   // are not signaled in the SDP so does not go through that path and must be
   // handled here.
-  if (session_->data_channel_type() == cricket::DCT_SCTP) {
-    session_options->data_channel_type = cricket::DCT_SCTP;
+  // Intentionally unset the data channel type for RTP data channel. Otherwise
+  // the RTP data channels would be successfully negotiated by default and the
+  // unit tests in WebRtcDataBrowserTest will fail when building with chromium.
+  // We want to leave RTP data channels broken, so people won't try to use them.
+  if (session_->data_channel_type() != cricket::DCT_RTP) {
+    session_options->data_channel_type = session_->data_channel_type();
   }
+  session_options->crypto_options = factory_->options().crypto_options;
 }
 
 bool PeerConnection::GetOptionsForAnswer(
@@ -1999,7 +2080,13 @@ rtc::scoped_refptr<DataChannel> PeerConnection::InternalCreateDataChannel(
 }
 
 bool PeerConnection::HasDataChannels() const {
+#ifdef HAVE_QUIC
+  return !rtp_data_channels_.empty() || !sctp_data_channels_.empty() ||
+         (session_->quic_data_transport() &&
+          session_->quic_data_transport()->HasDataChannels());
+#else
   return !rtp_data_channels_.empty() || !sctp_data_channels_.empty();
+#endif  // HAVE_QUIC
 }
 
 void PeerConnection::AllocateSctpSids(rtc::SSLRole role) {
@@ -2212,7 +2299,8 @@ bool PeerConnection::InitializePortAllocator_n(
   // Call this last since it may create pooled allocator sessions using the
   // properties set above.
   port_allocator_->SetConfiguration(stun_servers, turn_servers,
-                                    configuration.ice_candidate_pool_size);
+                                    configuration.ice_candidate_pool_size,
+                                    configuration.prune_turn_ports);
   return true;
 }
 
@@ -2228,8 +2316,17 @@ bool PeerConnection::ReconfigurePortAllocator_n(
   // Call this last since it may create pooled allocator sessions using the
   // candidate filter set above.
   port_allocator_->SetConfiguration(stun_servers, turn_servers,
-                                    configuration.ice_candidate_pool_size);
+                                    configuration.ice_candidate_pool_size,
+                                    configuration.prune_turn_ports);
   return true;
 }
 
+bool PeerConnection::StartRtcEventLog_w(rtc::PlatformFile file,
+                                        int64_t max_size_bytes) {
+  return media_controller_->call_w()->StartEventLog(file, max_size_bytes);
+}
+
+void PeerConnection::StopRtcEventLog_w() {
+  media_controller_->call_w()->StopEventLog();
+}
 }  // namespace webrtc

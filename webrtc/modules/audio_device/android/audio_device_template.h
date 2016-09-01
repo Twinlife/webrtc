@@ -53,23 +53,24 @@ class AudioDeviceTemplate : public AudioDeviceGeneric {
     return 0;
   }
 
-  int32_t Init() override {
+  InitStatus Init() override {
     LOG(INFO) << __FUNCTION__;
     RTC_DCHECK(thread_checker_.CalledOnValidThread());
     RTC_DCHECK(!initialized_);
-    if (!audio_manager_->Init())
-      return -1;
+    if (!audio_manager_->Init()) {
+      return InitStatus::OTHER_ERROR;
+    }
     if (output_.Init() != 0) {
       audio_manager_->Close();
-      return -1;
+      return InitStatus::PLAYOUT_ERROR;
     }
     if (input_.Init() != 0) {
       output_.Terminate();
       audio_manager_->Close();
-      return -1;
+      return InitStatus::RECORDING_ERROR;
     }
     initialized_ = true;
-    return 0;
+    return InitStatus::OK;
   }
 
   int32_t Terminate() override {
@@ -215,7 +216,6 @@ class AudioDeviceTemplate : public AudioDeviceGeneric {
   }
 
   bool Recording() const override {
-    LOG(LS_VERBOSE) << __FUNCTION__;
     return input_.Recording() ;
   }
 
@@ -420,7 +420,6 @@ class AudioDeviceTemplate : public AudioDeviceGeneric {
   int32_t PlayoutDelay(uint16_t& delay_ms) const override {
     // Best guess we can do is to use half of the estimated total delay.
     delay_ms = audio_manager_->GetDelayEstimateInMilliseconds() / 2;
-    LOG(LS_VERBOSE) << __FUNCTION__ << " delay = " << delay_ms;
     RTC_DCHECK_GT(delay_ms, 0);
     return 0;
   }
@@ -439,22 +438,18 @@ class AudioDeviceTemplate : public AudioDeviceGeneric {
   }
 
   bool PlayoutWarning() const override {
-    LOG(LS_VERBOSE) << __FUNCTION__;
     return false;
   }
 
   bool PlayoutError() const override {
-    LOG(LS_VERBOSE) << __FUNCTION__;
     return false;
   }
 
   bool RecordingWarning() const override {
-    LOG(LS_VERBOSE) << __FUNCTION__;
     return false;
   }
 
   bool RecordingError() const override {
-    LOG(LS_VERBOSE) << __FUNCTION__;
     return false;
   }
 
@@ -496,11 +491,7 @@ class AudioDeviceTemplate : public AudioDeviceGeneric {
   }
 
   int32_t EnableBuiltInAEC(bool enable) override {
-    if (enable) {
-      LOG(INFO) << __FUNCTION__ << ": enabling built in AEC";
-    } else {
-      LOG(INFO) << __FUNCTION__ << ": disabling built in AEC";
-    }
+    LOG(INFO) << __FUNCTION__ << "(" << enable << ")";
     RTC_CHECK(BuiltInAECIsAvailable()) << "HW AEC is not available";
     return input_.EnableBuiltInAEC(enable);
   }
@@ -513,11 +504,7 @@ class AudioDeviceTemplate : public AudioDeviceGeneric {
   }
 
   int32_t EnableBuiltInAGC(bool enable) override {
-    if (enable) {
-      LOG(INFO) << __FUNCTION__ << ": enabling built in AGC";
-    } else {
-      LOG(INFO) << __FUNCTION__ << ": disabling built in AGC";
-    }
+    LOG(INFO) << __FUNCTION__ << "(" << enable << ")";
     RTC_CHECK(BuiltInAGCIsAvailable()) << "HW AGC is not available";
     return input_.EnableBuiltInAGC(enable);
   }
@@ -530,11 +517,7 @@ class AudioDeviceTemplate : public AudioDeviceGeneric {
   }
 
   int32_t EnableBuiltInNS(bool enable) override {
-    if (enable) {
-      LOG(INFO) << __FUNCTION__ << ": enabling built in NS";
-    } else {
-      LOG(INFO) << __FUNCTION__ << ": disabling built in NS";
-    }
+    LOG(INFO) << __FUNCTION__ << "(" << enable << ")";
     RTC_CHECK(BuiltInNSIsAvailable()) << "HW NS is not available";
     return input_.EnableBuiltInNS(enable);
   }

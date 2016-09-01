@@ -9,16 +9,22 @@
  */
 
 #include <memory>
+#include <utility>
 
 #include "webrtc/modules/desktop_capture/screen_capturer.h"
 
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "webrtc/base/constructormagic.h"
+#include "webrtc/base/logging.h"
 #include "webrtc/modules/desktop_capture/desktop_capture_options.h"
 #include "webrtc/modules/desktop_capture/desktop_frame.h"
 #include "webrtc/modules/desktop_capture/desktop_region.h"
 #include "webrtc/modules/desktop_capture/screen_capturer_mock_objects.h"
+
+#if defined(WEBRTC_WIN)
+#include "webrtc/modules/desktop_capture/win/screen_capturer_win_directx.h"
+#endif  // defined(WEBRTC_WIN)
 
 using ::testing::_;
 using ::testing::AnyNumber;
@@ -75,8 +81,8 @@ ACTION_P(SaveUniquePtrArg, dest) {
 TEST_F(ScreenCapturerTest, GetScreenListAndSelectScreen) {
   webrtc::ScreenCapturer::ScreenList screens;
   EXPECT_TRUE(capturer_->GetScreenList(&screens));
-  for(webrtc::ScreenCapturer::ScreenList::iterator it = screens.begin();
-      it != screens.end(); ++it) {
+  for (webrtc::ScreenCapturer::ScreenList::iterator it = screens.begin();
+       it != screens.end(); ++it) {
     EXPECT_TRUE(capturer_->SelectScreen(it->id));
   }
 }
@@ -142,6 +148,50 @@ TEST_F(ScreenCapturerTest, UseMagnifier) {
   capturer_->Start(&callback_);
   capturer_->Capture(DesktopRegion());
   ASSERT_TRUE(frame);
+}
+
+TEST_F(ScreenCapturerTest, UseDirectxCapturer) {
+  if (!ScreenCapturerWinDirectx::IsSupported()) {
+    LOG(LS_WARNING) << "Directx capturer is not supported";
+    return;
+  }
+
+  DesktopCaptureOptions options(DesktopCaptureOptions::CreateDefault());
+  options.set_allow_directx_capturer(true);
+  capturer_.reset(ScreenCapturer::Create(options));
+
+  std::unique_ptr<DesktopFrame> frame;
+  EXPECT_CALL(callback_,
+              OnCaptureResultPtr(DesktopCapturer::Result::SUCCESS, _))
+      .WillOnce(SaveUniquePtrArg(&frame));
+
+  capturer_->Start(&callback_);
+  capturer_->Capture(DesktopRegion());
+  ASSERT_TRUE(frame);
+}
+
+TEST_F(ScreenCapturerTest, UseDirectxCapturerWithSharedBuffers) {
+  if (!ScreenCapturerWinDirectx::IsSupported()) {
+    LOG(LS_WARNING) << "Directx capturer is not supported";
+    return;
+  }
+
+  DesktopCaptureOptions options(DesktopCaptureOptions::CreateDefault());
+  options.set_allow_directx_capturer(true);
+  capturer_.reset(ScreenCapturer::Create(options));
+
+  std::unique_ptr<DesktopFrame> frame;
+  EXPECT_CALL(callback_,
+              OnCaptureResultPtr(DesktopCapturer::Result::SUCCESS, _))
+      .WillOnce(SaveUniquePtrArg(&frame));
+
+  capturer_->Start(&callback_);
+  capturer_->SetSharedMemoryFactory(
+      std::unique_ptr<SharedMemoryFactory>(new FakeSharedMemoryFactory()));
+  capturer_->Capture(DesktopRegion());
+  ASSERT_TRUE(frame);
+  ASSERT_TRUE(frame->shared_memory());
+  EXPECT_EQ(frame->shared_memory()->id(), kTestSharedMemoryId);
 }
 
 #endif  // defined(WEBRTC_WIN)
