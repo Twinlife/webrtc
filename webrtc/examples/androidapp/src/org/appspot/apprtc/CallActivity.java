@@ -10,6 +10,10 @@
 
 package org.appspot.apprtc;
 
+import org.appspot.apprtc.AppRTCClient.RoomConnectionParameters;
+import org.appspot.apprtc.AppRTCClient.SignalingParameters;
+import org.appspot.apprtc.PeerConnectionClient.PeerConnectionParameters;
+
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.FragmentTransaction;
@@ -25,10 +29,7 @@ import android.view.Window;
 import android.view.WindowManager.LayoutParams;
 import android.widget.Toast;
 
-import org.appspot.apprtc.AppRTCClient.RoomConnectionParameters;
-import org.appspot.apprtc.AppRTCClient.SignalingParameters;
-import org.appspot.apprtc.PeerConnectionClient.PeerConnectionParameters;
-import org.appspot.apprtc.util.LooperExecutor;
+import org.webrtc.Camera2Enumerator;
 import org.webrtc.EglBase;
 import org.webrtc.IceCandidate;
 import org.webrtc.PeerConnectionFactory;
@@ -52,6 +53,8 @@ public class CallActivity extends Activity
       "org.appspot.apprtc.LOOPBACK";
   public static final String EXTRA_VIDEO_CALL =
       "org.appspot.apprtc.VIDEO_CALL";
+  public static final String EXTRA_CAMERA2 =
+      "org.appspot.apprtc.CAMERA2";
   public static final String EXTRA_VIDEO_WIDTH =
       "org.appspot.apprtc.VIDEO_WIDTH";
   public static final String EXTRA_VIDEO_HEIGHT =
@@ -80,6 +83,12 @@ public class CallActivity extends Activity
       "org.appspot.apprtc.OPENSLES";
   public static final String EXTRA_DISABLE_BUILT_IN_AEC =
       "org.appspot.apprtc.DISABLE_BUILT_IN_AEC";
+  public static final String EXTRA_DISABLE_BUILT_IN_AGC =
+      "org.appspot.apprtc.DISABLE_BUILT_IN_AGC";
+  public static final String EXTRA_DISABLE_BUILT_IN_NS =
+      "org.appspot.apprtc.DISABLE_BUILT_IN_NS";
+    public static final String EXTRA_ENABLE_LEVEL_CONTROL =
+      "org.appspot.apprtc.ENABLE_LEVEL_CONTROL";
   public static final String EXTRA_DISPLAY_HUD =
       "org.appspot.apprtc.DISPLAY_HUD";
   public static final String EXTRA_TRACING = "org.appspot.apprtc.TRACING";
@@ -219,12 +228,18 @@ public class CallActivity extends Activity
       finish();
       return;
     }
+
     boolean loopback = intent.getBooleanExtra(EXTRA_LOOPBACK, false);
     boolean tracing = intent.getBooleanExtra(EXTRA_TRACING, false);
+
+    boolean useCamera2 = Camera2Enumerator.isSupported()
+        && intent.getBooleanExtra(EXTRA_CAMERA2, true);
+
     peerConnectionParameters = new PeerConnectionParameters(
         intent.getBooleanExtra(EXTRA_VIDEO_CALL, true),
         loopback,
         tracing,
+        useCamera2,
         intent.getIntExtra(EXTRA_VIDEO_WIDTH, 0),
         intent.getIntExtra(EXTRA_VIDEO_HEIGHT, 0),
         intent.getIntExtra(EXTRA_VIDEO_FPS, 0),
@@ -237,14 +252,17 @@ public class CallActivity extends Activity
         intent.getBooleanExtra(EXTRA_NOAUDIOPROCESSING_ENABLED, false),
         intent.getBooleanExtra(EXTRA_AECDUMP_ENABLED, false),
         intent.getBooleanExtra(EXTRA_OPENSLES_ENABLED, false),
-        intent.getBooleanExtra(EXTRA_DISABLE_BUILT_IN_AEC, false));
+        intent.getBooleanExtra(EXTRA_DISABLE_BUILT_IN_AEC, false),
+        intent.getBooleanExtra(EXTRA_DISABLE_BUILT_IN_AGC, false),
+        intent.getBooleanExtra(EXTRA_DISABLE_BUILT_IN_NS, false),
+        intent.getBooleanExtra(EXTRA_ENABLE_LEVEL_CONTROL, false));
     commandLineRun = intent.getBooleanExtra(EXTRA_CMDLINE, false);
     runTimeMs = intent.getIntExtra(EXTRA_RUNTIME, 0);
 
     // Create connection client. Use DirectRTCClient if room name is an IP otherwise use the
     // standard WebSocketRTCClient.
     if (loopback || !DirectRTCClient.IP_PATTERN.matcher(roomId).matches()) {
-      appRtcClient = new WebSocketRTCClient(this, new LooperExecutor());
+      appRtcClient = new WebSocketRTCClient(this);
     } else {
       Log.i(TAG, "Using DirectRTCClient because room name looks like an IP.");
       appRtcClient = new DirectRTCClient(this);

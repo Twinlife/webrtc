@@ -12,6 +12,11 @@ import("../build/webrtc.gni")
 
 import("//build_overrides/webrtc.gni")
 
+if (is_android) {
+  import("//build/config/android/config.gni")
+  import("//build/config/android/rules.gni")
+}
+
 config("rtc_base_approved_all_dependent_config") {
   if (is_mac && !build_with_chromium) {
     libs = [ "Foundation.framework" ]  # needed for logging_mac.mm
@@ -76,7 +81,7 @@ if (is_linux && !build_with_chromium) {
   }
 }
 
-if (rtc_build_ssl == 0) {
+if (!rtc_build_ssl) {
   config("external_ssl_library") {
     assert(rtc_ssl_root != "",
            "You must specify rtc_ssl_root when rtc_build_ssl==0.")
@@ -87,6 +92,7 @@ if (rtc_build_ssl == 0) {
 # The subset of rtc_base approved for use outside of libjingle.
 static_library("rtc_base_approved") {
   defines = []
+  libs = []
   deps = []
   configs += [ "..:common_config" ]
   public_configs = [ "..:common_inherited_config" ]
@@ -132,8 +138,12 @@ static_library("rtc_base_approved") {
     "platform_thread.cc",
     "platform_thread.h",
     "platform_thread_types.h",
+    "race_checker.cc",
+    "race_checker.h",
     "random.cc",
     "random.h",
+    "rate_limiter.cc",
+    "rate_limiter.h",
     "rate_statistics.cc",
     "rate_statistics.h",
     "ratetracker.cc",
@@ -161,6 +171,10 @@ static_library("rtc_base_approved") {
     "trace_event.h",
   ]
 
+  if (is_android) {
+    libs += [ "log" ]
+  }
+
   if (build_with_chromium) {
     # Dependency on chromium's logging (in //base).
     deps += [ "//base:base" ]
@@ -178,6 +192,10 @@ static_library("rtc_base_approved") {
   }
 }
 
+config("enable_libevent_config") {
+  defines = [ "WEBRTC_BUILD_LIBEVENT" ]
+}
+
 static_library("rtc_task_queue") {
   public_deps = [
     ":rtc_base_approved",
@@ -185,6 +203,9 @@ static_library("rtc_task_queue") {
   configs += [ "..:common_config" ]
 
   sources = [
+    "sequenced_task_checker.h",
+    "sequenced_task_checker_impl.cc",
+    "sequenced_task_checker_impl.h",
     "task_queue.h",
     "task_queue_posix.h",
   ]
@@ -200,6 +221,7 @@ static_library("rtc_task_queue") {
       "task_queue_libevent.cc",
       "task_queue_posix.cc",
     ]
+    all_dependent_configs = [ ":enable_libevent_config" ]
   } else {
     if (is_mac || is_ios) {
       sources += [
@@ -489,7 +511,7 @@ static_library("rtc_base") {
     if (rtc_build_json) {
       deps += [ "//third_party/jsoncpp" ]
     } else {
-      include_dirs += [ rtc_jsoncpp_root ]
+      include_dirs = [ "$rtc_jsoncpp_root" ]
 
       # When defined changes the include path for json.h to where it is
       # expected to be when building json outside of the standalone build.
@@ -508,7 +530,7 @@ static_library("rtc_base") {
   if (rtc_build_ssl) {
     deps += [ "//third_party/boringssl" ]
   } else {
-    configs += [ "external_ssl_library" ]
+    configs += [ ":external_ssl_library" ]
   }
 
   if (is_android) {
@@ -658,6 +680,7 @@ if (rtc_include_tests) {
       "fakesslidentity.h",
       "faketaskrunner.h",
       "gunit.h",
+      "test/faketiming.h",
       "testbase64.h",
       "testechoserver.h",
       "testutils.h",
@@ -676,6 +699,20 @@ if (rtc_include_tests) {
     ]
     public_deps = [
       "//testing/gtest",
+    ]
+  }
+}
+
+if (is_android) {
+  android_library("base_java") {
+    java_files = [
+      "java/src/org/webrtc/Logging.java",
+      "java/src/org/webrtc/Size.java",
+      "java/src/org/webrtc/ThreadUtils.java",
+    ]
+
+    deps = [
+      "//base:base_java",
     ]
   }
 }

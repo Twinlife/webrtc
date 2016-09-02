@@ -36,7 +36,6 @@ class SendStatisticsProxy : public CpuOveruseMetricsObserver,
                             public StreamDataCountersCallback,
                             public BitrateStatisticsObserver,
                             public FrameCountObserver,
-                            public VideoEncoderRateObserver,
                             public SendSideDelayObserver {
  public:
   static const int kStatsTimeoutMs;
@@ -63,8 +62,8 @@ class SendStatisticsProxy : public CpuOveruseMetricsObserver,
   // how stats are collected.
   void SetContentType(VideoEncoderConfig::ContentType content_type);
 
-  // Implements VideoEncoderRateObserver.
-  void OnSetRates(uint32_t bitrate_bps, int framerate) override;
+  // Used to update the encoder target rate.
+  void OnSetEncoderTargetRate(uint32_t bitrate_bps);
 
   // Implements CpuOveruseMetricsObserver.
   void OnEncodedFrameTimeMeasured(int encode_time_ms,
@@ -86,8 +85,8 @@ class SendStatisticsProxy : public CpuOveruseMetricsObserver,
                            uint32_t ssrc) override;
 
   // From BitrateStatisticsObserver.
-  void Notify(const BitrateStatistics& total_stats,
-              const BitrateStatistics& retransmit_stats,
+  void Notify(uint32_t total_bitrate_bps,
+              uint32_t retransmit_bitrate_bps,
               uint32_t ssrc) override;
 
   // From FrameCountObserver.
@@ -140,6 +139,7 @@ class SendStatisticsProxy : public CpuOveruseMetricsObserver,
   const VideoSendStream::Config config_;
   rtc::CriticalSection crit_;
   VideoEncoderConfig::ContentType content_type_ GUARDED_BY(crit_);
+  const int64_t start_ms_;
   VideoSendStream::Stats stats_ GUARDED_BY(crit_);
   uint32_t last_sent_frame_timestamp_ GUARDED_BY(crit_);
   std::map<uint32_t, StatsUpdateTimes> update_times_ GUARDED_BY(crit_);

@@ -40,6 +40,9 @@ class RtcEventLog {
   // Factory method to create an RtcEventLog object.
   static std::unique_ptr<RtcEventLog> Create(const Clock* clock);
 
+  // Create an RtcEventLog object that does nothing.
+  static std::unique_ptr<RtcEventLog> CreateNull();
+
   // Starts logging a maximum of max_size_bytes bytes to the specified file.
   // If the file already exists it will be overwritten.
   // If max_size_bytes <= 0, logging will be active until StopLogging is called.
@@ -104,6 +107,34 @@ class RtcEventLog {
   // TODO(terelius): Change result type to a vector?
   static bool ParseRtcEventLog(const std::string& file_name,
                                rtclog::EventStream* result);
+};
+
+// No-op implementation is used if flag is not set, or in tests.
+class RtcEventLogNullImpl final : public RtcEventLog {
+ public:
+  bool StartLogging(const std::string& file_name,
+                    int64_t max_size_bytes) override {
+    return false;
+  }
+  bool StartLogging(rtc::PlatformFile platform_file,
+                    int64_t max_size_bytes) override;
+  void StopLogging() override {}
+  void LogVideoReceiveStreamConfig(
+      const VideoReceiveStream::Config& config) override {}
+  void LogVideoSendStreamConfig(
+      const VideoSendStream::Config& config) override {}
+  void LogRtpHeader(PacketDirection direction,
+                    MediaType media_type,
+                    const uint8_t* header,
+                    size_t packet_length) override {}
+  void LogRtcpPacket(PacketDirection direction,
+                     MediaType media_type,
+                     const uint8_t* packet,
+                     size_t length) override {}
+  void LogAudioPlayout(uint32_t ssrc) override {}
+  void LogBwePacketLossEvent(int32_t bitrate,
+                             uint8_t fraction_loss,
+                             int32_t total_packets) override {}
 };
 
 }  // namespace webrtc

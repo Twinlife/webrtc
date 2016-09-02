@@ -274,7 +274,7 @@ class WebRtcVideoChannel2 : public VideoMediaChannel, public webrtc::Transport {
     void OnLoadUpdate(Load load) override;
 
     const std::vector<uint32_t>& GetSsrcs() const;
-    VideoSenderInfo GetVideoSenderInfo();
+    VideoSenderInfo GetVideoSenderInfo(bool log_stats);
     void FillBandwidthEstimationInfo(BandwidthEstimationInfo* bwe_info);
 
    private:
@@ -364,6 +364,8 @@ class WebRtcVideoChannel2 : public VideoMediaChannel, public webrtc::Transport {
     // and whether or not the encoding in |rtp_parameters_| is active.
     void UpdateSendState() EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
+    void UpdateHistograms() const EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
     rtc::ThreadChecker thread_checker_;
     rtc::AsyncInvoker invoker_;
     rtc::Thread* worker_thread_;
@@ -377,6 +379,10 @@ class WebRtcVideoChannel2 : public VideoMediaChannel, public webrtc::Transport {
     // Total number of times resolution as been requested to be changed due to
     // CPU adaptation.
     int number_of_cpu_adapt_changes_;
+    // Total number of frames sent to |stream_|.
+    int frame_count_ GUARDED_BY(lock_);
+    // Total number of cpu restricted frames sent to |stream_|.
+    int cpu_restricted_frame_count_ GUARDED_BY(lock_);
     rtc::VideoSourceInterface<cricket::VideoFrame>* source_;
     WebRtcVideoEncoderFactory* const external_encoder_factory_
         GUARDED_BY(lock_);
@@ -442,7 +448,7 @@ class WebRtcVideoChannel2 : public VideoMediaChannel, public webrtc::Transport {
 
     void SetSink(rtc::VideoSinkInterface<cricket::VideoFrame>* sink);
 
-    VideoReceiverInfo GetVideoReceiverInfo();
+    VideoReceiverInfo GetVideoReceiverInfo(bool log_stats);
 
     // Used to disable RED/FEC when the remote description doesn't contain those
     // codecs. This is needed to be able to work around an RTX bug which is only
@@ -514,8 +520,8 @@ class WebRtcVideoChannel2 : public VideoMediaChannel, public webrtc::Transport {
   static bool ReceiveCodecsHaveChanged(std::vector<VideoCodecSettings> before,
                                        std::vector<VideoCodecSettings> after);
 
-  void FillSenderStats(VideoMediaInfo* info);
-  void FillReceiverStats(VideoMediaInfo* info);
+  void FillSenderStats(VideoMediaInfo* info, bool log_stats);
+  void FillReceiverStats(VideoMediaInfo* info, bool log_stats);
   void FillBandwidthEstimationStats(const webrtc::Call::Stats& stats,
                                     VideoMediaInfo* info);
 
@@ -553,6 +559,7 @@ class WebRtcVideoChannel2 : public VideoMediaChannel, public webrtc::Transport {
   VideoOptions default_send_options_;
   VideoRecvParameters recv_params_;
   bool red_disabled_by_remote_side_;
+  int64_t last_stats_log_ms_;
 };
 
 }  // namespace cricket

@@ -24,6 +24,7 @@ ReceiveStatisticsProxy::ReceiveStatisticsProxy(
     Clock* clock)
     : clock_(clock),
       config_(*config),
+      start_ms_(clock->TimeInMilliseconds()),
       // 1000ms window, scale 1000 for ms to s.
       decode_fps_estimator_(1000, 1000),
       renders_fps_estimator_(1000, 1000),
@@ -39,6 +40,10 @@ ReceiveStatisticsProxy::~ReceiveStatisticsProxy() {
 }
 
 void ReceiveStatisticsProxy::UpdateHistograms() {
+  RTC_LOGGED_HISTOGRAM_COUNTS_100000(
+      "WebRTC.Video.ReceiveStreamLifetimeInSeconds",
+      (clock_->TimeInMilliseconds() - start_ms_) / 1000);
+
   int fraction_lost = report_block_stats_.FractionLostInPercent();
   if (fraction_lost != -1) {
     RTC_LOGGED_HISTOGRAM_PERCENTAGE("WebRTC.Video.ReceivedPacketsLostInPercent",
@@ -258,6 +263,8 @@ void ReceiveStatisticsProxy::OnRenderedFrame(int width, int height) {
   rtc::CritScope lock(&crit_);
   renders_fps_estimator_.Update(1, now);
   stats_.render_frame_rate = renders_fps_estimator_.Rate(now).value_or(0);
+  stats_.width = width;
+  stats_.height = height;
   render_width_counter_.Add(width);
   render_height_counter_.Add(height);
   render_fps_tracker_.AddSamples(1);

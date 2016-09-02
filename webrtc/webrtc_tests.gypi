@@ -63,6 +63,7 @@
         'base/proxy_unittest.cc',
         'base/proxydetect_unittest.cc',
         'base/random_unittest.cc',
+        'base/rate_limiter_unittest.cc',
         'base/rate_statistics_unittest.cc',
         'base/ratelimiter_unittest.cc',
         'base/ratetracker_unittest.cc',
@@ -71,6 +72,7 @@
         'base/rtccertificate_unittest.cc',
         'base/rtccertificategenerator_unittest.cc',
         'base/scopedptrcollection_unittest.cc',
+        'base/sequenced_task_checker_unittest.cc',
         'base/sha1digest_unittest.cc',
         'base/sharedexclusivelock_unittest.cc',
         'base/signalthread_unittest.cc',
@@ -115,6 +117,7 @@
         'p2p/base/transportdescriptionfactory_unittest.cc',
         'p2p/base/tcpport_unittest.cc',
         'p2p/base/turnport_unittest.cc',
+        'p2p/base/turnserver_unittest.cc',
         'p2p/client/basicportallocator_unittest.cc',
         'p2p/stunprober/stunprober_unittest.cc',
       ],
@@ -274,14 +277,16 @@
       'target_name': 'video_loopback',
       'type': 'executable',
       'sources': [
-        'test/mac/run_test.mm',
-        'test/run_test.cc',
         'test/run_test.h',
         'video/video_loopback.cc',
       ],
       'conditions': [
         ['OS=="mac"', {
-          'sources!': [
+          'sources': [
+            'test/mac/run_test.mm',
+          ],
+        }, {
+          'sources': [
             'test/run_test.cc',
           ],
         }],
@@ -290,10 +295,10 @@
         'video_quality_test',
         '<(DEPTH)/testing/gtest.gyp:gtest',
         '<(DEPTH)/third_party/gflags/gflags.gyp:gflags',
+        '<(webrtc_root)/system_wrappers/system_wrappers.gyp:metrics_default',
+        'test/test.gyp:field_trial',
         'test/test.gyp:test_common',
-        'test/test.gyp:test_main',
         'test/test.gyp:test_renderer',
-        'webrtc',
       ],
     },
     {
@@ -361,8 +366,6 @@
         'call/call_unittest.cc',
         'call/packet_injection_tests.cc',
         'call/ringbuffer_unittest.cc',
-        'test/common_unittest.cc',
-        'test/testsupport/metrics/video_metrics_unittest.cc',
         'video/call_stats_unittest.cc',
         'video/encoder_state_feedback_unittest.cc',
         'video/end_to_end_tests.cc',
@@ -387,9 +390,9 @@
         '<(webrtc_root)/modules/modules.gyp:video_capture',
         '<(webrtc_root)/test/test.gyp:channel_transport',
         '<(webrtc_root)/voice_engine/voice_engine.gyp:voice_engine',
-        'test/metrics.gyp:metrics',
         'test/test.gyp:test_common',
         'test/test.gyp:test_main',
+        'test/test.gyp:test_support',
         'webrtc',
       ],
       'conditions': [
@@ -434,6 +437,7 @@
         'call/rampup_tests.h',
         'modules/audio_coding/neteq/test/neteq_performance_unittest.cc',
         'modules/audio_processing/audio_processing_performance_unittest.cc',
+        'modules/audio_processing/level_controller/level_controller_complexity_unittest.cc',
         'modules/remote_bitrate_estimator/remote_bitrate_estimators_test.cc',
         'video/full_stack.cc',
       ],
@@ -489,15 +493,6 @@
         }],
         ['OS=="win"', {
           'sources': [
-            'base/win32socketserver_unittest.cc',
-          ],
-          'sources!': [
-            # TODO(ronghuawu): Fix TestUdpReadyToSendIPv6 on windows bot
-            # then reenable these tests.
-            # TODO(pbos): Move test disabling to ifdefs within the test files
-            # instead of here.
-            'base/physicalsocketserver_unittest.cc',
-            'base/socket_unittest.cc',
             'base/win32socketserver_unittest.cc',
           ],
         }],

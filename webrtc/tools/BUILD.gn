@@ -63,6 +63,7 @@ executable("frame_analyzer") {
   deps = [
     ":command_line_parser",
     ":video_quality_analysis",
+    "//build/config/sanitizers:deps",
     "//build/win:default_exe_manifest",
   ]
 }
@@ -78,6 +79,7 @@ executable("psnr_ssim_analyzer") {
   deps = [
     ":command_line_parser",
     ":video_quality_analysis",
+    "//build/config/sanitizers:deps",
     "//build/win:default_exe_manifest",
   ]
 }
@@ -95,6 +97,7 @@ executable("rgba_to_i420_converter") {
   deps = [
     ":command_line_parser",
     "../common_video",
+    "//build/config/sanitizers:deps",
     "//build/win:default_exe_manifest",
   ]
 }
@@ -133,6 +136,7 @@ executable("frame_editor") {
   deps = [
     ":command_line_parser",
     ":frame_editing_lib",
+    "//build/config/sanitizers:deps",
     "//build/win:default_exe_manifest",
   ]
 }
@@ -154,6 +158,7 @@ executable("force_mic_volume_max") {
   deps = [
     "../system_wrappers:system_wrappers_default",
     "../voice_engine",
+    "//build/config/sanitizers:deps",
     "//build/win:default_exe_manifest",
   ]
 }
@@ -169,8 +174,65 @@ source_set("agc_test_utils") {
   public_configs = [ "..:common_inherited_config" ]
 }
 
+if (rtc_enable_protobuf) {
+  source_set("event_log_visualizer_utils") {
+    sources = [
+      "event_log_visualizer/analyzer.cc",
+      "event_log_visualizer/analyzer.h",
+      "event_log_visualizer/plot_base.cc",
+      "event_log_visualizer/plot_base.h",
+      "event_log_visualizer/plot_python.cc",
+      "event_log_visualizer/plot_python.h",
+    ]
+    configs += [ "..:common_config" ]
+    public_configs = [ "..:common_inherited_config" ]
+    if (is_clang && !is_nacl) {
+      # Suppress warnings from the Chromium Clang plugin.
+      # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
+      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    }
+    defines = [ "ENABLE_RTC_EVENT_LOG" ]
+    deps = [
+      "../:rtc_event_log",
+      "../:rtc_event_log_parser",
+      "../modules/congestion_controller:congestion_controller",
+      "../modules/rtp_rtcp:rtp_rtcp",
+      "../system_wrappers:system_wrappers_default",
+      "//build/config/sanitizers:deps",
+    ]
+    public_deps = [
+      "../:rtc_event_log_parser",
+    ]
+  }
+}
+
 # Exclude tools depending on gflags since that's not available in Chromium.
 if (rtc_include_tests) {
+  if (rtc_enable_protobuf) {
+    executable("event_log_visualizer") {
+      testonly = true
+      sources = [
+        "event_log_visualizer/main.cc",
+      ]
+
+      configs += [ "..:common_config" ]
+      public_configs = [ "..:common_inherited_config" ]
+
+      if (is_clang && !is_nacl) {
+        # Suppress warnings from the Chromium Clang plugin.
+        # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
+        configs -= [ "//build/config/clang:find_bad_constructs" ]
+      }
+
+      defines = [ "ENABLE_RTC_EVENT_LOG" ]
+      deps = [
+        ":event_log_visualizer_utils",
+        "//build/config/sanitizers:deps",
+        "//third_party/gflags",
+      ]
+    }
+  }
+
   executable("agc_harness") {
     testonly = true
     sources = [
@@ -277,6 +339,12 @@ if (rtc_include_tests) {
 
     if (is_android) {
       deps += [ "//testing/android/native_test:native_test_support" ]
+
+      data = [
+        "//resources/foreman_cif.yuv",
+      ]
+
+      shard_timeout = 900
     }
   }
 

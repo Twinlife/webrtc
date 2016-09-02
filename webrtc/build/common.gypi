@@ -98,6 +98,13 @@
     # Set to 1 to enable code coverage on Linux using the gcov library.
     'coverage%': 0,
 
+    # Set to "func", "block", "edge" for coverage generation.
+    # At unit test runtime set UBSAN_OPTIONS="coverage=1".
+    # It is recommend to set include_examples=0.
+    # Use llvm's sancov -html-report for human readable reports.
+    # See http://clang.llvm.org/docs/SanitizerCoverage.html .
+    'webrtc_sanitize_coverage%': "",
+
     # Remote bitrate estimator logging/plotting.
     'enable_bwe_test_logging%': 0,
 
@@ -165,6 +172,10 @@
 
     # Determines whether QUIC code will be built.
     'use_quic%': 0,
+
+    # By default, use normal platform audio support or dummy audio, but don't
+    # use file-based audio playout and record.
+    'use_dummy_audio_file_devices%': 0,
 
     'conditions': [
       # Enable this to build OpenH264 encoder/FFmpeg decoder. This is supported
@@ -344,11 +355,6 @@
           }],
         ],
       }],
-      ['enable_libevent==1', {
-        'defines': [
-          'WEBRTC_BUILD_LIBEVENT',
-        ],
-      }],
       ['target_arch=="arm64"', {
         'defines': [
           'WEBRTC_ARCH_ARM64',
@@ -403,6 +409,17 @@
                     '-fprofile-arcs' ],
         'ldflags': [ '--coverage' ],
         'link_settings': { 'libraries': [ '-lgcov' ] },
+      }],
+     ['webrtc_sanitize_coverage!=""', {
+        'cflags': [ '-fsanitize-coverage=<(webrtc_sanitize_coverage)' ],
+        'ldflags': [ '-fsanitize-coverage=<(webrtc_sanitize_coverage)' ],
+     }],
+     ['webrtc_sanitize_coverage!="" and OS=="mac"', {
+        'xcode_settings': {
+            'OTHER_CFLAGS': [
+               '-fsanitize-coverage=func',
+            ],
+         },
       }],
       ['os_posix==1', {
         # For access to standard POSIXish features, use WEBRTC_POSIX instead of

@@ -29,6 +29,10 @@
 #include "webrtc/base/sslfingerprint.h"
 #include "webrtc/base/thread.h"
 
+#ifdef HAVE_QUIC
+#include "webrtc/p2p/quic/quictransport.h"
+#endif
+
 namespace cricket {
 
 class FakeTransport;
@@ -111,12 +115,6 @@ class FakeTransportChannel : public TransportChannelImpl,
     return true;
   }
 
-  void Connect() override {
-    if (state_ == STATE_INIT) {
-      state_ = STATE_CONNECTING;
-    }
-  }
-
   void MaybeStartGathering() override {
     if (gathering_state_ == kIceGatheringNew) {
       gathering_state_ = kIceGatheringGathering;
@@ -145,7 +143,7 @@ class FakeTransportChannel : public TransportChannelImpl,
   // If |asymmetric| is true this method only affects this FakeTransportChannel.
   // If false, it affects |dest| as well.
   void SetDestination(FakeTransportChannel* dest, bool asymmetric = false) {
-    if (state_ == STATE_CONNECTING && dest) {
+    if (state_ == STATE_INIT && dest) {
       // This simulates the delivery of candidates.
       dest_ = dest;
       if (local_cert_ && dest_->local_cert_) {
@@ -160,7 +158,7 @@ class FakeTransportChannel : public TransportChannelImpl,
     } else if (state_ == STATE_CONNECTED && !dest) {
       // Simulates loss of connectivity, by asymmetrically forgetting dest_.
       dest_ = nullptr;
-      state_ = STATE_CONNECTING;
+      state_ = STATE_INIT;
       set_writable(false);
     }
   }
@@ -185,13 +183,10 @@ class FakeTransportChannel : public TransportChannelImpl,
 
   void SetReceiving(bool receiving) { set_receiving(receiving); }
 
-  void SetIceConfig(const IceConfig& config) override {
-    receiving_timeout_ = config.receiving_timeout;
-    gather_continually_ = config.gather_continually;
-  }
+  void SetIceConfig(const IceConfig& config) override { ice_config_ = config; }
 
-  int receiving_timeout() const { return receiving_timeout_; }
-  bool gather_continually() const { return gather_continually_; }
+  int receiving_timeout() const { return ice_config_.receiving_timeout; }
+  bool gather_continually() const { return ice_config_.gather_continually(); }
 
   int SendPacket(const char* data,
                  size_t len,
@@ -314,7 +309,7 @@ class FakeTransportChannel : public TransportChannelImpl,
     }
   }
 
-  enum State { STATE_INIT, STATE_CONNECTING, STATE_CONNECTED };
+  enum State { STATE_INIT, STATE_CONNECTED };
   FakeTransportChannel* dest_ = nullptr;
   State state_ = STATE_INIT;
   bool async_ = false;
@@ -324,8 +319,7 @@ class FakeTransportChannel : public TransportChannelImpl,
   bool do_dtls_ = false;
   std::vector<int> srtp_ciphers_;
   int chosen_crypto_suite_ = rtc::SRTP_INVALID_CRYPTO_SUITE;
-  int receiving_timeout_ = -1;
-  bool gather_continually_ = false;
+  IceConfig ice_config_;
   IceRole role_ = ICEROLE_UNKNOWN;
   uint64_t tiebreaker_ = 0;
   std::string ice_ufrag_;
@@ -463,6 +457,21 @@ class FakeTransport : public Transport {
   rtc::SSLProtocolVersion ssl_max_version_ = rtc::SSL_PROTOCOL_DTLS_12;
 };
 
+#ifdef HAVE_QUIC
+class FakeQuicTransport : public QuicTransport {
+ public:
+  FakeQuicTransport(const std::string& transport_name)
+      : QuicTransport(transport_name, nullptr, nullptr) {}
+
+ protected:
+  QuicTransportChannel* CreateTransportChannel(int component) override {
+    FakeTransportChannel* fake_ice_transport_channel =
+        new FakeTransportChannel(name(), component);
+    return new QuicTransportChannel(fake_ice_transport_channel);
+  }
+};
+#endif
+
 // Fake candidate pair class, which can be passed to BaseChannel for testing
 // purposes.
 class FakeCandidatePair : public CandidatePairInterface {
@@ -551,6 +560,11 @@ class FakeTransportController : public TransportController {
 
  protected:
   Transport* CreateTransport_n(const std::string& transport_name) override {
+#ifdef HAVE_QUIC
+    if (quic()) {
+      return new FakeQuicTransport(transport_name);
+    }
+#endif
     return new FakeTransport(transport_name);
   }
 
@@ -578,7 +592,6 @@ class FakeTransportController : public TransportController {
         transport->SetLocalTransportDescription(faketransport_desc,
                                                 cricket::CA_OFFER, nullptr);
       }
-      transport->ConnectChannels();
       transport->MaybeStartGathering();
     }
   }

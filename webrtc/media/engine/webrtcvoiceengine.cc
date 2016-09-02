@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -28,11 +29,11 @@
 #include "webrtc/base/stringencode.h"
 #include "webrtc/base/stringutils.h"
 #include "webrtc/base/trace_event.h"
-#include "webrtc/call/rtc_event_log.h"
 #include "webrtc/common.h"
 #include "webrtc/media/base/audiosource.h"
 #include "webrtc/media/base/mediaconstants.h"
 #include "webrtc/media/base/streamparams.h"
+#include "webrtc/media/engine/payload_type_mapper.h"
 #include "webrtc/media/engine/webrtcmediaengine.h"
 #include "webrtc/media/engine/webrtcvoe.h"
 #include "webrtc/modules/audio_coding/acm2/rent_a_codec.h"
@@ -249,7 +250,7 @@ class WebRtcVoiceCodecs final {
  public:
   // TODO(solenberg): Do this filtering once off-line, add a simple AudioCodec
   // list and add a test which verifies VoE supports the listed codecs.
-  static std::vector<AudioCodec> SupportedCodecs() {
+  static std::vector<AudioCodec> SupportedSendCodecs() {
     std::vector<AudioCodec> result;
     // Iterate first over our preferred codecs list, so that the results are
     // added in order of preference.
@@ -512,13 +513,20 @@ WebRtcVoiceEngine::WebRtcVoiceEngine(
   RTC_DCHECK(worker_thread_checker_.CalledOnValidThread());
   LOG(LS_INFO) << "WebRtcVoiceEngine::WebRtcVoiceEngine";
   RTC_DCHECK(voe_wrapper);
+  RTC_DCHECK(decoder_factory);
 
   signal_thread_checker_.DetachFromThread();
 
   // Load our audio codec list.
-  LOG(LS_INFO) << "Supported codecs in order of preference:";
-  codecs_ = WebRtcVoiceCodecs::SupportedCodecs();
-  for (const AudioCodec& codec : codecs_) {
+  LOG(LS_INFO) << "Supported send codecs in order of preference:";
+  send_codecs_ = WebRtcVoiceCodecs::SupportedSendCodecs();
+  for (const AudioCodec& codec : send_codecs_) {
+    LOG(LS_INFO) << ToString(codec);
+  }
+
+  LOG(LS_INFO) << "Supported recv codecs in order of preference:";
+  recv_codecs_ = CollectRecvCodecs();
+  for (const AudioCodec& codec : recv_codecs_) {
     LOG(LS_INFO) << ToString(codec);
   }
 
@@ -560,6 +568,7 @@ WebRtcVoiceEngine::WebRtcVoiceEngine(
     options.delay_agnostic_aec = rtc::Optional<bool>(false);
     options.experimental_ns = rtc::Optional<bool>(false);
     options.intelligibility_enhancer = rtc::Optional<bool>(false);
+    options.level_control = rtc::Optional<bool>(false);
     bool error = ApplyOptions(options);
     RTC_DCHECK(error);
   }
@@ -606,10 +615,12 @@ bool WebRtcVoiceEngine::ApplyOptions(const AudioOptions& options_in) {
   }
 
 #if defined(WEBRTC_IOS)
-  // On iOS, VPIO provides built-in EC and AGC.
+  // On iOS, VPIO provides built-in EC, NS and AGC.
   options.echo_cancellation = rtc::Optional<bool>(false);
   options.auto_gain_control = rtc::Optional<bool>(false);
-  LOG(LS_INFO) << "Always disable AEC and AGC on iOS. Use built-in instead.";
+  options.noise_suppression = rtc::Optional<bool>(false);
+  LOG(LS_INFO)
+      << "Always disable AEC, NS and AGC on iOS. Use built-in instead.";
 #elif defined(ANDROID)
   ec_mode = webrtc::kEcAecm;
 #endif
@@ -684,8 +695,8 @@ bool WebRtcVoiceEngine::ApplyOptions(const AudioOptions& options_in) {
   }
 
   if (options.auto_gain_control) {
-    const bool built_in_agc = adm()->BuiltInAGCIsAvailable();
-    if (built_in_agc) {
+    bool built_in_agc_avaliable = adm()->BuiltInAGCIsAvailable();
+    if (built_in_agc_avaliable) {
       if (adm()->EnableBuiltInAGC(*options.auto_gain_control) == 0 &&
           *options.auto_gain_control) {
         // Disable internal software AGC if built-in AGC is enabled,
@@ -842,6 +853,16 @@ bool WebRtcVoiceEngine::ApplyOptions(const AudioOptions& options_in) {
         new webrtc::Intelligibility(*intelligibility_enhancer_));
   }
 
+  if (options.level_control) {
+    level_control_ = options.level_control;
+  }
+
+  LOG(LS_INFO) << "Level control: "
+               << (!!level_control_ ? *level_control_ : -1);
+  if (level_control_) {
+    config.Set<webrtc::LevelControl>(new webrtc::LevelControl(*level_control_));
+  }
+
   // We check audioproc for the benefit of tests, since FakeWebRtcVoiceEngine
   // returns NULL on audio_processing().
   webrtc::AudioProcessing* audioproc = voe_wrapper_->base()->audio_processing();
@@ -906,12 +927,12 @@ int WebRtcVoiceEngine::GetInputLevel() {
 
 const std::vector<AudioCodec>& WebRtcVoiceEngine::send_codecs() const {
   RTC_DCHECK(signal_thread_checker_.CalledOnValidThread());
-  return codecs_;
+  return send_codecs_;
 }
 
 const std::vector<AudioCodec>& WebRtcVoiceEngine::recv_codecs() const {
   RTC_DCHECK(signal_thread_checker_.CalledOnValidThread());
-  return codecs_;
+  return recv_codecs_;
 }
 
 RtpCapabilities WebRtcVoiceEngine::GetCapabilities() const {
@@ -1040,27 +1061,6 @@ void WebRtcVoiceEngine::StopAecDump() {
   }
 }
 
-bool WebRtcVoiceEngine::StartRtcEventLog(rtc::PlatformFile file,
-                                         int64_t max_size_bytes) {
-  RTC_DCHECK(worker_thread_checker_.CalledOnValidThread());
-  webrtc::RtcEventLog* event_log = voe_wrapper_->codec()->GetEventLog();
-  if (event_log) {
-    return event_log->StartLogging(file, max_size_bytes);
-  }
-  LOG_RTCERR0(StartRtcEventLog);
-  return false;
-}
-
-void WebRtcVoiceEngine::StopRtcEventLog() {
-  RTC_DCHECK(worker_thread_checker_.CalledOnValidThread());
-  webrtc::RtcEventLog* event_log = voe_wrapper_->codec()->GetEventLog();
-  if (event_log) {
-    event_log->StopLogging();
-    return;
-  }
-  LOG_RTCERR0(StopRtcEventLog);
-}
-
 int WebRtcVoiceEngine::CreateVoEChannel() {
   RTC_DCHECK(worker_thread_checker_.CalledOnValidThread());
   return voe_wrapper_->base()->CreateChannel(voe_config_);
@@ -1070,6 +1070,59 @@ webrtc::AudioDeviceModule* WebRtcVoiceEngine::adm() {
   RTC_DCHECK(worker_thread_checker_.CalledOnValidThread());
   RTC_DCHECK(adm_);
   return adm_;
+}
+
+AudioCodecs WebRtcVoiceEngine::CollectRecvCodecs() const {
+  PayloadTypeMapper mapper;
+  AudioCodecs out;
+  const std::vector<webrtc::AudioCodecSpec>& specs =
+      decoder_factory_->GetSupportedDecoders();
+
+  // Only generate CN payload types for these clockrates
+  std::map<int, bool, std::greater<int>> generate_cn = {{ 8000,  false },
+                                                        { 16000, false },
+                                                        { 32000, false }};
+
+  auto map_format = [&mapper, &out] (const webrtc::SdpAudioFormat& format) {
+    rtc::Optional<AudioCodec> opt_codec = mapper.ToAudioCodec(format);
+    if (!opt_codec) {
+      LOG(LS_ERROR) << "Unable to assign payload type to format: " << format;
+      return false;
+    }
+
+    auto& codec = *opt_codec;
+    if (IsCodec(codec, kOpusCodecName)) {
+      // TODO(ossu): Set this specifically for Opus for now, until we have a
+      // better way of dealing with rtcp-fb parameters.
+      codec.AddFeedbackParam(
+          FeedbackParam(kRtcpFbParamTransportCc, kParamValueEmpty));
+    }
+    out.push_back(codec);
+    return true;
+  };
+
+  for (const auto& spec : specs) {
+    if (map_format(spec.format) && spec.allow_comfort_noise) {
+      // Generate a CN entry if the decoder allows it and we support the
+      // clockrate.
+      auto cn = generate_cn.find(spec.format.clockrate_hz);
+      if (cn != generate_cn.end()) {
+        cn->second = true;
+      }
+    }
+  }
+
+  // Add CN codecs after "proper" audio codecs
+  for (const auto& cn : generate_cn) {
+    if (cn.second) {
+      map_format({kCnCodecName, cn.first, 1});
+    }
+  }
+
+  // Add telephone-event codec last
+  map_format({kDtmfCodecName, 8000, 1});
+
+  return out;
 }
 
 class WebRtcVoiceMediaChannel::WebRtcAudioSendStream
@@ -1127,6 +1180,14 @@ class WebRtcVoiceMediaChannel::WebRtcAudioSendStream
       stream_ = nullptr;
     }
     config_.rtp.extensions = extensions;
+    if (webrtc::field_trial::FindFullName("WebRTC-AdaptAudioBitrate") ==
+        "Enabled") {
+      // TODO(mflodman): Keep testing this and set proper values.
+      // Note: This is an early experiment currently only supported by Opus.
+      config_.min_bitrate_kbps = kOpusMinBitrate;
+      config_.max_bitrate_kbps = kOpusBitrateFb;
+    }
+
     RTC_DCHECK(!stream_);
     stream_ = call_->CreateAudioSendStream(config_);
     RTC_CHECK(stream_);
@@ -1201,12 +1262,9 @@ class WebRtcVoiceMediaChannel::WebRtcAudioSendStream
     RTC_DCHECK(!worker_thread_checker_.CalledOnValidThread());
     RTC_DCHECK(audio_capture_thread_checker_.CalledOnValidThread());
     RTC_DCHECK(voe_audio_transport_);
-    voe_audio_transport_->OnData(config_.voe_channel_id,
-                                 audio_data,
-                                 bits_per_sample,
-                                 sample_rate,
-                                 number_of_channels,
-                                 number_of_frames);
+    voe_audio_transport_->PushCaptureData(config_.voe_channel_id, audio_data,
+                                          bits_per_sample, sample_rate,
+                                          number_of_channels, number_of_frames);
   }
 
   // Callback from the |source_| when it is going away. In case Start() has
@@ -1344,6 +1402,18 @@ class WebRtcVoiceMediaChannel::WebRtcAudioReceiveStream {
   void SetOutputVolume(double volume) {
     RTC_DCHECK(worker_thread_checker_.CalledOnValidThread());
     stream_->SetGain(volume);
+  }
+
+  void SetPlayout(bool playout) {
+    RTC_DCHECK(worker_thread_checker_.CalledOnValidThread());
+    RTC_DCHECK(stream_);
+    if (playout) {
+      LOG(LS_INFO) << "Starting playout for channel #" << channel();
+      stream_->Start();
+    } else {
+      LOG(LS_INFO) << "Stopping playout for channel #" << channel();
+      stream_->Stop();
+    }
   }
 
  private:
@@ -1625,7 +1695,7 @@ bool WebRtcVoiceMediaChannel::SetRecvCodecs(
   if (playout_) {
     // Receive codecs can not be changed while playing. So we temporarily
     // pause playout.
-    PausePlayout();
+    ChangePlayout(false);
   }
 
   bool result = true;
@@ -1653,7 +1723,7 @@ bool WebRtcVoiceMediaChannel::SetRecvCodecs(
   }
 
   if (desired_playout_ && !playout_) {
-    ResumePlayout();
+    ChangePlayout(desired_playout_);
   }
   return result;
 }
@@ -1908,35 +1978,22 @@ bool WebRtcVoiceMediaChannel::SetSendCodec(
   return true;
 }
 
-bool WebRtcVoiceMediaChannel::SetPlayout(bool playout) {
+void WebRtcVoiceMediaChannel::SetPlayout(bool playout) {
   desired_playout_ = playout;
   return ChangePlayout(desired_playout_);
 }
 
-bool WebRtcVoiceMediaChannel::PausePlayout() {
-  return ChangePlayout(false);
-}
-
-bool WebRtcVoiceMediaChannel::ResumePlayout() {
-  return ChangePlayout(desired_playout_);
-}
-
-bool WebRtcVoiceMediaChannel::ChangePlayout(bool playout) {
+void WebRtcVoiceMediaChannel::ChangePlayout(bool playout) {
   TRACE_EVENT0("webrtc", "WebRtcVoiceMediaChannel::ChangePlayout");
   RTC_DCHECK(worker_thread_checker_.CalledOnValidThread());
   if (playout_ == playout) {
-    return true;
+    return;
   }
 
-  for (const auto& ch : recv_streams_) {
-    if (!SetPlayout(ch.second->channel(), playout)) {
-      LOG(LS_ERROR) << "SetPlayout " << playout << " on channel "
-                    << ch.second->channel() << " failed";
-      return false;
-    }
+  for (const auto& kv : recv_streams_) {
+    kv.second->SetPlayout(playout);
   }
   playout_ = playout;
-  return true;
 }
 
 void WebRtcVoiceMediaChannel::SetSend(bool send) {
@@ -2163,7 +2220,7 @@ bool WebRtcVoiceMediaChannel::AddRecvStream(const StreamParams& sp) {
                                          sp.sync_label, recv_rtp_extensions_,
                                          call_, this,
                                          engine()->decoder_factory_)));
-  SetPlayout(channel, playout_);
+  recv_streams_[ssrc]->SetPlayout(playout_);
 
   return true;
 }
@@ -2596,20 +2653,6 @@ int WebRtcVoiceMediaChannel::GetSendChannelId(uint32_t ssrc) const {
     return it->second->channel();
   }
   return -1;
-}
-
-bool WebRtcVoiceMediaChannel::SetPlayout(int channel, bool playout) {
-  if (playout) {
-    LOG(LS_INFO) << "Starting playout for channel #" << channel;
-    if (engine()->voe()->base()->StartPlayout(channel) == -1) {
-      LOG_RTCERR1(StartPlayout, channel);
-      return false;
-    }
-  } else {
-    LOG(LS_INFO) << "Stopping playout for channel #" << channel;
-    engine()->voe()->base()->StopPlayout(channel);
-  }
-  return true;
 }
 }  // namespace cricket
 

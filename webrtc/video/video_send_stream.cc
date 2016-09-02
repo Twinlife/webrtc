@@ -52,6 +52,7 @@ std::vector<RtpRtcp*> CreateRtpRtcpModules(
     SendStatisticsProxy* stats_proxy,
     SendDelayStats* send_delay_stats,
     RtcEventLog* event_log,
+    RateLimiter* retransmission_rate_limiter,
     size_t num_modules) {
   RTC_DCHECK_GT(num_modules, 0u);
   RtpRtcp::Configuration configuration;
@@ -73,6 +74,7 @@ std::vector<RtpRtcp*> CreateRtpRtcpModules(
   configuration.send_side_delay_observer = stats_proxy;
   configuration.send_packet_observer = send_delay_stats;
   configuration.event_log = event_log;
+  configuration.retransmission_rate_limiter = retransmission_rate_limiter;
 
   std::vector<RtpRtcp*> modules;
   for (size_t i = 0; i < num_modules; ++i) {
@@ -157,6 +159,46 @@ std::string VideoSendStream::Config::ToString() const {
   ss << ", suspend_below_min_bitrate: " << (suspend_below_min_bitrate ? "on"
                                                                       : "off");
   ss << '}';
+  return ss.str();
+}
+
+std::string VideoSendStream::Stats::ToString(int64_t time_ms) const {
+  std::stringstream ss;
+  ss << "VideoSendStream stats: " << time_ms << ", {";
+  ss << "input_fps: " << input_frame_rate << ", ";
+  ss << "encode_fps: " << encode_frame_rate << ", ";
+  ss << "encode_ms: " << avg_encode_time_ms << ", ";
+  ss << "encode_usage_perc: " << encode_usage_percent << ", ";
+  ss << "target_bps: " << target_media_bitrate_bps << ", ";
+  ss << "media_bps: " << media_bitrate_bps << ", ";
+  ss << "suspended: " << (suspended ? "true" : "false") << ", ";
+  ss << "bw_adapted: " << (bw_limited_resolution ? "true" : "false");
+  ss << '}';
+  for (const auto& substream : substreams) {
+    if (!substream.second.is_rtx) {
+      ss << " {ssrc: " << substream.first << ", ";
+      ss << substream.second.ToString();
+      ss << '}';
+    }
+  }
+  return ss.str();
+}
+
+std::string VideoSendStream::StreamStats::ToString() const {
+  std::stringstream ss;
+  ss << "width: " << width << ", ";
+  ss << "height: " << height << ", ";
+  ss << "key: " << frame_counts.key_frames << ", ";
+  ss << "delta: " << frame_counts.delta_frames << ", ";
+  ss << "total_bps: " << total_bitrate_bps << ", ";
+  ss << "retransmit_bps: " << retransmit_bitrate_bps << ", ";
+  ss << "avg_delay_ms: " << avg_delay_ms << ", ";
+  ss << "max_delay_ms: " << max_delay_ms << ", ";
+  ss << "cum_loss: " << rtcp_stats.cumulative_lost << ", ";
+  ss << "max_ext_seq: " << rtcp_stats.extended_max_sequence_number << ", ";
+  ss << "nack: " << rtcp_packet_type_counts.nack_packets << ", ";
+  ss << "fir: " << rtcp_packet_type_counts.fir_packets << ", ";
+  ss << "pli: " << rtcp_packet_type_counts.pli_packets;
   return ss.str();
 }
 
@@ -396,6 +438,8 @@ VideoSendStream::VideoSendStream(
       encoder_thread_(EncoderThreadFunction, this, "EncoderThread"),
       encoder_wakeup_event_(false, false),
       stop_encoder_thread_(0),
+      encoder_max_bitrate_bps_(0),
+      encoder_target_rate_bps_(0),
       state_(State::kStopped),
       overuse_detector_(
           Clock::GetRealTimeClock(),
@@ -426,6 +470,7 @@ VideoSendStream::VideoSendStream(
           &stats_proxy_,
           send_delay_stats,
           event_log,
+          congestion_controller_->GetRetransmissionRateLimiter(),
           config_.rtp.ssrcs.size())),
       payload_router_(rtp_rtcp_modules_, config.encoder_settings.payload_type),
       input_(&encoder_wakeup_event_,
@@ -526,6 +571,7 @@ bool VideoSendStream::DeliverRtcp(const uint8_t* packet, size_t length) {
 }
 
 void VideoSendStream::Start() {
+  LOG(LS_INFO) << "VideoSendStream::Start";
   if (payload_router_.active())
     return;
   TRACE_EVENT_INSTANT0("webrtc", "VideoSendStream::Start");
@@ -538,6 +584,7 @@ void VideoSendStream::Start() {
 }
 
 void VideoSendStream::Stop() {
+  LOG(LS_INFO) << "VideoSendStream::Stop";
   if (!payload_router_.active())
     return;
   TRACE_EVENT_INSTANT0("webrtc", "VideoSendStream::Stop");
@@ -588,6 +635,16 @@ void VideoSendStream::EncoderProcess() {
       current_encoder_settings_->video_codec.startBitrate = std::max(
           bitrate_allocator_->GetStartBitrate(this) / 1000,
           static_cast<int>(current_encoder_settings_->video_codec.minBitrate));
+
+      if (state_ == State::kStarted) {
+        bitrate_allocator_->AddObserver(
+            this, current_encoder_settings_->video_codec.minBitrate * 1000,
+            current_encoder_settings_->video_codec.maxBitrate * 1000,
+            CalulcateMaxPadBitrateBps(current_encoder_settings_->config,
+                                      config_.suspend_below_min_bitrate),
+            !config_.suspend_below_min_bitrate);
+      }
+
       payload_router_.SetSendStreams(current_encoder_settings_->config.streams);
       vie_encoder_.SetEncoder(current_encoder_settings_->video_codec,
                               payload_router_.MaxPayloadLength());
@@ -603,10 +660,8 @@ void VideoSendStream::EncoderProcess() {
               .temporal_layer_thresholds_bps.size() +
           1;
       protection_bitrate_calculator_.SetEncodingData(
-          current_encoder_settings_->video_codec.startBitrate * 1000,
           current_encoder_settings_->video_codec.width,
           current_encoder_settings_->video_codec.height,
-          current_encoder_settings_->video_codec.maxFramerate,
           number_of_temporal_layers, payload_router_.MaxPayloadLength());
 
       // We might've gotten new settings while configuring the encoder settings,
@@ -631,6 +686,7 @@ void VideoSendStream::EncoderProcess() {
       } else if (*pending_state_change == State::kStopped) {
         bitrate_allocator_->RemoveObserver(this);
         vie_encoder_.OnBitrateUpdated(0, 0, 0);
+        stats_proxy_.OnSetEncoderTargetRate(0);
         state_ = State::kStopped;
         LOG_F(LS_INFO) << "Encoder stopped.";
       }
@@ -684,6 +740,7 @@ void VideoSendStream::ReconfigureVideoEncoder(
       config_.encoder_settings.payload_type);
   {
     rtc::CritScope lock(&encoder_settings_crit_);
+    encoder_max_bitrate_bps_ = video_codec.maxBitrate * 1000;
     pending_encoder_settings_.reset(new EncoderSettings({video_codec, config}));
   }
   encoder_wakeup_event_.Set();
@@ -703,9 +760,10 @@ void VideoSendStream::NormalUsage() {
     config_.overuse_callback->OnLoadUpdate(LoadObserver::kUnderuse);
 }
 
-int32_t VideoSendStream::Encoded(const EncodedImage& encoded_image,
-                                 const CodecSpecificInfo* codec_specific_info,
-                                 const RTPFragmentationHeader* fragmentation) {
+EncodedImageCallback::Result VideoSendStream::OnEncodedImage(
+    const EncodedImage& encoded_image,
+    const CodecSpecificInfo* codec_specific_info,
+    const RTPFragmentationHeader* fragmentation) {
   if (config_.post_encode_callback) {
     config_.post_encode_callback->EncodedFrameCallback(
         EncodedFrame(encoded_image._buffer, encoded_image._length,
@@ -713,7 +771,7 @@ int32_t VideoSendStream::Encoded(const EncodedImage& encoded_image,
   }
 
   protection_bitrate_calculator_.UpdateWithEncodedData(encoded_image);
-  int32_t return_value = payload_router_.Encoded(
+  EncodedImageCallback::Result result = payload_router_.OnEncodedImage(
       encoded_image, codec_specific_info, fragmentation);
 
   if (kEnableFrameRecording) {
@@ -739,7 +797,7 @@ int32_t VideoSendStream::Encoded(const EncodedImage& encoded_image,
     }
   }
 
-  return return_value;
+  return result;
 }
 
 void VideoSendStream::ConfigureProtection() {
@@ -866,15 +924,33 @@ void VideoSendStream::SignalNetworkState(NetworkState state) {
   }
 }
 
-void VideoSendStream::OnBitrateUpdated(uint32_t bitrate_bps,
-                                       uint8_t fraction_loss,
-                                       int64_t rtt) {
-  payload_router_.SetTargetSendBitrate(bitrate_bps);
+uint32_t VideoSendStream::OnBitrateUpdated(uint32_t bitrate_bps,
+                                           uint8_t fraction_loss,
+                                           int64_t rtt) {
   // Get the encoder target rate. It is the estimated network rate -
   // protection overhead.
-  uint32_t encoder_target_rate = protection_bitrate_calculator_.SetTargetRates(
-      bitrate_bps, stats_proxy_.GetSendFrameRate(), fraction_loss, rtt);
-  vie_encoder_.OnBitrateUpdated(encoder_target_rate, fraction_loss, rtt);
+  uint32_t encoder_target_rate_bps =
+      protection_bitrate_calculator_.SetTargetRates(
+          bitrate_bps, stats_proxy_.GetSendFrameRate(), fraction_loss, rtt);
+
+  uint32_t protection_bitrate = bitrate_bps - encoder_target_rate_bps;
+  {
+    // Limit the target bitrate to the configured max bitrate.
+    rtc::CritScope lock(&encoder_settings_crit_);
+    encoder_target_rate_bps =
+        std::min(encoder_max_bitrate_bps_, encoder_target_rate_bps);
+    if ((encoder_target_rate_bps_ == 0 && encoder_target_rate_bps > 0) ||
+        (encoder_target_rate_bps_ > 0 && encoder_target_rate_bps == 0)) {
+      LOG(LS_INFO)
+          << "OnBitrateUpdated: Encoder state changed, target bitrate "
+          << encoder_target_rate_bps << " bps.";
+    }
+    encoder_target_rate_bps_ = encoder_target_rate_bps;
+  }
+  vie_encoder_.OnBitrateUpdated(encoder_target_rate_bps, fraction_loss, rtt);
+  stats_proxy_.OnSetEncoderTargetRate(encoder_target_rate_bps);
+
+  return protection_bitrate;
 }
 
 int VideoSendStream::ProtectionRequest(const FecProtectionParams* delta_params,

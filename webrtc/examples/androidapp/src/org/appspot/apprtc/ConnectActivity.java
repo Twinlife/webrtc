@@ -55,6 +55,7 @@ public class ConnectActivity extends Activity {
   private ListView roomListView;
   private SharedPreferences sharedPref;
   private String keyprefVideoCallEnabled;
+  private String keyprefCamera2;
   private String keyprefResolution;
   private String keyprefFps;
   private String keyprefCaptureQualitySlider;
@@ -70,6 +71,9 @@ public class ConnectActivity extends Activity {
   private String keyprefAecDump;
   private String keyprefOpenSLES;
   private String keyprefDisableBuiltInAec;
+  private String keyprefDisableBuiltInAgc;
+  private String keyprefDisableBuiltInNs;
+  private String keyprefEnableLevelControl;
   private String keyprefDisplayHud;
   private String keyprefTracing;
   private String keyprefRoomServerUrl;
@@ -86,6 +90,7 @@ public class ConnectActivity extends Activity {
     PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
     sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
     keyprefVideoCallEnabled = getString(R.string.pref_videocall_key);
+    keyprefCamera2 = getString(R.string.pref_camera2_key);
     keyprefResolution = getString(R.string.pref_resolution_key);
     keyprefFps = getString(R.string.pref_fps_key);
     keyprefCaptureQualitySlider = getString(R.string.pref_capturequalityslider_key);
@@ -101,6 +106,9 @@ public class ConnectActivity extends Activity {
     keyprefAecDump = getString(R.string.pref_aecdump_key);
     keyprefOpenSLES = getString(R.string.pref_opensles_key);
     keyprefDisableBuiltInAec = getString(R.string.pref_disable_built_in_aec_key);
+    keyprefDisableBuiltInAgc = getString(R.string.pref_disable_built_in_agc_key);
+    keyprefDisableBuiltInNs = getString(R.string.pref_disable_built_in_ns_key);
+    keyprefEnableLevelControl = getString(R.string.pref_enable_level_control_key);
     keyprefDisplayHud = getString(R.string.pref_displayhud_key);
     keyprefTracing = getString(R.string.pref_tracing_key);
     keyprefRoomServerUrl = getString(R.string.pref_room_server_url_key);
@@ -259,6 +267,10 @@ public class ConnectActivity extends Activity {
     boolean videoCallEnabled = sharedPref.getBoolean(keyprefVideoCallEnabled,
         Boolean.valueOf(getString(R.string.pref_videocall_default)));
 
+    // Use Camera2 option.
+    boolean useCamera2 = sharedPref.getBoolean(keyprefCamera2,
+        Boolean.valueOf(getString(R.string.pref_camera2_default)));
+
     // Get default codecs.
     String videoCodec = sharedPref.getString(keyprefVideoCodec,
         getString(R.string.pref_videocodec_default));
@@ -292,6 +304,21 @@ public class ConnectActivity extends Activity {
     boolean disableBuiltInAEC = sharedPref.getBoolean(
         keyprefDisableBuiltInAec,
         Boolean.valueOf(getString(R.string.pref_disable_built_in_aec_default)));
+
+    // Check Disable built-in AGC flag.
+    boolean disableBuiltInAGC = sharedPref.getBoolean(
+        keyprefDisableBuiltInAgc,
+        Boolean.valueOf(getString(R.string.pref_disable_built_in_agc_default)));
+
+    // Check Disable built-in NS flag.
+    boolean disableBuiltInNS = sharedPref.getBoolean(
+        keyprefDisableBuiltInNs,
+        Boolean.valueOf(getString(R.string.pref_disable_built_in_ns_default)));
+
+    // Check Enable level control.
+    boolean enableLevelControl = sharedPref.getBoolean(
+        keyprefEnableLevelControl,
+        Boolean.valueOf(getString(R.string.pref_enable_level_control_key)));
 
     // Get video resolution from settings.
     int videoWidth = 0;
@@ -364,6 +391,7 @@ public class ConnectActivity extends Activity {
       intent.putExtra(CallActivity.EXTRA_ROOMID, roomId);
       intent.putExtra(CallActivity.EXTRA_LOOPBACK, loopback);
       intent.putExtra(CallActivity.EXTRA_VIDEO_CALL, videoCallEnabled);
+      intent.putExtra(CallActivity.EXTRA_CAMERA2, useCamera2);
       intent.putExtra(CallActivity.EXTRA_VIDEO_WIDTH, videoWidth);
       intent.putExtra(CallActivity.EXTRA_VIDEO_HEIGHT, videoHeight);
       intent.putExtra(CallActivity.EXTRA_VIDEO_FPS, cameraFps);
@@ -378,6 +406,9 @@ public class ConnectActivity extends Activity {
       intent.putExtra(CallActivity.EXTRA_AECDUMP_ENABLED, aecDump);
       intent.putExtra(CallActivity.EXTRA_OPENSLES_ENABLED, useOpenSLES);
       intent.putExtra(CallActivity.EXTRA_DISABLE_BUILT_IN_AEC, disableBuiltInAEC);
+      intent.putExtra(CallActivity.EXTRA_DISABLE_BUILT_IN_AGC, disableBuiltInAGC);
+      intent.putExtra(CallActivity.EXTRA_DISABLE_BUILT_IN_NS, disableBuiltInNS);
+      intent.putExtra(CallActivity.EXTRA_ENABLE_LEVEL_CONTROL, enableLevelControl);
       intent.putExtra(CallActivity.EXTRA_AUDIO_BITRATE, audioStartBitrate);
       intent.putExtra(CallActivity.EXTRA_AUDIOCODEC, audioCodec);
       intent.putExtra(CallActivity.EXTRA_DISPLAY_HUD, displayHud);

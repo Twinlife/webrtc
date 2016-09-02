@@ -48,6 +48,8 @@ class AudioCodingModuleImpl final : public AudioCodingModule {
   void ModifyEncoder(
       FunctionView<void(std::unique_ptr<AudioEncoder>*)> modifier) override;
 
+  void QueryEncoder(FunctionView<void(const AudioEncoder*)> query) override;
+
   // Get current send codec.
   rtc::Optional<CodecInst> SendCodec() const override;
 
@@ -156,6 +158,8 @@ class AudioCodingModuleImpl final : public AudioCodingModule {
   RTC_DEPRECATED int32_t PlayoutTimestamp(uint32_t* timestamp) override;
 
   rtc::Optional<uint32_t> PlayoutTimestamp() override;
+
+  int FilteredCurrentDelayMs() const override;
 
   // Get 10 milliseconds of raw audio data to play out, and
   // automatic resample to the requested frequency if > 0.
@@ -472,6 +476,11 @@ int32_t AudioCodingModuleImpl::Encode(const InputData& input_data) {
   if (!HaveValidEncoder("Process"))
     return -1;
 
+  if(!first_frame_) {
+    RTC_DCHECK_GT(input_data.input_timestamp, last_timestamp_)
+        << "Time should not move backwards";
+  }
+
   // Scale the timestamp to the codec's RTP timestamp rate.
   uint32_t rtp_timestamp =
       first_frame_ ? input_data.input_timestamp
@@ -589,6 +598,12 @@ void AudioCodingModuleImpl::ModifyEncoder(
   }
 
   modifier(&encoder_stack_);
+}
+
+void AudioCodingModuleImpl::QueryEncoder(
+    FunctionView<void(const AudioEncoder*)> query) {
+  rtc::CritScope lock(&acm_crit_sect_);
+  query(encoder_stack_.get());
 }
 
 // Get current send codec.
@@ -752,7 +767,8 @@ int AudioCodingModuleImpl::PreprocessToAddData(const AudioFrame& in_frame,
     expected_codec_ts_ = in_frame.timestamp_;
     first_10ms_data_ = true;
   } else if (in_frame.timestamp_ != expected_in_ts_) {
-    // TODO(turajs): Do we need a warning here.
+    LOG(LS_WARNING) << "Unexpected input timestamp: " << in_frame.timestamp_
+                    << ", expected: " << expected_in_ts_;
     expected_codec_ts_ +=
         (in_frame.timestamp_ - expected_in_ts_) *
         static_cast<uint32_t>(
@@ -764,9 +780,19 @@ int AudioCodingModuleImpl::PreprocessToAddData(const AudioFrame& in_frame,
 
   if (!down_mix && !resample) {
     // No pre-processing is required.
+    if (expected_in_ts_ == expected_codec_ts_) {
+      // If we've never resampled, we can use the input frame as-is
+      *ptr_out = &in_frame;
+    } else {
+      // Otherwise we'll need to alter the timestamp. Since in_frame is const,
+      // we'll have to make a copy of it.
+      preprocess_frame_.CopyFrom(in_frame);
+      preprocess_frame_.timestamp_ = expected_codec_ts_;
+      *ptr_out = &preprocess_frame_;
+    }
+
     expected_in_ts_ += static_cast<uint32_t>(in_frame.samples_per_channel_);
     expected_codec_ts_ += static_cast<uint32_t>(in_frame.samples_per_channel_);
-    *ptr_out = &in_frame;
     return 0;
   }
 
@@ -1199,6 +1225,10 @@ int32_t AudioCodingModuleImpl::PlayoutTimestamp(uint32_t* timestamp) {
 
 rtc::Optional<uint32_t> AudioCodingModuleImpl::PlayoutTimestamp() {
   return receiver_.GetPlayoutTimestamp();
+}
+
+int AudioCodingModuleImpl::FilteredCurrentDelayMs() const {
+  return receiver_.FilteredCurrentDelayMs();
 }
 
 bool AudioCodingModuleImpl::HaveValidEncoder(const char* caller_name) const {

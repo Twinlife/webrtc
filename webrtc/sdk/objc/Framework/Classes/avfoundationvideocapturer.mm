@@ -18,18 +18,51 @@
 
 #import "RTCDispatcher+Private.h"
 #import "WebRTC/RTCLogging.h"
+#if TARGET_OS_IPHONE
+#import "WebRTC/UIDevice+RTCDevice.h"
+#endif
 
 #include "webrtc/base/bind.h"
 #include "webrtc/base/checks.h"
 #include "webrtc/base/thread.h"
+#include "webrtc/common_video/include/corevideo_frame_buffer.h"
 
-// TODO(tkchin): support other formats.
-static NSString *const kDefaultPreset = AVCaptureSessionPreset640x480;
-static cricket::VideoFormat const kDefaultFormat =
-    cricket::VideoFormat(640,
-                         480,
-                         cricket::VideoFormat::FpsToInterval(30),
-                         cricket::FOURCC_NV12);
+struct AVCaptureSessionPresetResolution {
+  NSString *sessionPreset;
+  int width;
+  int height;
+};
+
+#if TARGET_OS_IPHONE
+static const AVCaptureSessionPresetResolution kAvailablePresets[] = {
+  { AVCaptureSessionPreset352x288, 352, 288},
+  { AVCaptureSessionPreset640x480, 640, 480},
+  { AVCaptureSessionPreset1280x720, 1280, 720},
+  { AVCaptureSessionPreset1920x1080, 1920, 1080},
+};
+#else // macOS
+static const AVCaptureSessionPresetResolution kAvailablePresets[] = {
+  { AVCaptureSessionPreset320x240, 320, 240},
+  { AVCaptureSessionPreset352x288, 352, 288},
+  { AVCaptureSessionPreset640x480, 640, 480},
+  { AVCaptureSessionPreset960x540, 960, 540},
+  { AVCaptureSessionPreset1280x720, 1280, 720},
+};
+#endif
+
+// Mapping from cricket::VideoFormat to AVCaptureSession presets.
+static NSString *GetSessionPresetForVideoFormat(
+  const cricket::VideoFormat& format) {
+  for (const auto preset : kAvailablePresets) {
+    // Check both orientations
+    if ((format.width == preset.width && format.height == preset.height) ||
+        (format.width == preset.height && format.height == preset.width)) {
+      return preset.sessionPreset;
+    }
+  }
+  // If no matching preset is found, use a default one.
+  return AVCaptureSessionPreset640x480;
+}
 
 // This class used to capture frames using AVFoundation APIs on iOS. It is meant
 // to be owned by an instance of AVFoundationVideoCapturer. The reason for this
@@ -49,6 +82,7 @@ static cricket::VideoFormat const kDefaultFormat =
 // when we receive frames. This is safe because this object should be owned by
 // it.
 - (instancetype)initWithCapturer:(webrtc::AVFoundationVideoCapturer *)capturer;
+- (AVCaptureDevice *)getActiveCaptureDevice;
 
 // Starts and stops the capture session asynchronously. We cannot do this
 // synchronously without blocking a WebRTC thread.
@@ -128,6 +162,10 @@ static cricket::VideoFormat const kDefaultFormat =
 
 - (AVCaptureSession *)captureSession {
   return _captureSession;
+}
+
+- (AVCaptureDevice *)getActiveCaptureDevice {
+  return self.useBackCamera ? _backCameraInput.device : _frontCameraInput.device;
 }
 
 - (dispatch_queue_t)frameQueue {
@@ -285,7 +323,7 @@ static cricket::VideoFormat const kDefaultFormat =
 - (void)handleCaptureSessionRuntimeError:(NSNotification *)notification {
   NSError *error =
       [notification.userInfo objectForKey:AVCaptureSessionErrorKey];
-  RTCLogError(@"Capture session runtime error: %@", error.localizedDescription);
+  RTCLogError(@"Capture session runtime error: %@", error);
 
   [RTCDispatcher dispatchAsyncOnType:RTCDispatcherTypeCaptureSession
                                block:^{
@@ -350,11 +388,6 @@ static cricket::VideoFormat const kDefaultFormat =
     captureSession.usesApplicationAudioSession = NO;
   }
 #endif
-  if (![captureSession canSetSessionPreset:kDefaultPreset]) {
-    RTCLogError(@"Session preset unsupported.");
-    return NO;
-  }
-  captureSession.sessionPreset = kDefaultPreset;
 
   // Add the output.
   AVCaptureVideoDataOutput *videoDataOutput = [self videoDataOutput];
@@ -382,6 +415,7 @@ static cricket::VideoFormat const kDefaultFormat =
   AVCaptureDeviceInput *input = self.useBackCamera ?
       backCameraInput : frontCameraInput;
   [captureSession addInput:input];
+
   _captureSession = captureSession;
   return YES;
 }
@@ -392,7 +426,6 @@ static cricket::VideoFormat const kDefaultFormat =
     // currently supported on iPhone / iPad.
     AVCaptureVideoDataOutput *videoDataOutput =
         [[AVCaptureVideoDataOutput alloc] init];
-    videoDataOutput = [[AVCaptureVideoDataOutput alloc] init];
     videoDataOutput.videoSettings = @{
       (NSString *)kCVPixelBufferPixelFormatTypeKey :
         @(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)
@@ -464,6 +497,17 @@ static cricket::VideoFormat const kDefaultFormat =
   return _backCameraInput;
 }
 
+- (void)setMinFrameDuration:(CMTime)minFrameDuration
+                  forDevice:(AVCaptureDevice *)device {
+  NSError *error = nil;
+  if (![device lockForConfiguration:&error]) {
+    RTCLogError(@"Failed to lock device for configuration. Error: %@", error.localizedDescription);
+    return;
+  }
+  device.activeVideoMinFrameDuration = minFrameDuration;
+  [device unlockForConfiguration];
+}
+
 // Called from capture session queue.
 - (void)updateOrientation {
   AVCaptureConnection *connection =
@@ -519,6 +563,9 @@ static cricket::VideoFormat const kDefaultFormat =
     }
     [self updateOrientation];
     [_captureSession commitConfiguration];
+
+    const auto fps = cricket::VideoFormat::IntervalToFps(_capturer->GetCaptureFormat()->interval);
+    [self setMinFrameDuration:CMTimeMake(1, fps)forDevice:newInput.device];
   }];
 }
 
@@ -539,12 +586,32 @@ struct AVFoundationFrame {
 
 AVFoundationVideoCapturer::AVFoundationVideoCapturer()
     : _capturer(nil), _startThread(nullptr) {
-  // Set our supported formats. This matches kDefaultPreset.
-  std::vector<cricket::VideoFormat> supportedFormats;
-  supportedFormats.push_back(cricket::VideoFormat(kDefaultFormat));
-  SetSupportedFormats(supportedFormats);
+  // Set our supported formats. This matches kAvailablePresets.
   _capturer =
       [[RTCAVFoundationVideoCapturerInternal alloc] initWithCapturer:this];
+
+  std::vector<cricket::VideoFormat> supported_formats;
+  int framerate = 30;
+
+#if TARGET_OS_IPHONE
+  if ([UIDevice deviceType] == RTCDeviceTypeIPhone4S) {
+    set_enable_video_adapter(false);
+    framerate = 15;
+  }
+#endif
+
+  for (const auto preset : kAvailablePresets) {
+    if ([_capturer.captureSession canSetSessionPreset:preset.sessionPreset]) {
+      const auto format = cricket::VideoFormat(
+        preset.width,
+        preset.height,
+        cricket::VideoFormat::FpsToInterval(framerate),
+        cricket::FOURCC_NV12);
+      supported_formats.push_back(format);
+    }
+  }
+
+  SetSupportedFormats(supported_formats);
 }
 
 AVFoundationVideoCapturer::~AVFoundationVideoCapturer() {
@@ -561,10 +628,18 @@ cricket::CaptureState AVFoundationVideoCapturer::Start(
     LOG(LS_ERROR) << "The capturer is already running.";
     return cricket::CaptureState::CS_FAILED;
   }
-  if (format != kDefaultFormat) {
-    LOG(LS_ERROR) << "Unsupported format provided.";
+
+  NSString *desiredPreset = GetSessionPresetForVideoFormat(format);
+  RTC_DCHECK(desiredPreset);
+
+  [_capturer.captureSession beginConfiguration];
+  if (![_capturer.captureSession canSetSessionPreset:desiredPreset]) {
+    LOG(LS_ERROR) << "Unsupported video format.";
+    [_capturer.captureSession commitConfiguration];
     return cricket::CaptureState::CS_FAILED;
   }
+  _capturer.captureSession.sessionPreset = desiredPreset;
+  [_capturer.captureSession commitConfiguration];
 
   // Keep track of which thread capture started on. This is the thread that
   // frames need to be sent to.
@@ -577,6 +652,11 @@ cricket::CaptureState AVFoundationVideoCapturer::Start(
   // TODO(tkchin): make this better.
   [_capturer start];
   SetCaptureState(cricket::CaptureState::CS_RUNNING);
+
+  // Adjust the framerate for all capture devices.
+  const auto fps = cricket::VideoFormat::IntervalToFps(format.interval);
+  AVCaptureDevice *activeDevice = [_capturer getActiveCaptureDevice];
+  [_capturer setMinFrameDuration:CMTimeMake(1, fps)forDevice:activeDevice];
 
   return cricket::CaptureState::CS_STARTING;
 }
@@ -642,57 +722,46 @@ void AVFoundationVideoCapturer::OnMessage(rtc::Message *msg) {
 }
 
 void AVFoundationVideoCapturer::OnFrameMessage(CVImageBufferRef image_buffer,
-                                               int64_t capture_time) {
+                                               int64_t capture_time_ns) {
   RTC_DCHECK(_startThread->IsCurrent());
 
-  // Base address must be unlocked to access frame data.
-  CVOptionFlags lock_flags = kCVPixelBufferLock_ReadOnly;
-  CVReturn ret = CVPixelBufferLockBaseAddress(image_buffer, lock_flags);
-  if (ret != kCVReturnSuccess) {
+  rtc::scoped_refptr<webrtc::VideoFrameBuffer> buffer =
+      new rtc::RefCountedObject<webrtc::CoreVideoFrameBuffer>(image_buffer);
+
+  const int captured_width = buffer->width();
+  const int captured_height = buffer->height();
+
+  int adapted_width;
+  int adapted_height;
+  int crop_width;
+  int crop_height;
+  int crop_x;
+  int crop_y;
+  int64_t translated_camera_time_us;
+
+  if (!AdaptFrame(captured_width, captured_height,
+                  capture_time_ns / rtc::kNumNanosecsPerMicrosec,
+                  rtc::TimeMicros(), &adapted_width, &adapted_height,
+                  &crop_width, &crop_height, &crop_x, &crop_y,
+                  &translated_camera_time_us)) {
+    CVBufferRelease(image_buffer);
     return;
   }
 
-  static size_t const kYPlaneIndex = 0;
-  static size_t const kUVPlaneIndex = 1;
-  uint8_t* y_plane_address =
-      static_cast<uint8_t*>(CVPixelBufferGetBaseAddressOfPlane(image_buffer,
-                                                               kYPlaneIndex));
-  size_t y_plane_height =
-      CVPixelBufferGetHeightOfPlane(image_buffer, kYPlaneIndex);
-  size_t y_plane_width =
-      CVPixelBufferGetWidthOfPlane(image_buffer, kYPlaneIndex);
-  size_t y_plane_bytes_per_row =
-      CVPixelBufferGetBytesPerRowOfPlane(image_buffer, kYPlaneIndex);
-  size_t uv_plane_height =
-      CVPixelBufferGetHeightOfPlane(image_buffer, kUVPlaneIndex);
-  size_t uv_plane_bytes_per_row =
-      CVPixelBufferGetBytesPerRowOfPlane(image_buffer, kUVPlaneIndex);
-  size_t frame_size = y_plane_bytes_per_row * y_plane_height +
-      uv_plane_bytes_per_row * uv_plane_height;
+  if (adapted_width != captured_width || crop_width != captured_width ||
+      adapted_height != captured_height || crop_height != captured_height) {
+    // TODO(magjed): Avoid converting to I420.
+    rtc::scoped_refptr<webrtc::I420Buffer> scaled_buffer(
+        _buffer_pool.CreateBuffer(adapted_width, adapted_height));
+    scaled_buffer->CropAndScaleFrom(buffer->NativeToI420Buffer(), crop_x,
+                                    crop_y, crop_width, crop_height);
+    buffer = scaled_buffer;
+  }
 
-  // Sanity check assumption that planar bytes are contiguous.
-  uint8_t* uv_plane_address =
-      static_cast<uint8_t*>(CVPixelBufferGetBaseAddressOfPlane(image_buffer,
-                                                               kUVPlaneIndex));
-  RTC_DCHECK(uv_plane_address ==
-             y_plane_address + y_plane_height * y_plane_bytes_per_row);
+  OnFrame(cricket::WebRtcVideoFrame(buffer, webrtc::kVideoRotation_0,
+                                    translated_camera_time_us, 0),
+          captured_width, captured_height);
 
-  // Stuff data into a cricket::CapturedFrame.
-  cricket::CapturedFrame frame;
-  frame.width = y_plane_width;
-  frame.height = y_plane_height;
-  frame.pixel_width = 1;
-  frame.pixel_height = 1;
-  frame.fourcc = static_cast<uint32_t>(cricket::FOURCC_NV12);
-  frame.time_stamp = capture_time;
-  frame.data = y_plane_address;
-  frame.data_size = frame_size;
-
-  // This will call a superclass method that will perform the frame conversion
-  // to I420.
-  SignalFrameCaptured(this, &frame);
-
-  CVPixelBufferUnlockBaseAddress(image_buffer, lock_flags);
   CVBufferRelease(image_buffer);
 }
 

@@ -87,9 +87,9 @@ class VideoSendStream : public webrtc::VideoSendStream,
   int GetPaddingNeededBps() const;
 
   // Implements BitrateAllocatorObserver.
-  void OnBitrateUpdated(uint32_t bitrate_bps,
-                        uint8_t fraction_loss,
-                        int64_t rtt) override;
+  uint32_t OnBitrateUpdated(uint32_t bitrate_bps,
+                            uint8_t fraction_loss,
+                            int64_t rtt) override;
 
  protected:
   // Implements webrtc::VCMProtectionCallback.
@@ -108,9 +108,10 @@ class VideoSendStream : public webrtc::VideoSendStream,
   // Implements EncodedImageCallback. The implementation routes encoded frames
   // to the |payload_router_| and |config.pre_encode_callback| if set.
   // Called on an arbitrary encoder callback thread.
-  int32_t Encoded(const EncodedImage& encoded_image,
-                  const CodecSpecificInfo* codec_specific_info,
-                  const RTPFragmentationHeader* fragmentation) override;
+  EncodedImageCallback::Result OnEncodedImage(
+      const EncodedImage& encoded_image,
+      const CodecSpecificInfo* codec_specific_info,
+      const RTPFragmentationHeader* fragmentation) override;
 
   static bool EncoderThreadFunction(void* obj);
   void EncoderProcess();
@@ -138,6 +139,8 @@ class VideoSendStream : public webrtc::VideoSendStream,
   rtc::CriticalSection encoder_settings_crit_;
   std::unique_ptr<EncoderSettings> pending_encoder_settings_
       GUARDED_BY(encoder_settings_crit_);
+  uint32_t encoder_max_bitrate_bps_ GUARDED_BY(encoder_settings_crit_);
+  uint32_t encoder_target_rate_bps_ GUARDED_BY(encoder_settings_crit_);
 
   enum class State {
     kStopped,  // VideoSendStream::Start has not yet been called.

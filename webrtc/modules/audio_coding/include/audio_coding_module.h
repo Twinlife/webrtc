@@ -250,6 +250,10 @@ class AudioCodingModule {
   virtual void ModifyEncoder(
       FunctionView<void(std::unique_ptr<AudioEncoder>*)> modifier) = 0;
 
+  // |modifier| is called exactly once with one argument: a const pointer to the
+  // current encoder (which is null if there is no current encoder).
+  virtual void QueryEncoder(FunctionView<void(AudioEncoder const*)> query) = 0;
+
   // Utility method for simply replacing the existing encoder with a new one.
   void SetEncoder(std::unique_ptr<AudioEncoder> new_encoder) {
     ModifyEncoder([&](std::unique_ptr<AudioEncoder>* encoder) {
@@ -673,6 +677,15 @@ class AudioCodingModule {
   // valid timestamp is available.
   //
   virtual rtc::Optional<uint32_t> PlayoutTimestamp() = 0;
+
+  ///////////////////////////////////////////////////////////////////////////
+  // int FilteredCurrentDelayMs()
+  // Returns the current total delay from NetEq (packet buffer and sync buffer)
+  // in ms, with smoothing applied to even out short-time fluctuations due to
+  // jitter. The packet buffer part of the delay is not updated during DTX/CNG
+  // periods.
+  //
+  virtual int FilteredCurrentDelayMs() const = 0;
 
   ///////////////////////////////////////////////////////////////////////////
   // int32_t PlayoutData10Ms(

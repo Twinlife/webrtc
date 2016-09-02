@@ -57,7 +57,9 @@
                 'objc/Framework/Classes/RTCCameraPreviewView.m',
                 'objc/Framework/Classes/RTCUIApplication.h',
                 'objc/Framework/Classes/RTCUIApplication.mm',
+                'objc/Framework/Classes/UIDevice+RTCDevice.mm',
                 'objc/Framework/Headers/WebRTC/RTCCameraPreviewView.h',
+                'objc/Framework/Headers/WebRTC/UIDevice+RTCDevice.h',
               ],
               'link_settings': {
                 'xcode_settings': {
@@ -104,16 +106,17 @@
             ],
           }, # link_settings
           'sources': [
-            'objc/Framework/Classes/RTCAudioTrack+Private.h',
-            'objc/Framework/Classes/RTCAudioTrack.mm',
             'objc/Framework/Classes/RTCAVFoundationVideoSource+Private.h',
             'objc/Framework/Classes/RTCAVFoundationVideoSource.mm',
+            'objc/Framework/Classes/RTCAudioTrack+Private.h',
+            'objc/Framework/Classes/RTCAudioTrack.mm',
             'objc/Framework/Classes/RTCConfiguration+Private.h',
             'objc/Framework/Classes/RTCConfiguration.mm',
             'objc/Framework/Classes/RTCDataChannel+Private.h',
             'objc/Framework/Classes/RTCDataChannel.mm',
             'objc/Framework/Classes/RTCDataChannelConfiguration+Private.h',
             'objc/Framework/Classes/RTCDataChannelConfiguration.mm',
+            'objc/Framework/Classes/RTCI420Shader.mm',
             'objc/Framework/Classes/RTCIceCandidate+Private.h',
             'objc/Framework/Classes/RTCIceCandidate.mm',
             'objc/Framework/Classes/RTCIceServer+Private.h',
@@ -124,6 +127,7 @@
             'objc/Framework/Classes/RTCMediaStream.mm',
             'objc/Framework/Classes/RTCMediaStreamTrack+Private.h',
             'objc/Framework/Classes/RTCMediaStreamTrack.mm',
+            'objc/Framework/Classes/RTCOpenGLDefines.h',
             'objc/Framework/Classes/RTCOpenGLVideoRenderer.h',
             'objc/Framework/Classes/RTCOpenGLVideoRenderer.mm',
             'objc/Framework/Classes/RTCPeerConnection+DataChannel.mm',
@@ -144,6 +148,9 @@
             'objc/Framework/Classes/RTCRtpSender.mm',
             'objc/Framework/Classes/RTCSessionDescription+Private.h',
             'objc/Framework/Classes/RTCSessionDescription.mm',
+            'objc/Framework/Classes/RTCShader+Private.h',
+            'objc/Framework/Classes/RTCShader.h',
+            'objc/Framework/Classes/RTCShader.mm',
             'objc/Framework/Classes/RTCStatsReport+Private.h',
             'objc/Framework/Classes/RTCStatsReport.mm',
             'objc/Framework/Classes/RTCVideoFrame+Private.h',
@@ -157,8 +164,8 @@
             'objc/Framework/Classes/RTCVideoTrack.mm',
             'objc/Framework/Classes/avfoundationvideocapturer.h',
             'objc/Framework/Classes/avfoundationvideocapturer.mm',
-            'objc/Framework/Headers/WebRTC/RTCAudioTrack.h',
             'objc/Framework/Headers/WebRTC/RTCAVFoundationVideoSource.h',
+            'objc/Framework/Headers/WebRTC/RTCAudioTrack.h',
             'objc/Framework/Headers/WebRTC/RTCConfiguration.h',
             'objc/Framework/Headers/WebRTC/RTCDataChannel.h',
             'objc/Framework/Headers/WebRTC/RTCDataChannelConfiguration.h',
@@ -185,6 +192,7 @@
             ['OS=="ios"', {
               'sources': [
                 'objc/Framework/Classes/RTCEAGLVideoView.m',
+                'objc/Framework/Classes/RTCNativeNV12Shader.mm',
                 'objc/Framework/Headers/WebRTC/RTCEAGLVideoView.h',
               ],
               'link_settings': {
@@ -227,6 +235,7 @@
           'sources': [
             'objc/Framework/Classes/RTCFieldTrials.mm',
             'objc/Framework/Classes/RTCLogging.mm',
+            'objc/Framework/Classes/RTCMetrics.mm',
             'objc/Framework/Classes/RTCSSLAdapter.mm',
             'objc/Framework/Classes/RTCTracing.mm',
             'objc/Framework/Headers/WebRTC/RTCFieldTrials.h',
@@ -254,6 +263,8 @@
             'objc/Framework/Headers/WebRTC/RTCMediaConstraints.h',
             'objc/Framework/Headers/WebRTC/RTCMediaStream.h',
             'objc/Framework/Headers/WebRTC/RTCMediaStreamTrack.h',
+            'objc/Framework/Headers/WebRTC/RTCMetrics.h',
+            'objc/Framework/Headers/WebRTC/RTCMetricsSampleInfo.h',
             'objc/Framework/Headers/WebRTC/RTCNSGLVideoView.h',
             'objc/Framework/Headers/WebRTC/RTCPeerConnection.h',
             'objc/Framework/Headers/WebRTC/RTCPeerConnectionFactory.h',
@@ -270,6 +281,7 @@
             'objc/Framework/Headers/WebRTC/RTCVideoRenderer.h',
             'objc/Framework/Headers/WebRTC/RTCVideoSource.h',
             'objc/Framework/Headers/WebRTC/RTCVideoTrack.h',
+            'objc/Framework/Headers/WebRTC/UIDevice+RTCDevice.h',
             'objc/Framework/Headers/WebRTC/WebRTC.h',
           ],
           'dependencies': [

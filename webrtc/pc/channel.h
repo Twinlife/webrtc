@@ -70,6 +70,7 @@ class BaseChannel
       public MediaChannel::NetworkInterface,
       public ConnectionStatsGetter {
  public:
+  // |rtcp| represents whether or not this channel uses RTCP.
   BaseChannel(rtc::Thread* worker_thread,
               rtc::Thread* network_thread,
               MediaChannel* channel,
@@ -170,6 +171,8 @@ class BaseChannel
 
   virtual cricket::MediaType media_type() = 0;
 
+  bool SetCryptoOptions(const rtc::CryptoOptions& crypto_options);
+
  protected:
   virtual MediaChannel* media_channel() const { return media_channel_; }
   // Sets the |transport_channel_| (and |rtcp_transport_channel_|, if |rtcp_| is
@@ -195,7 +198,6 @@ class BaseChannel
   rtc::Thread* signaling_thread() {
     return transport_controller_->signaling_thread();
   }
-  bool rtcp_transport_enabled() const { return rtcp_transport_enabled_; }
 
   void ConnectToTransportChannel(TransportChannel* tc);
   void DisconnectFromTransportChannel(TransportChannel* tc);
@@ -303,6 +305,10 @@ class BaseChannel
   // From MessageHandler
   void OnMessage(rtc::Message* pmsg) override;
 
+  const rtc::CryptoOptions& crypto_options() const {
+    return crypto_options_;
+  }
+
   // Handled in derived classes
   // Get the SRTP crypto suites to use for RTP media
   virtual void GetSrtpCryptoSuites_n(std::vector<int>* crypto_suites) const = 0;
@@ -336,33 +342,37 @@ class BaseChannel
   // Transport related members that should be accessed from network thread.
   TransportController* const transport_controller_;
   std::string transport_name_;
-  bool rtcp_transport_enabled_;
-  TransportChannel* transport_channel_;
+  // Is RTCP used at all by this type of channel?
+  // Expected to be true (as of typing this) for everything except data
+  // channels.
+  const bool rtcp_enabled_;
+  TransportChannel* transport_channel_ = nullptr;
   std::vector<std::pair<rtc::Socket::Option, int> > socket_options_;
-  TransportChannel* rtcp_transport_channel_;
+  TransportChannel* rtcp_transport_channel_ = nullptr;
   std::vector<std::pair<rtc::Socket::Option, int> > rtcp_socket_options_;
   SrtpFilter srtp_filter_;
   RtcpMuxFilter rtcp_mux_filter_;
   BundleFilter bundle_filter_;
-  bool rtp_ready_to_send_;
-  bool rtcp_ready_to_send_;
-  bool writable_;
-  bool was_ever_writable_;
-  bool has_received_packet_;
-  bool dtls_keyed_;
-  bool secure_required_;
-  int rtp_abs_sendtime_extn_id_;
+  bool rtp_ready_to_send_ = false;
+  bool rtcp_ready_to_send_ = false;
+  bool writable_ = false;
+  bool was_ever_writable_ = false;
+  bool has_received_packet_ = false;
+  bool dtls_keyed_ = false;
+  bool secure_required_ = false;
+  rtc::CryptoOptions crypto_options_;
+  int rtp_abs_sendtime_extn_id_ = -1;
 
   // MediaChannel related members that should be access from worker thread.
   MediaChannel* const media_channel_;
   // Currently enabled_ flag accessed from signaling thread too, but it can
   // be changed only when signaling thread does sunchronious call to worker
   // thread, so it should be safe.
-  bool enabled_;
+  bool enabled_ = false;
   std::vector<StreamParams> local_streams_;
   std::vector<StreamParams> remote_streams_;
-  MediaContentDirection local_content_direction_;
-  MediaContentDirection remote_content_direction_;
+  MediaContentDirection local_content_direction_ = MD_INACTIVE;
+  MediaContentDirection remote_content_direction_ = MD_INACTIVE;
 };
 
 // VoiceChannel is a specialization that adds support for early media, DTMF,
