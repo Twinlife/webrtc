@@ -72,7 +72,6 @@
 /resources/**/*.INP
 /resources/**/*.OUT*
 /testing
-/third_party/BUILD.gn
 /third_party/WebKit
 /third_party/WebKit/Tools/Scripts
 /third_party/accessibility_test_framework
