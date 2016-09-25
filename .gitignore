@@ -48,8 +48,8 @@
 /gyp-mac-tool
 /links
 /links.db
-/out_32
-/out_64
+/out-32
+/out-64
 /libs
 /mojo
 /out
