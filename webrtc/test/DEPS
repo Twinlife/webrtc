@@ -2,6 +2,7 @@ include_rules = [
   "+webrtc/base",
   "+webrtc/call",
   "+webrtc/common_video",
+  "+webrtc/logging/rtc_event_log",
   "+webrtc/media/base",
   "+webrtc/modules/audio_coding",
   "+webrtc/modules/audio_device",
@@ -12,3 +13,12 @@ include_rules = [
   "+webrtc/system_wrappers",
   "+webrtc/voice_engine",
 ]
+
+specific_include_rules = {
+  "gmock\.h": [
+    "+testing/gmock/include/gmock",
+  ],
+  "gtest\.h": [
+    "+testing/gtest/include/gtest",
+  ],
+}

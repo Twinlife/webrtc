@@ -12,13 +12,15 @@
       '<(webrtc_root)/modules/modules.gyp:congestion_controller',
       '<(webrtc_root)/modules/modules.gyp:rtp_rtcp',
       '<(webrtc_root)/system_wrappers/system_wrappers.gyp:system_wrappers',
-      '<(webrtc_root)/webrtc.gyp:rtc_event_log',
+      '<(webrtc_root)/webrtc.gyp:rtc_event_log_impl',
     ],
     'webrtc_call_sources': [
       'call/bitrate_allocator.cc',
       'call/call.cc',
-      'call/transport_adapter.cc',
-      'call/transport_adapter.h',
+      'call/flexfec_receive_stream.cc',
+      'call/flexfec_receive_stream.h',
+      'video/transport_adapter.cc',
+      'video/transport_adapter.h',
     ],
   },
 }

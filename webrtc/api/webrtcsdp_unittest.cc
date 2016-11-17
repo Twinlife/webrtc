@@ -1046,10 +1046,7 @@ class WebRtcSdpTest : public testing::Test {
         "inline:d0RmdmcmVCspeEc3QGZiNWpVLFJhQX1cfHAwJSoj|2^20|1:32", ""));
     video->set_protocol(cricket::kMediaProtocolSavpf);
     video->AddCodec(
-        VideoCodec(120, JsepSessionDescription::kDefaultVideoCodecName,
-                   JsepSessionDescription::kMaxVideoCodecWidth,
-                   JsepSessionDescription::kMaxVideoCodecHeight,
-                   JsepSessionDescription::kDefaultVideoCodecFramerate));
+        VideoCodec(120, JsepSessionDescription::kDefaultVideoCodecName));
     return video;
   }
 
@@ -1395,7 +1392,7 @@ class WebRtcSdpTest : public testing::Test {
     std::unique_ptr<DataContentDescription> data(new DataContentDescription());
     data_desc_ = data.get();
     data_desc_->set_protocol(cricket::kMediaProtocolDtlsSctp);
-    DataCodec codec(cricket::kGoogleSctpDataCodecId,
+    DataCodec codec(cricket::kGoogleSctpDataCodecPlType,
                     cricket::kGoogleSctpDataCodecName);
     codec.SetParam(cricket::kCodecParamPort, kDefaultSctpPort);
     data_desc_->AddCodec(codec);
@@ -1990,7 +1987,7 @@ TEST_F(WebRtcSdpTest, SerializeWithSctpDataChannelAndNewPort) {
       jsep_desc.description()->GetContentDescriptionByName(kDataContentName));
 
   const int kNewPort = 1234;
-  cricket::DataCodec codec(cricket::kGoogleSctpDataCodecId,
+  cricket::DataCodec codec(cricket::kGoogleSctpDataCodecPlType,
                            cricket::kGoogleSctpDataCodecName);
   codec.SetParam(cricket::kCodecParamPort, kNewPort);
   dcdesc->AddOrReplaceCodec(codec);
@@ -2605,7 +2602,7 @@ TEST_F(WebRtcSdpTest, DeserializeSdpWithSctpDataChannelAndNewPort) {
       mutant->GetContentDescriptionByName(kDataContentName));
   std::vector<cricket::DataCodec> codecs(dcdesc->codecs());
   EXPECT_EQ(1U, codecs.size());
-  EXPECT_EQ(cricket::kGoogleSctpDataCodecId, codecs[0].id);
+  EXPECT_EQ(cricket::kGoogleSctpDataCodecPlType, codecs[0].id);
   codecs[0].SetParam(cricket::kCodecParamPort, kUnusualSctpPort);
   dcdesc->set_codecs(codecs);
 
@@ -3182,4 +3179,24 @@ TEST_F(WebRtcSdpTest, DeserializeUnifiedPlanSessionDescription) {
 TEST_F(WebRtcSdpTest, SerializeUnifiedPlanSessionDescription) {
   MakeUnifiedPlanDescription();
   TestSerialize(jdesc_, true);
+}
+
+// Regression test for heap overflow bug:
+// https://bugs.chromium.org/p/chromium/issues/detail?id=647916
+TEST_F(WebRtcSdpTest, DeserializeSctpPortInVideoDescription) {
+  JsepSessionDescription jdesc_output(kDummyString);
+
+  // The issue occurs when the sctp-port attribute is found in a video
+  // description. The actual heap overflow occurs when parsing the fmtp line.
+  const char kSdpWithSctpPortInVideoDescription[] =
+      "v=0\r\n"
+      "o=- 18446744069414584320 18446462598732840960 IN IP4 127.0.0.1\r\n"
+      "s=-\r\n"
+      "t=0 0\r\n"
+      "m=video 9 UDP/DTLS/SCTP 120\r\n"
+      "a=sctp-port 5000\r\n"
+      "a=fmtp:108 foo=10\r\n";
+
+  ExpectParseFailure(std::string(kSdpWithSctpPortInVideoDescription),
+                     "sctp-port");
 }

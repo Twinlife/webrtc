@@ -26,6 +26,7 @@ extern "C" {
 #include "webrtc/common_audio/wav_file.h"
 #include "webrtc/modules/audio_processing/aec/aec_common.h"
 #include "webrtc/modules/audio_processing/utility/block_mean_calculator.h"
+#include "webrtc/modules/audio_processing/utility/ooura_fft.h"
 #include "webrtc/typedefs.h"
 
 namespace webrtc {
@@ -83,6 +84,21 @@ typedef struct PowerLevel {
   float minlevel;
 } PowerLevel;
 
+class BlockBuffer {
+ public:
+  BlockBuffer();
+  ~BlockBuffer();
+  void ReInit();
+  void Insert(const float block[PART_LEN]);
+  void ExtractExtendedBlock(float extended_block[PART_LEN]);
+  int AdjustSize(int buffer_size_decrease);
+  size_t Size();
+  size_t AvaliableSpace();
+
+ private:
+  RingBuffer* buffer_;
+};
+
 class DivergentFilterFraction {
  public:
   DivergentFilterFraction();
@@ -119,6 +135,7 @@ struct AecCore {
   ~AecCore();
 
   std::unique_ptr<ApmDataDumper> data_dumper;
+  const OouraFft ooura_fft;
 
   CoherenceState coherence_state;
 
@@ -128,16 +145,19 @@ struct AecCore {
   int inSamples, outSamples;
   int delayEstCtr;
 
-  RingBuffer* nearFrBuf;
-  RingBuffer* outFrBuf;
+  // Nearend buffer used for changing from FRAME_LEN to PART_LEN sample block
+  // sizes. The buffer stores all the incoming bands and for each band a maximum
+  // of PART_LEN - (FRAME_LEN - PART_LEN) values need to be buffered in order to
+  // change the block size from FRAME_LEN to PART_LEN.
+  float nearend_buffer[NUM_HIGH_BANDS_MAX + 1]
+                      [PART_LEN - (FRAME_LEN - PART_LEN)];
+  size_t nearend_buffer_size;
+  float output_buffer[NUM_HIGH_BANDS_MAX + 1][2 * PART_LEN];
+  size_t output_buffer_size;
 
-  RingBuffer* nearFrBufH[NUM_HIGH_BANDS_MAX];
-  RingBuffer* outFrBufH[NUM_HIGH_BANDS_MAX];
-
-  float dBuf[PART_LEN2];  // nearend
   float eBuf[PART_LEN2];  // error
 
-  float dBufH[NUM_HIGH_BANDS_MAX][PART_LEN2];  // nearend
+  float previous_nearend_block[NUM_HIGH_BANDS_MAX + 1][PART_LEN];
 
   float xPow[PART_LEN1];
   float dPow[PART_LEN1];
@@ -165,7 +185,7 @@ struct AecCore {
 
   int xfBufBlockPos;
 
-  RingBuffer* far_time_buf;
+  BlockBuffer farend_block_buffer_;
 
   int system_delay;  // Current system delay buffered in AEC.
 
@@ -208,7 +228,6 @@ struct AecCore {
   void* delay_estimator;
   // Variables associated with delay correction through signal based delay
   // estimation feedback.
-  int signal_delay_correction;
   int previous_delay;
   int delay_correction_count;
   int shift_offset;
@@ -243,7 +262,7 @@ void WebRtcAec_InitAec_mips(void);
 void WebRtcAec_InitAec_neon(void);
 #endif
 
-void WebRtcAec_BufferFarendPartition(AecCore* aec, const float* farend);
+void WebRtcAec_BufferFarendBlock(AecCore* aec, const float* farend);
 void WebRtcAec_ProcessFrames(AecCore* aec,
                              const float* const* nearend,
                              size_t num_bands,
@@ -251,10 +270,11 @@ void WebRtcAec_ProcessFrames(AecCore* aec,
                              int knownDelay,
                              float* const* out);
 
-// A helper function to call WebRtc_MoveReadPtr() for all far-end buffers.
-// Returns the number of elements moved, and adjusts |system_delay| by the
-// corresponding amount in ms.
-int WebRtcAec_MoveFarReadPtr(AecCore* aec, int elements);
+// A helper function to call adjust the farend buffer size.
+// Returns the number of elements the size was decreased with, and adjusts
+// |system_delay| by the corresponding amount in ms.
+int WebRtcAec_AdjustFarendBufferSizeAndSystemDelay(AecCore* aec,
+                                                   int size_decrease);
 
 // Calculates the median, standard deviation and amount of poor values among the
 // delay estimates aggregated up to the first call to the function. After that

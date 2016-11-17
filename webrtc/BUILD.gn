@@ -11,8 +11,11 @@
 import("//build/config/linux/pkg_config.gni")
 import("//build/config/sanitizers/sanitizers.gni")
 import("build/webrtc.gni")
-import("//testing/test.gni")
 import("//third_party/protobuf/proto_library.gni")
+if (is_android) {
+  import("//build/config/android/config.gni")
+  import("//build/config/android/rules.gni")
+}
 
 # Contains the defines and includes in common.gypi that are duplicated both as
 # target_defaults and direct_dependent_settings.
@@ -53,9 +56,6 @@ config("common_inherited_config") {
       "WEBRTC_MAC",
       "WEBRTC_IOS",
     ]
-  }
-  if (is_ios && rtc_use_objc_h264) {
-    defines += [ "WEBRTC_OBJC_H264" ]
   }
   if (is_linux) {
     defines += [ "WEBRTC_LINUX" ]
@@ -130,6 +130,10 @@ config("common_config") {
     defines += [ "EXPAT_RELATIVE_PATH" ]
   }
 
+  if (!rtc_libvpx_build_vp9) {
+    defines += [ "RTC_DISABLE_VP9" ]
+  }
+
   if (build_with_chromium) {
     defines += [
       # NOTICE: Since common_inherited_config is used in public_configs for our
@@ -143,35 +147,26 @@ config("common_config") {
       "HAVE_WEBRTC_VIDEO",
       "HAVE_WEBRTC_VOICE",
       "LOGGING_INSIDE_WEBRTC",
-      "SRTP_RELATIVE_PATH",
       "SSL_USE_OPENSSL",
       "USE_WEBRTC_DEV_BRANCH",
     ]
   } else {
     if (is_posix) {
-      # -Wextra is currently disabled in Chromium"s common.gypi. Enable
-      # for targets that can handle it. For Android/arm64 right now
-      # there will be an "enumeral and non-enumeral type in conditional
-      # expression" warning in android_tools/ndk_experimental"s version
-      # of stlport.
-      # See: https://code.google.com/p/chromium/issues/detail?id=379699
-      if (current_cpu != "arm64" || !is_android) {
-        cflags = [
-          "-Wextra",
+      # Enable more warnings: -Wextra is currently disabled in Chromium.
+      cflags = [
+        "-Wextra",
 
-          # We need to repeat some flags from Chromium"s common.gypi
-          # here that get overridden by -Wextra.
-          "-Wno-unused-parameter",
-          "-Wno-missing-field-initializers",
-          "-Wno-strict-overflow",
-        ]
-        cflags_cc = [
-          "-Wnon-virtual-dtor",
+        # Repeat some flags that get overridden by -Wextra.
+        "-Wno-unused-parameter",
+        "-Wno-missing-field-initializers",
+        "-Wno-strict-overflow",
+      ]
+      cflags_cc = [
+        "-Wnon-virtual-dtor",
 
-          # This is enabled for clang; enable for gcc as well.
-          "-Woverloaded-virtual",
-        ]
-      }
+        # This is enabled for clang; enable for gcc as well.
+        "-Woverloaded-virtual",
+      ]
     }
 
     if (is_clang) {
@@ -179,6 +174,7 @@ config("common_config") {
         "-Wimplicit-fallthrough",
         "-Wthread-safety",
         "-Winconsistent-missing-override",
+        "-Wundef",
       ]
     }
   }
@@ -239,142 +235,118 @@ config("common_objc") {
   precompiled_source = "sdk/objc/WebRTC-Prefix.pch"
 }
 
-if (!is_ios || !build_with_chromium) {
-  source_set("webrtc") {
+if (!build_with_chromium) {
+  # Target to build all the WebRTC production code.
+  rtc_static_library("webrtc") {
+    # Only the root target should depend on this.
+    visibility = [ "//:default" ]
+
     sources = [
+      # TODO(kjellander): Remove this whenever possible. GN's static_library
+      # target type requires at least one object to avoid errors linking.
+      "build/no_op_function.cc",
       "call.h",
       "config.h",
       "transport.h",
     ]
 
     defines = []
-    configs += [ ":common_config" ]
-    public_configs = [ ":common_inherited_config" ]
 
     deps = [
       ":webrtc_common",
+      "api",
       "audio",
-      "base:rtc_base",
+      "base",
       "call",
       "common_audio",
       "common_video",
+      "libjingle/xmllite",
+      "libjingle/xmpp",
+      "logging",
+      "media",
       "modules",
+      "modules/video_capture:video_capture_internal_impl",
+      "p2p",
+      "pc",
+      "sdk",
+      "stats",
       "system_wrappers",
-      "tools",
       "video",
       "voice_engine",
     ]
 
-    if (build_with_chromium) {
-      deps += [ "modules/video_capture" ]
-    } else {
-      # TODO(kjellander): Enable for Chromium as well when bugs.webrtc.org/4256
-      # is fixed. Right now it's not possible due to circular dependencies.
-      deps += [
-        "api",
-        "media",
-        "p2p",
-        "pc",
-      ]
-    }
-
     if (rtc_enable_protobuf) {
       defines += [ "ENABLE_RTC_EVENT_LOG" ]
-      deps += [ ":rtc_event_log_proto" ]
+      deps += [ "logging:rtc_event_log_proto" ]
+    }
+  }
+
+  if (rtc_include_tests) {
+    # Target to build all the WebRTC tests (but not examples or tools).
+    # Executable in order to get a target that links all WebRTC code.
+    rtc_executable("webrtc_tests") {
+      testonly = true
+
+      # Only the root target should depend on this.
+      visibility = [ "//:default" ]
+
+      deps = [
+        ":rtc_unittests",
+        ":video_engine_tests",
+        ":webrtc_nonparallel_tests",
+        ":webrtc_perf_tests",
+        "api:peerconnection_unittests",
+        "common_audio:common_audio_unittests",
+        "common_video:common_video_unittests",
+        "libjingle:xmllite_xmpp_unittests",
+        "media:rtc_media_unittests",
+        "modules:modules_tests",
+        "modules:modules_unittests",
+        "modules/audio_coding:audio_coding_tests",
+        "modules/audio_processing:audio_processing_tests",
+        "modules/rtp_rtcp:test_packet_masks_metrics",
+        "modules/video_capture:video_capture_internal_impl",
+        "pc:rtc_pc_unittests",
+        "stats:rtc_stats_unittests",
+        "system_wrappers:system_wrappers_unittests",
+        "test",
+        "video:screenshare_loopback",
+        "video:video_loopback",
+        "video:video_tests",
+        "voice_engine:voe_cmd_test",
+        "voice_engine:voice_engine_unittests",
+      ]
+      if (is_android) {
+        deps += [
+          ":android_junit_tests",
+          "api:libjingle_peerconnection_android_unittest",
+        ]
+      } else {
+        deps += [ "modules/video_capture:video_capture_tests" ]
+      }
+      if (!is_ios) {
+        deps += [
+          "modules/audio_device:audio_device_tests",
+          "voice_engine:voe_auto_test",
+        ]
+      }
     }
   }
 }
 
-if (!build_with_chromium) {
-  executable("webrtc_tests") {
-    testonly = true
-    deps = [
-      ":webrtc",
-      "modules/video_capture:video_capture_internal_impl",
-      "test",
-      "//build/config/sanitizers:deps",
-    ]
-  }
-}
-
-source_set("webrtc_common") {
+rtc_static_library("webrtc_common") {
   sources = [
-    "audio_sink.h",
     "common_types.cc",
     "common_types.h",
     "config.cc",
     "config.h",
-    "engine_configurations.h",
     "typedefs.h",
+    "voice_engine_configurations.h",
   ]
 
-  configs += [ ":common_config" ]
-  public_configs = [ ":common_inherited_config" ]
-
-  if (is_clang && !is_nacl) {
-    # Suppress warnings from Chrome's Clang plugins.
-    # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-    configs -= [ "//build/config/clang:find_bad_constructs" ]
-  }
-}
-
-if (rtc_enable_protobuf) {
-  proto_library("rtc_event_log_proto") {
-    sources = [
-      "call/rtc_event_log.proto",
-    ]
-    proto_out_dir = "webrtc/call"
-  }
-}
-
-source_set("rtc_event_log") {
-  sources = [
-    "call/rtc_event_log.cc",
-    "call/rtc_event_log.h",
-    "call/rtc_event_log_helper_thread.cc",
-    "call/rtc_event_log_helper_thread.h",
-  ]
-
-  defines = []
-  configs += [ ":common_config" ]
-  public_configs = [ ":common_inherited_config" ]
-
-  deps = [
-    ":webrtc_common",
-    "modules/rtp_rtcp",
-  ]
-
-  if (rtc_enable_protobuf) {
-    defines += [ "ENABLE_RTC_EVENT_LOG" ]
-    deps += [ ":rtc_event_log_proto" ]
-  }
-  if (is_clang && !is_nacl) {
-    # Suppress warnings from Chrome's Clang plugins.
-    # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-    configs -= [ "//build/config/clang:find_bad_constructs" ]
-  }
-}
-
-if (rtc_enable_protobuf) {
-  source_set("rtc_event_log_parser") {
-    sources = [
-      "call/rtc_event_log_parser.cc",
-      "call/rtc_event_log_parser.h",
-    ]
-
-    configs += [ ":common_config" ]
-    public_configs = [ ":common_inherited_config" ]
-
-    public_deps = [
-      ":rtc_event_log_proto",
-      ":webrtc_common",
-    ]
-
-    if (is_clang && !is_nacl) {
-      # Suppress warnings from Chrome's Clang plugins.
-      # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
-    }
+  if (!build_with_chromium && is_clang) {
+    # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+    suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
   }
 }
 
@@ -403,13 +375,13 @@ if (rtc_include_tests) {
     }
   }
 
-  test("rtc_unittests") {
+  rtc_test("rtc_unittests") {
     testonly = true
     sources = [
+      "api/fakemetricsobserver.cc",
       "base/array_view_unittest.cc",
       "base/atomicops_unittest.cc",
       "base/autodetectproxy_unittest.cc",
-      "base/bandwidthsmoother_unittest.cc",
       "base/base64_unittest.cc",
       "base/basictypes_unittest.cc",
       "base/bind_unittest.cc",
@@ -425,8 +397,10 @@ if (rtc_include_tests) {
       "base/event_tracer_unittest.cc",
       "base/event_unittest.cc",
       "base/exp_filter_unittest.cc",
+      "base/file_unittest.cc",
       "base/filerotatingstream_unittest.cc",
       "base/fileutils_unittest.cc",
+      "base/function_view_unittest.cc",
       "base/helpers_unittest.cc",
       "base/httpbase_unittest.cc",
       "base/httpcommon_unittest.cc",
@@ -437,7 +411,6 @@ if (rtc_include_tests) {
       "base/messagedigest_unittest.cc",
       "base/messagequeue_unittest.cc",
       "base/mod_ops_unittest.cc",
-      "base/multipart_unittest.cc",
       "base/nat_unittest.cc",
       "base/network_unittest.cc",
       "base/onetimeevent_unittest.cc",
@@ -445,7 +418,6 @@ if (rtc_include_tests) {
       "base/optionsfile_unittest.cc",
       "base/pathutils_unittest.cc",
       "base/platform_thread_unittest.cc",
-      "base/profiler_unittest.cc",
       "base/proxy_unittest.cc",
       "base/proxydetect_unittest.cc",
       "base/random_unittest.cc",
@@ -453,10 +425,11 @@ if (rtc_include_tests) {
       "base/rate_statistics_unittest.cc",
       "base/ratelimiter_unittest.cc",
       "base/ratetracker_unittest.cc",
-      "base/referencecountedsingletonfactory_unittest.cc",
+      "base/refcountedobject_unittest.cc",
       "base/rollingaccumulator_unittest.cc",
       "base/rtccertificate_unittest.cc",
       "base/rtccertificategenerator_unittest.cc",
+      "base/safe_compare_unittest.cc",
       "base/scopedptrcollection_unittest.cc",
       "base/sequenced_task_checker_unittest.cc",
       "base/sha1digest_unittest.cc",
@@ -475,15 +448,17 @@ if (rtc_include_tests) {
       "base/task_queue_unittest.cc",
       "base/task_unittest.cc",
       "base/testclient_unittest.cc",
+      "base/thread_annotations_unittest.cc",
       "base/thread_checker_unittest.cc",
       "base/thread_unittest.cc",
       "base/timestampaligner_unittest.cc",
       "base/timeutils_unittest.cc",
       "base/urlencode_unittest.cc",
-      "base/versionparsing_unittest.cc",
+      "base/weak_ptr_unittest.cc",
 
       # TODO(ronghuawu): Reenable this test.
       # "windowpicker_unittest.cc",
+      "p2p/base/asyncstuntcpsocket_unittest.cc",
       "p2p/base/dtlstransportchannel_unittest.cc",
       "p2p/base/fakeportallocator.h",
       "p2p/base/faketransportcontroller.h",
@@ -506,6 +481,7 @@ if (rtc_include_tests) {
       "p2p/base/transportdescriptionfactory_unittest.cc",
       "p2p/base/turnport_unittest.cc",
       "p2p/base/turnserver_unittest.cc",
+      "p2p/base/udptransportchannel_unittest.cc",
       "p2p/client/basicportallocator_unittest.cc",
       "p2p/stunprober/stunprober_unittest.cc",
     ]
@@ -526,7 +502,6 @@ if (rtc_include_tests) {
         "base/win32regkey_unittest.cc",
         "base/win32window_unittest.cc",
         "base/win32windowpicker_unittest.cc",
-        "base/winfirewall_unittest.cc",
       ]
     }
 
@@ -541,10 +516,6 @@ if (rtc_include_tests) {
         "base/sslstreamadapter_unittest.cc",
       ]
     }
-    if (is_ios || (is_mac && target_cpu != "x86")) {
-      defines = [ "CARBON_DEPRECATED=YES" ]
-    }
-
     if (rtc_use_quic) {
       sources += [
         "p2p/quic/quicconnectionhelper_unittest.cc",
@@ -555,16 +526,11 @@ if (rtc_include_tests) {
       ]
     }
 
-    configs += [
-      ":common_config",
-      ":rtc_unittests_config",
-    ]
-    public_configs = [ ":common_inherited_config" ]
+    configs += [ ":rtc_unittests_config" ]
 
-    if (is_clang) {
-      # Suppress warnings from the Chromium Clang plugin.
-      # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    if (!build_with_chromium && is_clang) {
+      # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+      suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
     }
 
     deps = [
@@ -577,12 +543,16 @@ if (rtc_include_tests) {
       "//testing/gtest",
     ]
 
+    if (rtc_enable_protobuf) {
+      deps += [ "logging:rtc_event_log_tests" ]
+    }
+
     if (is_android) {
       deps += [ "//testing/android/native_test:native_test_support" ]
       shard_timeout = 900
     }
 
-    if (is_ios || (is_mac && mac_deployment_target == "10.7")) {
+    if (is_ios || is_mac) {
       deps += [
         "sdk:rtc_sdk_peerconnection_objc",
         "system_wrappers:system_wrappers_default",
@@ -606,53 +576,23 @@ if (rtc_include_tests) {
     }
   }
 
-  test("xmllite_xmpp_unittests") {
-    configs += [
-      ":common_config",
-      ":rtc_unittests_config",
-    ]
-    public_configs = [ ":common_inherited_config" ]
+  # TODO(pbos): Rename test suite, this is no longer "just" for video targets.
+  video_engine_tests_resources = [
+    "//resources/foreman_cif_short.yuv",
+    "//resources/voice_engine/audio_long16.pcm",
+  ]
 
-    if (is_clang) {
-      # Suppress warnings from the Chromium Clang plugin.
-      # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
+  if (is_ios) {
+    bundle_data("video_engine_tests_bundle_data") {
+      testonly = true
+      sources = video_engine_tests_resources
+      outputs = [
+        "{{bundle_resources_dir}}/{{source_file_part}}",
+      ]
     }
-
-    deps = [
-      "base:rtc_base_tests_utils",
-      "libjingle/xmllite:rtc_xmllite",
-      "libjingle/xmpp:rtc_xmpp",
-      "//testing/gtest",
-    ]
-
-    sources = [
-      "libjingle/xmllite/qname_unittest.cc",
-      "libjingle/xmllite/xmlbuilder_unittest.cc",
-      "libjingle/xmllite/xmlelement_unittest.cc",
-      "libjingle/xmllite/xmlnsstack_unittest.cc",
-      "libjingle/xmllite/xmlparser_unittest.cc",
-      "libjingle/xmllite/xmlprinter_unittest.cc",
-      "libjingle/xmpp/fakexmppclient.h",
-      "libjingle/xmpp/hangoutpubsubclient_unittest.cc",
-      "libjingle/xmpp/jid_unittest.cc",
-      "libjingle/xmpp/mucroomconfigtask_unittest.cc",
-      "libjingle/xmpp/mucroomdiscoverytask_unittest.cc",
-      "libjingle/xmpp/mucroomlookuptask_unittest.cc",
-      "libjingle/xmpp/mucroomuniquehangoutidtask_unittest.cc",
-      "libjingle/xmpp/pingtask_unittest.cc",
-      "libjingle/xmpp/pubsubclient_unittest.cc",
-      "libjingle/xmpp/pubsubtasks_unittest.cc",
-      "libjingle/xmpp/util_unittest.cc",
-      "libjingle/xmpp/util_unittest.h",
-      "libjingle/xmpp/xmppengine_unittest.cc",
-      "libjingle/xmpp/xmpplogintask_unittest.cc",
-      "libjingle/xmpp/xmppstanzaparser_unittest.cc",
-    ]
   }
 
-  # TODO(pbos): Rename test suite, this is no longer "just" for video targets.
-  test("video_engine_tests") {
+  rtc_test("video_engine_tests") {
     testonly = true
     deps = [
       "audio:audio_tests",
@@ -662,51 +602,50 @@ if (rtc_include_tests) {
       "test:test_main",
       "video:video_tests",
     ]
-    if (is_clang) {
-      # Suppress warnings from the Chromium Clang plugin.
-      # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    data = video_engine_tests_resources
+    if (!build_with_chromium && is_clang) {
+      # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+      suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
     }
     if (is_android) {
       deps += [ "//testing/android/native_test:native_test_native_code" ]
-      data = [
-        "//resources/foreman_cif_short.yuv",
-        "//resources/voice_engine/audio_long16.pcm",
-      ]
       shard_timeout = 900
     }
-  }
 
-  source_set("video_quality_test") {
-    testonly = true
-    configs += [ ":common_config" ]
-    public_configs = [ ":common_inherited_config" ]
-    sources = [
-      "video/video_quality_test.cc",
-      "video/video_quality_test.h",
-    ]
-    deps = [
-      ":webrtc",
-      "system_wrappers",
-      "//testing/gtest",
-    ]
-    if (!is_android) {
-      deps += [ "modules/video_capture:video_capture_internal_impl" ]
-    }
-    if (is_clang) {
-      # Suppress warnings from the Chromium Clang plugin.
-      # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    if (is_ios) {
+      deps += [ ":video_engine_tests_bundle_data" ]
     }
   }
 
-  test("webrtc_perf_tests") {
+  webrtc_perf_tests_resources = [
+    "//resources/audio_coding/speech_mono_16kHz.pcm",
+    "//resources/audio_coding/testfile32kHz.pcm",
+    "//resources/ConferenceMotion_1280_720_50.yuv",
+    "//resources/difficult_photo_1850_1110.yuv",
+    "//resources/foreman_cif.yuv",
+    "//resources/google-wifi-3mbps.rx",
+    "//resources/paris_qcif.yuv",
+    "//resources/photo_1850_1110.yuv",
+    "//resources/presentation_1850_1110.yuv",
+    "//resources/verizon4g-downlink.rx",
+    "//resources/voice_engine/audio_long16.pcm",
+    "//resources/web_screenshot_1850_1110.yuv",
+  ]
+
+  if (is_ios) {
+    bundle_data("webrtc_perf_tests_bundle_data") {
+      testonly = true
+      sources = webrtc_perf_tests_resources
+      outputs = [
+        "{{bundle_resources_dir}}/{{source_file_part}}",
+      ]
+    }
+  }
+
+  rtc_test("webrtc_perf_tests") {
     testonly = true
-    configs += [
-      ":common_config",
-      ":rtc_unittests_config",
-    ]
-    public_configs = [ ":common_inherited_config" ]
+    configs += [ ":rtc_unittests_config" ]
+
     sources = [
       "call/call_perf_tests.cc",
       "call/rampup_tests.cc",
@@ -718,39 +657,43 @@ if (rtc_include_tests) {
       "video/full_stack.cc",
     ]
     deps = [
-      ":video_quality_test",
-      ":webrtc",
       "modules/audio_coding:neteq_test_support",
       "modules/audio_processing",
       "modules/audio_processing:audioproc_test_utils",
-      "modules/remote_bitrate_estimator:bwe_simulator",
+      "modules/remote_bitrate_estimator:bwe_simulator_lib",
       "modules/rtp_rtcp",
-      "test:channel_transport",
       "test:test_common",
       "test:test_main",
       "test:test_renderer",
+      "video:video_quality_test",
       "voice_engine",
       "//testing/gmock",
       "//testing/gtest",
     ]
+
+    if (rtc_enable_intelligibility_enhancer) {
+      defines = [ "WEBRTC_INTELLIGIBILITY_ENHANCER=1" ]
+    } else {
+      defines = [ "WEBRTC_INTELLIGIBILITY_ENHANCER=0" ]
+    }
+
+    data = webrtc_perf_tests_resources
     if (is_android) {
       deps += [ "//testing/android/native_test:native_test_native_code" ]
       shard_timeout = 2700
     }
-    if (is_clang) {
-      # Suppress warnings from the Chromium Clang plugin.
-      # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    if (is_ios) {
+      deps += [ ":webrtc_perf_tests_bundle_data" ]
+    }
+    if (!build_with_chromium && is_clang) {
+      # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+      suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
     }
   }
 
-  test("webrtc_nonparallel_tests") {
+  rtc_test("webrtc_nonparallel_tests") {
     testonly = true
-    configs += [
-      ":common_config",
-      ":rtc_unittests_config",
-    ]
-    public_configs = [ ":common_inherited_config" ]
+    configs += [ ":rtc_unittests_config" ]
     sources = [
       "base/nullsocketserver_unittest.cc",
       "base/physicalsocketserver_unittest.cc",
@@ -772,16 +715,26 @@ if (rtc_include_tests) {
       shard_timeout = 900
     }
 
-    if (is_mac) {
-      sources += [ "base/macsocketserver_unittest.cc" ]
+    if (!build_with_chromium && is_clang) {
+      # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+      suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
     }
-    if (is_ios || (is_mac && target_cpu != "x86")) {
-      defines = [ "CARBON_DEPRECATED=YES" ]
-    }
-    if (is_clang) {
-      # Suppress warnings from the Chromium Clang plugin.
-      # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
+  }
+
+  if (is_android) {
+    junit_binary("android_junit_tests") {
+      java_files = [
+        "androidjunit/src/org/webrtc/CameraEnumerationTest.java",
+        "examples/androidjunit/src/org/appspot/apprtc/DirectRTCClientTest.java",
+        "examples/androidjunit/src/org/appspot/apprtc/TCPChannelClientTest.java",
+      ]
+
+      deps = [
+        "//base:base_java_test_support",
+        "//webrtc/api:libjingle_peerconnection_java",
+        "//webrtc/api:libjingle_peerconnection_jni",
+        "//webrtc/examples:AppRTCMobile_javalib",
+      ]
     }
   }
 }

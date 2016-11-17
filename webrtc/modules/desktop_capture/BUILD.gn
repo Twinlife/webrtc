@@ -12,7 +12,7 @@ import("../../build/webrtc.gni")
 use_desktop_capture_differ_sse2 =
     !is_ios && (current_cpu == "x86" || current_cpu == "x64")
 
-source_set("primitives") {
+rtc_static_library("primitives") {
   sources = [
     "desktop_capture_types.h",
     "desktop_frame.cc",
@@ -21,12 +21,67 @@ source_set("primitives") {
     "desktop_geometry.h",
     "desktop_region.cc",
     "desktop_region.h",
+    "shared_desktop_frame.cc",
+    "shared_desktop_frame.h",
   ]
 
-  public_configs = [ "../..:common_inherited_config" ]
+  deps = [
+    "../../base:rtc_base",  # TODO(kjellander): Cleanup in bugs.webrtc.org/3806.
+  ]
 }
 
-source_set("desktop_capture") {
+if (rtc_include_tests) {
+  source_set("rgba_color") {
+    testonly = true
+
+    public_deps = [
+      ":desktop_capture",
+    ]
+
+    sources = [
+      "rgba_color.cc",
+      "rgba_color.h",
+    ]
+  }
+
+  source_set("screen_drawer") {
+    testonly = true
+
+    public_deps = [
+      ":rgba_color",
+    ]
+
+    sources = [
+      "screen_drawer.cc",
+      "screen_drawer.h",
+      "screen_drawer_linux.cc",
+      "screen_drawer_mac.cc",
+      "screen_drawer_win.cc",
+    ]
+  }
+
+  source_set("desktop_capture_mock") {
+    testonly = true
+
+    public_deps = [
+      ":desktop_capture",
+      ":rgba_color",
+      "//testing/gmock",
+    ]
+
+    sources = [
+      "desktop_frame_generator.cc",
+      "desktop_frame_generator.h",
+      "fake_desktop_capturer.cc",
+      "fake_desktop_capturer.h",
+      "mock_desktop_capturer_callback.cc",
+      "mock_desktop_capturer_callback.h",
+      "screen_capturer_mock_objects.h",
+    ]
+  }
+}
+
+rtc_static_library("desktop_capture") {
   sources = [
     "cropped_desktop_frame.cc",
     "cropped_desktop_frame.h",
@@ -37,14 +92,10 @@ source_set("desktop_capture") {
     "desktop_and_cursor_composer.h",
     "desktop_capture_options.cc",
     "desktop_capture_options.h",
-    "desktop_capturer.h",
+    "desktop_capturer.cc",
     "desktop_capturer.h",
     "desktop_frame_win.cc",
     "desktop_frame_win.h",
-    "differ.cc",
-    "differ.h",
-    "differ_block.cc",
-    "differ_block.h",
     "mac/desktop_configuration.h",
     "mac/desktop_configuration.mm",
     "mac/desktop_configuration_monitor.cc",
@@ -61,13 +112,10 @@ source_set("desktop_capture") {
     "mouse_cursor_monitor_mac.mm",
     "mouse_cursor_monitor_win.cc",
     "screen_capture_frame_queue.h",
-    "screen_capturer.h",
     "screen_capturer_helper.cc",
     "screen_capturer_helper.h",
     "screen_capturer_mac.mm",
     "screen_capturer_win.cc",
-    "shared_desktop_frame.cc",
-    "shared_desktop_frame.h",
     "shared_memory.cc",
     "shared_memory.h",
     "win/cursor.cc",
@@ -101,7 +149,6 @@ source_set("desktop_capture") {
     "win/screen_capturer_win_magnifier.h",
     "win/window_capture_utils.cc",
     "win/window_capture_utils.h",
-    "window_capturer.h",
     "window_capturer_mac.mm",
     "window_capturer_win.cc",
   ]
@@ -129,6 +176,15 @@ source_set("desktop_capture") {
     ]
   }
 
+  if (!is_ios) {
+    sources += [
+      "desktop_capturer_differ_wrapper.cc",
+      "desktop_capturer_differ_wrapper.h",
+      "differ_block.cc",
+      "differ_block.h",
+    ]
+  }
+
   if (is_mac) {
     libs = [
       "AppKit.framework",
@@ -142,15 +198,6 @@ source_set("desktop_capture") {
       "d3d11.lib",
       "dxgi.lib",
     ]
-  }
-
-  configs += [ "../..:common_config" ]
-  public_configs = [ "../..:common_inherited_config" ]
-
-  if (is_clang && !is_nacl) {
-    # Suppress warnings from Chrome's Clang plugins.
-    # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-    configs -= [ "//build/config/clang:find_bad_constructs" ]
   }
 
   deps = [
@@ -167,15 +214,12 @@ source_set("desktop_capture") {
 if (use_desktop_capture_differ_sse2) {
   # Have to be compiled as a separate target because it needs to be compiled
   # with SSE2 enabled.
-  source_set("desktop_capture_differ_sse2") {
+  rtc_static_library("desktop_capture_differ_sse2") {
     visibility = [ ":*" ]
     sources = [
-      "differ_block_sse2.cc",
-      "differ_block_sse2.h",
+      "differ_vector_sse2.cc",
+      "differ_vector_sse2.h",
     ]
-
-    configs += [ "../..:common_config" ]
-    public_configs = [ "../..:common_inherited_config" ]
 
     if (is_posix) {
       cflags = [ "-msse2" ]

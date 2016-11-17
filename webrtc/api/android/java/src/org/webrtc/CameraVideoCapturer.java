@@ -25,11 +25,14 @@ public interface CameraVideoCapturer extends VideoCapturer {
     // or any camera exception happens on camera thread.
     void onCameraError(String errorDescription);
 
+    // Called when camera is disconnected.
+    void onCameraDisconnected();
+
     // Invoked when camera stops receiving frames.
     void onCameraFreezed(String errorDescription);
 
     // Callback invoked when camera is opening.
-    void onCameraOpening(int cameraId);
+    void onCameraOpening(String cameraName);
 
     // Callback invoked when first camera frame is available after camera is started.
     void onFirstFrameAvailable();
@@ -75,7 +78,7 @@ public interface CameraVideoCapturer extends VideoCapturer {
       @Override
       public void run() {
         final int cameraFps = Math.round(frameCount * 1000.0f / CAMERA_OBSERVER_PERIOD_MS);
-        Logging.d(TAG, "Camera fps: " + cameraFps +".");
+        Logging.d(TAG, "Camera fps: " + cameraFps + ".");
         if (frameCount == 0) {
           ++freezePeriodCount;
           if (CAMERA_OBSERVER_PERIOD_MS * freezePeriodCount >= CAMERA_FREEZE_REPORT_TIMOUT_MS
@@ -121,7 +124,6 @@ public interface CameraVideoCapturer extends VideoCapturer {
     }
 
     public void release() {
-      checkThread();
       surfaceTextureHelper.getHandler().removeCallbacks(cameraObserver);
     }
   }

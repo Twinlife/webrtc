@@ -10,16 +10,15 @@
 
 #include <math.h>
 
-#include "testing/gtest/include/gtest/gtest.h"
-
-#include "webrtc/modules/video_coding/include/video_codec_interface.h"
+#include "webrtc/modules/video_coding/codecs/h264/include/h264.h"
 #include "webrtc/modules/video_coding/codecs/test/packet_manipulator.h"
 #include "webrtc/modules/video_coding/codecs/test/videoprocessor.h"
-#include "webrtc/modules/video_coding/codecs/h264/include/h264.h"
 #include "webrtc/modules/video_coding/codecs/vp8/include/vp8.h"
 #include "webrtc/modules/video_coding/codecs/vp8/include/vp8_common_types.h"
 #include "webrtc/modules/video_coding/codecs/vp9/include/vp9.h"
+#include "webrtc/modules/video_coding/include/video_codec_interface.h"
 #include "webrtc/modules/video_coding/include/video_coding.h"
+#include "webrtc/test/gtest.h"
 #include "webrtc/test/testsupport/fileutils.h"
 #include "webrtc/test/testsupport/frame_reader.h"
 #include "webrtc/test/testsupport/frame_writer.h"
@@ -192,41 +191,35 @@ class VideoProcessorIntegrationTest : public testing::Test {
     // These features may be set depending on the test.
     switch (config_.codec_settings->codecType) {
       case kVideoCodecH264:
-        config_.codec_settings->codecSpecific.H264.frameDroppingOn =
-            frame_dropper_on_;
-        config_.codec_settings->codecSpecific.H264.keyFrameInterval =
+        config_.codec_settings->H264()->frameDroppingOn = frame_dropper_on_;
+        config_.codec_settings->H264()->keyFrameInterval =
             kBaseKeyFrameInterval;
         break;
       case kVideoCodecVP8:
-        config_.codec_settings->codecSpecific.VP8.errorConcealmentOn =
+        config_.codec_settings->VP8()->errorConcealmentOn =
             error_concealment_on_;
-        config_.codec_settings->codecSpecific.VP8.denoisingOn = denoising_on_;
-        config_.codec_settings->codecSpecific.VP8.numberOfTemporalLayers =
+        config_.codec_settings->VP8()->denoisingOn = denoising_on_;
+        config_.codec_settings->VP8()->numberOfTemporalLayers =
             num_temporal_layers_;
-        config_.codec_settings->codecSpecific.VP8.frameDroppingOn =
-            frame_dropper_on_;
-        config_.codec_settings->codecSpecific.VP8.automaticResizeOn =
-            spatial_resize_on_;
-        config_.codec_settings->codecSpecific.VP8.keyFrameInterval =
-            kBaseKeyFrameInterval;
+        config_.codec_settings->VP8()->frameDroppingOn = frame_dropper_on_;
+        config_.codec_settings->VP8()->automaticResizeOn = spatial_resize_on_;
+        config_.codec_settings->VP8()->keyFrameInterval = kBaseKeyFrameInterval;
         break;
       case kVideoCodecVP9:
-        config_.codec_settings->codecSpecific.VP9.denoisingOn = denoising_on_;
-        config_.codec_settings->codecSpecific.VP9.numberOfTemporalLayers =
+        config_.codec_settings->VP9()->denoisingOn = denoising_on_;
+        config_.codec_settings->VP9()->numberOfTemporalLayers =
             num_temporal_layers_;
-        config_.codec_settings->codecSpecific.VP9.frameDroppingOn =
-            frame_dropper_on_;
-        config_.codec_settings->codecSpecific.VP9.automaticResizeOn =
-            spatial_resize_on_;
-        config_.codec_settings->codecSpecific.VP9.keyFrameInterval =
-            kBaseKeyFrameInterval;
+        config_.codec_settings->VP9()->frameDroppingOn = frame_dropper_on_;
+        config_.codec_settings->VP9()->automaticResizeOn = spatial_resize_on_;
+        config_.codec_settings->VP9()->keyFrameInterval = kBaseKeyFrameInterval;
         break;
       default:
         assert(false);
         break;
     }
     frame_reader_ = new webrtc::test::FrameReaderImpl(
-        config_.input_filename, config_.frame_length_in_bytes);
+        config_.input_filename, config_.codec_settings->width,
+        config_.codec_settings->height);
     frame_writer_ = new webrtc::test::FrameWriterImpl(
         config_.output_filename, config_.frame_length_in_bytes);
     ASSERT_TRUE(frame_reader_->Init());

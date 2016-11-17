@@ -30,11 +30,13 @@ import java.util.Map;
 // The metrics can for example be retrieved when a peer connection is closed.
 
 public class Metrics {
+  private static final String TAG = "Metrics";
+
   static {
     System.loadLibrary("jingle_peerconnection_so");
   }
   public final Map<String, HistogramInfo> map =
-       new HashMap<String, HistogramInfo>();  // <name, HistogramInfo>
+      new HashMap<String, HistogramInfo>(); // <name, HistogramInfo>
 
   /**
    * Class holding histogram information.
@@ -44,7 +46,7 @@ public class Metrics {
     public final int max;
     public final int bucketCount;
     public final Map<Integer, Integer> samples =
-        new HashMap<Integer, Integer>();  // <value, # of events>
+        new HashMap<Integer, Integer>(); // <value, # of events>
 
     public HistogramInfo(int min, int max, int bucketCount) {
       this.min = min;
@@ -55,6 +57,41 @@ public class Metrics {
     public void addSample(int value, int numEvents) {
       samples.put(value, numEvents);
     }
+  }
+
+  /**
+   * Class for holding the native pointer of a histogram. Since there is no way to destroy a
+   * histogram, please don't create unnecessary instances of this object. This class is thread safe.
+   *
+   * Usage example:
+   * private static final Histogram someMetricHistogram =
+   *     Histogram.createCounts("WebRTC.Video.SomeMetric", 1, 10000, 50);
+   * someMetricHistogram.addSample(someVariable);
+   */
+  static class Histogram {
+    private final long handle;
+    private final String name; // Only used for logging.
+
+    private Histogram(long handle, String name) {
+      this.handle = handle;
+      this.name = name;
+    }
+
+    static public Histogram createCounts(String name, int min, int max, int bucketCount) {
+      return new Histogram(nativeCreateCounts(name, min, max, bucketCount), name);
+    }
+
+    static public Histogram createEnumeration(String name, int max) {
+      return new Histogram(nativeCreateEnumeration(name, max), name);
+    }
+
+    public void addSample(int sample) {
+      nativeAddSample(handle, sample);
+    }
+
+    private static native long nativeCreateCounts(String name, int min, int max, int bucketCount);
+    private static native long nativeCreateEnumeration(String name, int max);
+    private static native void nativeAddSample(long handle, int sample);
   }
 
   private void add(String name, HistogramInfo info) {

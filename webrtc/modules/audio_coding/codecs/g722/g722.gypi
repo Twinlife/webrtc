@@ -12,6 +12,7 @@
       'type': 'static_library',
       'dependencies': [
         'audio_encoder_interface',
+        'audio_decoder_interface',
       ],
       'sources': [
         'audio_decoder_g722.cc',
@@ -26,21 +27,4 @@
       ],
     },
   ], # targets
-  'conditions': [
-    ['include_tests==1', {
-      'targets': [
-        {
-          'target_name': 'g722_test',
-          'type': 'executable',
-          'dependencies': [
-            'g722',
-            '<(webrtc_root)/common.gyp:webrtc_common'
-          ],
-          'sources': [
-            'test/testG722.cc',
-          ],
-        },
-      ], # targets
-    }], # include_tests
-  ], # conditions
 }

@@ -18,16 +18,10 @@
 #include "webrtc/base/callback.h"
 #include "webrtc/base/refcount.h"
 #include "webrtc/base/scoped_ref_ptr.h"
+#include "webrtc/common_video/rotation.h"
 #include "webrtc/system_wrappers/include/aligned_malloc.h"
 
 namespace webrtc {
-
-enum PlaneType {
-  kYPlane = 0,
-  kUPlane = 1,
-  kVPlane = 2,
-  kNumOfPlanes = 3,
-};
 
 // Interface of a simple frame buffer containing pixel data. This interface does
 // not contain any frame metadata such as rotation, timestamp, pixel_width, etc.
@@ -43,12 +37,6 @@ class VideoFrameBuffer : public rtc::RefCountInterface {
   virtual const uint8_t* DataY() const = 0;
   virtual const uint8_t* DataU() const = 0;
   virtual const uint8_t* DataV() const = 0;
-
-  // TODO(nisse): Move MutableData methods to the I420Buffer subclass.
-  // Non-const data access.
-  virtual uint8_t* MutableDataY();
-  virtual uint8_t* MutableDataU();
-  virtual uint8_t* MutableDataV();
 
   // Returns the number of bytes between successive rows for a given plane.
   virtual int StrideY() const = 0;
@@ -97,9 +85,9 @@ class I420Buffer : public VideoFrameBuffer {
   const uint8_t* DataU() const override;
   const uint8_t* DataV() const override;
 
-  uint8_t* MutableDataY() override;
-  uint8_t* MutableDataU() override;
-  uint8_t* MutableDataV() override;
+  uint8_t* MutableDataY();
+  uint8_t* MutableDataU();
+  uint8_t* MutableDataV();
   int StrideY() const override;
   int StrideU() const override;
   int StrideV() const override;
@@ -108,12 +96,11 @@ class I420Buffer : public VideoFrameBuffer {
   rtc::scoped_refptr<VideoFrameBuffer> NativeToI420Buffer() override;
 
   // Create a new buffer and copy the pixel data.
-  static rtc::scoped_refptr<I420Buffer> Copy(
-      const rtc::scoped_refptr<VideoFrameBuffer>& buffer);
+  static rtc::scoped_refptr<I420Buffer> Copy(const VideoFrameBuffer& buffer);
 
   // Scale the cropped area of |src| to the size of |this| buffer, and
   // write the result into |this|.
-  void CropAndScaleFrom(const rtc::scoped_refptr<VideoFrameBuffer>& src,
+  void CropAndScaleFrom(const VideoFrameBuffer& src,
                         int offset_x,
                         int offset_y,
                         int crop_width,
@@ -121,14 +108,37 @@ class I420Buffer : public VideoFrameBuffer {
 
   // The common case of a center crop, when needed to adjust the
   // aspect ratio without distorting the image.
-  void CropAndScaleFrom(const rtc::scoped_refptr<VideoFrameBuffer>& src);
+  void CropAndScaleFrom(const VideoFrameBuffer& src);
 
   // Scale all of |src| to the size of |this| buffer, with no cropping.
-  void ScaleFrom(const rtc::scoped_refptr<VideoFrameBuffer>& src);
+  void ScaleFrom(const VideoFrameBuffer& src);
 
-  // Create a new buffer with identical strides, and copy the pixel data.
-  static rtc::scoped_refptr<I420Buffer> CopyKeepStride(
-      const rtc::scoped_refptr<VideoFrameBuffer>& buffer);
+  // Deprecated methods, using smart pointer references.
+  // TODO(nisse): Delete once downstream applications are updated.
+  static rtc::scoped_refptr<I420Buffer> Copy(
+      const rtc::scoped_refptr<VideoFrameBuffer>& buffer) {
+    return Copy(*buffer);
+  }
+  void CropAndScaleFrom(const rtc::scoped_refptr<VideoFrameBuffer>& src,
+                        int offset_x,
+                        int offset_y,
+                        int crop_width,
+                        int crop_height) {
+    CropAndScaleFrom(*src, offset_x, offset_y, crop_width, crop_height);
+  }
+  void CropAndScaleFrom(const rtc::scoped_refptr<VideoFrameBuffer>& src) {
+    CropAndScaleFrom(*src);
+  }
+  void ScaleFrom(const rtc::scoped_refptr<VideoFrameBuffer>& src) {
+    ScaleFrom(*src);
+  }
+
+  // Returns a rotated versions of |src|. Native buffers are not
+  // supported. The reason this function doesn't return an I420Buffer,
+  // is that it returns |src| unchanged in case |rotation| is zero.
+  static rtc::scoped_refptr<VideoFrameBuffer> Rotate(
+      rtc::scoped_refptr<VideoFrameBuffer> src,
+      VideoRotation rotation);
 
  protected:
   ~I420Buffer() override;

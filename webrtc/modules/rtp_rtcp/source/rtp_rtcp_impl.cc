@@ -61,11 +61,20 @@ RtpRtcp* RtpRtcp::CreateRtpRtcp(const RtpRtcp::Configuration& configuration) {
   }
 }
 
+// Deprecated.
+int32_t RtpRtcp::SetFecParameters(const FecProtectionParams* delta_params,
+                                  const FecProtectionParams* key_params) {
+  RTC_DCHECK(delta_params);
+  RTC_DCHECK(key_params);
+  return SetFecParameters(*delta_params, *key_params) ? 0 : -1;
+}
+
 ModuleRtpRtcpImpl::ModuleRtpRtcpImpl(const Configuration& configuration)
     : rtp_sender_(configuration.audio,
                   configuration.clock,
                   configuration.outgoing_transport,
                   configuration.paced_sender,
+                  configuration.flexfec_sender,
                   configuration.transport_sequence_number_allocator,
                   configuration.transport_feedback_callback,
                   configuration.send_bitrate_observer,
@@ -220,24 +229,14 @@ void ModuleRtpRtcpImpl::SetRtxSendPayloadType(int payload_type,
   rtp_sender_.SetRtxPayloadType(payload_type, associated_payload_type);
 }
 
+rtc::Optional<uint32_t> ModuleRtpRtcpImpl::FlexfecSsrc() const {
+  return rtp_sender_.FlexfecSsrc();
+}
+
 int32_t ModuleRtpRtcpImpl::IncomingRtcpPacket(
     const uint8_t* rtcp_packet,
     const size_t length) {
-  // Allow receive of non-compound RTCP packets.
-  RTCPUtility::RTCPParserV2 rtcp_parser(rtcp_packet, length, true);
-
-  const bool valid_rtcpheader = rtcp_parser.IsValid();
-  if (!valid_rtcpheader) {
-    LOG(LS_WARNING) << "Incoming invalid RTCP packet";
-    return -1;
-  }
-  RTCPHelp::RTCPPacketInformation rtcp_packet_information;
-  int32_t ret_val =
-      rtcp_receiver_.IncomingRTCPPacket(rtcp_packet_information, &rtcp_parser);
-  if (ret_val == 0) {
-    rtcp_receiver_.TriggerCallbacksFromRTCPPacket(rtcp_packet_information);
-  }
-  return ret_val;
+  return rtcp_receiver_.IncomingPacket(rtcp_packet, length) ? 0 : -1;
 }
 
 int32_t ModuleRtpRtcpImpl::RegisterSendPayload(
@@ -327,7 +326,6 @@ RTCPSender::FeedbackState ModuleRtpRtcpImpl::GetFeedbackState() {
 
   RTCPSender::FeedbackState state;
   state.send_payload_type = SendPayloadType();
-  state.frequency_hz = CurrentSendFrequencyHz();
   state.packets_sent = rtp_stats.transmitted.packets +
                        rtx_stats.transmitted.packets;
   state.media_bytes_sent = rtp_stats.transmitted.payload_bytes +
@@ -338,15 +336,12 @@ RTCPSender::FeedbackState ModuleRtpRtcpImpl::GetFeedbackState() {
                   &state.last_rr_ntp_frac,
                   &state.remote_sr);
 
-  state.has_last_xr_rr = LastReceivedXrReferenceTimeInfo(&state.last_xr_rr);
+  state.has_last_xr_rr =
+      rtcp_receiver_.LastReceivedXrReferenceTimeInfo(&state.last_xr_rr);
 
   uint32_t tmp;
   BitrateSent(&state.send_bitrate, &tmp, &tmp, &tmp);
   return state;
-}
-
-int ModuleRtpRtcpImpl::CurrentSendFrequencyHz() const {
-  return rtp_sender_.SendPayloadFrequency();
 }
 
 int32_t ModuleRtpRtcpImpl::SetSendingStatus(const bool sending) {
@@ -409,12 +404,8 @@ bool ModuleRtpRtcpImpl::TimeToSendPacket(uint32_t ssrc,
                                          int64_t capture_time_ms,
                                          bool retransmission,
                                          int probe_cluster_id) {
-  if (SendingMedia() && ssrc == rtp_sender_.SSRC()) {
-    return rtp_sender_.TimeToSendPacket(sequence_number, capture_time_ms,
-                                        retransmission, probe_cluster_id);
-  }
-  // No RTP sender is interested in sending this packet.
-  return true;
+  return rtp_sender_.TimeToSendPacket(ssrc, sequence_number, capture_time_ms,
+                                      retransmission, probe_cluster_id);
 }
 
 size_t ModuleRtpRtcpImpl::TimeToSendPadding(size_t bytes,
@@ -460,6 +451,17 @@ int32_t ModuleRtpRtcpImpl::SetTransportOverhead(
   rtcp_sender_.SetMaxPayloadLength(max_payload_length);
   rtp_sender_.SetMaxPayloadLength(max_payload_length);
   return 0;
+}
+
+void ModuleRtpRtcpImpl::SetTransportOverhead(
+    int transport_overhead_per_packet) {
+  RTC_DCHECK_GT(transport_overhead_per_packet, 0);
+  int mtu = rtp_sender_.MaxPayloadLength() + packet_overhead_;
+  RTC_DCHECK_LT(transport_overhead_per_packet, mtu);
+  size_t max_payload_length = mtu - transport_overhead_per_packet;
+  packet_overhead_ = transport_overhead_per_packet;
+  rtcp_sender_.SetMaxPayloadLength(max_payload_length);
+  rtp_sender_.SetMaxPayloadLength(max_payload_length);
 }
 
 int32_t ModuleRtpRtcpImpl::SetMaxTransferUnit(uint16_t mtu) {
@@ -807,22 +809,14 @@ int32_t ModuleRtpRtcpImpl::SendRTCPSliceLossIndication(
       GetFeedbackState(), kRtcpSli, 0, 0, false, picture_id);
 }
 
-void ModuleRtpRtcpImpl::SetGenericFECStatus(
-    const bool enable,
-    const uint8_t payload_type_red,
-    const uint8_t payload_type_fec) {
-  rtp_sender_.SetGenericFECStatus(enable, payload_type_red, payload_type_fec);
+void ModuleRtpRtcpImpl::SetUlpfecConfig(int red_payload_type,
+                                        int ulpfec_payload_type) {
+  rtp_sender_.SetUlpfecConfig(red_payload_type, ulpfec_payload_type);
 }
 
-void ModuleRtpRtcpImpl::GenericFECStatus(bool* enable,
-                                         uint8_t* payload_type_red,
-                                         uint8_t* payload_type_fec) {
-  rtp_sender_.GenericFECStatus(enable, payload_type_red, payload_type_fec);
-}
-
-int32_t ModuleRtpRtcpImpl::SetFecParameters(
-    const FecProtectionParams* delta_params,
-    const FecProtectionParams* key_params) {
+bool ModuleRtpRtcpImpl::SetFecParameters(
+    const FecProtectionParams& delta_params,
+    const FecProtectionParams& key_params) {
   return rtp_sender_.SetFecParameters(delta_params, key_params);
 }
 
@@ -870,8 +864,8 @@ int32_t ModuleRtpRtcpImpl::SendRTCPReferencePictureSelection(
       GetFeedbackState(), kRtcpRpsi, 0, 0, false, picture_id);
 }
 
-void ModuleRtpRtcpImpl::OnReceivedNACK(
-    const std::list<uint16_t>& nack_sequence_numbers) {
+void ModuleRtpRtcpImpl::OnReceivedNack(
+    const std::vector<uint16_t>& nack_sequence_numbers) {
   for (uint16_t nack_sequence_number : nack_sequence_numbers) {
     send_loss_stats_.AddLostPacket(nack_sequence_number);
   }
@@ -884,7 +878,7 @@ void ModuleRtpRtcpImpl::OnReceivedNACK(
   if (rtt == 0) {
     rtcp_receiver_.RTT(rtcp_receiver_.RemoteSSRC(), NULL, &rtt, NULL, NULL);
   }
-  rtp_sender_.OnReceivedNACK(nack_sequence_numbers, rtt);
+  rtp_sender_.OnReceivedNack(nack_sequence_numbers, rtt);
 }
 
 void ModuleRtpRtcpImpl::OnReceivedRtcpReportBlocks(
@@ -910,11 +904,6 @@ bool ModuleRtpRtcpImpl::LastReceivedNTP(
   *remote_sr =
       ((ntp_secs & 0x0000ffff) << 16) + ((ntp_frac & 0xffff0000) >> 16);
   return true;
-}
-
-bool ModuleRtpRtcpImpl::LastReceivedXrReferenceTimeInfo(
-    RtcpReceiveTimeInfo* info) const {
-  return rtcp_receiver_.LastReceivedXrReferenceTimeInfo(info);
 }
 
 bool ModuleRtpRtcpImpl::UpdateRTCPReceiveInformationTimers() {

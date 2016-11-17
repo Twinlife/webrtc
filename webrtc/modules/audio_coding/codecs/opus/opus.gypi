@@ -38,6 +38,7 @@
       ],
       'dependencies': [
         'audio_encoder_interface',
+        'audio_network_adaptor',
       ],
       'sources': [
         'audio_decoder_opus.cc',
@@ -49,24 +50,5 @@
         'opus_interface.h',
       ],
     },
-  ],
-  'conditions': [
-    ['include_tests==1', {
-      'targets': [
-        {
-          'target_name': 'webrtc_opus_fec_test',
-          'type': 'executable',
-          'dependencies': [
-            'webrtc_opus',
-            '<(webrtc_root)/common_audio/common_audio.gyp:common_audio',
-            '<(webrtc_root)/test/test.gyp:test_support_main',
-            '<(DEPTH)/testing/gtest.gyp:gtest',
-          ],
-          'sources': [
-            'opus_fec_test.cc',
-          ],
-        },
-      ],
-    }],
   ],
 }

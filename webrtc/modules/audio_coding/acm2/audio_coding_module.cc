@@ -45,10 +45,11 @@ class AudioCodingModuleImpl final : public AudioCodingModule {
   void RegisterExternalSendCodec(
       AudioEncoder* external_speech_encoder) override;
 
-  void ModifyEncoder(
-      FunctionView<void(std::unique_ptr<AudioEncoder>*)> modifier) override;
+  void ModifyEncoder(rtc::FunctionView<void(std::unique_ptr<AudioEncoder>*)>
+                         modifier) override;
 
-  void QueryEncoder(FunctionView<void(const AudioEncoder*)> query) override;
+  void QueryEncoder(
+      rtc::FunctionView<void(const AudioEncoder*)> query) override;
 
   // Get current send codec.
   rtc::Optional<CodecInst> SendCodec() const override;
@@ -120,10 +121,13 @@ class AudioCodingModuleImpl final : public AudioCodingModule {
   // Get current playout frequency.
   int PlayoutFrequency() const override;
 
+  bool RegisterReceiveCodec(int rtp_payload_type,
+                            const SdpAudioFormat& audio_format) override;
+
   int RegisterReceiveCodec(const CodecInst& receive_codec) override;
   int RegisterReceiveCodec(
       const CodecInst& receive_codec,
-      FunctionView<std::unique_ptr<AudioDecoder>()> isac_factory) override;
+      rtc::FunctionView<std::unique_ptr<AudioDecoder>()> isac_factory) override;
 
   int RegisterExternalReceiveCodec(int rtp_payload_type,
                                    AudioDecoder* external_decoder,
@@ -133,6 +137,8 @@ class AudioCodingModuleImpl final : public AudioCodingModule {
 
   // Get current received codec.
   int ReceiveCodec(CodecInst* current_codec) const override;
+
+  rtc::Optional<SdpAudioFormat> ReceiveFormat() const override;
 
   // Incoming packet from network parsed and ready for decode.
   int IncomingPacket(const uint8_t* incoming_payload,
@@ -223,7 +229,7 @@ class AudioCodingModuleImpl final : public AudioCodingModule {
 
   int RegisterReceiveCodecUnlocked(
       const CodecInst& codec,
-      FunctionView<std::unique_ptr<AudioDecoder>()> isac_factory)
+      rtc::FunctionView<std::unique_ptr<AudioDecoder>()> isac_factory)
       EXCLUSIVE_LOCKS_REQUIRED(acm_crit_sect_);
 
   int Add10MsDataInternal(const AudioFrame& audio_frame, InputData* input_data)
@@ -477,7 +483,7 @@ int32_t AudioCodingModuleImpl::Encode(const InputData& input_data) {
     return -1;
 
   if(!first_frame_) {
-    RTC_DCHECK_GT(input_data.input_timestamp, last_timestamp_)
+    RTC_DCHECK(IsNewerTimestamp(input_data.input_timestamp, last_timestamp_))
         << "Time should not move backwards";
   }
 
@@ -587,7 +593,7 @@ void AudioCodingModuleImpl::RegisterExternalSendCodec(
 }
 
 void AudioCodingModuleImpl::ModifyEncoder(
-    FunctionView<void(std::unique_ptr<AudioEncoder>*)> modifier) {
+    rtc::FunctionView<void(std::unique_ptr<AudioEncoder>*)> modifier) {
   rtc::CritScope lock(&acm_crit_sect_);
 
   // Wipe the encoder factory, so that everything that relies on it will fail.
@@ -601,7 +607,7 @@ void AudioCodingModuleImpl::ModifyEncoder(
 }
 
 void AudioCodingModuleImpl::QueryEncoder(
-    FunctionView<void(const AudioEncoder*)> query) {
+    rtc::FunctionView<void(const AudioEncoder*)> query) {
   rtc::CritScope lock(&acm_crit_sect_);
   query(encoder_stack_.get());
 }
@@ -948,10 +954,8 @@ int AudioCodingModuleImpl::InitializeReceiverSafe() {
   // If the receiver is already initialized then we want to destroy any
   // existing decoders. After a call to this function, we should have a clean
   // start-up.
-  if (receiver_initialized_) {
-    if (receiver_.RemoveAllCodecs() < 0)
-      return -1;
-  }
+  if (receiver_initialized_)
+    receiver_.RemoveAllCodecs();
   receiver_.ResetInitialDelay();
   receiver_.SetMinimumDelay(0);
   receiver_.SetMaximumDelay(0);
@@ -988,6 +992,21 @@ int AudioCodingModuleImpl::PlayoutFrequency() const {
   return receiver_.last_output_sample_rate_hz();
 }
 
+bool AudioCodingModuleImpl::RegisterReceiveCodec(
+    int rtp_payload_type,
+    const SdpAudioFormat& audio_format) {
+  rtc::CritScope lock(&acm_crit_sect_);
+  RTC_DCHECK(receiver_initialized_);
+
+  if (!acm2::RentACodec::IsPayloadTypeValid(rtp_payload_type)) {
+    LOG_F(LS_ERROR) << "Invalid payload-type " << rtp_payload_type
+                    << " for decoder.";
+    return false;
+  }
+
+  return receiver_.AddCodec(rtp_payload_type, audio_format);
+}
+
 int AudioCodingModuleImpl::RegisterReceiveCodec(const CodecInst& codec) {
   rtc::CritScope lock(&acm_crit_sect_);
   auto* ef = encoder_factory_.get();
@@ -997,14 +1016,14 @@ int AudioCodingModuleImpl::RegisterReceiveCodec(const CodecInst& codec) {
 
 int AudioCodingModuleImpl::RegisterReceiveCodec(
     const CodecInst& codec,
-    FunctionView<std::unique_ptr<AudioDecoder>()> isac_factory) {
+    rtc::FunctionView<std::unique_ptr<AudioDecoder>()> isac_factory) {
   rtc::CritScope lock(&acm_crit_sect_);
   return RegisterReceiveCodecUnlocked(codec, isac_factory);
 }
 
 int AudioCodingModuleImpl::RegisterReceiveCodecUnlocked(
     const CodecInst& codec,
-    FunctionView<std::unique_ptr<AudioDecoder>()> isac_factory) {
+    rtc::FunctionView<std::unique_ptr<AudioDecoder>()> isac_factory) {
   RTC_DCHECK(receiver_initialized_);
   if (codec.channels > 2) {
     LOG_F(LS_ERROR) << "Unsupported number of channels: " << codec.channels;
@@ -1068,6 +1087,11 @@ int AudioCodingModuleImpl::RegisterExternalReceiveCodec(
 int AudioCodingModuleImpl::ReceiveCodec(CodecInst* current_codec) const {
   rtc::CritScope lock(&acm_crit_sect_);
   return receiver_.LastAudioCodec(current_codec);
+}
+
+rtc::Optional<SdpAudioFormat> AudioCodingModuleImpl::ReceiveFormat() const {
+  rtc::CritScope lock(&acm_crit_sect_);
+  return receiver_.LastAudioFormat();
 }
 
 // Incoming packet from network parsed and ready for decode.
@@ -1267,6 +1291,16 @@ void AudioCodingModuleImpl::GetDecodingCallStatistics(
 }
 
 }  // namespace
+
+AudioCodingModule::Config::Config()
+    : id(0), neteq_config(), clock(Clock::GetRealTimeClock()) {
+  // Post-decode VAD is disabled by default in NetEq, however, Audio
+  // Conference Mixer relies on VAD decisions and fails without them.
+  neteq_config.enable_post_decode_vad = true;
+}
+
+AudioCodingModule::Config::Config(const Config&) = default;
+AudioCodingModule::Config::~Config() = default;
 
 // Create module
 AudioCodingModule* AudioCodingModule::Create(int id) {

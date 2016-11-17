@@ -13,6 +13,7 @@
 
 #include <stddef.h>
 #include <list>
+#include <vector>
 
 #include "webrtc/modules/include/module_common_types.h"
 #include "webrtc/system_wrappers/include/clock.h"
@@ -21,7 +22,6 @@
 #define RTCP_CNAME_SIZE 256    // RFC 3550 page 44, including null termination
 #define IP_PACKET_SIZE 1500    // we assume ethernet
 #define MAX_NUMBER_OF_PARALLEL_TELEPHONE_EVENTS 10
-#define TIMEOUT_SEI_MESSAGES_MS 30000   // in milliseconds
 
 namespace webrtc {
 namespace rtcp {
@@ -29,6 +29,10 @@ class TransportFeedback;
 }
 
 const int kVideoPayloadTypeFrequency = 90000;
+// TODO(solenberg): RTP time stamp rate for RTCP is fixed at 8k, this is legacy
+// and should be fixed.
+// See: https://bugs.chromium.org/p/webrtc/issues/detail?id=6458
+const int kBogusRtpRateForAudioRtcp = 8000;
 
 // Minimum RTP header size in bytes.
 const uint8_t kRtpHeaderSize = 12;
@@ -160,13 +164,6 @@ struct RTCPReportBlock {
   uint32_t delaySinceLastSR;
 };
 
-struct RtcpReceiveTimeInfo {
-  // Fields as described by RFC 3611 4.5.
-  uint32_t sourceSSRC;
-  uint32_t lastRR;
-  uint32_t delaySinceLastRR;
-};
-
 typedef std::list<RTCPReportBlock> ReportBlockList;
 
 struct RtpState {
@@ -227,7 +224,8 @@ class RtcpIntraFrameObserver {
   virtual void OnReceivedRPSI(uint32_t ssrc,
                               uint64_t picture_id) = 0;
 
-  virtual void OnLocalSsrcChanged(uint32_t old_ssrc, uint32_t new_ssrc) = 0;
+  // TODO(mflodman): Remove completely.
+  virtual void OnLocalSsrcChanged(uint32_t old_ssrc, uint32_t new_ssrc) {}
 
   virtual ~RtcpIntraFrameObserver() {}
 };
@@ -310,6 +308,8 @@ class TransportFeedbackObserver {
                          int probe_cluster_id) = 0;
 
   virtual void OnTransportFeedback(const rtcp::TransportFeedback& feedback) = 0;
+
+  virtual std::vector<PacketInfo> GetTransportFeedbackVector() const = 0;
 };
 
 class RtcpRttStats {

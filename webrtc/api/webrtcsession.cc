@@ -17,12 +17,12 @@
 #include <utility>
 #include <vector>
 
+#include "webrtc/api/call/audio_sink.h"
 #include "webrtc/api/jsepicecandidate.h"
 #include "webrtc/api/jsepsessiondescription.h"
 #include "webrtc/api/peerconnectioninterface.h"
 #include "webrtc/api/sctputils.h"
 #include "webrtc/api/webrtcsessiondescriptionfactory.h"
-#include "webrtc/audio_sink.h"
 #include "webrtc/base/basictypes.h"
 #include "webrtc/base/bind.h"
 #include "webrtc/base/checks.h"
@@ -493,6 +493,8 @@ WebRtcSession::WebRtcSession(
       this, &WebRtcSession::OnTransportControllerCandidatesGathered);
   transport_controller_->SignalCandidatesRemoved.connect(
       this, &WebRtcSession::OnTransportControllerCandidatesRemoved);
+  transport_controller_->SignalDtlsHandshakeError.connect(
+      this, &WebRtcSession::OnDtlsHandshakeError);
 }
 
 WebRtcSession::~WebRtcSession() {
@@ -1272,7 +1274,9 @@ bool WebRtcSession::SendData(const cricket::SendDataParams& params,
 
 bool WebRtcSession::ConnectDataChannel(DataChannel* webrtc_data_channel) {
   if (!data_channel_) {
-    LOG(LS_ERROR) << "ConnectDataChannel called when data_channel_ is NULL.";
+    // Don't log an error here, because DataChannels are expected to call
+    // ConnectDataChannel in this state. It's the only way to initially tell
+    // whether or not the underlying transport is ready.
     return false;
   }
   data_channel_->SignalReadyToSendData.connect(webrtc_data_channel,
@@ -2072,5 +2076,13 @@ const std::string WebRtcSession::GetTransportName(
     return "";
   }
   return channel->transport_name();
+}
+
+void WebRtcSession::OnDtlsHandshakeError(rtc::SSLHandshakeError error) {
+  if (metrics_observer_) {
+    metrics_observer_->IncrementEnumCounter(
+        webrtc::kEnumCounterDtlsHandshakeError, static_cast<int>(error),
+        static_cast<int>(rtc::SSLHandshakeError::MAX_VALUE));
+  }
 }
 }  // namespace webrtc

@@ -10,14 +10,11 @@
 
 package org.webrtc;
 
-import org.webrtc.CameraEnumerationAndroid.CaptureFormat;
-
 import android.content.Context;
 import android.os.Handler;
 import android.os.SystemClock;
 import android.view.Surface;
 import android.view.WindowManager;
-
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.HashSet;
@@ -26,6 +23,8 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.webrtc.CameraEnumerationAndroid.CaptureFormat;
+import org.webrtc.Metrics.Histogram;
 
 // Android specific implementation of VideoCapturer.
 // An instance of this class can be created by an application using
@@ -38,16 +37,25 @@ import java.util.concurrent.atomic.AtomicBoolean;
 // arbitrary Java threads. All public entry points are thread safe, and delegate the work to the
 // camera thread. The internal *OnCameraThread() methods must check |camera| for null to check if
 // the camera has been stopped.
-// TODO(magjed): This class name is now confusing - rename to Camera1VideoCapturer.
+//
+// This class is deprecated and will only be used if you manually create it. Please use
+// Camera1Capturer instead.
+@Deprecated
 @SuppressWarnings("deprecation")
-public class VideoCapturerAndroid implements
-    CameraVideoCapturer,
-    android.hardware.Camera.PreviewCallback,
-    SurfaceTextureHelper.OnTextureFrameAvailableListener {
+public class VideoCapturerAndroid
+    implements CameraVideoCapturer, android.hardware.Camera.PreviewCallback,
+               SurfaceTextureHelper.OnTextureFrameAvailableListener {
   private static final String TAG = "VideoCapturerAndroid";
   private static final int CAMERA_STOP_TIMEOUT_MS = 7000;
+  private static final Histogram videoCapturerAndroidStartTimeMsHistogram =
+      Histogram.createCounts("WebRTC.Android.VideoCapturerAndroid.StartTimeMs", 1, 10000, 50);
+  private static final Histogram videoCapturerAndroidStopTimeMsHistogram =
+      Histogram.createCounts("WebRTC.Android.VideoCapturerAndroid.StopTimeMs", 1, 10000, 50);
+  private static final Histogram videoCapturerAndroidResolutionHistogram =
+      Histogram.createEnumeration("WebRTC.Android.VideoCapturerAndroid.Resolution",
+          CameraEnumerationAndroid.COMMON_RESOLUTIONS.size());
 
-  private android.hardware.Camera camera;  // Only non-null while capturing.
+  private android.hardware.Camera camera; // Only non-null while capturing.
   private final AtomicBoolean isCameraRunning = new AtomicBoolean();
   // Use maybePostOnCameraThread() instead of posting directly to the handler - this way all
   // callbacks with a specifed token can be removed at once.
@@ -80,33 +88,39 @@ public class VideoCapturerAndroid implements
   private final static int OPEN_CAMERA_DELAY_MS = 500;
   private int openCameraAttempts;
 
+  // Used for statistics.
+  private long startStartTimeNs; // The time in nanoseconds when starting the camera began.
+
   // Camera error callback.
   private final android.hardware.Camera.ErrorCallback cameraErrorCallback =
       new android.hardware.Camera.ErrorCallback() {
-    @Override
-    public void onError(int error, android.hardware.Camera camera) {
-      String errorMessage;
-      if (error == android.hardware.Camera.CAMERA_ERROR_SERVER_DIED) {
-        errorMessage = "Camera server died!";
-      } else {
-        errorMessage = "Camera error: " + error;
-      }
-      Logging.e(TAG, errorMessage);
-      if (eventsHandler != null) {
-        eventsHandler.onCameraError(errorMessage);
-      }
-    }
-  };
+        @Override
+        public void onError(int error, android.hardware.Camera camera) {
+          String errorMessage;
+          if (error == android.hardware.Camera.CAMERA_ERROR_SERVER_DIED) {
+            errorMessage = "Camera server died!";
+          } else {
+            errorMessage = "Camera error: " + error;
+          }
+          Logging.e(TAG, errorMessage);
+          if (eventsHandler != null) {
+            if (error == android.hardware.Camera.CAMERA_ERROR_EVICTED) {
+              eventsHandler.onCameraDisconnected();
+            } else {
+              eventsHandler.onCameraError(errorMessage);
+            }
+          }
+        }
+      };
 
-  public static VideoCapturerAndroid create(String name,
-      CameraEventsHandler eventsHandler) {
+  public static VideoCapturerAndroid create(String name, CameraEventsHandler eventsHandler) {
     return VideoCapturerAndroid.create(name, eventsHandler, false /* captureToTexture */);
   }
 
   // Use ctor directly instead.
   @Deprecated
-  public static VideoCapturerAndroid create(String name,
-      CameraEventsHandler eventsHandler, boolean captureToTexture) {
+  public static VideoCapturerAndroid create(
+      String name, CameraEventsHandler eventsHandler, boolean captureToTexture) {
     try {
       return new VideoCapturerAndroid(name, eventsHandler, captureToTexture);
     } catch (RuntimeException e) {
@@ -171,26 +185,13 @@ public class VideoCapturerAndroid implements
     }
   }
 
-  // Requests a new output format from the video capturer. Captured frames
-  // by the camera will be scaled/or dropped by the video capturer.
-  // It does not matter if width and height are flipped. I.E, |width| = 640, |height| = 480 produce
-  // the same result as |width| = 480, |height| = 640.
-  // TODO(magjed/perkj): Document what this function does. Change name?
-  @Override
-  public void onOutputFormatRequest(final int width, final int height, final int framerate) {
-    maybePostOnCameraThread(new Runnable() {
-      @Override public void run() {
-        onOutputFormatRequestOnCameraThread(width, height, framerate);
-      }
-    });
-  }
-
   // Reconfigure the camera to capture in a new format. This should only be called while the camera
   // is running.
   @Override
   public void changeCaptureFormat(final int width, final int height, final int framerate) {
     maybePostOnCameraThread(new Runnable() {
-      @Override public void run() {
+      @Override
+      public void run() {
         startPreviewOnCameraThread(width, height, framerate);
       }
     });
@@ -204,18 +205,13 @@ public class VideoCapturerAndroid implements
     }
   }
 
-  @Override
-  public List<CaptureFormat> getSupportedFormats() {
-    return Camera1Enumerator.getSupportedFormats(getCurrentCameraId());
-  }
-
   // Returns true if this VideoCapturer is setup to capture video frames to a SurfaceTexture.
   public boolean isCapturingToTexture() {
     return isCapturingToTexture;
   }
 
-  public VideoCapturerAndroid(String cameraName, CameraEventsHandler eventsHandler,
-      boolean captureToTexture) {
+  public VideoCapturerAndroid(
+      String cameraName, CameraEventsHandler eventsHandler, boolean captureToTexture) {
     if (android.hardware.Camera.getNumberOfCameras() == 0) {
       throw new RuntimeException("No cameras available");
     }
@@ -244,7 +240,7 @@ public class VideoCapturerAndroid implements
   private boolean maybePostDelayedOnCameraThread(int delayMs, Runnable runnable) {
     return cameraThreadHandler != null && isCameraRunning.get()
         && cameraThreadHandler.postAtTime(
-            runnable, this /* token */, SystemClock.uptimeMillis() + delayMs);
+               runnable, this /* token */, SystemClock.uptimeMillis() + delayMs);
   }
 
   @Override
@@ -313,6 +309,7 @@ public class VideoCapturerAndroid implements
 
   private void startCaptureOnCameraThread(final int width, final int height, final int framerate) {
     checkIsOnCameraThread();
+    startStartTimeNs = System.nanoTime();
     if (!isCameraRunning.get()) {
       Logging.e(TAG, "startCaptureOnCameraThread: Camera is stopped");
       return;
@@ -328,7 +325,7 @@ public class VideoCapturerAndroid implements
         synchronized (cameraIdLock) {
           Logging.d(TAG, "Opening camera " + id);
           if (eventsHandler != null) {
-            eventsHandler.onCameraOpening(id);
+            eventsHandler.onCameraOpening(Camera1Enumerator.getDeviceName(id));
           }
           camera = android.hardware.Camera.open(id);
           info = new android.hardware.Camera.CameraInfo();
@@ -351,8 +348,8 @@ public class VideoCapturerAndroid implements
 
       camera.setPreviewTexture(surfaceHelper.getSurfaceTexture());
 
-      Logging.d(TAG, "Camera orientation: " + info.orientation +
-          " .Device orientation: " + getDeviceOrientation());
+      Logging.d(TAG, "Camera orientation: " + info.orientation + " .Device orientation: "
+              + getDeviceOrientation());
       camera.setErrorCallback(cameraErrorCallback);
       startPreviewOnCameraThread(width, height, framerate);
       frameObserver.onCapturerStarted(true);
@@ -362,7 +359,7 @@ public class VideoCapturerAndroid implements
 
       // Start camera observer.
       cameraStatistics = new CameraStatistics(surfaceHelper, eventsHandler);
-    } catch (IOException|RuntimeException e) {
+    } catch (IOException | RuntimeException e) {
       Logging.e(TAG, "startCapture failed", e);
       // Make sure the camera is released.
       stopCaptureOnCameraThread(true /* stopHandler */);
@@ -370,7 +367,7 @@ public class VideoCapturerAndroid implements
       if (eventsHandler != null) {
         eventsHandler.onCameraError("Camera can not be started.");
       }
-     }
+    }
   }
 
   // (Re)start preview with the closest supported format to |width| x |height| @ |framerate|.
@@ -396,8 +393,13 @@ public class VideoCapturerAndroid implements
     final CaptureFormat.FramerateRange fpsRange =
         CameraEnumerationAndroid.getClosestSupportedFramerateRange(supportedFramerates, framerate);
 
-    final Size previewSize = CameraEnumerationAndroid.getClosestSupportedSize(
-        Camera1Enumerator.convertSizes(parameters.getSupportedPreviewSizes()), width, height);
+    final List<Size> supportedPreviewSizes =
+        Camera1Enumerator.convertSizes(parameters.getSupportedPreviewSizes());
+    final Size previewSize =
+        CameraEnumerationAndroid.getClosestSupportedSize(supportedPreviewSizes, width, height);
+    CameraEnumerationAndroid.reportCameraResolution(
+        videoCapturerAndroidResolutionHistogram, previewSize);
+    Logging.d(TAG, "Available preview sizes: " + supportedPreviewSizes);
 
     final CaptureFormat captureFormat =
         new CaptureFormat(previewSize.width, previewSize.height, fpsRange);
@@ -408,8 +410,7 @@ public class VideoCapturerAndroid implements
     }
 
     // Update camera parameters.
-    Logging.d(TAG, "isVideoStabilizationSupported: " +
-        parameters.isVideoStabilizationSupported());
+    Logging.d(TAG, "isVideoStabilizationSupported: " + parameters.isVideoStabilizationSupported());
     if (parameters.isVideoStabilizationSupported()) {
       parameters.setVideoStabilization(true);
     }
@@ -437,14 +438,15 @@ public class VideoCapturerAndroid implements
       camera.setPreviewCallbackWithBuffer(null);
     }
 
+    List<String> focusModes = parameters.getSupportedFocusModes();
+    if (focusModes.contains(android.hardware.Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO)) {
+      Logging.d(TAG, "Enable continuous auto focus mode.");
+      parameters.setFocusMode(android.hardware.Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO);
+    }
+
     // (Re)start preview.
     Logging.d(TAG, "Start capturing: " + captureFormat);
     this.captureFormat = captureFormat;
-
-    List<String> focusModes = parameters.getSupportedFocusModes();
-    if (focusModes.contains(android.hardware.Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO)) {
-      parameters.setFocusMode(android.hardware.Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO);
-    }
 
     camera.setParameters(parameters);
     // Calculate orientation manually and send it as CVO instead.
@@ -468,7 +470,8 @@ public class VideoCapturerAndroid implements
     Logging.d(TAG, "stopCapture");
     final CountDownLatch barrier = new CountDownLatch(1);
     final boolean didPost = maybePostOnCameraThread(new Runnable() {
-      @Override public void run() {
+      @Override
+      public void run() {
         stopCaptureOnCameraThread(true /* stopHandler */);
         barrier.countDown();
       }
@@ -491,6 +494,7 @@ public class VideoCapturerAndroid implements
   private void stopCaptureOnCameraThread(boolean stopHandler) {
     checkIsOnCameraThread();
     Logging.d(TAG, "stopCaptureOnCameraThread");
+    final long stopStartTime = System.nanoTime();
     // Note that the camera might still not be started here if startCaptureOnCameraThread failed
     // and we posted a retry.
 
@@ -529,6 +533,8 @@ public class VideoCapturerAndroid implements
     if (eventsHandler != null) {
       eventsHandler.onCameraClosed();
     }
+    final int stopTimeMs = (int) TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - stopStartTime);
+    videoCapturerAndroidStopTimeMsHistogram.addSample(stopTimeMs);
     Logging.d(TAG, "stopCaptureOnCameraThread done");
   }
 
@@ -547,19 +553,11 @@ public class VideoCapturerAndroid implements
     Logging.d(TAG, "switchCameraOnCameraThread done");
   }
 
-  private void onOutputFormatRequestOnCameraThread(int width, int height, int framerate) {
-    checkIsOnCameraThread();
-    Logging.d(TAG, "onOutputFormatRequestOnCameraThread: " + width + "x" + height +
-        "@" + framerate);
-    frameObserver.onOutputFormatRequest(width, height, framerate);
-  }
-
   private int getDeviceOrientation() {
     int orientation = 0;
 
-    WindowManager wm = (WindowManager) applicationContext.getSystemService(
-        Context.WINDOW_SERVICE);
-    switch(wm.getDefaultDisplay().getRotation()) {
+    WindowManager wm = (WindowManager) applicationContext.getSystemService(Context.WINDOW_SERVICE);
+    switch (wm.getDefaultDisplay().getRotation()) {
       case Surface.ROTATION_90:
         orientation = 90;
         break;
@@ -601,34 +599,25 @@ public class VideoCapturerAndroid implements
       throw new RuntimeException("Unexpected camera in callback!");
     }
 
-    final long captureTimeNs =
-        TimeUnit.MILLISECONDS.toNanos(SystemClock.elapsedRealtime());
+    final long captureTimeNs = TimeUnit.MILLISECONDS.toNanos(SystemClock.elapsedRealtime());
 
-    if (eventsHandler != null && !firstFrameReported) {
-      eventsHandler.onFirstFrameAvailable();
-      firstFrameReported = true;
+    if (!firstFrameReported) {
+      onFirstFrameAvailable();
     }
-
     cameraStatistics.addFrame();
-    frameObserver.onByteBufferFrameCaptured(data, captureFormat.width, captureFormat.height,
-        getFrameOrientation(), captureTimeNs);
+    frameObserver.onByteBufferFrameCaptured(
+        data, captureFormat.width, captureFormat.height, getFrameOrientation(), captureTimeNs);
     camera.addCallbackBuffer(data);
   }
 
   @Override
-  public void onTextureFrameAvailable(
-      int oesTextureId, float[] transformMatrix, long timestampNs) {
+  public void onTextureFrameAvailable(int oesTextureId, float[] transformMatrix, long timestampNs) {
     checkIsOnCameraThread();
     if (!isCameraRunning.get()) {
       Logging.e(TAG, "onTextureFrameAvailable: Camera is stopped");
       surfaceHelper.returnTextureFrame();
       return;
     }
-    if (eventsHandler != null && !firstFrameReported) {
-      eventsHandler.onFirstFrameAvailable();
-      firstFrameReported = true;
-    }
-
     int rotation = getFrameOrientation();
     if (info.facing == android.hardware.Camera.CameraInfo.CAMERA_FACING_FRONT) {
       // Undo the mirror that the OS "helps" us with.
@@ -636,8 +625,26 @@ public class VideoCapturerAndroid implements
       transformMatrix =
           RendererCommon.multiplyMatrices(transformMatrix, RendererCommon.horizontalFlipMatrix());
     }
+    if (!firstFrameReported) {
+      onFirstFrameAvailable();
+    }
     cameraStatistics.addFrame();
     frameObserver.onTextureFrameCaptured(captureFormat.width, captureFormat.height, oesTextureId,
         transformMatrix, rotation, timestampNs);
+  }
+
+  private void onFirstFrameAvailable() {
+    if (eventsHandler != null) {
+      eventsHandler.onFirstFrameAvailable();
+    }
+    final int startTimeMs =
+        (int) TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startStartTimeNs);
+    videoCapturerAndroidStartTimeMsHistogram.addSample(startTimeMs);
+    firstFrameReported = true;
+  }
+
+  @Override
+  public boolean isScreencast() {
+    return false;
   }
 }

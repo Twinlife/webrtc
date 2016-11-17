@@ -12,6 +12,8 @@
 #include <sstream>
 #include <string>
 
+#include "webrtc/base/checks.h"
+
 namespace webrtc {
 std::string NackConfig::ToString() const {
   std::stringstream ss;
@@ -20,12 +22,31 @@ std::string NackConfig::ToString() const {
   return ss.str();
 }
 
-std::string FecConfig::ToString() const {
+std::string UlpfecConfig::ToString() const {
   std::stringstream ss;
   ss << "{ulpfec_payload_type: " << ulpfec_payload_type;
   ss << ", red_payload_type: " << red_payload_type;
   ss << ", red_rtx_payload_type: " << red_rtx_payload_type;
   ss << '}';
+  return ss.str();
+}
+
+FlexfecConfig::FlexfecConfig()
+    : flexfec_payload_type(-1), flexfec_ssrc(0), protected_media_ssrcs() {}
+
+FlexfecConfig::~FlexfecConfig() = default;
+
+std::string FlexfecConfig::ToString() const {
+  std::stringstream ss;
+  ss << "{flexfec_payload_type: " << flexfec_payload_type;
+  ss << ", flexfec_ssrc: " << flexfec_ssrc;
+  ss << ", protected_media_ssrcs: [";
+  size_t i = 0;
+  for (; i + 1 < protected_media_ssrcs.size(); ++i)
+    ss << protected_media_ssrcs[i] << ", ";
+  if (!protected_media_ssrcs.empty())
+    ss << protected_media_ssrcs[i];
+  ss << "]}";
   return ss.str();
 }
 
@@ -113,23 +134,18 @@ std::string VideoStream::ToString() const {
 
 VideoEncoderConfig::VideoEncoderConfig()
     : content_type(ContentType::kRealtimeVideo),
-      encoder_specific_settings(NULL),
+      encoder_specific_settings(nullptr),
       min_transmit_bitrate_bps(0),
-      expect_encode_from_texture(false) {}
+      max_bitrate_bps(0),
+      number_of_streams(0) {}
+
+VideoEncoderConfig::VideoEncoderConfig(VideoEncoderConfig&&) = default;
 
 VideoEncoderConfig::~VideoEncoderConfig() = default;
 
 std::string VideoEncoderConfig::ToString() const {
   std::stringstream ss;
-
-  ss << "{streams: [";
-  for (size_t i = 0; i < streams.size(); ++i) {
-    ss << streams[i].ToString();
-    if (i != streams.size() - 1)
-      ss << ", ";
-  }
-  ss << ']';
-  ss << ", content_type: ";
+  ss << "{content_type: ";
   switch (content_type) {
     case ContentType::kRealtimeVideo:
       ss << "kRealtimeVideo";
@@ -145,5 +161,66 @@ std::string VideoEncoderConfig::ToString() const {
   ss << '}';
   return ss.str();
 }
+
+VideoEncoderConfig::VideoEncoderConfig(const VideoEncoderConfig&) = default;
+
+void VideoEncoderConfig::EncoderSpecificSettings::FillEncoderSpecificSettings(
+    VideoCodec* codec) const {
+  if (codec->codecType == kVideoCodecH264) {
+    FillVideoCodecH264(&codec->codecSpecific.H264);
+  } else if (codec->codecType == kVideoCodecVP8) {
+    FillVideoCodecVp8(&codec->codecSpecific.VP8);
+  } else if (codec->codecType == kVideoCodecVP9) {
+    FillVideoCodecVp9(&codec->codecSpecific.VP9);
+  } else {
+    RTC_NOTREACHED() << "Encoder specifics set/used for unknown codec type.";
+  }
+}
+
+void VideoEncoderConfig::EncoderSpecificSettings::FillVideoCodecH264(
+    VideoCodecH264* h264_settings) const {
+  RTC_NOTREACHED();
+}
+
+void VideoEncoderConfig::EncoderSpecificSettings::FillVideoCodecVp8(
+    VideoCodecVP8* vp8_settings) const {
+  RTC_NOTREACHED();
+}
+
+void VideoEncoderConfig::EncoderSpecificSettings::FillVideoCodecVp9(
+    VideoCodecVP9* vp9_settings) const {
+  RTC_NOTREACHED();
+}
+
+VideoEncoderConfig::H264EncoderSpecificSettings::H264EncoderSpecificSettings(
+    const VideoCodecH264& specifics)
+    : specifics_(specifics) {}
+
+void VideoEncoderConfig::H264EncoderSpecificSettings::FillVideoCodecH264(
+    VideoCodecH264* h264_settings) const {
+  *h264_settings = specifics_;
+}
+
+VideoEncoderConfig::Vp8EncoderSpecificSettings::Vp8EncoderSpecificSettings(
+    const VideoCodecVP8& specifics)
+    : specifics_(specifics) {}
+
+void VideoEncoderConfig::Vp8EncoderSpecificSettings::FillVideoCodecVp8(
+    VideoCodecVP8* vp8_settings) const {
+  *vp8_settings = specifics_;
+}
+
+VideoEncoderConfig::Vp9EncoderSpecificSettings::Vp9EncoderSpecificSettings(
+    const VideoCodecVP9& specifics)
+    : specifics_(specifics) {}
+
+void VideoEncoderConfig::Vp9EncoderSpecificSettings::FillVideoCodecVp9(
+    VideoCodecVP9* vp9_settings) const {
+  *vp9_settings = specifics_;
+}
+
+DecoderSpecificSettings::DecoderSpecificSettings() = default;
+
+DecoderSpecificSettings::~DecoderSpecificSettings() = default;
 
 }  // namespace webrtc

@@ -10,12 +10,10 @@
 
 package org.webrtc;
 
-import org.webrtc.CameraEnumerationAndroid.CaptureFormat;
-
 import android.os.SystemClock;
-
 import java.util.ArrayList;
 import java.util.List;
+import org.webrtc.CameraEnumerationAndroid.CaptureFormat;
 
 @SuppressWarnings("deprecation")
 public class Camera1Enumerator implements CameraEnumerator {
@@ -65,9 +63,14 @@ public class Camera1Enumerator implements CameraEnumerator {
   }
 
   @Override
-  public CameraVideoCapturer createCapturer(String deviceName,
-      CameraVideoCapturer.CameraEventsHandler eventsHandler) {
-    return new VideoCapturerAndroid(deviceName, eventsHandler, captureToTexture);
+  public List<CaptureFormat> getSupportedFormats(String deviceName) {
+    return getSupportedFormats(getCameraIndex(deviceName));
+  }
+
+  @Override
+  public CameraVideoCapturer createCapturer(
+      String deviceName, CameraVideoCapturer.CameraEventsHandler eventsHandler) {
+    return new Camera1Capturer(deviceName, eventsHandler, captureToTexture);
   }
 
   private static android.hardware.Camera.CameraInfo getCameraInfo(int index) {
@@ -84,7 +87,7 @@ public class Camera1Enumerator implements CameraEnumerator {
   static synchronized List<CaptureFormat> getSupportedFormats(int cameraId) {
     if (cachedSupportedFormats == null) {
       cachedSupportedFormats = new ArrayList<List<CaptureFormat>>();
-      for (int i = 0; i < CameraEnumerationAndroid.getDeviceCount(); ++i) {
+      for (int i = 0; i < android.hardware.Camera.getNumberOfCameras(); ++i) {
         cachedSupportedFormats.add(enumerateFormats(i));
       }
     }
@@ -130,7 +133,7 @@ public class Camera1Enumerator implements CameraEnumerator {
 
     final long endTimeMs = SystemClock.elapsedRealtime();
     Logging.d(TAG, "Get supported formats for camera index " + cameraId + " done."
-        + " Time spent: " + (endTimeMs - startTimeMs) + " ms.");
+            + " Time spent: " + (endTimeMs - startTimeMs) + " ms.");
     return formatList;
   }
 
@@ -159,7 +162,7 @@ public class Camera1Enumerator implements CameraEnumerator {
   static int getCameraIndex(String deviceName) {
     Logging.d(TAG, "getCameraIndex: " + deviceName);
     for (int i = 0; i < android.hardware.Camera.getNumberOfCameras(); ++i) {
-      if (deviceName.equals(CameraEnumerationAndroid.getDeviceName(i))) {
+      if (deviceName.equals(getDeviceName(i))) {
         return i;
       }
     }
@@ -176,7 +179,6 @@ public class Camera1Enumerator implements CameraEnumerator {
 
     String facing =
         (info.facing == android.hardware.Camera.CameraInfo.CAMERA_FACING_FRONT) ? "front" : "back";
-    return "Camera " + index + ", Facing " + facing
-        + ", Orientation " + info.orientation;
+    return "Camera " + index + ", Facing " + facing + ", Orientation " + info.orientation;
   }
 }

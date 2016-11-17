@@ -32,6 +32,7 @@
         'base/p2ptransport.h',
         'base/p2ptransportchannel.cc',
         'base/p2ptransportchannel.h',
+        'base/packettransportinterface.h',
         'base/packetsocketfactory.h',
         'base/port.cc',
         'base/port.h',
@@ -46,7 +47,6 @@
         'base/session.h',
         'base/sessiondescription.cc',
         'base/sessiondescription.h',
-        'base/sessionid.h',
         'base/stun.cc',
         'base/stun.h',
         'base/stunport.cc',
@@ -70,10 +70,10 @@
         'base/turnport.cc',
         'base/turnport.h',
         'base/udpport.h',
+        'base/udptransportchannel.cc',
+        'base/udptransportchannel.h',
         'client/basicportallocator.cc',
         'client/basicportallocator.h',
-        'client/httpportallocator.cc',
-        'client/httpportallocator.h',
         'client/socketmonitor.cc',
         'client/socketmonitor.h',
       ],
@@ -128,17 +128,6 @@
       ],
       'sources': [
         'stunprober/stunprober.cc',
-      ],
-    },
-    {
-      'target_name': 'stun_prober',
-      'type': 'executable',
-      'dependencies': [
-        'libstunprober',
-        'rtc_p2p'
-      ],
-      'sources': [
-        'stunprober/main.cc',
       ],
     },
   ],  # targets

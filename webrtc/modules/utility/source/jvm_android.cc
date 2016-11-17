@@ -42,8 +42,10 @@ struct {
 // stack.  Consequently, we only look up all classes once in native WebRTC.
 // http://developer.android.com/training/articles/perf-jni.html#faq_FindClass
 void LoadClasses(JNIEnv* jni) {
+  ALOGD("LoadClasses");
   for (auto& c : loaded_classes) {
     jclass localRef = FindClass(jni, c.name);
+    ALOGD("name: %s", c.name);
     CHECK_EXCEPTION(jni) << "Error during FindClass: " << c.name;
     RTC_CHECK(localRef) << c.name;
     jclass globalRef = reinterpret_cast<jclass>(jni->NewGlobalRef(localRef));
@@ -172,6 +174,14 @@ jobject JavaClass::CallStaticObjectMethod(jmethodID methodID, ...) {
   va_start(args, methodID);
   jobject res = jni_->CallStaticObjectMethod(j_class_, methodID, args);
   CHECK_EXCEPTION(jni_) << "Error during CallStaticObjectMethod";
+  return res;
+}
+
+jint JavaClass::CallStaticIntMethod(jmethodID methodID, ...) {
+  va_list args;
+  va_start(args, methodID);
+  jint res = jni_->CallStaticIntMethod(j_class_, methodID, args);
+  CHECK_EXCEPTION(jni_) << "Error during CallStaticIntMethod";
   return res;
 }
 

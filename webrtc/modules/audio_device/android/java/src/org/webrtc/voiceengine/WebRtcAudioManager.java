@@ -45,8 +45,7 @@ public class WebRtcAudioManager {
   // specified in WebRtcAudioUtils.BLACKLISTED_OPEN_SL_ES_MODELS.
   // Allows an app to take control over which devices to exlude from using
   // the OpenSL ES audio output path
-  public static synchronized void setBlacklistDeviceForOpenSLESUsage(
-      boolean enable) {
+  public static synchronized void setBlacklistDeviceForOpenSLESUsage(boolean enable) {
     blacklistDeviceForOpenSLESUsageIsOverridden = true;
     blacklistDeviceForOpenSLESUsage = enable;
   }
@@ -62,10 +61,7 @@ public class WebRtcAudioManager {
 
   // List of possible audio modes.
   private static final String[] AUDIO_MODES = new String[] {
-      "MODE_NORMAL",
-      "MODE_RINGTONE",
-      "MODE_IN_CALL",
-      "MODE_IN_COMMUNICATION",
+      "MODE_NORMAL", "MODE_RINGTONE", "MODE_IN_CALL", "MODE_IN_COMMUNICATION",
   };
 
   // Private utility class that periodically checks and logs the volume level
@@ -85,9 +81,8 @@ public class WebRtcAudioManager {
 
     public void start() {
       timer = new Timer(THREAD_NAME);
-      timer.schedule(new LogVolumeTask(
-          audioManager.getStreamMaxVolume(AudioManager.STREAM_RING),
-          audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)),
+      timer.schedule(new LogVolumeTask(audioManager.getStreamMaxVolume(AudioManager.STREAM_RING),
+                         audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)),
           0, TIMER_PERIOD_IN_SECONDS * 1000);
     }
 
@@ -104,12 +99,12 @@ public class WebRtcAudioManager {
         final int mode = audioManager.getMode();
         if (mode == AudioManager.MODE_RINGTONE) {
           Logging.d(TAG, "STREAM_RING stream volume: "
-              + audioManager.getStreamVolume(AudioManager.STREAM_RING)
-              + " (max=" + maxRingVolume + ")");
+                  + audioManager.getStreamVolume(AudioManager.STREAM_RING) + " (max="
+                  + maxRingVolume + ")");
         } else if (mode == AudioManager.MODE_IN_COMMUNICATION) {
           Logging.d(TAG, "VOICE_CALL stream volume: "
-              + audioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL)
-              + " (max=" + maxVoiceCallVolume + ")");
+                  + audioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL) + " (max="
+                  + maxVoiceCallVolume + ")");
         }
       }
     }
@@ -134,6 +129,7 @@ public class WebRtcAudioManager {
   private boolean hardwareAGC;
   private boolean hardwareNS;
   private boolean lowLatencyOutput;
+  private boolean lowLatencyInput;
   private boolean proAudio;
   private int sampleRate;
   private int channels;
@@ -146,16 +142,14 @@ public class WebRtcAudioManager {
     Logging.d(TAG, "ctor" + WebRtcAudioUtils.getThreadInfo());
     this.context = context;
     this.nativeAudioManager = nativeAudioManager;
-    audioManager = (AudioManager) context.getSystemService(
-        Context.AUDIO_SERVICE);
+    audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
     if (DEBUG) {
       WebRtcAudioUtils.logDeviceInfo(TAG);
     }
     volumeLogger = new VolumeLogger(audioManager);
     storeAudioParameters();
-    nativeCacheAudioParameters(
-        sampleRate, channels, hardwareAEC, hardwareAGC, hardwareNS,
-        lowLatencyOutput, proAudio, outputBufferSize, inputBufferSize,
+    nativeCacheAudioParameters(sampleRate, channels, hardwareAEC, hardwareAGC, hardwareNS,
+        lowLatencyOutput, lowLatencyInput, proAudio, outputBufferSize, inputBufferSize,
         nativeAudioManager);
   }
 
@@ -183,9 +177,9 @@ public class WebRtcAudioManager {
   }
 
   private boolean isDeviceBlacklistedForOpenSLESUsage() {
-    boolean blacklisted = blacklistDeviceForOpenSLESUsageIsOverridden ?
-        blacklistDeviceForOpenSLESUsage :
-        WebRtcAudioUtils.deviceIsBlacklistedForOpenSLESUsage();
+    boolean blacklisted = blacklistDeviceForOpenSLESUsageIsOverridden
+        ? blacklistDeviceForOpenSLESUsage
+        : WebRtcAudioUtils.deviceIsBlacklistedForOpenSLESUsage();
     if (blacklisted) {
       Logging.e(TAG, Build.MODEL + " is blacklisted for OpenSL ES usage!");
     }
@@ -198,46 +192,46 @@ public class WebRtcAudioManager {
     channels = CHANNELS;
     sampleRate = getNativeOutputSampleRate();
     hardwareAEC = isAcousticEchoCancelerSupported();
-    hardwareAGC = isAutomaticGainControlSupported();
+    // TODO(henrika): use of hardware AGC is no longer supported. Currently
+    // hardcoded to false. To be removed.
+    hardwareAGC = false;
     hardwareNS = isNoiseSuppressorSupported();
     lowLatencyOutput = isLowLatencyOutputSupported();
+    lowLatencyInput = isLowLatencyInputSupported();
     proAudio = isProAudioSupported();
-    outputBufferSize = lowLatencyOutput ?
-        getLowLatencyOutputFramesPerBuffer() :
-        getMinOutputFrameSize(sampleRate, channels);
-    // TODO(henrika): add support for low-latency input.
-    inputBufferSize = getMinInputFrameSize(sampleRate, channels);
+    outputBufferSize = lowLatencyOutput ? getLowLatencyOutputFramesPerBuffer()
+                                        : getMinOutputFrameSize(sampleRate, channels);
+    inputBufferSize = lowLatencyInput ? getLowLatencyInputFramesPerBuffer()
+                                      : getMinInputFrameSize(sampleRate, channels);
   }
 
   // Gets the current earpiece state.
   private boolean hasEarpiece() {
-    return context.getPackageManager().hasSystemFeature(
-        PackageManager.FEATURE_TELEPHONY);
+    return context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_TELEPHONY);
   }
 
   // Returns true if low-latency audio output is supported.
   private boolean isLowLatencyOutputSupported() {
-    return isOpenSLESSupported() &&
-        context.getPackageManager().hasSystemFeature(
-            PackageManager.FEATURE_AUDIO_LOW_LATENCY);
+    return isOpenSLESSupported()
+        && context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_AUDIO_LOW_LATENCY);
   }
 
   // Returns true if low-latency audio input is supported.
+  // TODO(henrika): remove the hardcoded false return value when OpenSL ES
+  // input performance has been evaluated and tested more.
   public boolean isLowLatencyInputSupported() {
     // TODO(henrika): investigate if some sort of device list is needed here
     // as well. The NDK doc states that: "As of API level 21, lower latency
     // audio input is supported on select devices. To take advantage of this
     // feature, first confirm that lower latency output is available".
-    return WebRtcAudioUtils.runningOnLollipopOrHigher()
-        && isLowLatencyOutputSupported();
+    return WebRtcAudioUtils.runningOnLollipopOrHigher() && isLowLatencyOutputSupported();
   }
 
   // Returns true if the device has professional audio level of functionality
   // and therefore supports the lowest possible round-trip latency.
   private boolean isProAudioSupported() {
     return WebRtcAudioUtils.runningOnMarshmallowOrHigher()
-        && context.getPackageManager().hasSystemFeature(
-            PackageManager.FEATURE_AUDIO_PRO);
+        && context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_AUDIO_PRO);
   }
 
   // Returns the native output sample rate for this device's output stream.
@@ -251,8 +245,8 @@ public class WebRtcAudioManager {
     // Default can be overriden by WebRtcAudioUtils.setDefaultSampleRateHz().
     // If so, use that value and return here.
     if (WebRtcAudioUtils.isDefaultSampleRateOverridden()) {
-      Logging.d(TAG, "Default sample rate is overriden to " +
-          WebRtcAudioUtils.getDefaultSampleRateHz() + " Hz");
+      Logging.d(TAG, "Default sample rate is overriden to "
+              + WebRtcAudioUtils.getDefaultSampleRateHz() + " Hz");
       return WebRtcAudioUtils.getDefaultSampleRateHz();
     }
     // No overrides available. Deliver best possible estimate based on default
@@ -269,11 +263,9 @@ public class WebRtcAudioManager {
 
   @TargetApi(17)
   private int getSampleRateOnJellyBeanMR10OrHigher() {
-    String sampleRateString = audioManager.getProperty(
-        AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE);
-    return (sampleRateString == null)
-        ? WebRtcAudioUtils.getDefaultSampleRateHz()
-        : Integer.parseInt(sampleRateString);
+    String sampleRateString = audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE);
+    return (sampleRateString == null) ? WebRtcAudioUtils.getDefaultSampleRateHz()
+                                      : Integer.parseInt(sampleRateString);
   }
 
   // Returns the native output buffer size for low-latency output streams.
@@ -283,13 +275,12 @@ public class WebRtcAudioManager {
     if (!WebRtcAudioUtils.runningOnJellyBeanMR1OrHigher()) {
       return DEFAULT_FRAME_PER_BUFFER;
     }
-    String framesPerBuffer = audioManager.getProperty(
-        AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER);
-    return framesPerBuffer == null ?
-        DEFAULT_FRAME_PER_BUFFER : Integer.parseInt(framesPerBuffer);
+    String framesPerBuffer =
+        audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER);
+    return framesPerBuffer == null ? DEFAULT_FRAME_PER_BUFFER : Integer.parseInt(framesPerBuffer);
   }
 
-  // Returns true if the device supports an audio effect (AEC, AGC or NS).
+  // Returns true if the device supports an audio effect (AEC or NS).
   // Four conditions must be fulfilled if functions are to return true:
   // 1) the platform must support the built-in (HW) effect,
   // 2) explicit use (override) of a WebRTC based version must not be set,
@@ -297,9 +288,6 @@ public class WebRtcAudioManager {
   // 4) the UUID of the effect must be approved (some UUIDs can be excluded).
   private static boolean isAcousticEchoCancelerSupported() {
     return WebRtcAudioEffects.canUseAcousticEchoCanceler();
-  }
-  private static boolean isAutomaticGainControlSupported() {
-    return WebRtcAudioEffects.canUseAutomaticGainControl();
   }
   private static boolean isNoiseSuppressorSupported() {
     return WebRtcAudioEffects.canUseNoiseSuppressor();
@@ -319,8 +307,8 @@ public class WebRtcAudioManager {
       return -1;
     }
     return AudioTrack.getMinBufferSize(
-        sampleRateInHz, channelConfig, AudioFormat.ENCODING_PCM_16BIT) /
-        bytesPerFrame;
+               sampleRateInHz, channelConfig, AudioFormat.ENCODING_PCM_16BIT)
+        / bytesPerFrame;
   }
 
   // Returns the native input buffer size for input streams.
@@ -335,9 +323,9 @@ public class WebRtcAudioManager {
   private static int getMinInputFrameSize(int sampleRateInHz, int numChannels) {
     final int bytesPerFrame = numChannels * (BITS_PER_SAMPLE / 8);
     assertTrue(numChannels == CHANNELS);
-    return AudioRecord.getMinBufferSize(sampleRateInHz,
-        AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT) /
-        bytesPerFrame;
+    return AudioRecord.getMinBufferSize(
+               sampleRateInHz, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        / bytesPerFrame;
   }
 
   // Returns true if OpenSL ES audio is supported.
@@ -353,8 +341,7 @@ public class WebRtcAudioManager {
     }
   }
 
-  private native void nativeCacheAudioParameters(
-    int sampleRate, int channels, boolean hardwareAEC, boolean hardwareAGC,
-    boolean hardwareNS, boolean lowLatencyOutput, boolean proAudio,
-    int outputBufferSize, int inputBufferSize, long nativeAudioManager);
+  private native void nativeCacheAudioParameters(int sampleRate, int channels, boolean hardwareAEC,
+      boolean hardwareAGC, boolean hardwareNS, boolean lowLatencyOutput, boolean lowLatencyInput,
+      boolean proAudio, int outputBufferSize, int inputBufferSize, long nativeAudioManager);
 }

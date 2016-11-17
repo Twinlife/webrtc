@@ -18,6 +18,7 @@
 
 #include "webrtc/api/peerconnectionfactory.h"
 #include "webrtc/api/peerconnectioninterface.h"
+#include "webrtc/api/rtcstatscollector.h"
 #include "webrtc/api/rtpreceiver.h"
 #include "webrtc/api/rtpsender.h"
 #include "webrtc/api/statscollector.h"
@@ -28,6 +29,7 @@ namespace webrtc {
 
 class MediaStreamObserver;
 class VideoRtpReceiver;
+class RtcEventLog;
 
 // Populates |session_options| from |rtc_options|, and returns true if options
 // are valid.
@@ -102,11 +104,10 @@ class PeerConnection : public PeerConnectionInterface,
   bool GetStats(StatsObserver* observer,
                 webrtc::MediaStreamTrackInterface* track,
                 StatsOutputLevel level) override;
+  void GetStats(RTCStatsCollectorCallback* callback) override;
 
   SignalingState signaling_state() override;
 
-  // TODO(bemasc): Remove ice_state() when callers are removed.
-  IceState ice_state() override;
   IceConnectionState ice_connection_state() override;
   IceGatheringState ice_gathering_state() override;
 
@@ -141,6 +142,8 @@ class PeerConnection : public PeerConnectionInterface,
   void StopRtcEventLog() override;
 
   void Close() override;
+
+  sigslot::signal1<DataChannel*> SignalDataChannelCreated;
 
   // Virtual for unit tests.
   virtual const std::vector<rtc::scoped_refptr<DataChannel>>&
@@ -237,6 +240,9 @@ class PeerConnection : public PeerConnectionInterface,
       cricket::MediaSessionOptions* session_options);
   virtual bool GetOptionsForAnswer(
       const RTCOfferAnswerOptions& options,
+      cricket::MediaSessionOptions* session_options);
+
+  void InitializeOptionsForAnswer(
       cricket::MediaSessionOptions* session_options);
 
   // Helper function for options processing.
@@ -381,12 +387,12 @@ class PeerConnection : public PeerConnectionInterface,
   PeerConnectionObserver* observer_;
   UMAObserver* uma_observer_;
   SignalingState signaling_state_;
-  // TODO(bemasc): Remove ice_state_.
-  IceState ice_state_;
   IceConnectionState ice_connection_state_;
   IceGatheringState ice_gathering_state_;
 
   std::unique_ptr<cricket::PortAllocator> port_allocator_;
+  // The EventLog needs to outlive the media controller.
+  std::unique_ptr<RtcEventLog> event_log_;
   std::unique_ptr<MediaControllerInterface> media_controller_;
 
   // One PeerConnection has only one RTCP CNAME.
@@ -414,14 +420,16 @@ class PeerConnection : public PeerConnectionInterface,
 
   bool remote_peer_supports_msid_ = false;
 
+  bool enable_ice_renomination_ = false;
+
   std::vector<rtc::scoped_refptr<RtpSenderProxyWithInternal<RtpSenderInternal>>>
       senders_;
   std::vector<
       rtc::scoped_refptr<RtpReceiverProxyWithInternal<RtpReceiverInternal>>>
       receivers_;
-
   std::unique_ptr<WebRtcSession> session_;
   std::unique_ptr<StatsCollector> stats_;
+  rtc::scoped_refptr<RTCStatsCollector> stats_collector_;
 };
 
 }  // namespace webrtc

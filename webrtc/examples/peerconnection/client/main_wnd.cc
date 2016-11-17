@@ -12,6 +12,7 @@
 
 #include <math.h>
 
+#include "libyuv/convert_argb.h"
 #include "webrtc/examples/peerconnection/client/defaults.h"
 #include "webrtc/base/arraysize.h"
 #include "webrtc/base/common.h"
@@ -599,22 +600,25 @@ void MainWnd::VideoRenderer::SetSize(int width, int height) {
 }
 
 void MainWnd::VideoRenderer::OnFrame(
-    const cricket::VideoFrame& video_frame) {
+    const webrtc::VideoFrame& video_frame) {
 
   {
     AutoLock<VideoRenderer> lock(this);
 
-    const cricket::VideoFrame* frame =
-        video_frame.GetCopyWithRotationApplied();
+    rtc::scoped_refptr<webrtc::VideoFrameBuffer> buffer(
+        webrtc::I420Buffer::Rotate(video_frame.video_frame_buffer(),
+                                   video_frame.rotation()));
 
-    SetSize(frame->width(), frame->height());
+    SetSize(buffer->width(), buffer->height());
 
     ASSERT(image_.get() != NULL);
-    frame->ConvertToRgbBuffer(cricket::FOURCC_ARGB,
-                              image_.get(),
-                              bmi_.bmiHeader.biSizeImage,
-                              bmi_.bmiHeader.biWidth *
-                              bmi_.bmiHeader.biBitCount / 8);
+    libyuv::I420ToARGB(buffer->DataY(), buffer->StrideY(),
+                       buffer->DataU(), buffer->StrideU(),
+                       buffer->DataV(), buffer->StrideV(),
+                       image_.get(),
+                       bmi_.bmiHeader.biWidth *
+                           bmi_.bmiHeader.biBitCount / 8,
+                       buffer->width(), buffer->height());
   }
   InvalidateRect(wnd_, NULL, TRUE);
 }

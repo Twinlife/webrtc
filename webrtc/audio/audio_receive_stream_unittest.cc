@@ -11,11 +11,9 @@
 #include <string>
 #include <vector>
 
-#include "testing/gtest/include/gtest/gtest.h"
-
 #include "webrtc/audio/audio_receive_stream.h"
 #include "webrtc/audio/conversion.h"
-#include "webrtc/call/mock/mock_rtc_event_log.h"
+#include "webrtc/logging/rtc_event_log/mock/mock_rtc_event_log.h"
 #include "webrtc/modules/audio_coding/codecs/mock/mock_audio_decoder_factory.h"
 #include "webrtc/modules/bitrate_controller/include/mock/mock_bitrate_controller.h"
 #include "webrtc/modules/congestion_controller/include/mock/mock_congestion_controller.h"
@@ -23,6 +21,7 @@
 #include "webrtc/modules/remote_bitrate_estimator/include/mock/mock_remote_bitrate_estimator.h"
 #include "webrtc/modules/rtp_rtcp/source/byte_io.h"
 #include "webrtc/system_wrappers/include/clock.h"
+#include "webrtc/test/gtest.h"
 #include "webrtc/test/mock_voe_channel_proxy.h"
 #include "webrtc/test/mock_voice_engine.h"
 
@@ -43,6 +42,7 @@ AudioDecodingCallStats MakeAudioDecodeStatsForTest() {
   audio_decode_stats.decoded_plc = 123;
   audio_decode_stats.decoded_cng = 456;
   audio_decode_stats.decoded_plc_cng = 789;
+  audio_decode_stats.decoded_muted_output = 987;
   return audio_decode_stats;
 }
 
@@ -51,7 +51,6 @@ const uint32_t kRemoteSsrc = 1234;
 const uint32_t kLocalSsrc = 5678;
 const size_t kOneByteExtensionHeaderLength = 4;
 const size_t kOneByteExtensionLength = 4;
-const int kAbsSendTimeId = 2;
 const int kAudioLevelId = 3;
 const int kTransportSequenceNumberId = 4;
 const int kJitterBufferDelay = -7;
@@ -90,9 +89,6 @@ struct ConfigHelper {
           EXPECT_CALL(*channel_proxy_, SetLocalSSRC(kLocalSsrc)).Times(1);
           EXPECT_CALL(*channel_proxy_, SetNACKStatus(true, 15)).Times(1);
           EXPECT_CALL(*channel_proxy_,
-              SetReceiveAbsoluteSenderTimeStatus(true, kAbsSendTimeId))
-                  .Times(1);
-          EXPECT_CALL(*channel_proxy_,
               SetReceiveAudioLevelIndicationStatus(true, kAudioLevelId))
                   .Times(1);
           EXPECT_CALL(*channel_proxy_,
@@ -117,14 +113,14 @@ struct ConfigHelper {
           EXPECT_CALL(*channel_proxy_, SetRtcEventLog(testing::IsNull()))
               .Times(1)
               .After(expect_set);
+          EXPECT_CALL(*channel_proxy_, DisassociateSendChannel()).Times(1);
           return channel_proxy_;
         }));
+    EXPECT_CALL(voice_engine_, StopPlayout(kChannelId)).WillOnce(Return(0));
     stream_config_.voe_channel_id = kChannelId;
     stream_config_.rtp.local_ssrc = kLocalSsrc;
     stream_config_.rtp.remote_ssrc = kRemoteSsrc;
     stream_config_.rtp.nack.rtp_history_ms = 300;
-    stream_config_.rtp.extensions.push_back(
-        RtpExtension(RtpExtension::kAbsSendTimeUri, kAbsSendTimeId));
     stream_config_.rtp.extensions.push_back(
         RtpExtension(RtpExtension::kAudioLevelUri, kAudioLevelId));
     stream_config_.rtp.extensions.push_back(RtpExtension(
@@ -243,15 +239,14 @@ TEST(AudioReceiveStreamTest, ConfigToString) {
   AudioReceiveStream::Config config;
   config.rtp.remote_ssrc = kRemoteSsrc;
   config.rtp.local_ssrc = kLocalSsrc;
-  config.rtp.extensions.push_back(
-      RtpExtension(RtpExtension::kAbsSendTimeUri, kAbsSendTimeId));
   config.voe_channel_id = kChannelId;
+  config.rtp.extensions.push_back(
+      RtpExtension(RtpExtension::kAudioLevelUri, kAudioLevelId));
   EXPECT_EQ(
-      "{rtp: {remote_ssrc: 1234, local_ssrc: 5678, transport_cc: off, "
-      "nack: {rtp_history_ms: 0}, extensions: [{uri: "
-      "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time, id: 2}]}, "
-      "rtcp_send_transport: nullptr, "
-      "voe_channel_id: 2}",
+      "{rtp: {remote_ssrc: 1234, local_ssrc: 5678, transport_cc: off, nack: "
+      "{rtp_history_ms: 0}, extensions: [{uri: "
+      "urn:ietf:params:rtp-hdrext:ssrc-audio-level, id: 3}]}, "
+      "rtcp_send_transport: nullptr, voe_channel_id: 2}",
       config.ToString());
 }
 
@@ -263,11 +258,7 @@ TEST(AudioReceiveStreamTest, ConstructDestruct) {
 }
 
 MATCHER_P(VerifyHeaderExtension, expected_extension, "") {
-  return arg.extension.hasAbsoluteSendTime ==
-             expected_extension.hasAbsoluteSendTime &&
-         arg.extension.absoluteSendTime ==
-             expected_extension.absoluteSendTime &&
-         arg.extension.hasTransportSequenceNumber ==
+  return arg.extension.hasTransportSequenceNumber ==
              expected_extension.hasTransportSequenceNumber &&
          arg.extension.transportSequenceNumber ==
              expected_extension.transportSequenceNumber;
@@ -356,6 +347,8 @@ TEST(AudioReceiveStreamTest, GetStats) {
   EXPECT_EQ(kAudioDecodeStats.decoded_plc, stats.decoding_plc);
   EXPECT_EQ(kAudioDecodeStats.decoded_cng, stats.decoding_cng);
   EXPECT_EQ(kAudioDecodeStats.decoded_plc_cng, stats.decoding_plc_cng);
+  EXPECT_EQ(kAudioDecodeStats.decoded_muted_output,
+            stats.decoding_muted_output);
   EXPECT_EQ(kCallStats.capture_start_ntp_time_ms_,
             stats.capture_start_ntp_time_ms);
 }

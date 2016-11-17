@@ -11,17 +11,17 @@
 #include <memory>
 #include <vector>
 
-#include "testing/gtest/include/gtest/gtest.h"
-#include "webrtc/modules/video_coding/include/mock/mock_video_codec_interface.h"
 #include "webrtc/modules/video_coding/codecs/vp8/include/vp8.h"
 #include "webrtc/modules/video_coding/codecs/vp8/include/vp8_common_types.h"
 #include "webrtc/modules/video_coding/codecs/vp8/temporal_layers.h"
 #include "webrtc/modules/video_coding/include/mock/mock_vcm_callbacks.h"
+#include "webrtc/modules/video_coding/include/mock/mock_video_codec_interface.h"
 #include "webrtc/modules/video_coding/include/video_coding.h"
-#include "webrtc/modules/video_coding/video_coding_impl.h"
 #include "webrtc/modules/video_coding/test/test_util.h"
+#include "webrtc/modules/video_coding/video_coding_impl.h"
 #include "webrtc/system_wrappers/include/clock.h"
 #include "webrtc/test/frame_generator.h"
+#include "webrtc/test/gtest.h"
 #include "webrtc/test/testsupport/fileutils.h"
 
 using ::testing::_;
@@ -74,9 +74,8 @@ class EmptyFrameGenerator : public FrameGenerator {
  public:
   EmptyFrameGenerator(int width, int height) : width_(width), height_(height) {}
   VideoFrame* NextFrame() override {
-    frame_.reset(new VideoFrame());
-    frame_->CreateEmptyFrame(width_, height_, width_, (width_ + 1) / 2,
-                             (width_ + 1) / 2);
+    frame_.reset(new VideoFrame(I420Buffer::Create(width_, height_),
+                                webrtc::kVideoRotation_0, 0));
     return frame_.get();
   }
 
@@ -413,7 +412,7 @@ class TestVideoSenderWithVp8 : public TestVideoSender {
     VideoCodingModule::Codec(kVideoCodecVP8, &codec);
     codec.width = width;
     codec.height = height;
-    codec.codecSpecific.VP8.numberOfTemporalLayers = temporal_layers;
+    codec.VP8()->numberOfTemporalLayers = temporal_layers;
     return codec;
   }
 
@@ -478,7 +477,7 @@ TEST_F(TestVideoSenderWithVp8, MAYBE_FixedTemporalLayersStrategy) {
 TEST_F(TestVideoSenderWithVp8, MAYBE_RealTimeTemporalLayersStrategy) {
   VideoCodec codec = MakeVp8VideoCodec(352, 288, 3);
   RealTimeTemporalLayersFactory realtime_tl_factory;
-  codec.codecSpecific.VP8.tl_factory = &realtime_tl_factory;
+  codec.VP8()->tl_factory = &realtime_tl_factory;
   codec.minBitrate = 10;
   codec.startBitrate = codec_bitrate_kbps_;
   codec.maxBitrate = codec_bitrate_kbps_;

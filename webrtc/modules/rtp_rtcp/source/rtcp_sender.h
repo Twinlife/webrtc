@@ -27,6 +27,7 @@
 #include "webrtc/modules/rtp_rtcp/include/receive_statistics.h"
 #include "webrtc/modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet.h"
+#include "webrtc/modules/rtp_rtcp/source/rtcp_packet/dlrr.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/report_block.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/tmmb_item.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_utility.h"
@@ -60,7 +61,6 @@ class RTCPSender {
     FeedbackState();
 
     uint8_t send_payload_type;
-    uint32_t frequency_hz;
     uint32_t packets_sent;
     size_t media_bytes_sent;
     uint32_t send_bitrate;
@@ -70,7 +70,7 @@ class RTCPSender {
     uint32_t remote_sr;
 
     bool has_last_xr_rr;
-    RtcpReceiveTimeInfo last_xr_rr;
+    rtcp::ReceiveTimeInfo last_xr_rr;
 
     // Used when generating TMMBR.
     ModuleRtpRtcpImpl* module;

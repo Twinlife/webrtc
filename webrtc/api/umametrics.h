@@ -32,6 +32,9 @@ enum PeerConnectionEnumCounterType {
   kEnumCounterVideoSslCipher,
   kEnumCounterDataSrtpCipher,
   kEnumCounterDataSslCipher,
+  kEnumCounterDtlsHandshakeError,
+  kEnumCounterIceRegathering,
+  kEnumCounterIceRestart,
   kPeerConnectionEnumCounterMax
 };
 

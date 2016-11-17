@@ -19,11 +19,9 @@
 #include <vector>
 
 #include "gflags/gflags.h"
-#include "testing/gtest/include/gtest/gtest.h"
 #include "webrtc/base/format_macros.h"
-#include "webrtc/engine_configurations.h"
 #include "webrtc/modules/audio_processing/include/audio_processing.h"
-#include "webrtc/test/channel_transport/channel_transport.h"
+#include "webrtc/test/gtest.h"
 #include "webrtc/test/testsupport/fileutils.h"
 #include "webrtc/test/testsupport/trace_to_stderr.h"
 #include "webrtc/voice_engine/include/voe_audio_processing.h"
@@ -38,6 +36,8 @@
 #include "webrtc/voice_engine/include/voe_rtp_rtcp.h"
 #include "webrtc/voice_engine/include/voe_video_sync.h"
 #include "webrtc/voice_engine/include/voe_volume_control.h"
+#include "webrtc/voice_engine/test/channel_transport/channel_transport.h"
+#include "webrtc/voice_engine_configurations.h"
 
 DEFINE_bool(use_log_file, false,
     "Output logs to a file; by default they will be printed to stderr.");
@@ -220,10 +220,8 @@ void RunTest(std::string out_path) {
   CodecInst cinst;
   bool enable_aec = false;
   bool enable_agc = false;
-  bool enable_rx_agc = false;
   bool enable_cng = false;
   bool enable_ns = false;
-  bool enable_rx_ns = false;
   bool typing_detection = false;
   bool muted = false;
   bool opus_stereo = false;
@@ -380,12 +378,6 @@ void RunTest(std::string out_path) {
     const bool receive = !(call_selection == 2);
 
     if (receive) {
-#ifndef EXTERNAL_TRANSPORT
-      printf("Start Listen \n");
-      res = base1->StartReceive(chan);
-      VALIDATE;
-#endif
-
       printf("Start Playout \n");
       res = base1->StartPlayout(chan);
       VALIDATE;
@@ -587,24 +579,6 @@ void RunTest(std::string out_path) {
         res = hardware->SetRecordingDevice(num_rd);
         VALIDATE;
       } else if (option_selection == option_index++) {
-        // Remote AGC
-        enable_rx_agc = !enable_rx_agc;
-        res = apm->SetRxAgcStatus(chan, enable_rx_agc);
-        VALIDATE;
-        if (enable_rx_agc)
-          printf("\n Receive-side AGC is now on! \n");
-        else
-          printf("\n Receive-side AGC is now off! \n");
-      } else if (option_selection == option_index++) {
-        // Remote NS
-        enable_rx_ns = !enable_rx_ns;
-        res = apm->SetRxNsStatus(chan, enable_rx_ns);
-        VALIDATE;
-        if (enable_rx_ns)
-          printf("\n Receive-side NS is now on! \n");
-        else
-          printf("\n Receive-side NS is now off! \n");
-      } else if (option_selection == option_index++) {
         AgcModes agcmode;
         bool enable;
         res = apm->GetAgcStatus(enable, agcmode);
@@ -720,8 +694,6 @@ void RunTest(std::string out_path) {
         VALIDATE;
       } else if (option_selection == option_index++) {
         if (channel_index < kMaxNumChannels) {
-          res = base1->StartReceive(channels[channel_index]);
-          VALIDATE;
           res = base1->StartPlayout(channels[channel_index]);
           VALIDATE;
           res = base1->StartSend(channels[channel_index]);
@@ -744,8 +716,6 @@ void RunTest(std::string out_path) {
           res = base1->StopSend(channels[channel_index]);
           VALIDATE;
           res = base1->StopPlayout(channels[channel_index]);
-          VALIDATE;
-          res = base1->StopReceive(channels[channel_index]);
           VALIDATE;
           printf("Using %d additional channels\n", channel_index);
         } else {
@@ -807,12 +777,6 @@ void RunTest(std::string out_path) {
       printf("Stop Playout \n");
       res = base1->StopPlayout(chan);
       VALIDATE;
-
-#ifndef EXTERNAL_TRANSPORT
-      printf("Stop Listen \n");
-      res = base1->StopReceive(chan);
-      VALIDATE;
-#endif
     }
 
     while (channel_index > 0) {
@@ -822,8 +786,6 @@ void RunTest(std::string out_path) {
       res = base1->StopSend(channels[channel_index]);
       VALIDATE;
       res = base1->StopPlayout(channels[channel_index]);
-      VALIDATE;
-      res = base1->StopReceive(channels[channel_index]);
       VALIDATE;
     }
 

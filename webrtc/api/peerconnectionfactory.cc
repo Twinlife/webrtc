@@ -302,17 +302,20 @@ PeerConnectionFactory::CreateAudioTrack(const std::string& id,
 }
 
 webrtc::MediaControllerInterface* PeerConnectionFactory::CreateMediaController(
-    const cricket::MediaConfig& config) const {
+    const cricket::MediaConfig& config,
+    webrtc::RtcEventLog* event_log) const {
   RTC_DCHECK(signaling_thread_->IsCurrent());
   return MediaControllerInterface::Create(config, worker_thread_,
-                                          channel_manager_.get());
+                                          channel_manager_.get(), event_log);
 }
 
 cricket::TransportController* PeerConnectionFactory::CreateTransportController(
-    cricket::PortAllocator* port_allocator) {
+    cricket::PortAllocator* port_allocator,
+    bool redetermine_role_on_ice_restart) {
   RTC_DCHECK(signaling_thread_->IsCurrent());
   return new cricket::TransportController(signaling_thread_, network_thread_,
-                                          port_allocator);
+                                          port_allocator,
+                                          redetermine_role_on_ice_restart);
 }
 
 rtc::Thread* PeerConnectionFactory::signaling_thread() {

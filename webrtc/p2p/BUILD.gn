@@ -9,7 +9,8 @@
 import("../build/webrtc.gni")
 
 group("p2p") {
-  deps = [
+  public_deps = [
+    ":libstunprober",
     ":rtc_p2p",
   ]
 }
@@ -18,7 +19,7 @@ config("rtc_p2p_inherited_config") {
   defines = [ "FEATURE_ENABLE_VOICEMAIL" ]
 }
 
-source_set("rtc_p2p") {
+rtc_static_library("rtc_p2p") {
   sources = [
     "base/asyncstuntcpsocket.cc",
     "base/asyncstuntcpsocket.h",
@@ -36,6 +37,7 @@ source_set("rtc_p2p") {
     "base/p2ptransportchannel.cc",
     "base/p2ptransportchannel.h",
     "base/packetsocketfactory.h",
+    "base/packettransportinterface.h",
     "base/port.cc",
     "base/port.h",
     "base/portallocator.cc",
@@ -49,7 +51,6 @@ source_set("rtc_p2p") {
     "base/session.h",
     "base/sessiondescription.cc",
     "base/sessiondescription.h",
-    "base/sessionid.h",
     "base/stun.cc",
     "base/stun.h",
     "base/stunport.cc",
@@ -73,10 +74,10 @@ source_set("rtc_p2p") {
     "base/turnport.cc",
     "base/turnport.h",
     "base/udpport.h",
+    "base/udptransportchannel.cc",
+    "base/udptransportchannel.h",
     "client/basicportallocator.cc",
     "client/basicportallocator.h",
-    "client/httpportallocator.cc",
-    "client/httpportallocator.h",
     "client/socketmonitor.cc",
     "client/socketmonitor.h",
   ]
@@ -85,7 +86,6 @@ source_set("rtc_p2p") {
 
   deps = [
     "../base:rtc_base",
-    "../libjingle/xmllite",
   ]
 
   if (rtc_build_expat) {
@@ -95,11 +95,7 @@ source_set("rtc_p2p") {
     ]
   }
 
-  configs += [ "..:common_config" ]
-  public_configs = [
-    "..:common_inherited_config",
-    ":rtc_p2p_inherited_config",
-  ]
+  public_configs = [ ":rtc_p2p_inherited_config" ]
 
   if (build_with_chromium) {
     if (is_nacl) {
@@ -119,10 +115,9 @@ source_set("rtc_p2p") {
       "FEATURE_ENABLE_PSTN",
     ]
 
-    if (is_clang) {
-      # Suppress warnings from Chrome's Clang plugins.
-      # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    if (!build_with_chromium && is_clang) {
+      # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+      suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
     }
   }
 
@@ -146,7 +141,7 @@ source_set("rtc_p2p") {
   }
 }
 
-source_set("libstunprober") {
+rtc_static_library("libstunprober") {
   sources = [
     "stunprober/stunprober.cc",
   ]
@@ -154,7 +149,7 @@ source_set("libstunprober") {
   if (!build_with_chromium && is_clang) {
     # Suppress warnings from Chrome's Clang plugins.
     # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-    configs -= [ "//build/config/clang:find_bad_constructs" ]
+    suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
   }
 
   deps = [

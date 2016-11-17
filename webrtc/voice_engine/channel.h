@@ -13,7 +13,8 @@
 
 #include <memory>
 
-#include "webrtc/audio_sink.h"
+#include "webrtc/api/audio/audio_mixer.h"
+#include "webrtc/api/call/audio_sink.h"
 #include "webrtc/base/criticalsection.h"
 #include "webrtc/base/optional.h"
 #include "webrtc/common_audio/resampler/include/push_resampler.h"
@@ -29,9 +30,9 @@
 #include "webrtc/modules/utility/include/file_player.h"
 #include "webrtc/modules/utility/include/file_recorder.h"
 #include "webrtc/voice_engine/include/voe_audio_processing.h"
+#include "webrtc/voice_engine/include/voe_base.h"
 #include "webrtc/voice_engine/include/voe_network.h"
 #include "webrtc/voice_engine/level_indicator.h"
-#include "webrtc/voice_engine/network_predictor.h"
 #include "webrtc/voice_engine/shared_data.h"
 #include "webrtc/voice_engine/voice_engine_defines.h"
 
@@ -42,7 +43,6 @@ class TimestampWrapAroundHandler;
 namespace webrtc {
 
 class AudioDeviceModule;
-class Config;
 class FileWrapper;
 class PacketRouter;
 class ProcessThread;
@@ -83,22 +83,11 @@ class VoERtcpObserver;
 class ChannelState {
  public:
   struct State {
-    State()
-        : rx_apm_is_enabled(false),
-          input_external_media(false),
-          output_file_playing(false),
-          input_file_playing(false),
-          playing(false),
-          sending(false),
-          receiving(false) {}
-
-    bool rx_apm_is_enabled;
-    bool input_external_media;
-    bool output_file_playing;
-    bool input_file_playing;
-    bool playing;
-    bool sending;
-    bool receiving;
+    bool input_external_media = false;
+    bool output_file_playing = false;
+    bool input_file_playing = false;
+    bool playing = false;
+    bool sending = false;
   };
 
   ChannelState() {}
@@ -112,11 +101,6 @@ class ChannelState {
   State Get() const {
     rtc::CritScope lock(&lock_);
     return state_;
-  }
-
-  void SetRxApmIsEnabled(bool enable) {
-    rtc::CritScope lock(&lock_);
-    state_.rx_apm_is_enabled = enable;
   }
 
   void SetInputExternalMedia(bool enable) {
@@ -142,11 +126,6 @@ class ChannelState {
   void SetSending(bool enable) {
     rtc::CritScope lock(&lock_);
     state_.sending = enable;
-  }
-
-  void SetReceiving(bool enable) {
-    rtc::CritScope lock(&lock_);
-    state_.receiving = enable;
   }
 
  private:
@@ -175,12 +154,10 @@ class Channel
       Channel*& channel,
       int32_t channelId,
       uint32_t instanceId,
-      const Config& config,
-      const rtc::scoped_refptr<AudioDecoderFactory>& decoder_factory);
+      const VoEBase::ChannelConfig& config);
   Channel(int32_t channelId,
           uint32_t instanceId,
-          const Config& config,
-          const rtc::scoped_refptr<AudioDecoderFactory>& decoder_factory);
+          const VoEBase::ChannelConfig& config);
   int32_t Init();
   int32_t SetEngineInformation(Statistics& engineStatistics,
                                OutputMixer& outputMixer,
@@ -206,9 +183,7 @@ class Channel
   int32_t StopPlayout();
   int32_t StartSend();
   int32_t StopSend();
-  int32_t StartReceiving();
-  int32_t StopReceiving();
-
+  void ResetDiscardedPacketCount();
   int32_t RegisterVoiceEngineObserver(VoiceEngineObserver& observer);
   int32_t DeRegisterVoiceEngineObserver();
 
@@ -225,6 +200,10 @@ class Channel
   int SetOpusMaxPlaybackRate(int frequency_hz);
   int SetOpusDtx(bool enable_dtx);
   int GetOpusDtx(bool* enabled);
+  bool EnableAudioNetworkAdaptor(const std::string& config_string);
+  void DisableAudioNetworkAdaptor();
+  void SetReceiverFrameLengthRange(int min_frame_length_ms,
+                                   int max_frame_length_ms);
 
   // VoENetwork
   int32_t RegisterExternalTransport(Transport* transport);
@@ -310,20 +289,7 @@ class Channel
   int SetSendTelephoneEventPayloadType(int payload_type);
 
   // VoEAudioProcessingImpl
-  int UpdateRxVadDetection(AudioFrame& audioFrame);
-  int RegisterRxVadObserver(VoERxVadCallback& observer);
-  int DeRegisterRxVadObserver();
   int VoiceActivityIndicator(int& activity);
-#ifdef WEBRTC_VOICE_ENGINE_AGC
-  int SetRxAgcStatus(bool enable, AgcModes mode);
-  int GetRxAgcStatus(bool& enabled, AgcModes& mode);
-  int SetRxAgcConfig(AgcConfig config);
-  int GetRxAgcConfig(AgcConfig& config);
-#endif
-#ifdef WEBRTC_VOICE_ENGINE_NR
-  int SetRxNsStatus(bool enable, NsModes mode);
-  int GetRxNsStatus(bool& enabled, NsModes& mode);
-#endif
 
   // VoERTP_RTCP
   int SetLocalSSRC(unsigned int ssrc);
@@ -377,8 +343,6 @@ class Channel
   // From ACMVADCallback in the ACM
   int32_t InFrameType(FrameType frame_type) override;
 
-  int32_t OnRxVadDetected(int vadDecision);
-
   // From RtpData in the RTP/RTCP module
   int32_t OnReceivedPayloadData(const uint8_t* payloadData,
                                 size_t payloadSize,
@@ -406,6 +370,11 @@ class Channel
       AudioFrame* audioFrame) override;
   int32_t NeededFrequency(int32_t id) const override;
 
+  // From AudioMixer::Source.
+  AudioMixer::Source::AudioFrameInfo GetAudioFrameWithInfo(
+      int sample_rate_hz,
+      AudioFrame* audio_frame);
+
   // From FileCallback
   void PlayNotification(int32_t id, uint32_t durationMs) override;
   void RecordNotification(int32_t id, uint32_t durationMs) override;
@@ -416,7 +385,6 @@ class Channel
   int32_t ChannelId() const { return _channelId; }
   bool Playing() const { return channel_state_.Get().playing; }
   bool Sending() const { return channel_state_.Get().sending; }
-  bool Receiving() const { return channel_state_.Get().receiving; }
   bool ExternalTransport() const {
     rtc::CritScope cs(&_callbackCritSect);
     return _externalTransport;
@@ -437,17 +405,14 @@ class Channel
 
   // Associate to a send channel.
   // Used for obtaining RTT for a receive-only channel.
-  void set_associate_send_channel(const ChannelOwner& channel) {
-    assert(_channelId != channel.channel()->ChannelId());
-    rtc::CritScope lock(&assoc_send_channel_lock_);
-    associate_send_channel_ = channel;
-  }
-
+  void set_associate_send_channel(const ChannelOwner& channel);
   // Disassociate a send channel if it was associated.
   void DisassociateSendChannel(int channel_id);
 
   // Set a RtcEventLog logging object.
   void SetRtcEventLog(RtcEventLog* event_log);
+
+  void SetTransportOverhead(int transport_overhead_per_packet);
 
  protected:
   void OnIncomingFractionLoss(int fraction_lost);
@@ -466,14 +431,13 @@ class Channel
   int32_t MixOrReplaceAudioWithFile(int mixingFrequency);
   int32_t MixAudioWithFile(AudioFrame& audioFrame, int mixingFrequency);
   void UpdatePlayoutTimestamp(bool rtcp);
-  void UpdatePacketDelay(uint32_t timestamp, uint16_t sequenceNumber);
   void RegisterReceiveCodecsToRTPModule();
 
   int SetSendRtpHeaderExtension(bool enable,
                                 RTPExtensionType type,
                                 unsigned char id);
 
-  int32_t GetPlayoutFrequency();
+  int GetRtpTimestampRateHz() const;
   int64_t GetRTT(bool allow_associate_channel) const;
 
   rtc::CriticalSection _fileCritSect;
@@ -544,9 +508,6 @@ class Channel
   rtc::CriticalSection* _callbackCritSectPtr;    // owned by base
   Transport* _transportPtr;  // WebRtc socket or external transport
   RMSLevel rms_level_;
-  std::unique_ptr<AudioProcessing> rx_audioproc_;  // far end AudioProcessing
-  VoERxVadCallback* _rxVadObserverPtr;
-  int32_t _oldVadDecision;
   int32_t _sendFrameType;  // Send data is voice, 1-voice, 0-otherwise
   // VoEBase
   bool _externalMixing;
@@ -565,17 +526,10 @@ class Channel
   AudioFrame::SpeechType _outputSpeechType;
   // VoEVideoSync
   rtc::CriticalSection video_sync_lock_;
-  uint32_t _average_jitter_buffer_delay_us GUARDED_BY(video_sync_lock_);
-  uint32_t _previousTimestamp;
-  uint16_t _recPacketDelayMs GUARDED_BY(video_sync_lock_);
   // VoEAudioProcessing
-  bool _RxVadDetection;
-  bool _rxAgcIsEnabled;
-  bool _rxNsIsEnabled;
   bool restored_packet_in_use_;
   // RtcpBandwidthObserver
   std::unique_ptr<VoERtcpObserver> rtcp_observer_;
-  std::unique_ptr<NetworkPredictor> network_predictor_;
   // An associated send channel.
   rtc::CriticalSection assoc_send_channel_lock_;
   ChannelOwner associate_send_channel_ GUARDED_BY(assoc_send_channel_lock_);

@@ -20,6 +20,9 @@ follows:
 When the GN and GYP target names differ, it should be called invoked as follows:
   $ python tools/gyp_flag_compare.py gyp_dir gn_dir gyp_target gn_target
 
+When all targets want to be compared, it should be called without a target name,
+i.e.:
+  $ python tools/gyp_flag_compare.py gyp_dir gn_dir
 
 This script can also be used interactively. Then ConfigureBuild can optionally
 be used to generate ninja files with GYP and GN.
@@ -113,13 +116,14 @@ def CountsByDirname(dict_of_list):
 class Comparison(object):
   """A comparison of the currently-configured build for a target."""
 
-  def __init__(self, gyp_target, gn_target=None, gyp_dir=_DEFAULT_GYP_DIR,
+  def __init__(self, gyp_target="", gn_target=None, gyp_dir=_DEFAULT_GYP_DIR,
                gn_dir=_DEFAULT_GN_DIR):
     """Creates a comparison of a GN and GYP target. If the target names differ
     between the two build systems, then two names may be passed.
     """
     if gn_target is None:
       gn_target = gyp_target
+
     self._gyp_target = gyp_target
     self._gn_target = gn_target
 
@@ -213,7 +217,20 @@ class Comparison(object):
       gyp_flags = self._gyp_flags[filename]
       gn_flags = self._gn_flags[filename]
       self._CompareLists(filename, gyp_flags, gn_flags, 'dash_f')
-      self._CompareLists(filename, gyp_flags, gn_flags, 'defines')
+      self._CompareLists(filename, gyp_flags, gn_flags, 'defines',
+          # These defines are not used by WebRTC
+          dont_care_gyp=[
+            '-DENABLE_WEBVR',
+            '-DUSE_EXTERNAL_POPUP_MENU',
+            '-DUSE_LIBJPEG_TURBO=1',
+            '-DUSE_MINIKIN_HYPHENATION=1',
+            '-DV8_USE_EXTERNAL_STARTUP_DATA',
+            '-DCR_CLANG_REVISION=280106-1',
+            '-DUSE_LIBPCI=1'
+          ],
+          dont_care_gn=[
+            '-DUSE_EXTERNAL_POPUP_MENU=1'
+          ])
       self._CompareLists(filename, gyp_flags, gn_flags, 'include_dirs')
       self._CompareLists(filename, gyp_flags, gn_flags, 'warnings',
           # More conservative warnings in GN we consider to be OK.
@@ -234,7 +251,8 @@ class Comparison(object):
             '-Wextra',
             '-Wsign-compare',
           ] if not sys.platform == 'win32' else None)
-      self._CompareLists(filename, gyp_flags, gn_flags, 'other')
+      self._CompareLists(filename, gyp_flags, gn_flags, 'other',
+                         dont_care_gyp=['-g'], dont_care_gn=['-g2'])
 
   def _CompareLists(self, filename, gyp, gn, name,
                     dont_care_gyp=None, dont_care_gn=None):
@@ -272,6 +290,9 @@ class Comparison(object):
     is_win = sys.platform == 'win32'
     flags_by_output = {}
     for line in lines:
+      line = FilterChromium(line)
+      line = line.replace(os.getcwd(), '../../')
+      line = line.replace('//', '/')
       command_line = shlex.split(line.strip(), posix=not is_win)[1:]
 
       output_name = _FindAndRemoveArgWithValue(command_line, '-o')
@@ -389,35 +410,26 @@ def Run(command_line):
 
 
 def main():
-  if len(sys.argv) < 4:
-    print 'usage: %s gyp_dir gn_dir target' % __file__
+  if len(sys.argv) < 3:
+    print 'usage: %s gyp_dir gn_dir' % __file__
+    print '   or: %s gyp_dir gn_dir target' % __file__
     print '   or: %s gyp_dir gn_dir gyp_target gn_target' % __file__
     return 1
 
   gyp_dir = sys.argv[1]
   gn_dir = sys.argv[2]
 
-  gyp_target = sys.argv[3]
-  if len(sys.argv) == 4:
-    gn_target = gyp_target
-  else:
+  gyp_target = gn_target = ""
+
+  if len(sys.argv) > 3:
+    gyp_target = sys.argv[3]
+  if len(sys.argv) > 4:
     gn_target = sys.argv[4]
 
   print 'GYP output directory is %s' % gyp_dir
   print 'GN output directory is %s' % gn_dir
 
   comparison = Comparison(gyp_target, gn_target, gyp_dir, gn_dir)
-
-  gyp_files = comparison.gyp_files
-  gn_files = comparison.gn_files
-  different_source_list = comparison.gyp_files != comparison.gn_files
-  if different_source_list:
-    print 'Different set of sources files:'
-    print '  In gyp, not in GN:\n    %s' % '\n    '.join(
-        sorted(gyp_files - gn_files))
-    print '  In GN, not in gyp:\n    %s' % '\n    '.join(
-        sorted(gn_files - gyp_files))
-    print '\nNote that flags will only be compared for files in both sets.\n'
 
   differing_files = set(comparison.missing_in_gn_by_file.keys()) & \
                     set(comparison.missing_in_gyp_by_file.keys())
@@ -428,11 +440,16 @@ def main():
     missing_in_gn = comparison.missing_in_gn_by_file.get(filename, {})
     difference_types = sorted(set(missing_in_gyp.keys() + missing_in_gn.keys()))
     for difference_type in difference_types:
+      if (len(missing_in_gyp[difference_type]) == 0 and
+          len(missing_in_gn[difference_type]) == 0):
+        continue
       output += '  %s differ:\n' % difference_type
-      if difference_type in missing_in_gyp:
+      if (difference_type in missing_in_gyp and
+          len(missing_in_gyp[difference_type])):
         output += '    In gyp, but not in GN:\n      %s' % '\n      '.join(
             sorted(missing_in_gyp[difference_type])) + '\n'
-      if difference_type in missing_in_gn:
+      if (difference_type in missing_in_gn and
+          len(missing_in_gn[difference_type])):
         output += '    In GN, but not in gyp:\n      %s' % '\n      '.join(
             sorted(missing_in_gn[difference_type])) + '\n'
     if output:

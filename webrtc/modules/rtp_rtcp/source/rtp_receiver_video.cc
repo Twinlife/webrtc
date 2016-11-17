@@ -94,8 +94,8 @@ int32_t RTPReceiverVideo::ParseRtpPacket(WebRtcRTPHeader* rtp_header,
 
   // Retrieve the video rotation information.
   if (rtp_header->header.extension.hasVideoRotation) {
-    rtp_header->type.Video.rotation = ConvertCVOByteToVideoRotation(
-        rtp_header->header.extension.videoRotation);
+    rtp_header->type.Video.rotation =
+        rtp_header->header.extension.videoRotation;
   }
 
   rtp_header->type.Video.playout_delay =
@@ -106,10 +106,6 @@ int32_t RTPReceiverVideo::ParseRtpPacket(WebRtcRTPHeader* rtp_header,
                                                rtp_header) == 0
              ? 0
              : -1;
-}
-
-int RTPReceiverVideo::GetPayloadTypeFrequency() const {
-  return kVideoPayloadTypeFrequency;
 }
 
 RTPAliveType RTPReceiverVideo::ProcessDeadOrAlive(

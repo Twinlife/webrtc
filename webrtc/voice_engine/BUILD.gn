@@ -7,9 +7,8 @@
 # be found in the AUTHORS file in the root of the source tree.
 
 import("../build/webrtc.gni")
-import("//testing/test.gni")
 
-source_set("voice_engine") {
+rtc_static_library("voice_engine") {
   sources = [
     "channel.cc",
     "channel.h",
@@ -31,8 +30,6 @@ source_set("voice_engine") {
     "include/voe_volume_control.h",
     "monitor_module.cc",
     "monitor_module.h",
-    "network_predictor.cc",
-    "network_predictor.h",
     "output_mixer.cc",
     "output_mixer.h",
     "shared_data.cc",
@@ -79,22 +76,26 @@ source_set("voice_engine") {
     ]
   }
 
-  configs += [ "..:common_config" ]
-  public_configs = [ "..:common_inherited_config" ]
-
-  if (is_clang) {
-    # Suppress warnings from Chrome's Clang plugins.
-    # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-    configs -= [ "//build/config/clang:find_bad_constructs" ]
+  if (!build_with_chromium && is_clang) {
+    # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+    suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
   }
 
+  public_deps = [
+    "../modules/audio_coding",
+  ]
   deps = [
     ":level_indicator",
-    "..:rtc_event_log",
     "..:webrtc_common",
+    "../api:audio_mixer_api",
+    "../api:call_api",
     "../base:rtc_base_approved",
     "../common_audio",
-    "../modules/audio_coding",
+    "../logging:rtc_event_log_api",
+    "../modules/audio_coding:audio_decoder_factory_interface",
+    "../modules/audio_coding:audio_format_conversion",
+    "../modules/audio_coding:builtin_audio_decoder_factory",
+    "../modules/audio_coding:rent_a_codec",
     "../modules/audio_conference_mixer",
     "../modules/audio_device",
     "../modules/audio_processing",
@@ -107,14 +108,11 @@ source_set("voice_engine") {
   ]
 }
 
-source_set("level_indicator") {
+rtc_static_library("level_indicator") {
   sources = [
     "level_indicator.cc",
     "level_indicator.h",
   ]
-
-  configs += [ "..:common_config" ]
-  public_configs = [ "..:common_inherited_config" ]
 
   deps = [
     "..:webrtc_common",
@@ -124,8 +122,69 @@ source_set("level_indicator") {
 }
 
 if (rtc_include_tests) {
-  test("voice_engine_unittests") {
+  config("channel_transport_warnings_config") {
+    if (is_win) {
+      cflags = [ "/wd4302" ]  # cast truncation
+
+      if (is_clang) {
+        # GN orders flags on a target before flags from configs. The default
+        # config adds -Wall, and this flag have to be after -Wall -- so they need
+        # to come from a config and cannot be on the target directly.
+        cflags += [
+          "-Wno-parentheses-equality",
+          "-Wno-reorder",
+          "-Wno-tautological-constant-out-of-range-compare",
+
+          # See https://bugs.chromium.org/p/webrtc/issues/detail?id=6268
+          # for -Wno-thread-safety-analysis
+          "-Wno-thread-safety-analysis",
+          "-Wno-unused-private-field",
+        ]
+      }
+    }
+  }
+
+  rtc_static_library("channel_transport") {
+    testonly = true
+    sources = [
+      "test/channel_transport/channel_transport.cc",
+      "test/channel_transport/channel_transport.h",
+      "test/channel_transport/traffic_control_win.cc",
+      "test/channel_transport/traffic_control_win.h",
+      "test/channel_transport/udp_socket2_manager_win.cc",
+      "test/channel_transport/udp_socket2_manager_win.h",
+      "test/channel_transport/udp_socket2_win.cc",
+      "test/channel_transport/udp_socket2_win.h",
+      "test/channel_transport/udp_socket_manager_posix.cc",
+      "test/channel_transport/udp_socket_manager_posix.h",
+      "test/channel_transport/udp_socket_manager_wrapper.cc",
+      "test/channel_transport/udp_socket_manager_wrapper.h",
+      "test/channel_transport/udp_socket_posix.cc",
+      "test/channel_transport/udp_socket_posix.h",
+      "test/channel_transport/udp_socket_wrapper.cc",
+      "test/channel_transport/udp_socket_wrapper.h",
+      "test/channel_transport/udp_transport.h",
+      "test/channel_transport/udp_transport_impl.cc",
+      "test/channel_transport/udp_transport_impl.h",
+    ]
+
+    configs += [ ":channel_transport_warnings_config" ]
+
+    if (!build_with_chromium && is_clang) {
+      # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+      suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
+    }
+
     deps = [
+      "..:webrtc_common",
+      "../system_wrappers",
+      "//testing/gtest",
+    ]
+  }
+
+  rtc_test("voice_engine_unittests") {
+    deps = [
+      ":channel_transport",
       ":voice_engine",
       "//testing/gmock",
       "//testing/gtest",
@@ -148,7 +207,9 @@ if (rtc_include_tests) {
 
     sources = [
       "channel_unittest.cc",
-      "network_predictor_unittest.cc",
+      "test/channel_transport/udp_socket_manager_unittest.cc",
+      "test/channel_transport/udp_socket_wrapper_unittest.cc",
+      "test/channel_transport/udp_transport_unittest.cc",
       "transmit_mixer_unittest.cc",
       "utility_unittest.cc",
       "voe_audio_processing_unittest.cc",
@@ -168,28 +229,50 @@ if (rtc_include_tests) {
       ]
     }
 
-    if (is_clang) {
-      # Suppress warnings from Chrome's Clang plugins.
-      # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    if (!build_with_chromium && is_clang) {
+      # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+      suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
+    }
+  }
+
+  rtc_executable("voe_cmd_test") {
+    testonly = true
+
+    deps = [
+      ":channel_transport",
+      ":voice_engine",
+      "//testing/gtest",
+      "//third_party/gflags",
+      "//webrtc/logging:rtc_event_log_api",
+      "//webrtc/system_wrappers",
+      "//webrtc/system_wrappers:system_wrappers_default",
+      "//webrtc/test:test_support",
+    ]
+
+    sources = [
+      "test/cmd_test/voe_cmd_test.cc",
+    ]
+
+    if (!build_with_chromium && is_clang) {
+      # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+      suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
     }
   }
 
   if (!is_ios) {
-    executable("voe_auto_test") {
+    rtc_executable("voe_auto_test") {
       testonly = true
 
       deps = [
+        ":channel_transport",
         ":voice_engine",
-        "//build/config/sanitizers:deps",
         "//testing/gmock",
         "//testing/gtest",
         "//third_party/gflags",
-        "//webrtc/:rtc_event_log",
+        "//webrtc/logging:rtc_event_log_api",
         "//webrtc/modules/video_capture",
         "//webrtc/system_wrappers",
         "//webrtc/system_wrappers/:system_wrappers_default",
-        "//webrtc/test/:channel_transport",
         "//webrtc/test/:test_common",
         "//webrtc/test/:test_support",
       ]
@@ -262,10 +345,9 @@ if (rtc_include_tests) {
         ]
       }
 
-      if (is_clang) {
-        # Suppress warnings from Chrome's Clang plugins.
-        # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-        configs -= [ "//build/config/clang:find_bad_constructs" ]
+      if (!build_with_chromium && is_clang) {
+        # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+        suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
       }
     }
   }

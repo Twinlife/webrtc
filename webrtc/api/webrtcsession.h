@@ -293,6 +293,7 @@ class WebRtcSession :
   void set_metrics_observer(
       webrtc::MetricsObserverInterface* metrics_observer) {
     metrics_observer_ = metrics_observer;
+    transport_controller_->SetMetricsObserver(metrics_observer);
   }
 
   // Called when voice_channel_, video_channel_ and data_channel_ are created
@@ -460,6 +461,8 @@ class WebRtcSession :
   void OnSentPacket_w(const rtc::SentPacket& sent_packet);
 
   const std::string GetTransportName(const std::string& content_name);
+
+  void OnDtlsHandshakeError(rtc::SSLHandshakeError error);
 
   rtc::Thread* const network_thread_;
   rtc::Thread* const worker_thread_;

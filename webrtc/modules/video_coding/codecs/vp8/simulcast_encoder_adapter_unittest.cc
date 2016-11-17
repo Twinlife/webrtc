@@ -11,10 +11,10 @@
 #include <memory>
 #include <vector>
 
-#include "testing/gmock/include/gmock/gmock.h"
-#include "webrtc/modules/video_coding/include/video_codec_interface.h"
 #include "webrtc/modules/video_coding/codecs/vp8/simulcast_encoder_adapter.h"
 #include "webrtc/modules/video_coding/codecs/vp8/simulcast_unittest.h"
+#include "webrtc/modules/video_coding/include/video_codec_interface.h"
+#include "webrtc/test/gmock.h"
 
 namespace webrtc {
 namespace testing {
@@ -133,6 +133,7 @@ class MockVideoEncoder : public VideoEncoder {
   int32_t Release() /* override */ { return 0; }
 
   int32_t SetRates(uint32_t newBitRate, uint32_t frameRate) /* override */ {
+    last_set_bitrate_ = static_cast<int32_t>(newBitRate);
     return 0;
   }
 
@@ -151,19 +152,22 @@ class MockVideoEncoder : public VideoEncoder {
     EncodedImage image;
     image._encodedWidth = width;
     image._encodedHeight = height;
-    CodecSpecificInfo codecSpecificInfo;
-    memset(&codecSpecificInfo, 0, sizeof(codecSpecificInfo));
-    callback_->Encoded(image, &codecSpecificInfo, NULL);
+    CodecSpecificInfo codec_specific_info;
+    memset(&codec_specific_info, 0, sizeof(codec_specific_info));
+    callback_->OnEncodedImage(image, &codec_specific_info, NULL);
   }
 
   void set_supports_native_handle(bool enabled) {
     supports_native_handle_ = enabled;
   }
+  int32_t last_set_bitrate() const { return last_set_bitrate_; }
 
   MOCK_CONST_METHOD0(ImplementationName, const char*());
 
  private:
   bool supports_native_handle_ = false;
+  int32_t last_set_bitrate_ = -1;
+
   VideoCodec codec_;
   EncodedImageCallback* callback_;
 };
@@ -285,28 +289,19 @@ class TestSimulcastEncoderAdapterFake : public ::testing::Test,
     EXPECT_EQ(ref.maxBitrate, target.maxBitrate);
     EXPECT_EQ(ref.minBitrate, target.minBitrate);
     EXPECT_EQ(ref.maxFramerate, target.maxFramerate);
-    EXPECT_EQ(ref.codecSpecific.VP8.pictureLossIndicationOn,
-              target.codecSpecific.VP8.pictureLossIndicationOn);
-    EXPECT_EQ(ref.codecSpecific.VP8.feedbackModeOn,
-              target.codecSpecific.VP8.feedbackModeOn);
-    EXPECT_EQ(ref.codecSpecific.VP8.complexity,
-              target.codecSpecific.VP8.complexity);
-    EXPECT_EQ(ref.codecSpecific.VP8.resilience,
-              target.codecSpecific.VP8.resilience);
-    EXPECT_EQ(ref.codecSpecific.VP8.numberOfTemporalLayers,
-              target.codecSpecific.VP8.numberOfTemporalLayers);
-    EXPECT_EQ(ref.codecSpecific.VP8.denoisingOn,
-              target.codecSpecific.VP8.denoisingOn);
-    EXPECT_EQ(ref.codecSpecific.VP8.errorConcealmentOn,
-              target.codecSpecific.VP8.errorConcealmentOn);
-    EXPECT_EQ(ref.codecSpecific.VP8.automaticResizeOn,
-              target.codecSpecific.VP8.automaticResizeOn);
-    EXPECT_EQ(ref.codecSpecific.VP8.frameDroppingOn,
-              target.codecSpecific.VP8.frameDroppingOn);
-    EXPECT_EQ(ref.codecSpecific.VP8.keyFrameInterval,
-              target.codecSpecific.VP8.keyFrameInterval);
-    EXPECT_EQ(ref.codecSpecific.VP8.tl_factory,
-              target.codecSpecific.VP8.tl_factory);
+    EXPECT_EQ(ref.VP8().pictureLossIndicationOn,
+              target.VP8().pictureLossIndicationOn);
+    EXPECT_EQ(ref.VP8().feedbackModeOn, target.VP8().feedbackModeOn);
+    EXPECT_EQ(ref.VP8().complexity, target.VP8().complexity);
+    EXPECT_EQ(ref.VP8().resilience, target.VP8().resilience);
+    EXPECT_EQ(ref.VP8().numberOfTemporalLayers,
+              target.VP8().numberOfTemporalLayers);
+    EXPECT_EQ(ref.VP8().denoisingOn, target.VP8().denoisingOn);
+    EXPECT_EQ(ref.VP8().errorConcealmentOn, target.VP8().errorConcealmentOn);
+    EXPECT_EQ(ref.VP8().automaticResizeOn, target.VP8().automaticResizeOn);
+    EXPECT_EQ(ref.VP8().frameDroppingOn, target.VP8().frameDroppingOn);
+    EXPECT_EQ(ref.VP8().keyFrameInterval, target.VP8().keyFrameInterval);
+    EXPECT_EQ(ref.VP8().tl_factory, target.VP8().tl_factory);
     EXPECT_EQ(ref.qpMax, target.qpMax);
     EXPECT_EQ(0, target.numberOfSimulcastStreams);
     EXPECT_EQ(ref.mode, target.mode);
@@ -317,7 +312,7 @@ class TestSimulcastEncoderAdapterFake : public ::testing::Test,
 
   void InitRefCodec(int stream_index, VideoCodec* ref_codec) {
     *ref_codec = codec_;
-    ref_codec->codecSpecific.VP8.numberOfTemporalLayers =
+    ref_codec->VP8()->numberOfTemporalLayers =
         kTestTemporalLayerProfile[stream_index];
     ref_codec->width = codec_.simulcastStream[stream_index].width;
     ref_codec->height = codec_.simulcastStream[stream_index].height;
@@ -333,14 +328,14 @@ class TestSimulcastEncoderAdapterFake : public ::testing::Test,
     // stream 0, the lowest resolution stream.
     InitRefCodec(0, &ref_codec);
     ref_codec.qpMax = 45;
-    ref_codec.codecSpecific.VP8.complexity = webrtc::kComplexityHigher;
-    ref_codec.codecSpecific.VP8.denoisingOn = false;
+    ref_codec.VP8()->complexity = webrtc::kComplexityHigher;
+    ref_codec.VP8()->denoisingOn = false;
     ref_codec.startBitrate = 100;  // Should equal to the target bitrate.
     VerifyCodec(ref_codec, 0);
 
     // stream 1
     InitRefCodec(1, &ref_codec);
-    ref_codec.codecSpecific.VP8.denoisingOn = false;
+    ref_codec.VP8()->denoisingOn = false;
     // The start bitrate (300kbit) minus what we have for the lower layers
     // (100kbit).
     ref_codec.startBitrate = 200;
@@ -422,6 +417,26 @@ TEST_F(TestSimulcastEncoderAdapterFake, SupportsNativeHandleForSingleStreams) {
   EXPECT_TRUE(adapter_->SupportsNativeHandle());
   helper_->factory()->encoders()[0]->set_supports_native_handle(false);
   EXPECT_FALSE(adapter_->SupportsNativeHandle());
+}
+
+TEST_F(TestSimulcastEncoderAdapterFake, SetRatesUnderMinBitrate) {
+  TestVp8Simulcast::DefaultSettings(
+      &codec_, static_cast<const int*>(kTestTemporalLayerProfile));
+  codec_.minBitrate = 50;
+  codec_.numberOfSimulcastStreams = 1;
+  EXPECT_EQ(0, adapter_->InitEncode(&codec_, 1, 1200));
+
+  // Above min should be respected.
+  adapter_->SetRates(100, 30);
+  EXPECT_EQ(100, helper_->factory()->encoders()[0]->last_set_bitrate());
+
+  // Below min but non-zero should be replaced with the min bitrate.
+  adapter_->SetRates(15, 30);
+  EXPECT_EQ(50, helper_->factory()->encoders()[0]->last_set_bitrate());
+
+  // Zero should be passed on as is, since it means "pause".
+  adapter_->SetRates(0, 30);
+  EXPECT_EQ(0, helper_->factory()->encoders()[0]->last_set_bitrate());
 }
 
 TEST_F(TestSimulcastEncoderAdapterFake, SupportsImplementationName) {
@@ -511,17 +526,11 @@ TEST_F(TestSimulcastEncoderAdapterFake, TestFailureReturnCodesFromEncodeCalls) {
       .WillOnce(Return(WEBRTC_VIDEO_CODEC_FALLBACK_SOFTWARE));
 
   // Send a fake frame and assert the return is software fallback.
-  VideoFrame input_frame;
   int half_width = (kDefaultWidth + 1) / 2;
-  input_frame.CreateEmptyFrame(kDefaultWidth, kDefaultHeight, kDefaultWidth,
-                                half_width, half_width);
-  memset(input_frame.video_frame_buffer()->MutableDataY(), 0,
-         input_frame.allocated_size(kYPlane));
-  memset(input_frame.video_frame_buffer()->MutableDataU(), 0,
-         input_frame.allocated_size(kUPlane));
-  memset(input_frame.video_frame_buffer()->MutableDataV(), 0,
-         input_frame.allocated_size(kVPlane));
-
+  rtc::scoped_refptr<I420Buffer> input_buffer = I420Buffer::Create(
+      kDefaultWidth, kDefaultHeight, kDefaultWidth, half_width, half_width);
+  input_buffer->InitializeData();
+  VideoFrame input_frame(input_buffer, 0, 0, webrtc::kVideoRotation_0);
   std::vector<FrameType> frame_types(3, kVideoFrameKey);
   EXPECT_EQ(WEBRTC_VIDEO_CODEC_FALLBACK_SOFTWARE,
             adapter_->Encode(input_frame, nullptr, &frame_types));

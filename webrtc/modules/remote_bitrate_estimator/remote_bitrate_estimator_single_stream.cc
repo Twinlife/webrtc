@@ -77,8 +77,7 @@ void RemoteBitrateEstimatorSingleStream::IncomingPacket(
     BweNames type = BweNames::kReceiverTOffset;
     if (!header.extension.hasTransmissionTimeOffset)
       type = BweNames::kReceiverNoExtension;
-    RTC_LOGGED_HISTOGRAM_ENUMERATION(
-        kBweTypeHistogram, type, BweNames::kBweNamesMax);
+    RTC_HISTOGRAM_ENUMERATION(kBweTypeHistogram, type, BweNames::kBweNamesMax);
     uma_recorded_ = true;
   }
   uint32_t ssrc = header.ssrc;
@@ -124,7 +123,7 @@ void RemoteBitrateEstimatorSingleStream::IncomingPacket(
           &timestamp_delta, &time_delta, &size_delta)) {
     double timestamp_delta_ms = timestamp_delta * kTimestampToMs;
     estimator->estimator.Update(time_delta, timestamp_delta_ms, size_delta,
-                                estimator->detector.State());
+                                estimator->detector.State(), now_ms);
     estimator->detector.Detect(estimator->estimator.offset(),
                                timestamp_delta_ms,
                                estimator->estimator.num_of_deltas(), now_ms);

@@ -24,6 +24,10 @@
 
 namespace rtc {
 class Thread;
+class PacketTransportInterface;
+}
+namespace webrtc {
+class MetricsObserverInterface;
 }
 
 namespace cricket {
@@ -31,6 +35,14 @@ namespace cricket {
 class TransportController : public sigslot::has_slots<>,
                             public rtc::MessageHandler {
  public:
+  // If |redetermine_role_on_ice_restart| is true, ICE role is redetermined
+  // upon setting a local transport description that indicates an ICE restart.
+  // For the constructor that doesn't take this parameter, it defaults to true.
+  TransportController(rtc::Thread* signaling_thread,
+                      rtc::Thread* network_thread,
+                      PortAllocator* port_allocator,
+                      bool redetermine_role_on_ice_restart);
+
   TransportController(rtc::Thread* signaling_thread,
                       rtc::Thread* network_thread,
                       PortAllocator* port_allocator);
@@ -119,6 +131,10 @@ class TransportController : public sigslot::has_slots<>,
   // for unit test
   const rtc::scoped_refptr<rtc::RTCCertificate>& certificate_for_testing();
 
+  sigslot::signal1<rtc::SSLHandshakeError> SignalDtlsHandshakeError;
+
+  void SetMetricsObserver(webrtc::MetricsObserverInterface* metrics_observer);
+
  protected:
   // Protected and virtual so we can override it in unit tests.
   virtual Transport* CreateTransport_n(const std::string& transport_name);
@@ -189,8 +205,8 @@ class TransportController : public sigslot::has_slots<>,
   bool GetStats_n(const std::string& transport_name, TransportStats* stats);
 
   // Handlers for signals from Transport.
-  void OnChannelWritableState_n(TransportChannel* channel);
-  void OnChannelReceivingState_n(TransportChannel* channel);
+  void OnChannelWritableState_n(rtc::PacketTransportInterface* transport);
+  void OnChannelReceivingState_n(rtc::PacketTransportInterface* transport);
   void OnChannelGatheringState_n(TransportChannelImpl* channel);
   void OnChannelCandidateGathered_n(TransportChannelImpl* channel,
                                     const Candidate& candidate);
@@ -201,6 +217,8 @@ class TransportController : public sigslot::has_slots<>,
   void OnChannelStateChanged_n(TransportChannelImpl* channel);
 
   void UpdateAggregateStates_n();
+
+  void OnDtlsHandshakeError(rtc::SSLHandshakeError error);
 
   rtc::Thread* const signaling_thread_ = nullptr;
   rtc::Thread* const network_thread_ = nullptr;
@@ -220,11 +238,14 @@ class TransportController : public sigslot::has_slots<>,
   // TODO(deadbeef): Move the fields below down to the transports themselves
   IceConfig ice_config_;
   IceRole ice_role_ = ICEROLE_CONTROLLING;
+  bool redetermine_role_on_ice_restart_;
   uint64_t ice_tiebreaker_ = rtc::CreateRandomId64();
   rtc::scoped_refptr<rtc::RTCCertificate> certificate_;
   rtc::AsyncInvoker invoker_;
   // True if QUIC is used instead of DTLS.
   bool quic_ = false;
+
+  webrtc::MetricsObserverInterface* metrics_observer_ = nullptr;
 };
 
 }  // namespace cricket

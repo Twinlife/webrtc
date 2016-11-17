@@ -36,8 +36,8 @@ DIRECTORIES = [
   'third_party/afl',
   'third_party/binutils',
   'third_party/boringssl',
+  'third_party/closure_compiler',
   'third_party/colorama',
-  'third_party/drmemory',
   'third_party/expat',
   'third_party/ffmpeg',
   'third_party/instrumented_libraries',
@@ -65,12 +65,13 @@ DIRECTORIES = [
   'third_party/zlib',
   'third_party/WebKit',  # TODO(kjellander): Remove, see webrtc:5629.
   'tools/clang',
+  'tools/determinism',
   'tools/generate_library_loader',
   'tools/generate_stubs',
   'tools/gn',
+  'tools/grit',
   'tools/gyp',
   'tools/luci-go',
-  'tools/mb',
   'tools/memory',
   'tools/protoc_wrapper',
   'tools/python',
@@ -88,14 +89,15 @@ if 'android' in target_os:
     'base',
     'third_party/accessibility_test_framework',
     'third_party/android_platform',
+    'third_party/android_support_test_runner',
     'third_party/android_tools',
     'third_party/apache_velocity',
     'third_party/appurify-python',
     'third_party/ashmem',
     'third_party/bouncycastle',
+    'third_party/byte_buddy',
     'third_party/catapult',
     'third_party/ced',
-    'third_party/closure_compiler',
     'third_party/guava',
     'third_party/hamcrest',
     'third_party/icu',
@@ -107,13 +109,13 @@ if 'android' in target_os:
     'third_party/libxml',
     'third_party/mockito',
     'third_party/modp_b64',
+    'third_party/objenesis',
     'third_party/ow2_asm',
     'third_party/requests',
     'third_party/robolectric',
     'third_party/sqlite4java',
     'third_party/tcmalloc',
     'tools/android',
-    'tools/grit',
     'tools/telemetry',
   ]
 else:
@@ -505,9 +507,10 @@ def main():
                       'administrator. Please run with user account privileges.')
 
   if not os.path.exists(CHROMIUM_CHECKOUT):
-    logging.error('Cannot find a Chromium checkout at %s. Did you run "gclient '
-                  'sync" before running this script?', CHROMIUM_CHECKOUT)
-    return 2
+    logging.warning('Cannot find a Chromium checkout at %s. Did you run '
+                    '"gclient sync" before running this script?',
+                    CHROMIUM_CHECKOUT)
+    return 0
 
   links_database = _initialize_database(LINKS_DB)
   try:

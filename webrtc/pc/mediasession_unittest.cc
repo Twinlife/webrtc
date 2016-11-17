@@ -96,16 +96,13 @@ static const AudioCodec kAudioCodecsAnswer[] = {
     AudioCodec(0, "PCMU", 8000, 64000, 1),
 };
 
-static const VideoCodec kVideoCodecs1[] = {
-    VideoCodec(96, "H264-SVC", 320, 200, 30),
-    VideoCodec(97, "H264", 320, 200, 30)};
+static const VideoCodec kVideoCodecs1[] = {VideoCodec(96, "H264-SVC"),
+                                           VideoCodec(97, "H264")};
 
-static const VideoCodec kVideoCodecs2[] = {
-    VideoCodec(126, "H264", 320, 200, 30),
-    VideoCodec(127, "H263", 320, 200, 30)};
+static const VideoCodec kVideoCodecs2[] = {VideoCodec(126, "H264"),
+                                           VideoCodec(127, "H263")};
 
-static const VideoCodec kVideoCodecsAnswer[] = {
-    VideoCodec(97, "H264", 320, 200, 30)};
+static const VideoCodec kVideoCodecsAnswer[] = {VideoCodec(97, "H264")};
 
 static const DataCodec kDataCodecs1[] = {DataCodec(98, "binary-data"),
                                          DataCodec(99, "utf8-text")};
@@ -195,8 +192,7 @@ GetMediaDirection(const ContentInfo* content) {
 
 static void AddRtxCodec(const VideoCodec& rtx_codec,
                         std::vector<VideoCodec>* codecs) {
-  VideoCodec rtx;
-  ASSERT_FALSE(cricket::FindCodecById(*codecs, rtx_codec.id, &rtx));
+  ASSERT_FALSE(cricket::FindCodecById(*codecs, rtx_codec.id));
   codecs->push_back(rtx_codec);
 }
 
@@ -267,6 +263,16 @@ class MediaSessionDescriptionFactoryTest : public testing::Test {
     return true;
   }
 
+  // Returns true if the transport info contains "renomination" as an
+  // ICE option.
+  bool GetIceRenomination(const TransportInfo* transport_info) {
+    const std::vector<std::string>& ice_options =
+        transport_info->description.transport_options;
+    auto iter = std::find(ice_options.begin(), ice_options.end(),
+                          cricket::ICE_RENOMINATION_STR);
+    return iter != ice_options.end();
+  }
+
   void TestTransportInfo(bool offer, const MediaSessionOptions& options,
                          bool has_current_desc) {
     const std::string current_audio_ufrag = "current_audio_ufrag";
@@ -312,6 +318,7 @@ class MediaSessionDescriptionFactoryTest : public testing::Test {
         EXPECT_EQ(static_cast<size_t>(cricket::ICE_PWD_LENGTH),
                   ti_audio->description.ice_pwd.size());
       }
+      EXPECT_EQ(options.enable_ice_renomination, GetIceRenomination(ti_audio));
 
     } else {
       EXPECT_TRUE(ti_audio == NULL);
@@ -335,6 +342,7 @@ class MediaSessionDescriptionFactoryTest : public testing::Test {
                     ti_video->description.ice_pwd.size());
         }
       }
+      EXPECT_EQ(options.enable_ice_renomination, GetIceRenomination(ti_video));
     } else {
       EXPECT_TRUE(ti_video == NULL);
     }
@@ -357,6 +365,8 @@ class MediaSessionDescriptionFactoryTest : public testing::Test {
                     ti_data->description.ice_pwd.size());
         }
       }
+      EXPECT_EQ(options.enable_ice_renomination, GetIceRenomination(ti_data));
+
     } else {
       EXPECT_TRUE(ti_video == NULL);
     }
@@ -1828,7 +1838,7 @@ TEST_F(MediaSessionDescriptionFactoryTest, RtxWithoutApt) {
   opts.recv_audio = false;
   std::vector<VideoCodec> f1_codecs = MAKE_VECTOR(kVideoCodecs1);
   // This creates RTX without associated payload type parameter.
-  AddRtxCodec(VideoCodec(126, cricket::kRtxCodecName, 0, 0, 0), &f1_codecs);
+  AddRtxCodec(VideoCodec(126, cricket::kRtxCodecName), &f1_codecs);
   f1_.set_video_codecs(f1_codecs);
 
   std::vector<VideoCodec> f2_codecs = MAKE_VECTOR(kVideoCodecs2);
@@ -1976,7 +1986,7 @@ TEST_F(MediaSessionDescriptionFactoryTest, SimSsrcsGenerateMultipleRtxSsrcs) {
 
   // Use a single real codec, and then add RTX for it.
   std::vector<VideoCodec> f1_codecs;
-  f1_codecs.push_back(VideoCodec(97, "H264", 320, 200, 30));
+  f1_codecs.push_back(VideoCodec(97, "H264"));
   AddRtxCodec(VideoCodec::CreateRtxCodec(125, 97), &f1_codecs);
   f1_.set_video_codecs(f1_codecs);
 
@@ -2140,6 +2150,13 @@ TEST_F(MediaSessionDescriptionFactoryTest, TestTransportInfoOfferAudio) {
   TestTransportInfo(true, options, false);
 }
 
+TEST_F(MediaSessionDescriptionFactoryTest,
+       TestTransportInfoOfferIceRenomination) {
+  MediaSessionOptions options;
+  options.enable_ice_renomination = true;
+  TestTransportInfo(true, options, false);
+}
+
 TEST_F(MediaSessionDescriptionFactoryTest, TestTransportInfoOfferAudioCurrent) {
   MediaSessionOptions options;
   options.recv_audio = true;
@@ -2189,7 +2206,14 @@ TEST_F(MediaSessionDescriptionFactoryTest, TestTransportInfoAnswerAudio) {
 }
 
 TEST_F(MediaSessionDescriptionFactoryTest,
-    TestTransportInfoAnswerAudioCurrent) {
+       TestTransportInfoAnswerIceRenomination) {
+  MediaSessionOptions options;
+  options.enable_ice_renomination = true;
+  TestTransportInfo(false, options, false);
+}
+
+TEST_F(MediaSessionDescriptionFactoryTest,
+       TestTransportInfoAnswerAudioCurrent) {
   MediaSessionOptions options;
   options.recv_audio = true;
   TestTransportInfo(false, options, true);

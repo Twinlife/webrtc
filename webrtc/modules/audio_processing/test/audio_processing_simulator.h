@@ -12,6 +12,7 @@
 #define WEBRTC_MODULES_AUDIO_PROCESSING_TEST_AUDIO_PROCESSING_SIMULATOR_H_
 
 #include <algorithm>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <string>
@@ -28,6 +29,9 @@ namespace test {
 
 // Holds all the parameters available for controlling the simulation.
 struct SimulationSettings {
+  SimulationSettings();
+  SimulationSettings(const SimulationSettings&);
+  ~SimulationSettings();
   rtc::Optional<int> stream_delay;
   rtc::Optional<int> stream_drift_samples;
   rtc::Optional<int> output_sample_rate_hz;
@@ -42,6 +46,8 @@ struct SimulationSettings {
   rtc::Optional<std::string> reverse_input_filename;
   rtc::Optional<bool> use_aec;
   rtc::Optional<bool> use_aecm;
+  rtc::Optional<bool> use_red;  // Residual Echo Detector.
+  rtc::Optional<std::string> red_graph_output_filename;
   rtc::Optional<bool> use_agc;
   rtc::Optional<bool> use_hpf;
   rtc::Optional<bool> use_ns;
@@ -92,9 +98,8 @@ class AudioProcessingSimulator {
  public:
   static const int kChunksPerSecond = 1000 / AudioProcessing::kChunkSizeMs;
 
-  explicit AudioProcessingSimulator(const SimulationSettings& settings)
-      : settings_(settings) {}
-  virtual ~AudioProcessingSimulator() {}
+  explicit AudioProcessingSimulator(const SimulationSettings& settings);
+  virtual ~AudioProcessingSimulator();
 
   // Processes the data in the input.
   virtual void Process() = 0;
@@ -166,6 +171,7 @@ class AudioProcessingSimulator {
   std::unique_ptr<ChannelBufferWavWriter> buffer_writer_;
   std::unique_ptr<ChannelBufferWavWriter> reverse_buffer_writer_;
   TickIntervalStats proc_time_;
+  std::ofstream residual_echo_likelihood_graph_writer_;
 
   RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(AudioProcessingSimulator);
 };

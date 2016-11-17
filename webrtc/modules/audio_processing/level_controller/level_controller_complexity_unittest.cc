@@ -11,7 +11,6 @@
 #include <numeric>
 #include <vector>
 
-#include "testing/gtest/include/gtest/gtest.h"
 #include "webrtc/base/array_view.h"
 #include "webrtc/base/random.h"
 #include "webrtc/modules/audio_processing/audio_buffer.h"
@@ -20,6 +19,7 @@
 #include "webrtc/modules/audio_processing/test/audio_buffer_tools.h"
 #include "webrtc/modules/audio_processing/test/bitexactness_tools.h"
 #include "webrtc/system_wrappers/include/clock.h"
+#include "webrtc/test/gtest.h"
 #include "webrtc/test/testsupport/perf_test.h"
 
 namespace webrtc {
@@ -198,16 +198,18 @@ void RunTogetherWithApm(std::string test_description,
   SubmodulePerformanceTimer capture_timer;
   SubmodulePerformanceTimer total_timer;
 
-  Config config;
+  webrtc::Config config;
+  AudioProcessing::Config apm_config;
   if (include_default_apm_processing) {
     config.Set<DelayAgnostic>(new DelayAgnostic(true));
     config.Set<ExtendedFilter>(new ExtendedFilter(true));
   }
-  config.Set<LevelControl>(new LevelControl(true));
+  apm_config.level_controller.enabled = true;
 
   std::unique_ptr<AudioProcessing> apm;
   apm.reset(AudioProcessing::Create(config));
   ASSERT_TRUE(apm.get());
+  apm->ApplyConfig(apm_config);
 
   ASSERT_EQ(AudioProcessing::kNoError,
             apm->gain_control()->Enable(include_default_apm_processing));

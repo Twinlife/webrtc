@@ -40,8 +40,8 @@ int UpdateMeasurements(StreamSynchronization::Measurements* stream,
   }
 
   bool new_rtcp_sr = false;
-  if (!UpdateRtcpList(
-      ntp_secs, ntp_frac, rtp_timestamp, &stream->rtcp, &new_rtcp_sr)) {
+  if (!UpdateRtcpList(ntp_secs, ntp_frac, rtp_timestamp, &stream->rtcp,
+                      &new_rtcp_sr)) {
     return -1;
   }
 
@@ -123,6 +123,7 @@ void RtpStreamsSynchronizer::Process() {
   const int current_audio_delay_ms = audio_jitter_buffer_delay_ms +
       playout_buffer_delay_ms;
 
+  int64_t last_video_receive_ms = video_measurement_.latest_receive_time_ms;
   if (UpdateMeasurements(&video_measurement_, video_rtp_rtcp_,
                          video_rtp_receiver_) != 0) {
     return;
@@ -130,6 +131,11 @@ void RtpStreamsSynchronizer::Process() {
 
   if (UpdateMeasurements(&audio_measurement_, audio_rtp_rtcp_,
                          audio_rtp_receiver_) != 0) {
+    return;
+  }
+
+  if (last_video_receive_ms == video_measurement_.latest_receive_time_ms) {
+    // No new video packet has been received since last update.
     return;
   }
 
@@ -162,7 +168,9 @@ void RtpStreamsSynchronizer::Process() {
 }
 
 bool RtpStreamsSynchronizer::GetStreamSyncOffsetInMs(
-    const VideoFrame& frame, int64_t* stream_offset_ms) const {
+    const VideoFrame& frame,
+    int64_t* stream_offset_ms,
+    double* estimated_freq_khz) const {
   rtc::CritScope lock(&crit_);
   if (voe_channel_id_ == -1)
     return false;
@@ -191,6 +199,7 @@ bool RtpStreamsSynchronizer::GetStreamSyncOffsetInMs(
     latest_video_ntp += time_to_render_ms;
 
   *stream_offset_ms = latest_audio_ntp - latest_video_ntp;
+  *estimated_freq_khz = video_measurement_.rtcp.params.frequency_khz;
   return true;
 }
 

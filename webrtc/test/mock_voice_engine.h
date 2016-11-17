@@ -13,7 +13,7 @@
 
 #include <memory>
 
-#include "testing/gmock/include/gmock/gmock.h"
+#include "webrtc/test/gmock.h"
 #include "webrtc/test/mock_voe_channel_proxy.h"
 #include "webrtc/voice_engine/voice_engine_impl.h"
 
@@ -30,14 +30,13 @@ class MockVoiceEngine : public VoiceEngineImpl {
   // http://crbug.com/428099.
   MockVoiceEngine(
       rtc::scoped_refptr<AudioDecoderFactory> decoder_factory = nullptr)
-      : VoiceEngineImpl(new Config(), true),
-        decoder_factory_(decoder_factory) {
+      : decoder_factory_(decoder_factory) {
     // Increase ref count so this object isn't automatically deleted whenever
     // interfaces are Release():d.
     ++_ref_count;
     // We add this default behavior to make the mock easier to use in tests. It
     // will create a NiceMock of a voe::ChannelProxy.
-    // TODO(ossu): As long as AudioReceiveStream is implmented as a wrapper
+    // TODO(ossu): As long as AudioReceiveStream is implemented as a wrapper
     // around Channel, we need to make sure ChannelProxy returns the same
     // decoder factory as the one passed in when creating an AudioReceiveStream.
     ON_CALL(*this, ChannelProxyFactory(testing::_))
@@ -49,7 +48,7 @@ class MockVoiceEngine : public VoiceEngineImpl {
           return proxy;
         }));
   }
-  ~MockVoiceEngine() /* override */ {
+  virtual ~MockVoiceEngine() /* override */ {
     // Decrease ref count before base class d-tor is called; otherwise it will
     // trigger an assertion.
     --_ref_count;
@@ -58,7 +57,7 @@ class MockVoiceEngine : public VoiceEngineImpl {
   MOCK_METHOD1(ChannelProxyFactory, voe::ChannelProxy*(int channel_id));
 
   // VoiceEngineImpl
-  std::unique_ptr<voe::ChannelProxy> GetChannelProxy(
+  virtual std::unique_ptr<voe::ChannelProxy> GetChannelProxy(
       int channel_id) /* override */ {
     return std::unique_ptr<voe::ChannelProxy>(ChannelProxyFactory(channel_id));
   }
@@ -80,15 +79,6 @@ class MockVoiceEngine : public VoiceEngineImpl {
   MOCK_METHOD2(GetAecmMode, int(AecmModes& mode, bool& enabledCNG));
   MOCK_METHOD1(EnableHighPassFilter, int(bool enable));
   MOCK_METHOD0(IsHighPassFilterEnabled, bool());
-  MOCK_METHOD3(SetRxNsStatus, int(int channel, bool enable, NsModes mode));
-  MOCK_METHOD3(GetRxNsStatus, int(int channel, bool& enabled, NsModes& mode));
-  MOCK_METHOD3(SetRxAgcStatus, int(int channel, bool enable, AgcModes mode));
-  MOCK_METHOD3(GetRxAgcStatus, int(int channel, bool& enabled, AgcModes& mode));
-  MOCK_METHOD2(SetRxAgcConfig, int(int channel, AgcConfig config));
-  MOCK_METHOD2(GetRxAgcConfig, int(int channel, AgcConfig& config));
-  MOCK_METHOD2(RegisterRxVadObserver,
-               int(int channel, VoERxVadCallback& observer));
-  MOCK_METHOD1(DeRegisterRxVadObserver, int(int channel));
   MOCK_METHOD1(VoiceActivityIndicator, int(int channel));
   MOCK_METHOD1(SetEcMetricsStatus, int(bool enable));
   MOCK_METHOD1(GetEcMetricsStatus, int(bool& enabled));
@@ -123,7 +113,7 @@ class MockVoiceEngine : public VoiceEngineImpl {
   MOCK_METHOD0(audio_processing, AudioProcessing*());
   MOCK_METHOD0(Terminate, int());
   MOCK_METHOD0(CreateChannel, int());
-  MOCK_METHOD1(CreateChannel, int(const Config& config));
+  MOCK_METHOD1(CreateChannel, int(const ChannelConfig& config));
   MOCK_METHOD1(DeleteChannel, int(int channel));
   MOCK_METHOD1(StartReceive, int(int channel));
   MOCK_METHOD1(StopReceive, int(int channel));

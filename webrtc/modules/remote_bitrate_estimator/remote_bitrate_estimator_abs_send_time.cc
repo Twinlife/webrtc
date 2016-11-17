@@ -239,9 +239,8 @@ void RemoteBitrateEstimatorAbsSendTime::IncomingPacketInfo(
     uint32_t ssrc) {
   RTC_CHECK(send_time_24bits < (1ul << 24));
   if (!uma_recorded_) {
-    RTC_LOGGED_HISTOGRAM_ENUMERATION(kBweTypeHistogram,
-                                     BweNames::kReceiverAbsSendTime,
-                                     BweNames::kBweNamesMax);
+    RTC_HISTOGRAM_ENUMERATION(kBweTypeHistogram, BweNames::kReceiverAbsSendTime,
+                              BweNames::kBweNamesMax);
     uma_recorded_ = true;
   }
   // Shift up send time to use the full 32 bits that inter_arrival works with,
@@ -314,7 +313,8 @@ void RemoteBitrateEstimatorAbsSendTime::IncomingPacketInfo(
                                       payload_size, &ts_delta, &t_delta,
                                       &size_delta)) {
       double ts_delta_ms = (1000.0 * ts_delta) / (1 << kInterArrivalShift);
-      estimator_->Update(t_delta, ts_delta_ms, size_delta, detector_.State());
+      estimator_->Update(t_delta, ts_delta_ms, size_delta, detector_.State(),
+                         arrival_time_ms);
       detector_.Detect(estimator_->offset(), ts_delta_ms,
                        estimator_->num_of_deltas(), arrival_time_ms);
     }

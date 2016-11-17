@@ -37,8 +37,10 @@
 #include "webrtc/base/stringutils.h"
 #include "webrtc/base/trace_event.h"
 #include "webrtc/call.h"
+#include "webrtc/logging/rtc_event_log/rtc_event_log.h"
 #include "webrtc/media/sctp/sctpdataengine.h"
 #include "webrtc/pc/channelmanager.h"
+#include "webrtc/system_wrappers/include/clock.h"
 #include "webrtc/system_wrappers/include/field_trial.h"
 
 namespace {
@@ -568,9 +570,9 @@ PeerConnection::PeerConnection(PeerConnectionFactory* factory)
       observer_(NULL),
       uma_observer_(NULL),
       signaling_state_(kStable),
-      ice_state_(kIceNew),
       ice_connection_state_(kIceConnectionNew),
       ice_gathering_state_(kIceGatheringNew),
+      event_log_(RtcEventLog::Create(webrtc::Clock::GetRealTimeClock())),
       rtcp_cname_(GenerateRtcpCname()),
       local_streams_(StreamCollection::Create()),
       remote_streams_(StreamCollection::Create()) {}
@@ -619,17 +621,22 @@ bool PeerConnection::Initialize(
     return false;
   }
 
-  media_controller_.reset(
-      factory_->CreateMediaController(configuration.media_config));
+  media_controller_.reset(factory_->CreateMediaController(
+      configuration.media_config, event_log_.get()));
 
   session_.reset(new WebRtcSession(
       media_controller_.get(), factory_->network_thread(),
       factory_->worker_thread(), factory_->signaling_thread(),
       port_allocator_.get(),
       std::unique_ptr<cricket::TransportController>(
-          factory_->CreateTransportController(port_allocator_.get()))));
+          factory_->CreateTransportController(
+              port_allocator_.get(),
+              configuration.redetermine_role_on_ice_restart))));
 
   stats_.reset(new StatsCollector(this));
+  stats_collector_ = RTCStatsCollector::Create(this);
+
+  enable_ice_renomination_ = configuration.enable_ice_renomination;
 
   // Initialize the WebRtcSession. It creates transport channels etc.
   if (!session_->Initialize(factory_->options(), std::move(cert_generator),
@@ -879,17 +886,25 @@ bool PeerConnection::GetStats(StatsObserver* observer,
   }
 
   stats_->UpdateStats(level);
+  // The StatsCollector is used to tell if a track is valid because it may
+  // remember tracks that the PeerConnection previously removed.
+  if (track && !stats_->IsValidTrack(track->id())) {
+    LOG(LS_WARNING) << "GetStats is called with an invalid track: "
+                    << track->id();
+    return false;
+  }
   signaling_thread()->Post(RTC_FROM_HERE, this, MSG_GETSTATS,
                            new GetStatsMsg(observer, track));
   return true;
 }
 
-PeerConnectionInterface::SignalingState PeerConnection::signaling_state() {
-  return signaling_state_;
+void PeerConnection::GetStats(RTCStatsCollectorCallback* callback) {
+  RTC_DCHECK(stats_collector_);
+  stats_collector_->GetStatsReport(callback);
 }
 
-PeerConnectionInterface::IceState PeerConnection::ice_state() {
-  return ice_state_;
+PeerConnectionInterface::SignalingState PeerConnection::signaling_state() {
+  return signaling_state_;
 }
 
 PeerConnectionInterface::IceConnectionState
@@ -1260,6 +1275,8 @@ bool PeerConnection::SetConfiguration(const RTCConfiguration& configuration) {
 
   // TODO(deadbeef): Shouldn't have to hop to the worker thread twice...
   session_->SetIceConfig(session_->ParseIceConfig(configuration));
+
+  enable_ice_renomination_ = configuration.enable_ice_renomination;
   return true;
 }
 
@@ -1288,6 +1305,7 @@ void PeerConnection::RegisterUMAObserver(UMAObserver* observer) {
 
   // Send information about IPv4/IPv6 status.
   if (uma_observer_ && port_allocator_) {
+    port_allocator_->SetMetricsObserver(uma_observer_);
     if (port_allocator_->flags() & cricket::PORTALLOCATOR_ENABLE_IPV6) {
       uma_observer_->IncrementEnumCounter(
           kEnumCounterAddressFamily, kPeerConnection_IPv6,
@@ -1613,6 +1631,8 @@ bool PeerConnection::GetOptionsForOffer(
           cricket::TransportOptions();
     }
   }
+  session_options->enable_ice_renomination = enable_ice_renomination_;
+
   if (!ExtractMediaSessionOptions(rtc_options, true, session_options)) {
     return false;
   }
@@ -1630,10 +1650,6 @@ bool PeerConnection::GetOptionsForOffer(
         session_options->HasSendMediaStream(cricket::MEDIA_TYPE_VIDEO) ||
         !remote_video_tracks_.empty();
   }
-  session_options->bundle_enabled =
-      session_options->bundle_enabled &&
-      (session_options->has_audio() || session_options->has_video() ||
-       session_options->has_data());
 
   // Intentionally unset the data channel type for RTP data channel with the
   // second condition. Otherwise the RTP data channels would be successfully
@@ -1644,9 +1660,21 @@ bool PeerConnection::GetOptionsForOffer(
     session_options->data_channel_type = session_->data_channel_type();
   }
 
+  session_options->bundle_enabled =
+      session_options->bundle_enabled &&
+      (session_options->has_audio() || session_options->has_video() ||
+       session_options->has_data());
+
   session_options->rtcp_cname = rtcp_cname_;
   session_options->crypto_options = factory_->options().crypto_options;
   return true;
+}
+
+void PeerConnection::InitializeOptionsForAnswer(
+    cricket::MediaSessionOptions* session_options) {
+  session_options->recv_audio = false;
+  session_options->recv_video = false;
+  session_options->enable_ice_renomination = enable_ice_renomination_;
 }
 
 void PeerConnection::FinishOptionsForAnswer(
@@ -1662,11 +1690,6 @@ void PeerConnection::FinishOptionsForAnswer(
     }
   }
   AddSendStreams(session_options, senders_, rtp_data_channels_);
-  session_options->bundle_enabled =
-      session_options->bundle_enabled &&
-      (session_options->has_audio() || session_options->has_video() ||
-       session_options->has_data());
-
   // RTP data channel is handled in MediaSessionOptions::AddStream. SCTP streams
   // are not signaled in the SDP so does not go through that path and must be
   // handled here.
@@ -1677,14 +1700,18 @@ void PeerConnection::FinishOptionsForAnswer(
   if (session_->data_channel_type() != cricket::DCT_RTP) {
     session_options->data_channel_type = session_->data_channel_type();
   }
+  session_options->bundle_enabled =
+      session_options->bundle_enabled &&
+      (session_options->has_audio() || session_options->has_video() ||
+       session_options->has_data());
+
   session_options->crypto_options = factory_->options().crypto_options;
 }
 
 bool PeerConnection::GetOptionsForAnswer(
     const MediaConstraintsInterface* constraints,
     cricket::MediaSessionOptions* session_options) {
-  session_options->recv_audio = false;
-  session_options->recv_video = false;
+  InitializeOptionsForAnswer(session_options);
   if (!ParseConstraintsForAnswer(constraints, session_options)) {
     return false;
   }
@@ -1697,8 +1724,7 @@ bool PeerConnection::GetOptionsForAnswer(
 bool PeerConnection::GetOptionsForAnswer(
     const RTCOfferAnswerOptions& options,
     cricket::MediaSessionOptions* session_options) {
-  session_options->recv_audio = false;
-  session_options->recv_video = false;
+  InitializeOptionsForAnswer(session_options);
   if (!ExtractMediaSessionOptions(options, false, session_options)) {
     return false;
   }
@@ -2076,6 +2102,7 @@ rtc::scoped_refptr<DataChannel> PeerConnection::InternalCreateDataChannel(
                                   &PeerConnection::OnSctpDataChannelClosed);
   }
 
+  SignalDataChannelCreated(channel.get());
   return channel;
 }
 
@@ -2323,10 +2350,10 @@ bool PeerConnection::ReconfigurePortAllocator_n(
 
 bool PeerConnection::StartRtcEventLog_w(rtc::PlatformFile file,
                                         int64_t max_size_bytes) {
-  return media_controller_->call_w()->StartEventLog(file, max_size_bytes);
+  return event_log_->StartLogging(file, max_size_bytes);
 }
 
 void PeerConnection::StopRtcEventLog_w() {
-  media_controller_->call_w()->StopEventLog();
+  event_log_->StopLogging();
 }
 }  // namespace webrtc

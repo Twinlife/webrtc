@@ -34,10 +34,8 @@
 
           ['build_with_chromium==1', {
             'webrtc_root%': '<(DEPTH)/third_party/webrtc',
-            'android_tests_path%': '<(DEPTH)/third_party/webrtc/build/android_tests_noop.gyp',
           }, {
             'webrtc_root%': '<(DEPTH)/webrtc',
-            'android_tests_path%': '<(DEPTH)/webrtc/build/android_tests.gyp',
           }],
 
           # Controls whether we use libevent on posix platforms.
@@ -57,7 +55,6 @@
       'build_libevent%': '<(build_libevent)',
       'enable_libevent%': '<(enable_libevent)',
       'webrtc_root%': '<(webrtc_root)',
-      'android_tests_path%': '<(android_tests_path)',
       'webrtc_vp8_dir%': '<(webrtc_root)/modules/video_coding/codecs/vp8',
       'webrtc_vp9_dir%': '<(webrtc_root)/modules/video_coding/codecs/vp9',
       'include_ilbc%': '<(include_ilbc)',
@@ -69,7 +66,6 @@
     'build_libevent%': '<(build_libevent)',
     'enable_libevent%': '<(enable_libevent)',
     'webrtc_root%': '<(webrtc_root)',
-    'android_tests_path%': '<(android_tests_path)',
     'test_runner_path': '<(DEPTH)/webrtc/build/android/test_runner.py',
     'webrtc_vp8_dir%': '<(webrtc_vp8_dir)',
     'webrtc_vp9_dir%': '<(webrtc_vp9_dir)',
@@ -111,12 +107,15 @@
     # Selects fixed-point code where possible.
     'prefer_fixed_point%': 0,
 
-    # Enable data logging. Produces text files with data logged within engines
-    # which can be easily parsed for offline processing.
-    'enable_data_logging%': 0,
-
     # Enables the use of protocol buffers for debug recordings.
     'enable_protobuf%': 1,
+
+    # Disable the code for the intelligibility enhancer by default.
+    'enable_intelligibility_enhancer%': 0,
+
+    # Selects whether debug dumps for the audio processing module
+    # should be generated.
+    'apm_debug_dump%': 0,
 
     # Disable these to not build components which can be externally provided.
     'build_expat%': 1,
@@ -159,10 +158,6 @@
 
     # Disable this to skip building source requiring GTK.
     'use_gtk%': 1,
-
-    # Enable this to use HW H.264 encoder/decoder on iOS/Mac PeerConnections.
-    # Enabling this may break interop with Android clients that support H264.
-    'use_objc_h264%': 0,
 
     # Enable this to prevent extern symbols from being hidden on iOS builds.
     # The chromium settings we inherit hide symbols by default on Release
@@ -299,7 +294,6 @@
           'LOGGING_INSIDE_WEBRTC',
           'NO_MAIN_THREAD_WRAPPING',
           'NO_SOUND_SYSTEM',
-          'SRTP_RELATIVE_PATH',
           'SSL_USE_OPENSSL',
           'USE_WEBRTC_DEV_BRANCH',
           'WEBRTC_CHROMIUM_BUILD',
@@ -316,29 +310,23 @@
           '../..',
         ],
       }, {
+         'includes': [
+           # Rules for excluding e.g. foo_win.cc from the build on non-Windows.
+           'filename_rules.gypi',
+         ],
          # Include the top-level dir so the WebRTC code can use full paths.
         'include_dirs': [
           '../..',
         ],
         'conditions': [
           ['os_posix==1', {
-            'conditions': [
-              # -Wextra is currently disabled in Chromium's common.gypi. Enable
-              # for targets that can handle it. For Android/arm64 right now
-              # there will be an 'enumeral and non-enumeral type in conditional
-              # expression' warning in android_tools/ndk_experimental's version
-              # of stlport.
-              # See: https://code.google.com/p/chromium/issues/detail?id=379699
-              ['target_arch!="arm64" or OS!="android"', {
-                'cflags': [
-                  '-Wextra',
-                  # We need to repeat some flags from Chromium's common.gypi
-                  # here that get overridden by -Wextra.
-                  '-Wno-unused-parameter',
-                  '-Wno-missing-field-initializers',
-                  '-Wno-strict-overflow',
-                ],
-              }],
+            # Enable more warnings: -Wextra is currently disabled in Chromium.
+            'cflags': [
+              '-Wextra',
+              # Repeat some flags that get overridden by -Wextra.
+              '-Wno-unused-parameter',
+              '-Wno-missing-field-initializers',
+              '-Wno-strict-overflow',
             ],
             'cflags_cc': [
               '-Wnon-virtual-dtor',
@@ -439,11 +427,6 @@
           'GCC_INLINES_ARE_PRIVATE_EXTERN': 'NO',
           'GCC_SYMBOLS_PRIVATE_EXTERN': 'NO',
         }
-      }],
-      ['OS=="ios" and use_objc_h264==1', {
-        'defines': [
-          'WEBRTC_OBJC_H264',
-        ],
       }],
       ['OS=="linux"', {
         'defines': [

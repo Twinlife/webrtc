@@ -11,6 +11,7 @@
 #include "webrtc/modules/rtp_rtcp/source/rtp_packet.h"
 
 #include <cstring>
+#include <utility>
 
 #include "webrtc/base/checks.h"
 #include "webrtc/base/logging.h"
@@ -273,6 +274,9 @@ uint8_t* Packet::AllocatePayload(size_t size_bytes) {
     LOG(LS_WARNING) << "Cannot set payload, not enough space in buffer.";
     return nullptr;
   }
+  // Reset payload size to 0. If CopyOnWrite buffer_ was shared, this will cause
+  // reallocation and memcpy. Setting size to just headers reduces memcpy size.
+  buffer_.SetSize(payload_offset_);
   payload_size_ = size_bytes;
   buffer_.SetSize(payload_offset_ + payload_size_);
   return WriteAt(payload_offset_);
@@ -397,11 +401,16 @@ bool Packet::ParseBuffer(const uint8_t* buffer, size_t size) {
         }
         uint8_t length =
             1 + (buffer[extension_offset + extensions_size_] & 0xf);
-        extensions_size_ += kOneByteHeaderSize;
-        if (num_extensions_ >= kMaxExtensionHeaders) {
-          LOG(LS_WARNING) << "Too many extensions.";
-          return false;
+        if (extensions_size_ + kOneByteHeaderSize + length >
+            extensions_capacity) {
+          LOG(LS_WARNING) << "Oversized rtp header extension.";
+          break;
         }
+        if (num_extensions_ >= kMaxExtensionHeaders) {
+          LOG(LS_WARNING) << "Too many rtp header extensions.";
+          break;
+        }
+        extensions_size_ += kOneByteHeaderSize;
         extension_entries_[num_extensions_].type =
             extensions_ ? extensions_->GetType(id)
                         : ExtensionManager::kInvalidType;

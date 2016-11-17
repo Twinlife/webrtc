@@ -69,6 +69,7 @@ class FakeTransportChannel : public TransportChannelImpl,
   // If async, will send packets by "Post"-ing to message queue instead of
   // synchronously "Send"-ing.
   void SetAsync(bool async) { async_ = async; }
+  void SetAsyncDelay(int delay_ms) { async_delay_ms_ = delay_ms; }
 
   TransportChannelState GetState() const override {
     if (connection_count_ == 0) {
@@ -88,15 +89,13 @@ class FakeTransportChannel : public TransportChannelImpl,
   void SetIceTiebreaker(uint64_t tiebreaker) override {
     tiebreaker_ = tiebreaker;
   }
-  void SetIceCredentials(const std::string& ice_ufrag,
-                         const std::string& ice_pwd) override {
-    ice_ufrag_ = ice_ufrag;
-    ice_pwd_ = ice_pwd;
+  void SetIceParameters(const IceParameters& ice_params) override {
+    ice_ufrag_ = ice_params.ufrag;
+    ice_pwd_ = ice_params.pwd;
   }
-  void SetRemoteIceCredentials(const std::string& ice_ufrag,
-                               const std::string& ice_pwd) override {
-    remote_ice_ufrag_ = ice_ufrag;
-    remote_ice_pwd_ = ice_pwd;
+  void SetRemoteIceParameters(const IceParameters& params) override {
+    remote_ice_ufrag_ = params.ufrag;
+    remote_ice_pwd_ = params.pwd;
   }
 
   void SetRemoteIceMode(IceMode mode) override { remote_ice_mode_ = mode; }
@@ -202,7 +201,12 @@ class FakeTransportChannel : public TransportChannelImpl,
 
     PacketMessageData* packet = new PacketMessageData(data, len);
     if (async_) {
-      rtc::Thread::Current()->Post(RTC_FROM_HERE, this, 0, packet);
+      if (async_delay_ms_) {
+        rtc::Thread::Current()->PostDelayed(RTC_FROM_HERE, async_delay_ms_,
+                                            this, 0, packet);
+      } else {
+        rtc::Thread::Current()->Post(RTC_FROM_HERE, this, 0, packet);
+      }
     } else {
       rtc::Thread::Current()->Send(RTC_FROM_HERE, this, 0, packet);
     }
@@ -295,6 +299,9 @@ class FakeTransportChannel : public TransportChannelImpl,
     return ssl_max_version_;
   }
 
+  void SetMetricsObserver(webrtc::MetricsObserverInterface* observer) override {
+  }
+
  private:
   void NegotiateSrtpCiphers() {
     for (std::vector<int>::const_iterator it1 = srtp_ciphers_.begin();
@@ -313,6 +320,7 @@ class FakeTransportChannel : public TransportChannelImpl,
   FakeTransportChannel* dest_ = nullptr;
   State state_ = STATE_INIT;
   bool async_ = false;
+  int async_delay_ms_ = 0;
   Candidates remote_candidates_;
   rtc::scoped_refptr<rtc::RTCCertificate> local_cert_;
   rtc::FakeSSLCertificate* remote_cert_ = nullptr;
@@ -356,6 +364,7 @@ class FakeTransport : public Transport {
   // If async, will send packets by "Post"-ing to message queue instead of
   // synchronously "Send"-ing.
   void SetAsync(bool async) { async_ = async; }
+  void SetAsyncDelay(int delay_ms) { async_delay_ms_ = delay_ms; }
 
   // If |asymmetric| is true, only set the destination for this transport, and
   // not |dest|.
@@ -417,6 +426,7 @@ class FakeTransport : public Transport {
     FakeTransportChannel* channel = new FakeTransportChannel(name(), component);
     channel->set_ssl_max_protocol_version(ssl_max_version_);
     channel->SetAsync(async_);
+    channel->SetAsyncDelay(async_delay_ms_);
     SetChannelDestination(component, channel, false);
     channels_[component] = channel;
     return channel;
@@ -453,6 +463,7 @@ class FakeTransport : public Transport {
   ChannelMap channels_;
   FakeTransport* dest_ = nullptr;
   bool async_ = false;
+  int async_delay_ms_ = 0;
   rtc::scoped_refptr<rtc::RTCCertificate> certificate_;
   rtc::SSLProtocolVersion ssl_max_version_ = rtc::SSL_PROTOCOL_DTLS_12;
 };
@@ -504,6 +515,13 @@ class FakeTransportController : public TransportController {
                             nullptr),
         fail_create_channel_(false) {}
 
+  explicit FakeTransportController(bool redetermine_role_on_ice_restart)
+      : TransportController(rtc::Thread::Current(),
+                            rtc::Thread::Current(),
+                            nullptr,
+                            redetermine_role_on_ice_restart),
+        fail_create_channel_(false) {}
+
   explicit FakeTransportController(IceRole role)
       : TransportController(rtc::Thread::Current(),
                             rtc::Thread::Current(),
@@ -512,12 +530,12 @@ class FakeTransportController : public TransportController {
     SetIceRole(role);
   }
 
-  explicit FakeTransportController(rtc::Thread* worker_thread)
-      : TransportController(rtc::Thread::Current(), worker_thread, nullptr),
+  explicit FakeTransportController(rtc::Thread* network_thread)
+      : TransportController(rtc::Thread::Current(), network_thread, nullptr),
         fail_create_channel_(false) {}
 
-  FakeTransportController(rtc::Thread* worker_thread, IceRole role)
-      : TransportController(rtc::Thread::Current(), worker_thread, nullptr),
+  FakeTransportController(rtc::Thread* network_thread, IceRole role)
+      : TransportController(rtc::Thread::Current(), network_thread, nullptr),
         fail_create_channel_(false) {
     SetIceRole(role);
   }

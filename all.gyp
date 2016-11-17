@@ -28,6 +28,7 @@
         'webrtc/modules/modules.gyp:*',
         'webrtc/p2p/p2p.gyp:*',
         'webrtc/pc/pc.gyp:*',
+        'webrtc/stats/stats.gyp:*',
         'webrtc/system_wrappers/system_wrappers.gyp:*',
         'webrtc/tools/tools.gyp:*',
         'webrtc/voice_engine/voice_engine.gyp:*',
@@ -38,7 +39,8 @@
       'conditions': [
         ['OS=="android" and build_with_chromium==0', {
           'dependencies': [
-            'webrtc/api/api_java.gyp:*',
+            # No longer supported, please refer to GN targets.
+            #'webrtc/api/api_java.gyp:*',
           ],
         }],
         ['include_tests==1', {
@@ -46,9 +48,6 @@
             'webrtc/webrtc_tests.gypi',
           ],
           'dependencies': [
-            'webrtc/api/api_tests.gyp:*',
-            'webrtc/common_video/common_video_unittests.gyp:*',
-            'webrtc/system_wrappers/system_wrappers_tests.gyp:*',
             'webrtc/test/test.gyp:*',
           ],
         }],
@@ -60,18 +59,6 @@
         ['(OS=="ios" or (OS=="mac" and mac_deployment_target=="10.7"))', {
           'dependencies': [
             'webrtc/sdk/sdk.gyp:*',
-          ],
-        }],
-        ['OS=="ios" or (OS=="mac" and target_arch!="ia32")', {
-          'dependencies': [
-            'talk/app/webrtc/legacy_objc_api.gyp:*',
-          ],
-          'conditions': [
-            ['include_tests==1', {
-              'dependencies': [
-                'talk/app/webrtc/legacy_objc_api_tests.gyp:*',
-              ],
-            }],
           ],
         }],
       ],

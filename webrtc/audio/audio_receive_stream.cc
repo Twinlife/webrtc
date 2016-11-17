@@ -13,7 +13,8 @@
 #include <string>
 #include <utility>
 
-#include "webrtc/audio_sink.h"
+#include "webrtc/api/call/audio_sink.h"
+#include "webrtc/audio/audio_send_stream.h"
 #include "webrtc/audio/audio_state.h"
 #include "webrtc/audio/conversion.h"
 #include "webrtc/base/checks.h"
@@ -118,16 +119,14 @@ AudioReceiveStream::AudioReceiveStream(
       bool registered = rtp_header_parser_->RegisterRtpHeaderExtension(
           kRtpExtensionAudioLevel, extension.id);
       RTC_DCHECK(registered);
-    } else if (extension.uri == RtpExtension::kAbsSendTimeUri) {
-      channel_proxy_->SetReceiveAbsoluteSenderTimeStatus(true, extension.id);
-      bool registered = rtp_header_parser_->RegisterRtpHeaderExtension(
-          kRtpExtensionAbsoluteSendTime, extension.id);
-      RTC_DCHECK(registered);
     } else if (extension.uri == RtpExtension::kTransportSequenceNumberUri) {
       channel_proxy_->EnableReceiveTransportSequenceNumber(extension.id);
       bool registered = rtp_header_parser_->RegisterRtpHeaderExtension(
           kRtpExtensionTransportSequenceNumber, extension.id);
       RTC_DCHECK(registered);
+    } else if (extension.uri == RtpExtension::kAbsSendTimeUri) {
+      LOG(LS_WARNING) << RtpExtension::kAbsSendTimeUri
+                      << " is no longer supported for audio.";
     } else {
       RTC_NOTREACHED() << "Unsupported RTP extension.";
     }
@@ -144,6 +143,8 @@ AudioReceiveStream::AudioReceiveStream(
 AudioReceiveStream::~AudioReceiveStream() {
   RTC_DCHECK(thread_checker_.CalledOnValidThread());
   LOG(LS_INFO) << "~AudioReceiveStream: " << config_.ToString();
+  Stop();
+  channel_proxy_->DisassociateSendChannel();
   channel_proxy_->DeRegisterExternalTransport();
   channel_proxy_->ResetCongestionControlObjects();
   channel_proxy_->SetRtcEventLog(nullptr);
@@ -211,6 +212,7 @@ webrtc::AudioReceiveStream::Stats AudioReceiveStream::GetStats() const {
   stats.decoding_plc = ds.decoded_plc;
   stats.decoding_cng = ds.decoded_cng;
   stats.decoding_plc_cng = ds.decoded_plc_cng;
+  stats.decoding_muted_output = ds.decoded_muted_output;
 
   return stats;
 }
@@ -228,6 +230,18 @@ void AudioReceiveStream::SetGain(float gain) {
 const webrtc::AudioReceiveStream::Config& AudioReceiveStream::config() const {
   RTC_DCHECK(thread_checker_.CalledOnValidThread());
   return config_;
+}
+
+void AudioReceiveStream::AssociateSendStream(AudioSendStream* send_stream) {
+  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  if (send_stream) {
+    VoiceEngineImpl* voe_impl = static_cast<VoiceEngineImpl*>(voice_engine());
+    std::unique_ptr<voe::ChannelProxy> send_channel_proxy =
+        voe_impl->GetChannelProxy(send_stream->config().voe_channel_id);
+    channel_proxy_->AssociateSendChannel(*send_channel_proxy.get());
+  } else {
+    channel_proxy_->DisassociateSendChannel();
+  }
 }
 
 void AudioReceiveStream::SignalNetworkState(NetworkState state) {
@@ -268,6 +282,20 @@ bool AudioReceiveStream::DeliverRtp(const uint8_t* packet,
   }
 
   return channel_proxy_->ReceivedRTPPacket(packet, length, packet_time);
+}
+
+AudioMixer::Source::AudioFrameInfo AudioReceiveStream::GetAudioFrameWithInfo(
+    int sample_rate_hz,
+    AudioFrame* audio_frame) {
+  return channel_proxy_->GetAudioFrameWithInfo(sample_rate_hz, audio_frame);
+}
+
+int AudioReceiveStream::PreferredSampleRate() const {
+  return channel_proxy_->NeededFrequency();
+}
+
+int AudioReceiveStream::Ssrc() const {
+  return config_.rtp.local_ssrc;
 }
 
 VoiceEngine* AudioReceiveStream::voice_engine() const {

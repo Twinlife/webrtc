@@ -61,6 +61,9 @@
                 'objc/Framework/Headers/WebRTC/RTCCameraPreviewView.h',
                 'objc/Framework/Headers/WebRTC/UIDevice+RTCDevice.h',
               ],
+              'dependencies': [
+                'webrtc_h264_video_toolbox',
+              ],
               'link_settings': {
                 'xcode_settings': {
                   'OTHER_LDFLAGS': [
@@ -108,6 +111,8 @@
           'sources': [
             'objc/Framework/Classes/RTCAVFoundationVideoSource+Private.h',
             'objc/Framework/Classes/RTCAVFoundationVideoSource.mm',
+            'objc/Framework/Classes/RTCAudioSource+Private.h',
+            'objc/Framework/Classes/RTCAudioSource.mm',
             'objc/Framework/Classes/RTCAudioTrack+Private.h',
             'objc/Framework/Classes/RTCAudioTrack.mm',
             'objc/Framework/Classes/RTCConfiguration+Private.h',
@@ -121,8 +126,12 @@
             'objc/Framework/Classes/RTCIceCandidate.mm',
             'objc/Framework/Classes/RTCIceServer+Private.h',
             'objc/Framework/Classes/RTCIceServer.mm',
+            'objc/Framework/Classes/RTCLegacyStatsReport+Private.h',
+            'objc/Framework/Classes/RTCLegacyStatsReport.mm',
             'objc/Framework/Classes/RTCMediaConstraints+Private.h',
             'objc/Framework/Classes/RTCMediaConstraints.mm',
+            'objc/Framework/Classes/RTCMediaSource+Private.h',
+            'objc/Framework/Classes/RTCMediaSource.mm',
             'objc/Framework/Classes/RTCMediaStream+Private.h',
             'objc/Framework/Classes/RTCMediaStream.mm',
             'objc/Framework/Classes/RTCMediaStreamTrack+Private.h',
@@ -151,8 +160,6 @@
             'objc/Framework/Classes/RTCShader+Private.h',
             'objc/Framework/Classes/RTCShader.h',
             'objc/Framework/Classes/RTCShader.mm',
-            'objc/Framework/Classes/RTCStatsReport+Private.h',
-            'objc/Framework/Classes/RTCStatsReport.mm',
             'objc/Framework/Classes/RTCVideoFrame+Private.h',
             'objc/Framework/Classes/RTCVideoFrame.mm',
             'objc/Framework/Classes/RTCVideoRendererAdapter+Private.h',
@@ -165,13 +172,16 @@
             'objc/Framework/Classes/avfoundationvideocapturer.h',
             'objc/Framework/Classes/avfoundationvideocapturer.mm',
             'objc/Framework/Headers/WebRTC/RTCAVFoundationVideoSource.h',
+            'objc/Framework/Headers/WebRTC/RTCAudioSource.h',
             'objc/Framework/Headers/WebRTC/RTCAudioTrack.h',
             'objc/Framework/Headers/WebRTC/RTCConfiguration.h',
             'objc/Framework/Headers/WebRTC/RTCDataChannel.h',
             'objc/Framework/Headers/WebRTC/RTCDataChannelConfiguration.h',
             'objc/Framework/Headers/WebRTC/RTCIceCandidate.h',
             'objc/Framework/Headers/WebRTC/RTCIceServer.h',
+            'objc/Framework/Headers/WebRTC/RTCLegacyStatsReport.h',
             'objc/Framework/Headers/WebRTC/RTCMediaConstraints.h',
+            'objc/Framework/Headers/WebRTC/RTCMediaSource.h',
             'objc/Framework/Headers/WebRTC/RTCMediaStream.h',
             'objc/Framework/Headers/WebRTC/RTCMediaStreamTrack.h',
             'objc/Framework/Headers/WebRTC/RTCPeerConnection.h',
@@ -182,13 +192,15 @@
             'objc/Framework/Headers/WebRTC/RTCRtpReceiver.h',
             'objc/Framework/Headers/WebRTC/RTCRtpSender.h',
             'objc/Framework/Headers/WebRTC/RTCSessionDescription.h',
-            'objc/Framework/Headers/WebRTC/RTCStatsReport.h',
             'objc/Framework/Headers/WebRTC/RTCVideoFrame.h',
             'objc/Framework/Headers/WebRTC/RTCVideoRenderer.h',
             'objc/Framework/Headers/WebRTC/RTCVideoSource.h',
             'objc/Framework/Headers/WebRTC/RTCVideoTrack.h',
           ], # sources
           'conditions': [
+            ['build_libyuv==1', {
+              'dependencies': ['<(DEPTH)/third_party/libyuv/libyuv.gyp:libyuv'],
+            }],
             ['OS=="ios"', {
               'sources': [
                 'objc/Framework/Classes/RTCEAGLVideoView.m',
@@ -246,6 +258,7 @@
             'objc/Framework/Modules/module.modulemap',
           ],
           'mac_framework_headers': [
+            'objc/Framework/Headers/WebRTC/RTCAudioSource.h',
             'objc/Framework/Headers/WebRTC/RTCAudioTrack.h',
             'objc/Framework/Headers/WebRTC/RTCAVFoundationVideoSource.h',
             'objc/Framework/Headers/WebRTC/RTCCameraPreviewView.h',
@@ -258,9 +271,11 @@
             'objc/Framework/Headers/WebRTC/RTCFileLogger.h',
             'objc/Framework/Headers/WebRTC/RTCIceCandidate.h',
             'objc/Framework/Headers/WebRTC/RTCIceServer.h',
+            'objc/Framework/Headers/WebRTC/RTCLegacyStatsReport.h',
             'objc/Framework/Headers/WebRTC/RTCLogging.h',
             'objc/Framework/Headers/WebRTC/RTCMacros.h',
             'objc/Framework/Headers/WebRTC/RTCMediaConstraints.h',
+            'objc/Framework/Headers/WebRTC/RTCMediaSource.h',
             'objc/Framework/Headers/WebRTC/RTCMediaStream.h',
             'objc/Framework/Headers/WebRTC/RTCMediaStreamTrack.h',
             'objc/Framework/Headers/WebRTC/RTCMetrics.h',
@@ -275,7 +290,6 @@
             'objc/Framework/Headers/WebRTC/RTCRtpSender.h',
             'objc/Framework/Headers/WebRTC/RTCSessionDescription.h',
             'objc/Framework/Headers/WebRTC/RTCSSLAdapter.h',
-            'objc/Framework/Headers/WebRTC/RTCStatsReport.h',
             'objc/Framework/Headers/WebRTC/RTCTracing.h',
             'objc/Framework/Headers/WebRTC/RTCVideoFrame.h',
             'objc/Framework/Headers/WebRTC/RTCVideoRenderer.h',
@@ -327,5 +341,39 @@
         }, # rtc_sdk_framework_objc
       ],  # targets
     }],  # OS=="ios" or (OS=="mac" and mac_deployment_target=="10.7")
+    ['OS=="ios"', {
+      'targets': [
+        {
+          'target_name': 'webrtc_h264_video_toolbox',
+          'type': 'static_library',
+          'includes': [ '../build/objc_common.gypi' ],
+          'link_settings': {
+            'xcode_settings': {
+              'OTHER_LDFLAGS': [
+                '-framework CoreFoundation',
+                '-framework CoreMedia',
+                '-framework CoreVideo',
+                '-framework VideoToolbox',
+              ],
+            },
+          },
+          'sources': [
+            'objc/Framework/Classes/h264_video_toolbox_decoder.cc',
+            'objc/Framework/Classes/h264_video_toolbox_decoder.h',
+            'objc/Framework/Classes/h264_video_toolbox_encoder.h',
+            'objc/Framework/Classes/h264_video_toolbox_encoder.mm',
+            'objc/Framework/Classes/h264_video_toolbox_nalu.cc',
+            'objc/Framework/Classes/h264_video_toolbox_nalu.h',
+            'objc/Framework/Classes/videotoolboxvideocodecfactory.cc',
+            'objc/Framework/Classes/videotoolboxvideocodecfactory.h',
+          ],
+          'conditions': [
+            ['build_libyuv==1', {
+              'dependencies': ['<(DEPTH)/third_party/libyuv/libyuv.gyp:libyuv'],
+            }],
+          ],
+        }, # webrtc_h264_video_toolbox
+      ], # targets
+    }], # OS=="ios"
   ],
 }

@@ -10,11 +10,11 @@
 
 #include <memory>
 
-#include "testing/gmock/include/gmock/gmock.h"
-#include "testing/gtest/include/gtest/gtest.h"
 #include "webrtc/modules/rtp_rtcp/include/rtp_rtcp.h"
 #include "webrtc/modules/rtp_rtcp/mocks/mock_rtp_rtcp.h"
 #include "webrtc/modules/video_coding/include/video_codec_interface.h"
+#include "webrtc/test/gmock.h"
+#include "webrtc/test/gtest.h"
 #include "webrtc/video/payload_router.h"
 
 using ::testing::_;
@@ -39,14 +39,15 @@ TEST(PayloadRouterTest, SendOnOneModule) {
   encoded_image._length = 1;
 
   PayloadRouter payload_router(modules, payload_type);
-  payload_router.SetSendStreams(streams);
 
   EXPECT_CALL(rtp, SendOutgoingData(encoded_image._frameType, payload_type,
                                     encoded_image._timeStamp,
                                     encoded_image.capture_time_ms_, &payload,
                                     encoded_image._length, nullptr, _, _))
       .Times(0);
-  EXPECT_EQ(-1, payload_router.Encoded(encoded_image, nullptr, nullptr));
+  EXPECT_NE(
+      EncodedImageCallback::Result::OK,
+      payload_router.OnEncodedImage(encoded_image, nullptr, nullptr).error);
 
   payload_router.set_active(true);
   EXPECT_CALL(rtp, SendOutgoingData(encoded_image._frameType, payload_type,
@@ -54,7 +55,9 @@ TEST(PayloadRouterTest, SendOnOneModule) {
                                     encoded_image.capture_time_ms_, &payload,
                                     encoded_image._length, nullptr, _, _))
       .Times(1);
-  EXPECT_EQ(0, payload_router.Encoded(encoded_image, nullptr, nullptr));
+  EXPECT_EQ(
+      EncodedImageCallback::Result::OK,
+      payload_router.OnEncodedImage(encoded_image, nullptr, nullptr).error);
 
   payload_router.set_active(false);
   EXPECT_CALL(rtp, SendOutgoingData(encoded_image._frameType, payload_type,
@@ -62,7 +65,9 @@ TEST(PayloadRouterTest, SendOnOneModule) {
                                     encoded_image.capture_time_ms_, &payload,
                                     encoded_image._length, nullptr, _, _))
       .Times(0);
-  EXPECT_EQ(-1, payload_router.Encoded(encoded_image, nullptr, nullptr));
+  EXPECT_NE(
+      EncodedImageCallback::Result::OK,
+      payload_router.OnEncodedImage(encoded_image, nullptr, nullptr).error);
 
   payload_router.set_active(true);
   EXPECT_CALL(rtp, SendOutgoingData(encoded_image._frameType, payload_type,
@@ -70,16 +75,9 @@ TEST(PayloadRouterTest, SendOnOneModule) {
                                     encoded_image.capture_time_ms_, &payload,
                                     encoded_image._length, nullptr, _, _))
       .Times(1);
-  EXPECT_EQ(0, payload_router.Encoded(encoded_image, nullptr, nullptr));
-
-  streams.clear();
-  payload_router.SetSendStreams(streams);
-  EXPECT_CALL(rtp, SendOutgoingData(encoded_image._frameType, payload_type,
-                                    encoded_image._timeStamp,
-                                    encoded_image.capture_time_ms_, &payload,
-                                    encoded_image._length, nullptr, _, _))
-      .Times(0);
-  EXPECT_EQ(-1, payload_router.Encoded(encoded_image, nullptr, nullptr));
+  EXPECT_EQ(
+      EncodedImageCallback::Result::OK,
+      payload_router.OnEncodedImage(encoded_image, nullptr, nullptr).error);
 }
 
 TEST(PayloadRouterTest, SendSimulcast) {
@@ -100,7 +98,6 @@ TEST(PayloadRouterTest, SendSimulcast) {
   encoded_image._length = 1;
 
   PayloadRouter payload_router(modules, payload_type);
-  payload_router.SetSendStreams(streams);
 
   CodecSpecificInfo codec_info_1;
   memset(&codec_info_1, 0, sizeof(CodecSpecificInfo));
@@ -114,7 +111,9 @@ TEST(PayloadRouterTest, SendSimulcast) {
                                       encoded_image._length, nullptr, _, _))
       .Times(1);
   EXPECT_CALL(rtp_2, SendOutgoingData(_, _, _, _, _, _, _, _, _)).Times(0);
-  EXPECT_EQ(0, payload_router.Encoded(encoded_image, &codec_info_1, nullptr));
+  EXPECT_EQ(EncodedImageCallback::Result::OK,
+            payload_router.OnEncodedImage(encoded_image, &codec_info_1, nullptr)
+                .error);
 
   CodecSpecificInfo codec_info_2;
   memset(&codec_info_2, 0, sizeof(CodecSpecificInfo));
@@ -128,7 +127,9 @@ TEST(PayloadRouterTest, SendSimulcast) {
       .Times(1);
   EXPECT_CALL(rtp_1, SendOutgoingData(_, _, _, _, _, _, _, _, _))
       .Times(0);
-  EXPECT_EQ(0, payload_router.Encoded(encoded_image, &codec_info_2, nullptr));
+  EXPECT_EQ(EncodedImageCallback::Result::OK,
+            payload_router.OnEncodedImage(encoded_image, &codec_info_2, nullptr)
+                .error);
 
   // Inactive.
   payload_router.set_active(false);
@@ -136,19 +137,12 @@ TEST(PayloadRouterTest, SendSimulcast) {
       .Times(0);
   EXPECT_CALL(rtp_2, SendOutgoingData(_, _, _, _, _, _, _, _, _))
       .Times(0);
-  EXPECT_EQ(-1, payload_router.Encoded(encoded_image, &codec_info_1, nullptr));
-  EXPECT_EQ(-1, payload_router.Encoded(encoded_image, &codec_info_2, nullptr));
-
-  // Invalid simulcast index.
-  streams.pop_back();  // Remove a stream.
-  payload_router.SetSendStreams(streams);
-  payload_router.set_active(true);
-  EXPECT_CALL(rtp_1, SendOutgoingData(_, _, _, _, _, _, _, _, _))
-      .Times(0);
-  EXPECT_CALL(rtp_2, SendOutgoingData(_, _, _, _, _, _, _, _, _))
-      .Times(0);
-  codec_info_2.codecSpecific.VP8.simulcastIdx = 1;
-  EXPECT_EQ(-1, payload_router.Encoded(encoded_image, &codec_info_2, nullptr));
+  EXPECT_NE(EncodedImageCallback::Result::OK,
+            payload_router.OnEncodedImage(encoded_image, &codec_info_1, nullptr)
+                .error);
+  EXPECT_NE(EncodedImageCallback::Result::OK,
+            payload_router.OnEncodedImage(encoded_image, &codec_info_2, nullptr)
+                .error);
 }
 
 TEST(PayloadRouterTest, MaxPayloadLength) {
@@ -164,7 +158,6 @@ TEST(PayloadRouterTest, MaxPayloadLength) {
 
   EXPECT_EQ(kDefaultMaxLength, PayloadRouter::DefaultMaxPayloadLength());
   std::vector<VideoStream> streams(2);
-  payload_router.SetSendStreams(streams);
 
   // Modules return a higher length than the default value.
   EXPECT_CALL(rtp_1, MaxDataPayloadLength())

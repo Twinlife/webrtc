@@ -38,22 +38,14 @@
 
 namespace cricket {
 
+// Enum for UMA metrics, used to record whether the channel is
+// connected/connecting/disconnected when ICE restart happens.
+enum class IceRestartState { CONNECTING, CONNECTED, DISCONNECTED, MAX_VALUE };
+
 extern const int WEAK_PING_INTERVAL;
-extern const int STABILIZING_WRITABLE_CONNECTION_PING_INTERVAL;
-extern const int STABLE_WRITABLE_CONNECTION_PING_INTERVAL;
+extern const int WEAK_OR_STABILIZING_WRITABLE_CONNECTION_PING_INTERVAL;
+extern const int STRONG_AND_STABLE_WRITABLE_CONNECTION_PING_INTERVAL;
 static const int MIN_PINGS_AT_WEAK_PING_INTERVAL = 3;
-
-struct IceParameters {
-  std::string ufrag;
-  std::string pwd;
-  IceParameters(const std::string& ice_ufrag, const std::string& ice_pwd)
-      : ufrag(ice_ufrag), pwd(ice_pwd) {}
-
-  bool operator==(const IceParameters& other) {
-    return ufrag == other.ufrag && pwd == other.pwd;
-  }
-  bool operator!=(const IceParameters& other) { return !(*this == other); }
-};
 
 // Adds the port on which the candidate originated.
 class RemoteCandidate : public Candidate {
@@ -88,10 +80,8 @@ class P2PTransportChannel : public TransportChannelImpl,
   void SetIceRole(IceRole role) override;
   IceRole GetIceRole() const override { return ice_role_; }
   void SetIceTiebreaker(uint64_t tiebreaker) override;
-  void SetIceCredentials(const std::string& ice_ufrag,
-                         const std::string& ice_pwd) override;
-  void SetRemoteIceCredentials(const std::string& ice_ufrag,
-                               const std::string& ice_pwd) override;
+  void SetIceParameters(const IceParameters& ice_params) override;
+  void SetRemoteIceParameters(const IceParameters& ice_params) override;
   void SetRemoteIceMode(IceMode mode) override;
   // TODO(deadbeef): Deprecated. Remove when Chromium's
   // IceTransportChannel does not depend on this.
@@ -109,6 +99,7 @@ class P2PTransportChannel : public TransportChannelImpl,
   // TODO(deadbeef): Use rtc::Optional instead of negative values.
   void SetIceConfig(const IceConfig& config) override;
   const IceConfig& config() const;
+  void SetMetricsObserver(webrtc::MetricsObserverInterface* observer) override;
 
   // From TransportChannel:
   int SendPacket(const char* data,
@@ -209,13 +200,8 @@ class P2PTransportChannel : public TransportChannelImpl,
     return remote_candidates_;
   }
 
-  // Public for unit tests.
-  void set_remote_supports_renomination(bool remote_supports_renomination) {
-    remote_supports_renomination_ = remote_supports_renomination;
-  }
-
  private:
-  rtc::Thread* thread() const { return worker_thread_; }
+  rtc::Thread* thread() const { return network_thread_; }
   bool IsGettingPorts() { return allocator_session()->IsGettingPorts(); }
 
   // A transport channel is weak if the current best connection is either
@@ -275,7 +261,10 @@ class P2PTransportChannel : public TransportChannelImpl,
   void RememberRemoteCandidate(const Candidate& remote_candidate,
                                PortInterface* origin_port);
   bool IsPingable(const Connection* conn, int64_t now) const;
-  bool IsSelectedConnectionPingable(int64_t now);
+  // Whether a writable connection is past its ping interval and needs to be
+  // pinged again.
+  bool WritableConnectionPastPingInterval(const Connection* conn,
+                                          int64_t now) const;
   int CalculateActiveWritablePingInterval(const Connection* conn,
                                           int64_t now) const;
   void PingConnection(Connection* conn);
@@ -331,16 +320,16 @@ class P2PTransportChannel : public TransportChannelImpl,
   // Returns true if the new_connection is selected for transmission.
   bool MaybeSwitchSelectedConnection(Connection* new_connection,
                                      const std::string& reason);
-
+  // Gets the best connection for each network.
+  std::map<rtc::Network*, Connection*> GetBestConnectionByNetwork() const;
+  std::vector<Connection*> GetBestWritableConnectionPerNetwork() const;
   void PruneConnections();
   bool IsBackupConnection(const Connection* conn) const;
 
-  Connection* FindConnectionToPing(int64_t now);
   Connection* FindOldestConnectionNeedingTriggeredCheck(int64_t now);
   // Between |conn1| and |conn2|, this function returns the one which should
   // be pinged first.
-  Connection* SelectMostPingableConnection(Connection* conn1,
-                                           Connection* conn2);
+  Connection* MorePingable(Connection* conn1, Connection* conn2);
   // Select the connection which is Relay/Relay. If both of them are,
   // UDP relay protocol takes precedence.
   Connection* MostLikelyToWork(Connection* conn1, Connection* conn2);
@@ -366,7 +355,7 @@ class P2PTransportChannel : public TransportChannelImpl,
   }
 
   PortAllocator* allocator_;
-  rtc::Thread* worker_thread_;
+  rtc::Thread* network_thread_;
   bool incoming_only_;
   int error_;
   std::vector<std::unique_ptr<PortAllocatorSession>> allocator_sessions_;
@@ -395,8 +384,7 @@ class P2PTransportChannel : public TransportChannelImpl,
   bool had_connection_ = false;  // if connections_ has ever been nonempty
   typedef std::map<rtc::Socket::Option, int> OptionMap;
   OptionMap options_;
-  std::string ice_ufrag_;
-  std::string ice_pwd_;
+  IceParameters ice_parameters_;
   std::vector<IceParameters> remote_ice_parameters_;
   IceMode remote_ice_mode_;
   IceRole ice_role_;
@@ -410,13 +398,11 @@ class P2PTransportChannel : public TransportChannelImpl,
   IceConfig config_;
   int last_sent_packet_id_ = -1;  // -1 indicates no packet was sent before.
   bool started_pinging_ = false;
-  // TODO(honghaiz): Put this and ICE role inside ICEParameters and rename this
-  // as renomination. Set its value in subsequent CLs based on signaling
-  // exchange.
-  bool remote_supports_renomination_ = false;
   // The value put in the "nomination" attribute for the next nominated
   // connection. A zero-value indicates the connection will not be nominated.
   uint32_t nomination_ = 0;
+
+  webrtc::MetricsObserverInterface* metrics_observer_ = nullptr;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(P2PTransportChannel);
 };

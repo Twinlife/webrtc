@@ -43,8 +43,6 @@
             'android/jni/androidmetrics_jni.cc',
             'android/jni/androidnetworkmonitor_jni.cc',
             'android/jni/androidnetworkmonitor_jni.h',
-            'android/jni/androidvideocapturer_jni.cc',
-            'android/jni/androidvideocapturer_jni.h',
             'android/jni/androidvideotracksource_jni.cc',
             'android/jni/classreferenceholder.cc',
             'android/jni/classreferenceholder.h',
@@ -55,8 +53,6 @@
             'android/jni/peerconnection_jni.cc',
             'android/jni/surfacetexturehelper_jni.cc',
             'android/jni/surfacetexturehelper_jni.h',
-            'androidvideocapturer.cc',
-            'androidvideocapturer.h',
             'androidvideotracksource.cc',
             'androidvideotracksource.h',
           ],
@@ -99,11 +95,33 @@
   ],  # conditions
   'targets': [
     {
+      'target_name': 'call_api',
+      'type': 'static_library',
+      'dependencies': [
+        # TODO(kjellander): Add remaining dependencies when webrtc:4243 is done.
+        ':audio_mixer_api',
+        '<(webrtc_root)/base/base.gyp:rtc_base_approved',
+        '<(webrtc_root)/common.gyp:webrtc_common',
+        '<(webrtc_root)/modules/modules.gyp:audio_encoder_interface',
+      ],
+      'sources': [
+        'call/audio_receive_stream.h',
+        'call/audio_send_stream.cc',
+        'call/audio_send_stream.h',
+        'call/audio_sink.h',
+        'call/audio_state.h',
+        'call/flexfec_receive_stream.h'
+      ],
+    },
+    {
       'target_name': 'libjingle_peerconnection',
       'type': 'static_library',
       'dependencies': [
+        ':call_api',
+        ':rtc_stats_api',
         '<(webrtc_root)/media/media.gyp:rtc_media',
         '<(webrtc_root)/pc/pc.gyp:rtc_pc',
+        '<(webrtc_root)/stats/stats.gyp:rtc_stats',
       ],
       'sources': [
         'audiotrack.cc',
@@ -144,6 +162,8 @@
         'proxy.h',
         'remoteaudiosource.cc',
         'remoteaudiosource.h',
+        'rtcstatscollector.cc',
+        'rtcstatscollector.h',
         'rtpparameters.h',
         'rtpreceiver.cc',
         'rtpreceiver.h',
@@ -201,5 +221,29 @@
         }],
       ],
     },  # target libjingle_peerconnection
+    {
+      # GN version: webrtc/api:rtc_stats_api
+      'target_name': 'rtc_stats_api',
+      'type': 'static_library',
+      'dependencies': [
+        '<(webrtc_root)/base/base.gyp:rtc_base_approved',
+      ],
+      'sources': [
+        'stats/rtcstats.h',
+        'stats/rtcstats_objects.h',
+        'stats/rtcstatsreport.h',
+      ],
+    },  # target rtc_stats_api
+    {
+      # GN version: webrtc/api:audio_mixer_api
+      'target_name': 'audio_mixer_api',
+      'type': 'static_library',
+      'dependencies': [
+        '<(webrtc_root)/base/base.gyp:rtc_base_approved',
+      ],
+      'sources': [
+        'audio/audio_mixer.h',
+      ],
+    },  # target rtc_stats_api
   ],  # targets
 }

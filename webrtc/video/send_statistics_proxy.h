@@ -14,6 +14,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "webrtc/base/criticalsection.h"
 #include "webrtc/base/exp_filter.h"
@@ -39,6 +40,9 @@ class SendStatisticsProxy : public CpuOveruseMetricsObserver,
                             public SendSideDelayObserver {
  public:
   static const int kStatsTimeoutMs;
+  // Number of required samples to be collected before a metric is added
+  // to a rtc histogram.
+  static const int kMinRequiredMetricsSamples = 200;
 
   SendStatisticsProxy(Clock* clock,
                       const VideoSendStream::Config& config,
@@ -52,15 +56,21 @@ class SendStatisticsProxy : public CpuOveruseMetricsObserver,
   // Used to update incoming frame rate.
   void OnIncomingFrame(int width, int height);
 
-  void OnEncoderStatsUpdate(uint32_t framerate,
-                            uint32_t bitrate,
-                            const std::string& encoder_name);
+  // Used to indicate that the current input frame resolution is restricted due
+  // to cpu usage.
+  void SetCpuRestrictedResolution(bool cpu_restricted);
+  // Used to update the number of times the input frame resolution has changed
+  // due to cpu adaptation.
+  void OnCpuRestrictedResolutionChanged(bool cpu_restricted_resolution);
+
+  void OnEncoderStatsUpdate(uint32_t framerate, uint32_t bitrate);
   void OnSuspendChange(bool is_suspended);
   void OnInactiveSsrc(uint32_t ssrc);
 
   // Used to indicate change in content type, which may require a change in
-  // how stats are collected.
-  void SetContentType(VideoEncoderConfig::ContentType content_type);
+  // how stats are collected and set the configured preferred media bitrate.
+  void OnEncoderReconfigured(const VideoEncoderConfig& encoder_config,
+                             uint32_t preferred_bitrate_bps);
 
   // Used to update the encoder target rate.
   void OnSetEncoderTargetRate(uint32_t bitrate_bps);
@@ -128,15 +138,17 @@ class SendStatisticsProxy : public CpuOveruseMetricsObserver,
     int64_t bitrate_update_ms;
   };
   struct QpCounters {
-    SampleCounter vp8;  // QP range: 0-127
-    SampleCounter vp9;  // QP range: 0-255
+    SampleCounter vp8;   // QP range: 0-127
+    SampleCounter vp9;   // QP range: 0-255
+    SampleCounter h264;  // QP range: 0-51
   };
   void PurgeOldStats() EXCLUSIVE_LOCKS_REQUIRED(crit_);
   VideoSendStream::StreamStats* GetStatsEntry(uint32_t ssrc)
       EXCLUSIVE_LOCKS_REQUIRED(crit_);
 
   Clock* const clock_;
-  const VideoSendStream::Config config_;
+  const std::string payload_name_;
+  const VideoSendStream::Config::Rtp rtp_config_;
   rtc::CriticalSection crit_;
   VideoEncoderConfig::ContentType content_type_ GUARDED_BY(crit_);
   const int64_t start_ms_;
@@ -154,7 +166,7 @@ class SendStatisticsProxy : public CpuOveruseMetricsObserver,
                         Clock* clock);
     ~UmaSamplesContainer();
 
-    void UpdateHistograms(const VideoSendStream::Config& config,
+    void UpdateHistograms(const VideoSendStream::Config::Rtp& rtp_config,
                           const VideoSendStream::Stats& current_stats);
 
     const std::string uma_prefix_;
@@ -169,6 +181,7 @@ class SendStatisticsProxy : public CpuOveruseMetricsObserver,
     BoolSampleCounter key_frame_counter_;
     BoolSampleCounter quality_limited_frame_counter_;
     SampleCounter quality_downscales_counter_;
+    BoolSampleCounter cpu_limited_frame_counter_;
     BoolSampleCounter bw_limited_frame_counter_;
     SampleCounter bw_resolutions_disabled_counter_;
     SampleCounter delay_counter_;

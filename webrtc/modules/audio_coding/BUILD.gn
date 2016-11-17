@@ -9,7 +9,6 @@
 import("../../build/webrtc.gni")
 import("audio_coding.gni")
 import("//build/config/arm.gni")
-import("//testing/test.gni")
 import("//third_party/protobuf/proto_library.gni")
 
 audio_codec_deps = [
@@ -40,26 +39,48 @@ audio_coding_deps = audio_codec_deps + [
                       "../../system_wrappers",
                     ]
 
-source_set("audio_decoder_factory_interface") {
+rtc_static_library("audio_format") {
   sources = [
-    "codecs/audio_decoder_factory.h",
     "codecs/audio_format.cc",
     "codecs/audio_format.h",
   ]
-  configs += [ "../..:common_config" ]
-  public_configs = [ "../..:common_inherited_config" ]
   deps = [
     "../..:webrtc_common",
   ]
 }
 
-source_set("builtin_audio_decoder_factory") {
+rtc_static_library("audio_format_conversion") {
+  sources = [
+    "codecs/audio_format_conversion.cc",
+    "codecs/audio_format_conversion.h",
+  ]
+  deps = [
+    ":audio_format",
+    "../..:webrtc_common",
+    "../../base:rtc_base_approved",
+  ]
+}
+
+rtc_source_set("audio_decoder_factory_interface") {
+  sources = [
+    "codecs/audio_decoder_factory.h",
+  ]
+  deps = [
+    ":audio_decoder_interface",
+    ":audio_format",
+
+    # TODO(charujain): Clean this dependency when downstream projects are
+    # updated to properly depend on audio_format_conversion target.
+    ":audio_format_conversion",
+    "../../base:rtc_base_approved",
+  ]
+}
+
+rtc_static_library("builtin_audio_decoder_factory") {
   sources = [
     "codecs/builtin_audio_decoder_factory.cc",
     "codecs/builtin_audio_decoder_factory.h",
   ]
-  configs += [ "../..:common_config" ]
-  public_configs = [ "../..:common_inherited_config" ]
   deps = [
            "../..:webrtc_common",
            ":audio_decoder_factory_interface",
@@ -67,15 +88,13 @@ source_set("builtin_audio_decoder_factory") {
   defines = audio_codec_defines
 }
 
-source_set("rent_a_codec") {
+rtc_static_library("rent_a_codec") {
   sources = [
     "acm2/acm_codec_database.cc",
     "acm2/acm_codec_database.h",
     "acm2/rent_a_codec.cc",
     "acm2/rent_a_codec.h",
   ]
-  configs += [ "../..:common_config" ]
-  public_configs = [ "../..:common_inherited_config" ]
   deps = [ "../..:webrtc_common" ] + audio_codec_deps
   defines = audio_codec_defines
 }
@@ -87,7 +106,7 @@ config("audio_coding_config") {
   ]
 }
 
-source_set("audio_coding") {
+rtc_static_library("audio_coding") {
   sources = [
     "acm2/acm_common_defs.h",
     "acm2/acm_receiver.cc",
@@ -99,20 +118,13 @@ source_set("audio_coding") {
     "acm2/call_statistics.h",
     "acm2/codec_manager.cc",
     "acm2/codec_manager.h",
-    "acm2/initial_delay_manager.cc",
-    "acm2/initial_delay_manager.h",
     "include/audio_coding_module.h",
     "include/audio_coding_module_typedefs.h",
   ]
 
   defines = []
 
-  configs += [ "../..:common_config" ]
-
-  public_configs = [
-    "../..:common_inherited_config",
-    ":audio_coding_config",
-  ]
+  public_configs = [ ":audio_coding_config" ]
 
   if (rtc_include_opus) {
     public_deps = [
@@ -127,39 +139,32 @@ source_set("audio_coding") {
     ]
   }
 
-  if (is_clang) {
-    # Suppress warnings from the Chromium Clang plugins (bugs.webrtc.org/163).
-    configs -= [ "//build/config/clang:find_bad_constructs" ]
-  }
-
   deps = audio_coding_deps + [
            ":neteq",
            ":rent_a_codec",
-           "../..:rtc_event_log",
+           "../../logging:rtc_event_log_api",
          ]
   defines = audio_coding_defines
 }
 
-source_set("audio_decoder_interface") {
+rtc_static_library("audio_decoder_interface") {
   sources = [
     "codecs/audio_decoder.cc",
     "codecs/audio_decoder.h",
+    "codecs/legacy_encoded_audio_frame.cc",
+    "codecs/legacy_encoded_audio_frame.h",
   ]
-  configs += [ "../..:common_config" ]
-  public_configs = [ "../..:common_inherited_config" ]
   deps = [
     "../..:webrtc_common",
     "../../base:rtc_base_approved",
   ]
 }
 
-source_set("audio_encoder_interface") {
+rtc_static_library("audio_encoder_interface") {
   sources = [
     "codecs/audio_encoder.cc",
     "codecs/audio_encoder.h",
   ]
-  configs += [ "../..:common_config" ]
-  public_configs = [ "../..:common_inherited_config" ]
   deps = [
     "../..:webrtc_common",
     "../../base:rtc_base_approved",
@@ -173,7 +178,7 @@ config("cng_config") {
   ]
 }
 
-source_set("cng") {
+rtc_static_library("cng") {
   sources = [
     "codecs/cng/audio_encoder_cng.cc",
     "codecs/cng/audio_encoder_cng.h",
@@ -181,12 +186,7 @@ source_set("cng") {
     "codecs/cng/webrtc_cng.h",
   ]
 
-  configs += [ "../..:common_config" ]
-
-  public_configs = [
-    "../..:common_inherited_config",
-    ":cng_config",
-  ]
+  public_configs = [ ":cng_config" ]
 
   deps = [
     ":audio_encoder_interface",
@@ -198,18 +198,13 @@ config("red_config") {
   include_dirs = [ "codecs/red" ]
 }
 
-source_set("red") {
+rtc_static_library("red") {
   sources = [
     "codecs/red/audio_encoder_copy_red.cc",
     "codecs/red/audio_encoder_copy_red.h",
   ]
 
-  configs += [ "../..:common_config" ]
-
-  public_configs = [
-    "../..:common_inherited_config",
-    ":red_config",
-  ]
+  public_configs = [ ":red_config" ]
 
   deps = [
     ":audio_encoder_interface",
@@ -224,7 +219,7 @@ config("g711_config") {
   ]
 }
 
-source_set("g711") {
+rtc_static_library("g711") {
   sources = [
     "codecs/g711/audio_decoder_pcm.cc",
     "codecs/g711/audio_decoder_pcm.h",
@@ -236,12 +231,7 @@ source_set("g711") {
     "codecs/g711/g711_interface.h",
   ]
 
-  configs += [ "../..:common_config" ]
-
-  public_configs = [
-    "../..:common_inherited_config",
-    ":g711_config",
-  ]
+  public_configs = [ ":g711_config" ]
 
   deps = [
     ":audio_decoder_interface",
@@ -256,7 +246,7 @@ config("g722_config") {
   ]
 }
 
-source_set("g722") {
+rtc_static_library("g722") {
   sources = [
     "codecs/g722/audio_decoder_g722.cc",
     "codecs/g722/audio_decoder_g722.h",
@@ -269,12 +259,7 @@ source_set("g722") {
     "codecs/g722/g722_interface.h",
   ]
 
-  configs += [ "../..:common_config" ]
-
-  public_configs = [
-    "../..:common_inherited_config",
-    ":g722_config",
-  ]
+  public_configs = [ ":g722_config" ]
 
   deps = [
     ":audio_decoder_interface",
@@ -289,7 +274,7 @@ config("ilbc_config") {
   ]
 }
 
-source_set("ilbc") {
+rtc_static_library("ilbc") {
   sources = [
     "codecs/ilbc/abs_quant.c",
     "codecs/ilbc/abs_quant.h",
@@ -436,28 +421,23 @@ source_set("ilbc") {
     "codecs/ilbc/xcorr_coef.h",
   ]
 
-  configs += [ "../..:common_config" ]
-
-  public_configs = [
-    "../..:common_inherited_config",
-    ":ilbc_config",
-  ]
+  public_configs = [ ":ilbc_config" ]
 
   deps = [
     ":audio_decoder_interface",
     ":audio_encoder_interface",
+    "../../base:rtc_base_approved",
     "../../common_audio",
   ]
 }
 
-source_set("isac_common") {
+rtc_static_library("isac_common") {
   sources = [
     "codecs/isac/audio_encoder_isac_t.h",
     "codecs/isac/audio_encoder_isac_t_impl.h",
     "codecs/isac/locked_bandwidth_info.cc",
     "codecs/isac/locked_bandwidth_info.h",
   ]
-  public_configs = [ "../..:common_inherited_config" ]
 }
 
 config("isac_config") {
@@ -467,7 +447,7 @@ config("isac_config") {
   ]
 }
 
-source_set("isac") {
+rtc_static_library("isac") {
   sources = [
     "codecs/isac/main/include/audio_decoder_isac.h",
     "codecs/isac/main/include/audio_encoder_isac.h",
@@ -529,17 +509,14 @@ source_set("isac") {
     libs = [ "m" ]
   }
 
-  configs += [ "../..:common_config" ]
-
-  public_configs = [
-    "../..:common_inherited_config",
-    ":isac_config",
-  ]
+  public_configs = [ ":isac_config" ]
 
   deps = [
     ":audio_decoder_interface",
     ":audio_encoder_interface",
     ":isac_common",
+    "../..:webrtc_common",
+    "../../base:rtc_base_approved",
     "../../common_audio",
   ]
 }
@@ -551,7 +528,7 @@ config("isac_fix_config") {
   ]
 }
 
-source_set("isac_fix") {
+rtc_static_library("isac_fix") {
   sources = [
     "codecs/isac/fix/include/audio_decoder_isacfix.h",
     "codecs/isac/fix/include/audio_encoder_isacfix.h",
@@ -603,16 +580,7 @@ source_set("isac_fix") {
     "codecs/isac/fix/source/transform_tables.c",
   ]
 
-  if (!is_win) {
-    defines = [ "WEBRTC_LINUX" ]
-  }
-
-  configs += [ "../..:common_config" ]
-
-  public_configs = [
-    "../..:common_inherited_config",
-    ":isac_fix_config",
-  ]
+  public_configs = [ ":isac_fix_config" ]
 
   deps = [
     ":audio_decoder_interface",
@@ -663,7 +631,7 @@ source_set("isac_fix") {
 }
 
 if (rtc_build_with_neon) {
-  source_set("isac_neon") {
+  rtc_static_library("isac_neon") {
     sources = [
       "codecs/isac/fix/source/entropy_coding_neon.c",
       "codecs/isac/fix/source/filterbanks_neon.c",
@@ -676,7 +644,7 @@ if (rtc_build_with_neon) {
       # Enable compilation for the NEON instruction set. This is needed
       # since //build/config/arm.gni only enables NEON for iOS, not Android.
       # This provides the same functionality as webrtc/build/arm_neon.gypi.
-      configs -= [ "//build/config/compiler:compiler_arm_fpu" ]
+      suppressed_configs += [ "//build/config/compiler:compiler_arm_fpu" ]
       cflags = [ "-mfpu=neon" ]
     }
 
@@ -688,9 +656,6 @@ if (rtc_build_with_neon) {
         "-ffat-lto-objects",
       ]
     }
-
-    configs += [ "../..:common_config" ]
-    public_configs = [ "../..:common_inherited_config" ]
 
     deps = [
       "../../common_audio",
@@ -705,7 +670,7 @@ config("pcm16b_config") {
   ]
 }
 
-source_set("pcm16b") {
+rtc_static_library("pcm16b") {
   sources = [
     "codecs/pcm16b/audio_decoder_pcm16b.cc",
     "codecs/pcm16b/audio_decoder_pcm16b.h",
@@ -721,19 +686,14 @@ source_set("pcm16b") {
     ":g711",
   ]
 
-  configs += [ "../..:common_config" ]
-
-  public_configs = [
-    "../..:common_inherited_config",
-    ":pcm16b_config",
-  ]
+  public_configs = [ ":pcm16b_config" ]
 }
 
 config("opus_config") {
   include_dirs = [ "../../.." ]
 }
 
-source_set("webrtc_opus") {
+rtc_static_library("webrtc_opus") {
   sources = [
     "codecs/opus/audio_decoder_opus.cc",
     "codecs/opus/audio_decoder_opus.h",
@@ -747,18 +707,71 @@ source_set("webrtc_opus") {
   deps = [
     ":audio_decoder_interface",
     ":audio_encoder_interface",
+    ":audio_network_adaptor",
     "../../base:rtc_base_approved",
   ]
 
   if (rtc_build_opus) {
-    configs += [ "../..:common_config" ]
-    public_configs = [ "../..:common_inherited_config" ]
-
     public_deps = [
       rtc_opus_dir,
     ]
   } else if (build_with_mozilla) {
     include_dirs = [ getenv("DIST") + "/include/opus" ]
+  }
+}
+
+if (rtc_enable_protobuf) {
+  proto_library("ana_debug_dump_proto") {
+    sources = [
+      "audio_network_adaptor/debug_dump.proto",
+    ]
+    proto_out_dir = "webrtc/modules/audio_coding/audio_network_adaptor"
+  }
+  proto_library("ana_config_proto") {
+    sources = [
+      "audio_network_adaptor/config.proto",
+    ]
+    proto_out_dir = "webrtc/modules/audio_coding/audio_network_adaptor"
+  }
+}
+
+rtc_static_library("audio_network_adaptor") {
+  sources = [
+    "audio_network_adaptor/audio_network_adaptor.cc",
+    "audio_network_adaptor/audio_network_adaptor_impl.cc",
+    "audio_network_adaptor/audio_network_adaptor_impl.h",
+    "audio_network_adaptor/bitrate_controller.cc",
+    "audio_network_adaptor/bitrate_controller.h",
+    "audio_network_adaptor/channel_controller.cc",
+    "audio_network_adaptor/channel_controller.h",
+    "audio_network_adaptor/controller.cc",
+    "audio_network_adaptor/controller.h",
+    "audio_network_adaptor/controller_manager.cc",
+    "audio_network_adaptor/controller_manager.h",
+    "audio_network_adaptor/debug_dump_writer.cc",
+    "audio_network_adaptor/debug_dump_writer.h",
+    "audio_network_adaptor/dtx_controller.cc",
+    "audio_network_adaptor/dtx_controller.h",
+    "audio_network_adaptor/fec_controller.cc",
+    "audio_network_adaptor/fec_controller.h",
+    "audio_network_adaptor/frame_length_controller.cc",
+    "audio_network_adaptor/frame_length_controller.h",
+    "audio_network_adaptor/include/audio_network_adaptor.h",
+    "audio_network_adaptor/smoothing_filter.cc",
+    "audio_network_adaptor/smoothing_filter.h",
+  ]
+
+  deps = [
+    "../..:webrtc_common",
+    "../../system_wrappers",
+  ]
+
+  if (rtc_enable_protobuf) {
+    deps += [
+      ":ana_config_proto",
+      ":ana_debug_dump_proto",
+    ]
+    defines = [ "WEBRTC_AUDIO_NETWORK_ADAPTOR_DEBUG_DUMP" ]
   }
 }
 
@@ -770,7 +783,7 @@ config("neteq_config") {
   ]
 }
 
-source_set("neteq") {
+rtc_static_library("neteq") {
   sources = [
     "neteq/accelerate.cc",
     "neteq/accelerate.h",
@@ -825,14 +838,14 @@ source_set("neteq") {
     "neteq/packet.h",
     "neteq/packet_buffer.cc",
     "neteq/packet_buffer.h",
-    "neteq/payload_splitter.cc",
-    "neteq/payload_splitter.h",
     "neteq/post_decode_vad.cc",
     "neteq/post_decode_vad.h",
     "neteq/preemptive_expand.cc",
     "neteq/preemptive_expand.h",
     "neteq/random_vector.cc",
     "neteq/random_vector.h",
+    "neteq/red_payload_splitter.cc",
+    "neteq/red_payload_splitter.h",
     "neteq/rtcp.cc",
     "neteq/rtcp.h",
     "neteq/statistics_calculator.cc",
@@ -847,12 +860,7 @@ source_set("neteq") {
     "neteq/timestamp_scaler.h",
   ]
 
-  configs += [ "../..:common_config" ]
-
-  public_configs = [
-    "../..:common_inherited_config",
-    ":neteq_config",
-  ]
+  public_configs = [ ":neteq_config" ]
 
   deps = [
     ":audio_decoder_interface",
@@ -889,21 +897,68 @@ source_set("neteq") {
   }
 }
 
+# Although providing only test support, this target must be outside of the
+# rtc_include_tests conditional. The reason is that it supports fuzzer tests
+# that ultimately are built and run as a part of the Chromium ecosystem, which
+# does not set the rtc_include_tests flag.
+rtc_source_set("neteq_test_minimal") {
+  testonly = true
+  sources = [
+    "neteq/tools/encode_neteq_input.cc",
+    "neteq/tools/encode_neteq_input.h",
+    "neteq/tools/neteq_test.cc",
+    "neteq/tools/neteq_test.h",
+  ]
+
+  if (!build_with_chromium && is_clang) {
+    # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+    suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
+  }
+}
+
 if (rtc_include_tests) {
-  source_set("acm_receive_test") {
+  group("audio_coding_tests") {
+    testonly = true
+    public_deps = [
+      ":RTPchange",
+      ":RTPencode",
+      ":RTPjitter",
+      ":RTPtimeshift",
+      ":acm_receive_test",
+      ":acm_send_test",
+      ":audio_classifier_test",
+      ":audio_codec_speed_tests",
+      ":audio_decoder_unittests",
+      ":audio_decoder_unittests",
+      ":delay_test",
+      ":g711_test",
+      ":g722_test",
+      ":ilbc_test",
+      ":insert_packet_with_timing",
+      ":isac_api_test",
+      ":isac_fix_test",
+      ":isac_switch_samprate_test",
+      ":isac_test",
+      ":neteq_ilbc_quality_test",
+      ":neteq_isac_quality_test",
+      ":neteq_opus_quality_test",
+      ":neteq_pcmu_quality_test",
+      ":neteq_speed_test",
+      ":rtp_analyze",
+      ":rtpcat",
+      ":webrtc_opus_fec_test",
+    ]
+    if (rtc_enable_protobuf) {
+      public_deps += [ ":neteq_rtpplay" ]
+    }
+  }
+
+  rtc_source_set("acm_receive_test") {
     testonly = true
     sources = [
-      "acm2/acm_receive_test_oldapi.cc",
-      "acm2/acm_receive_test_oldapi.h",
+      "acm2/acm_receive_test.cc",
+      "acm2/acm_receive_test.h",
     ]
-
-    configs += [ "../..:common_config" ]
-    public_configs = [ "../..:common_inherited_config" ]
-
-    if (is_clang) {
-      # Suppress warnings from the Chromium Clang plugins (bugs.webrtc.org/163).
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
-    }
 
     defines = audio_coding_defines
 
@@ -914,20 +969,12 @@ if (rtc_include_tests) {
            ]
   }
 
-  source_set("acm_send_test") {
+  rtc_source_set("acm_send_test") {
     testonly = true
     sources = [
-      "acm2/acm_send_test_oldapi.cc",
-      "acm2/acm_send_test_oldapi.h",
+      "acm2/acm_send_test.cc",
+      "acm2/acm_send_test.h",
     ]
-
-    configs += [ "../..:common_config" ]
-    public_configs = [ "../..:common_inherited_config" ]
-
-    if (is_clang) {
-      # Suppress warnings from the Chromium Clang plugins (bugs.webrtc.org/163).
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
-    }
 
     defines = audio_coding_defines
 
@@ -938,7 +985,7 @@ if (rtc_include_tests) {
            ]
   }
 
-  executable("delay_test") {
+  rtc_executable("delay_test") {
     testonly = true
     sources = [
       "test/Channel.cc",
@@ -947,29 +994,20 @@ if (rtc_include_tests) {
       "test/utility.cc",
     ]
 
-    configs += [ "../..:common_config" ]
-    public_configs = [ "../..:common_inherited_config" ]
-
-    if (is_clang) {
-      # Suppress warnings from Chrome's Clang plugins.
-      # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
-    }
-
     deps = [
       ":audio_coding",
+      ":audio_format_conversion",
       "../../:webrtc_common",
       "../../system_wrappers",
       "../../system_wrappers:system_wrappers_default",
       "../../test:test_support",
       "../rtp_rtcp",
-      "//build/config/sanitizers:deps",
       "//testing/gtest",
       "//third_party/gflags:gflags",
     ]
   }  # delay_test
 
-  executable("insert_packet_with_timing") {
+  rtc_executable("insert_packet_with_timing") {
     testonly = true
     sources = [
       "test/Channel.cc",
@@ -977,40 +1015,46 @@ if (rtc_include_tests) {
       "test/insert_packet_with_timing.cc",
     ]
 
-    configs += [ "../..:common_config" ]
-    public_configs = [ "../..:common_inherited_config" ]
-
-    if (is_clang) {
-      # Suppress warnings from Chrome's Clang plugins.
-      # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    if (!build_with_chromium && is_clang) {
+      # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+      suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
     }
 
     deps = [
       ":audio_coding",
+      ":audio_format_conversion",
       "../../:webrtc_common",
       "../../system_wrappers",
       "../../system_wrappers:system_wrappers_default",
       "../../test:test_support",
       "../rtp_rtcp",
-      "//build/config/sanitizers:deps",
       "//testing/gtest",
       "//third_party/gflags:gflags",
     ]
   }  # insert_packet_with_timing
 
-  test("audio_decoder_unittests") {
+  audio_decoder_unittests_resources =
+      [ "//resources/audio_coding/testfile32kHz.pcm" ]
+
+  if (is_ios) {
+    bundle_data("audio_decoder_unittests_bundle_data") {
+      testonly = true
+      sources = audio_decoder_unittests_resources
+      outputs = [
+        "{{bundle_resources_dir}}/{{source_file_part}}",
+      ]
+    }
+  }
+
+  rtc_test("audio_decoder_unittests") {
     testonly = true
     sources = [
       "neteq/audio_decoder_unittest.cc",
     ]
 
-    configs += [ "../..:common_config" ]
-    public_configs = [ "../..:common_inherited_config" ]
-
-    if (is_clang) {
-      # Suppress warnings from the Chromium Clang plugins (bugs.webrtc.org/163).
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    if (!build_with_chromium && is_clang) {
+      # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+      suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
     }
 
     deps = []
@@ -1024,24 +1068,19 @@ if (rtc_include_tests) {
       ":isac_fix",
       ":neteq",
       ":neteq_unittest_tools",
-      "../../common_audio/",
+      "../../common_audio",
       "../../test:test_support_main",
       "//testing/gtest",
     ]
 
+    data = audio_decoder_unittests_resources
+
     if (is_android) {
       deps += [ "//testing/android/native_test:native_test_native_code" ]
       shard_timeout = 900
-
-      data = [
-        "//resources/audio_coding/testfile32kHz.pcm",
-      ]
     }
-
     if (is_ios) {
-      data = [
-        "//resources/audio_coding/testfile32kHz.pcm",
-      ]
+      deps += [ ":audio_decoder_unittests_bundle_data" ]
     }
   }  # audio_decoder_unittests
 
@@ -1053,28 +1092,27 @@ if (rtc_include_tests) {
       proto_out_dir = "webrtc/audio_coding/neteq"
     }
 
-    source_set("rtc_event_log_source") {
+    rtc_static_library("rtc_event_log_source") {
       testonly = true
       sources = [
         "neteq/tools/rtc_event_log_source.cc",
         "neteq/tools/rtc_event_log_source.h",
       ]
 
-      if (is_clang) {
-        # Suppress warnings from the Chromium Clang plugins
-        # (bugs.webrtc.org/163).
-        configs -= [ "//build/config/clang:find_bad_constructs" ]
+      if (!build_with_chromium && is_clang) {
+        # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+        suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
       }
 
       deps = [
-        "../../:rtc_event_log_parser",
+        "../../logging:rtc_event_log_parser",
       ]
       public_deps = [
-        "../../:rtc_event_log_proto",
+        "../../logging:rtc_event_log_proto",
       ]
     }
 
-    test("neteq_rtpplay") {
+    rtc_test("neteq_rtpplay") {
       testonly = true
       defines = []
       deps = []
@@ -1082,10 +1120,9 @@ if (rtc_include_tests) {
         "neteq/tools/neteq_rtpplay.cc",
       ]
 
-      if (is_clang) {
-        # Suppress warnings from the Chromium Clang plugins
-        # (bugs.webrtc.org/163).
-        configs -= [ "//build/config/clang:find_bad_constructs" ]
+      if (!build_with_chromium && is_clang) {
+        # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+        suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
       }
 
       if (is_win) {
@@ -1105,7 +1142,7 @@ if (rtc_include_tests) {
     }
   }
 
-  test("audio_codec_speed_tests") {
+  rtc_test("audio_codec_speed_tests") {
     testonly = true
     defines = []
     deps = []
@@ -1116,10 +1153,9 @@ if (rtc_include_tests) {
       "codecs/tools/audio_codec_speed_test.h",
     ]
 
-    if (is_clang) {
-      # Suppress warnings from the Chromium Clang plugins
-      # (bugs.webrtc.org/163).
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    if (!build_with_chromium && is_clang) {
+      # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+      suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
     }
 
     if (is_android) {
@@ -1132,12 +1168,12 @@ if (rtc_include_tests) {
       ":webrtc_opus",
       "../../system_wrappers:system_wrappers_default",
       "../../test:test_support_main",
-      "../audio_processing/",
+      "../audio_processing",
       "//testing/gtest",
     ]
   }
 
-  source_set("neteq_test_support") {
+  rtc_source_set("neteq_test_support") {
     testonly = true
     sources = [
       "neteq/tools/neteq_external_decoder_test.cc",
@@ -1146,12 +1182,9 @@ if (rtc_include_tests) {
       "neteq/tools/neteq_performance_test.h",
     ]
 
-    configs += [ "../..:common_config" ]
-    public_configs = [ "../..:common_inherited_config" ]
-
-    if (is_clang) {
-      # Suppress warnings from the Chromium Clang plugins (bugs.webrtc.org/163).
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    if (!build_with_chromium && is_clang) {
+      # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+      suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
     }
 
     deps = [
@@ -1159,23 +1192,19 @@ if (rtc_include_tests) {
       ":neteq_unittest_tools",
       ":pcm16b",
       "//testing/gtest",
-      "//third_party/gflags",
     ]
   }
 
-  source_set("neteq_quality_test_support") {
+  rtc_source_set("neteq_quality_test_support") {
     testonly = true
     sources = [
       "neteq/tools/neteq_quality_test.cc",
       "neteq/tools/neteq_quality_test.h",
     ]
 
-    configs += [ "../..:common_config" ]
-    public_configs = [ "../..:common_inherited_config" ]
-
-    if (is_clang) {
-      # Suppress warnings from the Chromium Clang plugins (bugs.webrtc.org/163).
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    if (!build_with_chromium && is_clang) {
+      # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+      suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
     }
 
     deps = [
@@ -1190,7 +1219,7 @@ if (rtc_include_tests) {
     include_dirs = [ "tools" ]
   }
 
-  source_set("neteq_unittest_tools") {
+  rtc_source_set("neteq_unittest_tools") {
     testonly = true
     sources = [
       "neteq/tools/audio_checksum.h",
@@ -1209,12 +1238,11 @@ if (rtc_include_tests) {
       "neteq/tools/neteq_packet_source_input.h",
       "neteq/tools/neteq_replacement_input.cc",
       "neteq/tools/neteq_replacement_input.h",
-      "neteq/tools/neteq_test.cc",
-      "neteq/tools/neteq_test.h",
       "neteq/tools/output_audio_file.h",
       "neteq/tools/output_wav_file.h",
       "neteq/tools/packet.cc",
       "neteq/tools/packet.h",
+      "neteq/tools/packet_source.cc",
       "neteq/tools/packet_source.h",
       "neteq/tools/resample_input_audio_file.cc",
       "neteq/tools/resample_input_audio_file.h",
@@ -1224,18 +1252,15 @@ if (rtc_include_tests) {
       "neteq/tools/rtp_generator.h",
     ]
 
-    configs += [ "../..:common_config" ]
-    public_configs = [
-      "../..:common_inherited_config",
-      ":neteq_unittest_tools_config",
-    ]
+    public_configs = [ ":neteq_unittest_tools_config" ]
 
-    if (is_clang) {
-      # Suppress warnings from the Chromium Clang plugins (bugs.webrtc.org/163).
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    if (!build_with_chromium && is_clang) {
+      # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+      suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
     }
 
     deps = [
+      ":neteq_test_minimal",
       "../../common_audio",
       "../../test:rtp_test_utils",
       "../rtp_rtcp",
@@ -1246,7 +1271,7 @@ if (rtc_include_tests) {
     }
   }
 
-  source_set("neteq_test_tools") {
+  rtc_source_set("neteq_test_tools") {
     testonly = true
     sources = [
       "neteq/test/NETEQTEST_DummyRTPpacket.cc",
@@ -1300,7 +1325,7 @@ if (rtc_include_tests) {
     ]
   }
 
-  executable("RTPencode") {
+  rtc_executable("RTPencode") {
     testonly = true
 
     deps = [
@@ -1314,7 +1339,6 @@ if (rtc_include_tests) {
       ":pcm16b",
       ":webrtc_opus",
       "../../common_audio",
-      "//build/config/sanitizers:deps",
     ]
 
     configs += [ ":RTPencode_config" ]
@@ -1336,7 +1360,7 @@ if (rtc_include_tests) {
     }
   }
 
-  executable("RTPchange") {
+  rtc_executable("RTPchange") {
     testonly = true
 
     sources = [
@@ -1345,11 +1369,10 @@ if (rtc_include_tests) {
 
     deps = [
       ":neteq_test_tools",
-      "//build/config/sanitizers:deps",
     ]
   }
 
-  executable("rtpcat") {
+  rtc_executable("rtpcat") {
     testonly = true
 
     sources = [
@@ -1359,12 +1382,11 @@ if (rtc_include_tests) {
     deps = [
       "../../system_wrappers:system_wrappers_default",
       "../../test:rtp_test_utils",
-      "//build/config/sanitizers:deps",
       "//testing/gtest",
     ]
   }
 
-  executable("RTPtimeshift") {
+  rtc_executable("RTPtimeshift") {
     testonly = true
 
     sources = [
@@ -1373,16 +1395,15 @@ if (rtc_include_tests) {
 
     deps = [
       ":neteq_test_tools",
-      "//build/config/sanitizers:deps",
       "//testing/gtest",
     ]
   }
 
-  executable("RTPjitter") {
+  rtc_executable("RTPjitter") {
     testonly = true
     deps = [
       "../..:webrtc_common",
-      "//build/config/sanitizers:deps",
+      "../../base:rtc_base_approved",
       "//testing/gtest",
     ]
     sources = [
@@ -1390,7 +1411,7 @@ if (rtc_include_tests) {
     ]
   }
 
-  executable("rtp_analyze") {
+  rtc_executable("rtp_analyze") {
     testonly = true
 
     sources = [
@@ -1402,19 +1423,17 @@ if (rtc_include_tests) {
       ":neteq_unittest_tools",
       ":pcm16b",
       "../../system_wrappers:system_wrappers_default",
-      "//build/config/sanitizers:deps",
       "//testing/gtest",
       "//third_party/gflags:gflags",
     ]
 
-    if (is_clang) {
-      # Suppress warnings from Chrome's Clang plugins.
-      # See http://code.google.com/p/webrtc/issues/detail?id=163 for details.
-      configs -= [ "//build/config/clang:find_bad_constructs" ]
+    if (!build_with_chromium && is_clang) {
+      # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+      suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
     }
   }
 
-  executable("neteq_opus_quality_test") {
+  rtc_executable("neteq_opus_quality_test") {
     testonly = true
 
     sources = [
@@ -1427,13 +1446,12 @@ if (rtc_include_tests) {
       ":neteq_unittest_tools",
       ":webrtc_opus",
       "../../test:test_support_main",
-      "//build/config/sanitizers:deps",
       "//testing/gtest",
       "//third_party/gflags",
     ]
   }
 
-  executable("neteq_speed_test") {
+  rtc_executable("neteq_speed_test") {
     testonly = true
 
     sources = [
@@ -1445,12 +1463,11 @@ if (rtc_include_tests) {
       ":neteq_test_support",
       "../../system_wrappers:system_wrappers_default",
       "../../test:test_support",
-      "//build/config/sanitizers:deps",
       "//third_party/gflags",
     ]
   }
 
-  executable("audio_classifier_test") {
+  rtc_executable("audio_classifier_test") {
     testonly = true
     sources = [
       "neteq/test/audio_classifier_test.cc",
@@ -1459,11 +1476,10 @@ if (rtc_include_tests) {
       ":neteq",
       ":webrtc_opus",
       "../../system_wrappers:system_wrappers_default",
-      "//build/config/sanitizers:deps",
     ]
   }
 
-  executable("neteq_ilbc_quality_test") {
+  rtc_executable("neteq_ilbc_quality_test") {
     testonly = true
 
     sources = [
@@ -1477,13 +1493,12 @@ if (rtc_include_tests) {
       ":neteq_unittest_tools",
       "../../system_wrappers:system_wrappers_default",
       "../../test:test_support_main",
-      "//build/config/sanitizers:deps",
       "//testing/gtest",
       "//third_party/gflags",
     ]
   }
 
-  executable("neteq_isac_quality_test") {
+  rtc_executable("neteq_isac_quality_test") {
     testonly = true
 
     sources = [
@@ -1495,13 +1510,12 @@ if (rtc_include_tests) {
       ":neteq",
       ":neteq_quality_test_support",
       "../../test:test_support_main",
-      "//build/config/sanitizers:deps",
       "//testing/gtest",
       "//third_party/gflags",
     ]
   }
 
-  executable("neteq_pcmu_quality_test") {
+  rtc_executable("neteq_pcmu_quality_test") {
     testonly = true
 
     sources = [
@@ -1513,13 +1527,12 @@ if (rtc_include_tests) {
       ":neteq",
       ":neteq_quality_test_support",
       "../../test:test_support_main",
-      "//build/config/sanitizers:deps",
       "//testing/gtest",
       "//third_party/gflags",
     ]
   }
 
-  executable("isac_fix_test") {
+  rtc_executable("isac_fix_test") {
     testonly = true
 
     sources = [
@@ -1529,7 +1542,6 @@ if (rtc_include_tests) {
     deps = [
       ":isac_fix",
       "../../test:test_support",
-      "//build/config/sanitizers:deps",
     ]
 
     if (is_win) {
@@ -1540,34 +1552,134 @@ if (rtc_include_tests) {
     }
   }
 
-  executable("g711_test") {
+  config("isac_test_warnings_config") {
+    if (is_win && is_clang) {
+      cflags = [
+        # Disable warnings failing when compiling with Clang on Windows.
+        # https://bugs.chromium.org/p/webrtc/issues/detail?id=5366
+        "-Wno-format",
+      ]
+    }
+  }
+
+  rtc_executable("isac_test") {
+    testonly = true
+
+    sources = [
+      "codecs/isac/main/test/simpleKenny.c",
+      "codecs/isac/main/util/utility.c",
+    ]
+
+    include_dirs = [
+      "codecs/isac/main/include",
+      "codecs/isac/main/test",
+      "codecs/isac/main/util",
+    ]
+
+    deps = [
+      ":isac",
+      "../../base:rtc_base_approved",
+    ]
+
+    configs += [ ":isac_test_warnings_config" ]
+  }
+
+  rtc_executable("g711_test") {
     testonly = true
 
     sources = [
       "codecs/g711/test/testG711.cc",
     ]
 
-    configs += [ "../..:common_config" ]
-    public_configs = [ "../..:common_inherited_config" ]
-
     deps = [
       ":g711",
     ]
   }
 
-  executable("g722_test") {
+  rtc_executable("g722_test") {
     testonly = true
 
     sources = [
       "codecs/g722/test/testG722.cc",
     ]
 
-    configs += [ "../..:common_config" ]
-    public_configs = [ "../..:common_inherited_config" ]
-
     deps = [
       ":g722",
       "../..:webrtc_common",
     ]
+  }
+
+  rtc_executable("isac_api_test") {
+    testonly = true
+
+    sources = [
+      "codecs/isac/main/test/ReleaseTest-API/ReleaseTest-API.cc",
+      "codecs/isac/main/util/utility.c",
+    ]
+
+    deps = [
+      ":isac",
+      "../../base:rtc_base_approved",
+    ]
+
+    include_dirs = [
+      "codecs/isac/main/include",
+      "codecs/isac/main/test",
+      "codecs/isac/main/util",
+    ]
+  }
+
+  rtc_executable("isac_switch_samprate_test") {
+    testonly = true
+
+    sources = [
+      "codecs/isac/main/test/SwitchingSampRate/SwitchingSampRate.cc",
+      "codecs/isac/main/util/utility.c",
+    ]
+
+    deps = [
+      ":isac",
+    ]
+
+    include_dirs = [
+      "codecs/isac/main/include",
+      "codecs/isac/main/test",
+      "codecs/isac/main/util",
+      "../../common_audio/signal_processing/include",
+    ]
+  }
+
+  rtc_executable("ilbc_test") {
+    testonly = true
+
+    sources = [
+      "codecs/ilbc/test/iLBC_test.c",
+    ]
+
+    deps = [
+      ":ilbc",
+    ]
+  }
+
+  rtc_executable("webrtc_opus_fec_test") {
+    testonly = true
+
+    sources = [
+      "codecs/opus/opus_fec_test.cc",
+    ]
+
+    deps = [
+      ":webrtc_opus",
+      "../../base:rtc_base_approved",
+      "../../common_audio",
+      "../../test:test_support",
+      "../../test:test_support_main",
+      "//testing/gtest",
+    ]
+
+    if (!build_with_chromium && is_clang) {
+      # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
+      suppressed_configs += [ "//build/config/clang:find_bad_constructs" ]
+    }
   }
 }

@@ -24,66 +24,13 @@ public interface VideoCapturer {
     void onCapturerStopped();
 
     // Delivers a captured frame. Called on a Java thread owned by VideoCapturer.
-    void onByteBufferFrameCaptured(byte[] data, int width, int height, int rotation,
-        long timeStamp);
+    void onByteBufferFrameCaptured(
+        byte[] data, int width, int height, int rotation, long timeStamp);
 
     // Delivers a captured frame in a texture with id |oesTextureId|. Called on a Java thread
     // owned by VideoCapturer.
-    void onTextureFrameCaptured(
-        int width, int height, int oesTextureId, float[] transformMatrix, int rotation,
-        long timestamp);
-
-    // Requests an output format from the video capturer. Captured frames
-    // by the camera will be scaled/or dropped by the video capturer.
-    // Called on a Java thread owned by VideoCapturer.
-    void onOutputFormatRequest(int width, int height, int framerate);
-  }
-
-  // An implementation of CapturerObserver that forwards all calls from
-  // Java to the C layer.
-  static class NativeObserver implements CapturerObserver {
-    private final long nativeCapturer;
-
-    public NativeObserver(long nativeCapturer) {
-      this.nativeCapturer = nativeCapturer;
-    }
-
-    @Override
-    public void onCapturerStarted(boolean success) {
-      nativeCapturerStarted(nativeCapturer, success);
-    }
-
-    @Override
-    public void onCapturerStopped() {}
-
-    @Override
-    public void onByteBufferFrameCaptured(byte[] data, int width, int height,
-        int rotation, long timeStamp) {
-      nativeOnByteBufferFrameCaptured(nativeCapturer, data, data.length, width, height, rotation,
-          timeStamp);
-    }
-
-    @Override
-    public void onTextureFrameCaptured(
-        int width, int height, int oesTextureId, float[] transformMatrix, int rotation,
-        long timestamp) {
-      nativeOnTextureFrameCaptured(nativeCapturer, width, height, oesTextureId, transformMatrix,
-          rotation, timestamp);
-    }
-
-    @Override
-    public void onOutputFormatRequest(int width, int height, int framerate) {
-      nativeOnOutputFormatRequest(nativeCapturer, width, height, framerate);
-    }
-
-    private native void nativeCapturerStarted(long nativeCapturer,
-        boolean success);
-    private native void nativeOnByteBufferFrameCaptured(long nativeCapturer,
-        byte[] data, int length, int width, int height, int rotation, long timeStamp);
-    private native void nativeOnTextureFrameCaptured(long nativeCapturer, int width, int height,
-        int oesTextureId, float[] transformMatrix, int rotation, long timestamp);
-    private native void nativeOnOutputFormatRequest(long nativeCapturer,
-        int width, int height, int framerate);
+    void onTextureFrameCaptured(int width, int height, int oesTextureId, float[] transformMatrix,
+        int rotation, long timestamp);
   }
 
   // An implementation of CapturerObserver that forwards all calls from
@@ -107,40 +54,26 @@ public interface VideoCapturer {
     }
 
     @Override
-    public void onByteBufferFrameCaptured(byte[] data, int width, int height,
-        int rotation, long timeStamp) {
-      nativeOnByteBufferFrameCaptured(nativeSource, data, data.length, width, height, rotation,
-          timeStamp);
+    public void onByteBufferFrameCaptured(
+        byte[] data, int width, int height, int rotation, long timeStamp) {
+      nativeOnByteBufferFrameCaptured(
+          nativeSource, data, data.length, width, height, rotation, timeStamp);
     }
 
     @Override
-    public void onTextureFrameCaptured(
-        int width, int height, int oesTextureId, float[] transformMatrix, int rotation,
-        long timestamp) {
-      nativeOnTextureFrameCaptured(nativeSource, width, height, oesTextureId, transformMatrix,
-          rotation, timestamp);
+    public void onTextureFrameCaptured(int width, int height, int oesTextureId,
+        float[] transformMatrix, int rotation, long timestamp) {
+      nativeOnTextureFrameCaptured(
+          nativeSource, width, height, oesTextureId, transformMatrix, rotation, timestamp);
     }
 
-    @Override
-    public void onOutputFormatRequest(int width, int height, int framerate) {
-      nativeOnOutputFormatRequest(nativeSource, width, height, framerate);
-    }
-
-    private native void nativeCapturerStarted(long nativeSource,
-        boolean success);
+    private native void nativeCapturerStarted(long nativeSource, boolean success);
     private native void nativeCapturerStopped(long nativeSource);
-    private native void nativeOnByteBufferFrameCaptured(long nativeSource,
-        byte[] data, int length, int width, int height, int rotation, long timeStamp);
+    private native void nativeOnByteBufferFrameCaptured(long nativeSource, byte[] data, int length,
+        int width, int height, int rotation, long timeStamp);
     private native void nativeOnTextureFrameCaptured(long nativeSource, int width, int height,
         int oesTextureId, float[] transformMatrix, int rotation, long timestamp);
-    private native void nativeOnOutputFormatRequest(long nativeSource,
-        int width, int height, int framerate);
   }
-
-  /**
-   * Returns a list with all the formats this VideoCapturer supports.
-   */
-  List<CameraEnumerationAndroid.CaptureFormat> getSupportedFormats();
 
   /**
    * This function is used to initialize the camera thread, the android application context, and the
@@ -164,12 +97,15 @@ public interface VideoCapturer {
    */
   void stopCapture() throws InterruptedException;
 
-  void onOutputFormatRequest(int width, int height, int framerate);
-
   void changeCaptureFormat(int width, int height, int framerate);
 
   /**
    * Perform any final cleanup here. No more capturing will be done after this call.
    */
   void dispose();
+
+  /**
+   * @return true if-and-only-if this is a screen capturer.
+   */
+  boolean isScreencast();
 }

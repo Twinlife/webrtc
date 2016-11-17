@@ -6,11 +6,8 @@
 # in the file PATENTS.  All contributing project authors may
 # be found in the AUTHORS file in the root of the source tree.
 
-import json
 import os
-import platform
 import re
-import subprocess
 import sys
 
 
@@ -63,7 +60,6 @@ NATIVE_API_DIRS = (
 # These directories should not be used but are maintained only to avoid breaking
 # some legacy downstream code.
 LEGACY_API_DIRS = (
-  'talk/app/webrtc',
   'webrtc/base',
   'webrtc/common_audio/include',
   'webrtc/modules/audio_coding/include',
@@ -236,6 +232,7 @@ def _CheckNoRtcBaseDeps(input_api, gyp_files, output_api):
   violating_files = []
   for f in gyp_files:
     gyp_exceptions = (
+        'audio_device.gypi',
         'base_tests.gyp',
         'desktop_capture.gypi',
         'p2p.gyp',
@@ -253,6 +250,41 @@ def _CheckNoRtcBaseDeps(input_api, gyp_files, output_api):
         'Depending on rtc_base is not allowed. Change your dependency to '
         'rtc_base_approved and possibly sanitize and move the desired source '
         'file(s) to rtc_base_approved.\nChanged GYP files:',
+        items=violating_files)]
+  return []
+
+def _CheckNoRtcBaseDepsGn(input_api, gn_files, output_api):
+  pattern = input_api.re.compile(r'base:rtc_base\s*"')
+  violating_files = []
+  for f in gn_files:
+    gn_exceptions = (
+        os.path.join('audio_device', 'BUILD.gn'),
+        os.path.join('base_tests', 'BUILD.gn'),
+        os.path.join('desktop_capture', 'BUILD.gn'),
+        os.path.join('p2p', 'BUILD.gn'),
+        os.path.join('sdk', 'BUILD.gn'),
+        os.path.join('webrtc_test_common', 'BUILD.gn'),
+        os.path.join('webrtc_tests', 'BUILD.gn'),
+
+        # TODO(ehmaldonado): Clean up references to rtc_base in these files.
+        # See https://bugs.chromium.org/p/webrtc/issues/detail?id=3806
+        os.path.join('webrtc', 'BUILD.gn'),
+        os.path.join('xmllite', 'BUILD.gn'),
+        os.path.join('xmpp', 'BUILD.gn'),
+        os.path.join('modules', 'BUILD.gn'),
+        os.path.join('audio_device', 'BUILD.gn'),
+        os.path.join('pc', 'BUILD.gn'),
+    )
+    if f.LocalPath().endswith(gn_exceptions):
+      continue
+    contents = input_api.ReadFile(f)
+    if pattern.search(contents):
+      violating_files.append(f)
+  if violating_files:
+    return [output_api.PresubmitError(
+        'Depending on rtc_base is not allowed. Change your dependency to '
+        'rtc_base_approved and possibly sanitize and move the desired source '
+        'file(s) to rtc_base_approved.\nChanged GN files:',
         items=violating_files)]
   return []
 
@@ -288,6 +320,34 @@ def _CheckNoSourcesAboveGyp(input_api, gyp_files, output_api):
         items=violating_gyp_files)]
   return []
 
+def _CheckNoSourcesAboveGn(input_api, gn_files, output_api):
+  # Disallow referencing source files with paths above the GN file location.
+  source_pattern = input_api.re.compile(r' +sources \+?= \[(.*?)\]',
+                                        re.MULTILINE | re.DOTALL)
+  file_pattern = input_api.re.compile(r'"((\.\./.*?)|(//.*?))"')
+  violating_gn_files = set()
+  violating_source_entries = []
+  for gn_file in gn_files:
+    contents = input_api.ReadFile(gn_file)
+    for source_block_match in source_pattern.finditer(contents):
+      # Find all source list entries starting with ../ in the source block
+      # (exclude overrides entries).
+      for file_list_match in file_pattern.finditer(source_block_match.group(1)):
+        source_file = file_list_match.group(1)
+        if 'overrides/' not in source_file:
+          violating_source_entries.append(source_file)
+          violating_gn_files.add(gn_file)
+  if violating_gn_files:
+    return [output_api.PresubmitError(
+        'Referencing source files above the directory of the GN file is not '
+        'allowed. Please introduce new GYP targets and/or GN files in the '
+        'proper location instead.\n'
+        'Invalid source entries:\n'
+        '%s\n'
+        'Violating GN files:' % '\n'.join(violating_source_entries),
+        items=violating_gn_files)]
+  return []
+
 def _CheckGypChanges(input_api, output_api):
   source_file_filter = lambda x: input_api.FilterSourceFile(
       x, white_list=(r'.+\.(gyp|gypi)$',))
@@ -305,6 +365,25 @@ def _CheckGypChanges(input_api, output_api):
         items=gyp_files))
     result.extend(_CheckNoRtcBaseDeps(input_api, gyp_files, output_api))
     result.extend(_CheckNoSourcesAboveGyp(input_api, gyp_files, output_api))
+  return result
+
+def _CheckGnChanges(input_api, output_api):
+  source_file_filter = lambda x: input_api.FilterSourceFile(
+      x, white_list=(r'.+\.(gn|gni)$',))
+
+  gn_files = []
+  for f in input_api.AffectedSourceFiles(source_file_filter):
+    if f.LocalPath().startswith('webrtc'):
+      gn_files.append(f)
+
+  result = []
+  if gn_files:
+    result.append(output_api.PresubmitNotifyResult(
+        'As you\'re changing GN files: please make sure corresponding GYP'
+        'files are also updated.\nChanged GN files:',
+        items=gn_files))
+    result.extend(_CheckNoRtcBaseDepsGn(input_api, gn_files, output_api))
+    result.extend(_CheckNoSourcesAboveGn(input_api, gn_files, output_api))
   return result
 
 def _CheckUnwantedDependencies(input_api, output_api):
@@ -366,6 +445,21 @@ def _CheckUnwantedDependencies(input_api, output_api):
         warning_descriptions))
   return results
 
+def _CheckChangeHasBugField(input_api, output_api):
+  """Requires that the changelist have a BUG= field.
+
+  This check is stricter than the one in depot_tools/presubmit_canned_checks.py
+  since it fails the presubmit if the BUG= field is missing or doesn't contain
+  a bug reference.
+  """
+  if input_api.change.BUG:
+    return []
+  else:
+    return [output_api.PresubmitError(
+        'The BUG=[bug number] field is mandatory. Please create a bug and '
+        'reference it using either of:\n'
+        ' * https://bugs.webrtc.org - reference it using BUG=webrtc:XXXX\n'
+        ' * https://crbug.com - reference it using BUG=chromium:XXXXXX')]
 
 def _CheckJSONParseErrors(input_api, output_api):
   """Check that JSON files do not contain syntax errors."""
@@ -419,6 +513,7 @@ def _CommonChecks(input_api, output_api):
   # they do not follow C++ lint rules.
   black_list = input_api.DEFAULT_BLACK_LIST + (
     r".*\bobjc[\\\/].*",
+    r".*objc\.[hcm]+$",
     r"webrtc\/build\/ios\/SDK\/.*",
   )
   source_file_filter = lambda x: input_api.FilterSourceFile(x, None, black_list)
@@ -459,6 +554,7 @@ def _CommonChecks(input_api, output_api):
                         ],
       pylintrc='pylintrc'))
 
+  # TODO(nisse): talk/ is no more, so make below checks simpler?
   # WebRTC can't use the presubmit_canned_checks.PanProjectChecks function since
   # we need to have different license checks in talk/ and webrtc/ directories.
   # Instead, hand-picked checks are included below.
@@ -489,6 +585,7 @@ def _CommonChecks(input_api, output_api):
   results.extend(_CheckNoIOStreamInHeaders(input_api, output_api))
   results.extend(_CheckNoFRIEND_TEST(input_api, output_api))
   results.extend(_CheckGypChanges(input_api, output_api))
+  results.extend(_CheckGnChanges(input_api, output_api))
   results.extend(_CheckUnwantedDependencies(input_api, output_api))
   results.extend(_CheckJSONParseErrors(input_api, output_api))
   results.extend(_RunPythonTests(input_api, output_api))
@@ -512,36 +609,10 @@ def CheckChangeOnCommit(input_api, output_api):
       input_api, output_api))
   results.extend(input_api.canned_checks.CheckChangeHasDescription(
       input_api, output_api))
-  results.extend(input_api.canned_checks.CheckChangeHasBugField(
-      input_api, output_api))
+  results.extend(_CheckChangeHasBugField(input_api, output_api))
   results.extend(input_api.canned_checks.CheckChangeHasTestField(
       input_api, output_api))
   results.extend(input_api.canned_checks.CheckTreeIsOpen(
       input_api, output_api,
       json_url='http://webrtc-status.appspot.com/current?format=json'))
   return results
-
-
-# pylint: disable=W0613
-def GetPreferredTryMasters(project, change):
-  cq_config_path = os.path.join(
-      change.RepositoryRoot(), 'infra', 'config', 'cq.cfg')
-  # commit_queue.py below is a script in depot_tools directory, which has a
-  # 'builders' command to retrieve a list of CQ builders from the CQ config.
-  is_win = platform.system() == 'Windows'
-  masters = json.loads(subprocess.check_output(
-      ['commit_queue', 'builders', cq_config_path], shell=is_win))
-
-  try_config = {}
-  for master in masters:
-    try_config.setdefault(master, {})
-    for builder in masters[master]:
-      if 'presubmit' in builder:
-        # Do not trigger presubmit builders, since they're likely to fail
-        # (e.g. OWNERS checks before finished code review), and we're running
-        # local presubmit anyway.
-        pass
-      else:
-        try_config[master][builder] = ['defaulttests']
-
-  return try_config

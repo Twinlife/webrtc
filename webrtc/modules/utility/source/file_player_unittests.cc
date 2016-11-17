@@ -18,9 +18,9 @@
 #include <string>
 
 #include "gflags/gflags.h"
-#include "testing/gtest/include/gtest/gtest.h"
 #include "webrtc/base/md5digest.h"
 #include "webrtc/base/stringencode.h"
+#include "webrtc/test/gtest.h"
 #include "webrtc/test/testsupport/fileutils.h"
 
 DEFINE_bool(file_player_output, false, "Generate reference files.");
@@ -34,7 +34,7 @@ class FilePlayerTest : public ::testing::Test {
   static const int kSampleRateHz = 8000;
 
   FilePlayerTest()
-      : player_(FilePlayer::NewFilePlayer(kId, kFileFormat)),
+      : player_(FilePlayer::CreateFilePlayer(kId, kFileFormat)),
         output_file_(NULL) {}
 
   void SetUp() override {

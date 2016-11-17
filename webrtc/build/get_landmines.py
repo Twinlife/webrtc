@@ -38,6 +38,14 @@ def print_landmines():
   # landmine.
   # See the Chromium version in src/build/get_landmines.py for usage examples.
   print 'Clobber to remove out/{Debug,Release}/args.gn (webrtc:5070)'
+  if platform() == 'android':
+    print ('Clobber to remove artifacts on Android causing lint errors after '
+           'rolling in https://codereview.webrtc.org/2293863002')
+    print ('Clobber to remove old AppRTCDemo artifacts after renaming to '
+           'AppRTCMobile in https://codereview.webrtc.org/2373443005')
+  if platform() == 'win':
+    print 'Clobber to resolve some issues with corrupt .pdb files on bots.'
+    print 'Clobber due to corrupt .pdb files (after #14623)'
 
 
 def main():

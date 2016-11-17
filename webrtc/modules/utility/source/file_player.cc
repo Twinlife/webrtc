@@ -12,13 +12,13 @@
 
 #include "webrtc/common_audio/resampler/include/resampler.h"
 #include "webrtc/common_types.h"
-#include "webrtc/engine_configurations.h"
 #include "webrtc/modules/media_file/media_file.h"
 #include "webrtc/modules/media_file/media_file_defines.h"
 #include "webrtc/modules/utility/source/coder.h"
 #include "webrtc/system_wrappers/include/critical_section_wrapper.h"
 #include "webrtc/system_wrappers/include/logging.h"
 #include "webrtc/typedefs.h"
+#include "webrtc/voice_engine_configurations.h"
 
 namespace webrtc {
 
@@ -371,7 +371,7 @@ int32_t FilePlayerImpl::SetUpAudioDecoder() {
 
 }  // namespace
 
-std::unique_ptr<FilePlayer> FilePlayer::NewFilePlayer(
+std::unique_ptr<FilePlayer> FilePlayer::CreateFilePlayer(
     uint32_t instanceID,
     FileFormats fileFormat) {
   switch (fileFormat) {
@@ -388,15 +388,6 @@ std::unique_ptr<FilePlayer> FilePlayer::NewFilePlayer(
       assert(false);
       return nullptr;
   }
-}
-
-FilePlayer* FilePlayer::CreateFilePlayer(uint32_t instanceID,
-                                         FileFormats fileFormat) {
-  return FilePlayer::NewFilePlayer(instanceID, fileFormat).release();
-}
-
-void FilePlayer::DestroyFilePlayer(FilePlayer* player) {
-  delete player;
 }
 
 }  // namespace webrtc

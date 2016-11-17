@@ -18,7 +18,8 @@
       ],
       'sources': [
         # Common
-        'include/fec_receiver.h',
+        'include/flexfec_receiver.h',
+        'include/flexfec_sender.h',
         'include/receive_statistics.h',
         'include/remote_ntp_time_estimator.h',
         'include/rtp_header_parser.h',
@@ -26,9 +27,9 @@
         'include/rtp_receiver.h',
         'include/rtp_rtcp.h',
         'include/rtp_rtcp_defines.h',
+        'include/ulpfec_receiver.h',
         'source/byte_io.h',
-        'source/fec_receiver_impl.cc',
-        'source/fec_receiver_impl.h',
+        'source/flexfec_receiver.cc',
         'source/packet_loss_stats.cc',
         'source/packet_loss_stats.h',
         'source/playout_delay_oracle.cc',
@@ -80,6 +81,8 @@
         'source/rtcp_packet/sender_report.h',
         'source/rtcp_packet/sli.cc',
         'source/rtcp_packet/sli.h',
+        'source/rtcp_packet/target_bitrate.cc',
+        'source/rtcp_packet/target_bitrate.h',
         'source/rtcp_packet/tmmb_item.cc',
         'source/rtcp_packet/tmmb_item.h',
         'source/rtcp_packet/tmmbn.cc',
@@ -92,8 +95,6 @@
         'source/rtcp_packet/voip_metric.h',
         'source/rtcp_receiver.cc',
         'source/rtcp_receiver.h',
-        'source/rtcp_receiver_help.cc',
-        'source/rtcp_receiver_help.h',
         'source/rtcp_sender.cc',
         'source/rtcp_sender.h',
         'source/rtcp_utility.cc',
@@ -132,12 +133,13 @@
         # Video Files
         'source/fec_private_tables_random.h',
         'source/fec_private_tables_bursty.h',
+        'source/flexfec_header_reader_writer.cc',
+        'source/flexfec_header_reader_writer.h',
+        'source/flexfec_sender.cc',
         'source/forward_error_correction.cc',
         'source/forward_error_correction.h',
         'source/forward_error_correction_internal.cc',
         'source/forward_error_correction_internal.h',
-        'source/producer_fec.cc',
-        'source/producer_fec.h',
         'source/rtp_packet_history.cc',
         'source/rtp_packet_history.h',
         'source/rtp_payload_registry.cc',
@@ -158,12 +160,26 @@
         'source/rtp_format_vp9.h',
         'source/rtp_format_video_generic.cc',
         'source/rtp_format_video_generic.h',
+        'source/ulpfec_generator.cc',
+        'source/ulpfec_generator.h',
+        'source/ulpfec_header_reader_writer.cc',
+        'source/ulpfec_header_reader_writer.h',
+        'source/ulpfec_receiver_impl.cc',
+        'source/ulpfec_receiver_impl.h',
         'source/vp8_partition_aggregator.cc',
         'source/vp8_partition_aggregator.h',
         # Mocks
         'mocks/mock_rtp_rtcp.h',
+        'mocks/mock_recovered_packet_receiver.h',
         'source/mock/mock_rtp_payload_strategy.h',
-      ], # source
+       ], # source
+        'conditions': [
+            ['enable_bwe_test_logging==1', {
+              'defines': [ 'BWE_TEST_LOGGING_COMPILE_TIME_ENABLE=1' ],
+            }, {
+              'defines': [ 'BWE_TEST_LOGGING_COMPILE_TIME_ENABLE=0' ],
+            }],
+        ],
       # TODO(jschuh): Bug 1348: fix size_t to int truncations.
       'msvs_disabled_warnings': [ 4267, ],
     },

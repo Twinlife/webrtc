@@ -15,7 +15,6 @@
 #include "webrtc/base/checks.h"
 #include "webrtc/base/logging.h"
 #include "webrtc/base/trace_event.h"
-#include "webrtc/engine_configurations.h"
 #include "webrtc/modules/video_coding/encoded_frame.h"
 #include "webrtc/modules/video_coding/media_optimization.h"
 #include "webrtc/system_wrappers/include/critical_section_wrapper.h"
@@ -75,11 +74,6 @@ int32_t VCMGenericEncoder::Encode(const VideoFrame& frame,
   }
 
   return result;
-}
-
-const char* VCMGenericEncoder::ImplementationName() const {
-  RTC_DCHECK_RUNS_SERIALIZED(&race_checker_);
-  return encoder_->ImplementationName();
 }
 
 void VCMGenericEncoder::SetEncoderParameters(const EncoderParameters& params) {

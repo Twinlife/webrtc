@@ -9,8 +9,6 @@
 {
   'variables': {
     'shared_generated_dir': '<(SHARED_INTERMEDIATE_DIR)/audio_processing/asm_offsets',
-    # Outputs some low-level debug files.
-    'aec_debug_dump%': 0,
   },
   'targets': [
     {
@@ -36,8 +34,6 @@
         'aec/aec_core.cc',
         'aec/aec_core.h',
         'aec/aec_core_optimized_methods.h',
-        'aec/aec_rdft.cc',
-        'aec/aec_rdft.h',
         'aec/aec_resampler.cc',
         'aec/aec_resampler.h',
         'aec/echo_cancellation.cc',
@@ -77,17 +73,22 @@
         'echo_cancellation_impl.h',
         'echo_control_mobile_impl.cc',
         'echo_control_mobile_impl.h',
+        'echo_detector/circular_buffer.cc',
+        'echo_detector/circular_buffer.h',
+        'echo_detector/mean_variance_estimator.cc',
+        'echo_detector/mean_variance_estimator.h',
+        'echo_detector/normalized_covariance_estimator.cc',
+        'echo_detector/normalized_covariance_estimator.h',
         'gain_control_for_experimental_agc.cc',
         'gain_control_for_experimental_agc.h',
         'gain_control_impl.cc',
         'gain_control_impl.h',
         'high_pass_filter_impl.cc',
         'high_pass_filter_impl.h',
+        'include/audio_processing.cc',
         'include/audio_processing.h',
-        'intelligibility/intelligibility_enhancer.cc',
-        'intelligibility/intelligibility_enhancer.h',
-        'intelligibility/intelligibility_utils.cc',
-        'intelligibility/intelligibility_utils.h',
+        'include/config.cc',
+        'include/config.h',
         'level_controller/biquad_filter.cc',
         'level_controller/biquad_filter.h',
         'level_controller/down_sampler.cc',
@@ -96,7 +97,7 @@
         'level_controller/gain_applier.h',
         'level_controller/gain_selector.cc',
         'level_controller/gain_selector.h',
-        'level_controller/lc_constants.h',
+        'level_controller/level_controller_constants.h',
         'level_controller/level_controller.cc',
         'level_controller/level_controller.h',
         'level_controller/noise_spectrum_estimator.cc',
@@ -116,6 +117,8 @@
         'noise_suppression_impl.cc',
         'noise_suppression_impl.h',
         'render_queue_item_verifier.h',
+        'residual_echo_detector.cc',
+        'residual_echo_detector.h',
         'rms_level.cc',
         'rms_level.h',
         'splitting_filter.cc',
@@ -144,6 +147,9 @@
         'utility/delay_estimator_internal.h',
         'utility/delay_estimator_wrapper.cc',
         'utility/delay_estimator_wrapper.h',
+        'utility/ooura_fft.cc',
+        'utility/ooura_fft.h',
+        'utility/ooura_fft_tables_common.h',
         'vad/common.h',
         'vad/gmm.cc',
         'vad/gmm.h',
@@ -168,10 +174,10 @@
         'voice_detection_impl.h',
       ],
       'conditions': [
-        ['aec_debug_dump==1', {
-          'defines': ['WEBRTC_AEC_DEBUG_DUMP=1',],
+        ['apm_debug_dump==1', {
+          'defines': ['WEBRTC_APM_DEBUG_DUMP=1',],
         }, {
-          'defines': ['WEBRTC_AEC_DEBUG_DUMP=0',],
+          'defines': ['WEBRTC_APM_DEBUG_DUMP=0',],
         }],
         ['aec_untrusted_delay_for_testing==1', {
           'defines': ['WEBRTC_UNTRUSTED_DELAY',],
@@ -182,6 +188,17 @@
         ['enable_protobuf==1', {
           'dependencies': ['audioproc_debug_proto'],
           'defines': ['WEBRTC_AUDIOPROC_DEBUG_DUMP'],
+        }],
+        ['enable_intelligibility_enhancer==1', {
+          'defines': ['WEBRTC_INTELLIGIBILITY_ENHANCER=1',],
+          'sources': [
+            'intelligibility/intelligibility_enhancer.cc',
+            'intelligibility/intelligibility_enhancer.h',
+            'intelligibility/intelligibility_utils.cc',
+            'intelligibility/intelligibility_utils.h',
+          ],
+        }, {
+          'defines': ['WEBRTC_INTELLIGIBILITY_ENHANCER=0',],
         }],
         ['prefer_fixed_point==1', {
           'defines': ['WEBRTC_NS_FIXED'],
@@ -228,7 +245,7 @@
             ['mips_float_abi=="hard"', {
               'sources': [
                 'aec/aec_core_mips.cc',
-                'aec/aec_rdft_mips.cc',
+                'utility/ooura_fft_mips.cc',
               ],
             }],
           ],
@@ -267,13 +284,14 @@
           'type': 'static_library',
           'sources': [
             'aec/aec_core_sse2.cc',
-            'aec/aec_rdft_sse2.cc',
+            'utility/ooura_fft_sse2.cc',
+            'utility/ooura_fft_tables_neon_sse2.h',
           ],
           'conditions': [
-            ['aec_debug_dump==1', {
-              'defines': ['WEBRTC_AEC_DEBUG_DUMP=1',],
+            ['apm_debug_dump==1', {
+              'defines': ['WEBRTC_APM_DEBUG_DUMP=1',],
             }, {
-              'defines': ['WEBRTC_AEC_DEBUG_DUMP=0',],
+              'defines': ['WEBRTC_APM_DEBUG_DUMP=0',],
             }],
             ['os_posix==1', {
               'cflags': [ '-msse2', ],
@@ -295,16 +313,17 @@
         ],
         'sources': [
           'aec/aec_core_neon.cc',
-          'aec/aec_rdft_neon.cc',
           'aecm/aecm_core_neon.cc',
           'ns/nsx_core_neon.c',
+          'utility/ooura_fft_neon.cc',
+          'utility/ooura_fft_tables_neon_sse2.h',
         ],
         'conditions': [
-          ['aec_debug_dump==1', {
-            'defines': ['WEBRTC_AEC_DEBUG_DUMP=1',],
+          ['apm_debug_dump==1', {
+            'defines': ['WEBRTC_APM_DEBUG_DUMP=1',],
           }],
-          ['aec_debug_dump==0', {
-            'defines': ['WEBRTC_AEC_DEBUG_DUMP=0',],
+          ['apm_debug_dump==0', {
+            'defines': ['WEBRTC_APM_DEBUG_DUMP=0',],
           }],
         ],
       }],

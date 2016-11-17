@@ -10,9 +10,10 @@
 
 #include "webrtc/call/rampup_tests.h"
 
-#include "testing/gtest/include/gtest/gtest.h"
 #include "webrtc/base/checks.h"
 #include "webrtc/base/platform_thread.h"
+#include "webrtc/test/encoder_settings.h"
+#include "webrtc/test/gtest.h"
 #include "webrtc/test/testsupport/perf_test.h"
 
 namespace webrtc {
@@ -67,7 +68,7 @@ RampUpTester::~RampUpTester() {
 }
 
 Call::Config RampUpTester::GetSenderCallConfig() {
-  Call::Config call_config;
+  Call::Config call_config(&event_log_);
   if (start_bitrate_bps_ != 0) {
     call_config.bitrate_config.start_bitrate_bps = start_bitrate_bps_;
   }
@@ -96,24 +97,47 @@ size_t RampUpTester::GetNumAudioStreams() const {
   return num_audio_streams_;
 }
 
+class RampUpTester::VideoStreamFactory
+    : public VideoEncoderConfig::VideoStreamFactoryInterface {
+ public:
+  VideoStreamFactory() {}
+
+ private:
+  std::vector<VideoStream> CreateEncoderStreams(
+      int width,
+      int height,
+      const VideoEncoderConfig& encoder_config) override {
+    std::vector<VideoStream> streams =
+        test::CreateVideoStreams(width, height, encoder_config);
+    if (encoder_config.number_of_streams == 1) {
+      streams[0].target_bitrate_bps = streams[0].max_bitrate_bps = 2000000;
+    }
+    return streams;
+  }
+};
+
 void RampUpTester::ModifyVideoConfigs(
     VideoSendStream::Config* send_config,
     std::vector<VideoReceiveStream::Config>* receive_configs,
     VideoEncoderConfig* encoder_config) {
   send_config->suspend_below_min_bitrate = true;
-
+  encoder_config->number_of_streams = num_video_streams_;
+  encoder_config->max_bitrate_bps = 2000000;
+  encoder_config->video_stream_factory =
+      new rtc::RefCountedObject<RampUpTester::VideoStreamFactory>();
   if (num_video_streams_ == 1) {
-    encoder_config->streams[0].target_bitrate_bps =
-        encoder_config->streams[0].max_bitrate_bps = 2000000;
     // For single stream rampup until 1mbps
     expected_bitrate_bps_ = kSingleStreamTargetBps;
   } else {
     // For multi stream rampup until all streams are being sent. That means
-    // enough birate to send all the target streams plus the min bitrate of
+    // enough bitrate to send all the target streams plus the min bitrate of
     // the last one.
-    expected_bitrate_bps_ = encoder_config->streams.back().min_bitrate_bps;
-    for (size_t i = 0; i < encoder_config->streams.size() - 1; ++i) {
-      expected_bitrate_bps_ += encoder_config->streams[i].target_bitrate_bps;
+    std::vector<VideoStream> streams = test::CreateVideoStreams(
+        test::CallTest::kDefaultWidth, test::CallTest::kDefaultHeight,
+        *encoder_config);
+    expected_bitrate_bps_ = streams.back().min_bitrate_bps;
+    for (size_t i = 0; i < streams.size() - 1; ++i) {
+      expected_bitrate_bps_ += streams[i].target_bitrate_bps;
     }
   }
 
@@ -145,9 +169,9 @@ void RampUpTester::ModifyVideoConfigs(
     send_config->rtp.rtx.ssrcs = video_rtx_ssrcs_;
   }
   if (red_) {
-    send_config->rtp.fec.ulpfec_payload_type =
+    send_config->rtp.ulpfec.ulpfec_payload_type =
         test::CallTest::kUlpfecPayloadType;
-    send_config->rtp.fec.red_payload_type = test::CallTest::kRedPayloadType;
+    send_config->rtp.ulpfec.red_payload_type = test::CallTest::kRedPayloadType;
   }
 
   size_t i = 0;
@@ -160,10 +184,10 @@ void RampUpTester::ModifyVideoConfigs(
     recv_config.rtp.nack.rtp_history_ms = send_config->rtp.nack.rtp_history_ms;
 
     if (red_) {
-      recv_config.rtp.fec.red_payload_type =
-          send_config->rtp.fec.red_payload_type;
-      recv_config.rtp.fec.ulpfec_payload_type =
-          send_config->rtp.fec.ulpfec_payload_type;
+      recv_config.rtp.ulpfec.red_payload_type =
+          send_config->rtp.ulpfec.red_payload_type;
+      recv_config.rtp.ulpfec.ulpfec_payload_type =
+          send_config->rtp.ulpfec.ulpfec_payload_type;
     }
 
     if (rtx_) {
@@ -188,8 +212,8 @@ void RampUpTester::ModifyAudioConfigs(
   send_config->rtp.ssrc = audio_ssrcs_[0];
   send_config->rtp.extensions.clear();
 
-  send_config->min_bitrate_kbps = 6;
-  send_config->max_bitrate_kbps = 60;
+  send_config->min_bitrate_bps = 6000;
+  send_config->max_bitrate_bps = 60000;
 
   bool transport_cc = false;
   if (extension_type_ == RtpExtension::kAbsSendTimeUri) {
@@ -358,7 +382,7 @@ bool RampUpDownUpTester::PollStats() {
 }
 
 Call::Config RampUpDownUpTester::GetReceiverCallConfig() {
-  Call::Config config;
+  Call::Config config(&event_log_);
   config.bitrate_config.min_bitrate_bps = 10000;
   return config;
 }

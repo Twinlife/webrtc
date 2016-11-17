@@ -8,16 +8,19 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "testing/gmock/include/gmock/gmock.h"
-#include "testing/gtest/include/gtest/gtest.h"
-#include "webrtc/call/mock/mock_rtc_event_log.h"
-#include "webrtc/modules/pacing/mock/mock_paced_sender.h"
+#include "webrtc/logging/rtc_event_log/mock/mock_rtc_event_log.h"
+#include "webrtc/modules/bitrate_controller/include/bitrate_controller.h"
 #include "webrtc/modules/congestion_controller/include/congestion_controller.h"
 #include "webrtc/modules/congestion_controller/include/mock/mock_congestion_controller.h"
+#include "webrtc/modules/pacing/mock/mock_paced_sender.h"
+#include "webrtc/modules/remote_bitrate_estimator/include/bwe_defines.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/mock/mock_remote_bitrate_observer.h"
 #include "webrtc/system_wrappers/include/clock.h"
+#include "webrtc/test/gmock.h"
+#include "webrtc/test/gtest.h"
 
 using testing::_;
+using testing::AtLeast;
 using testing::NiceMock;
 using testing::Return;
 using testing::SaveArg;
@@ -133,10 +136,11 @@ TEST_F(CongestionControllerTest, ResetBweAndBitrates) {
   controller_->ResetBweAndBitrates(new_bitrate, -1, -1);
 
   // If the bitrate is reset to -1, the new starting bitrate will be
-  // the minimum default bitrate 10000bps.
-  int min_default_bitrate = 10000;
-  EXPECT_CALL(observer_, OnNetworkChanged(min_default_bitrate, _, _));
-  EXPECT_CALL(*pacer_, SetEstimatedBitrate(min_default_bitrate));
+  // the minimum default bitrate kMinBitrateBps.
+  EXPECT_CALL(observer_, OnNetworkChanged(
+                             congestion_controller::GetMinBitrateBps(), _, _));
+  EXPECT_CALL(*pacer_,
+              SetEstimatedBitrate(congestion_controller::GetMinBitrateBps()));
   controller_->ResetBweAndBitrates(-1, -1, -1);
 }
 
@@ -167,6 +171,22 @@ TEST_F(CongestionControllerTest,
       .WillOnce(Return(PacedSender::kMaxQueueLengthMs - 1));
   EXPECT_CALL(observer_, OnNetworkChanged(kInitialBitrateBps * 2, _, _));
   controller_->Process();
+}
+
+TEST_F(CongestionControllerTest, GetPacerQueuingDelayMs) {
+  EXPECT_CALL(observer_, OnNetworkChanged(_, _, _)).Times(AtLeast(1));
+
+  const int64_t kQueueTimeMs = 123;
+  EXPECT_CALL(*pacer_, QueueInMs()).WillRepeatedly(Return(kQueueTimeMs));
+  EXPECT_EQ(kQueueTimeMs, controller_->GetPacerQueuingDelayMs());
+
+  // Expect zero pacer delay when network is down.
+  controller_->SignalNetworkState(kNetworkDown);
+  EXPECT_EQ(0, controller_->GetPacerQueuingDelayMs());
+
+  // Network is up, pacer delay should be reported.
+  controller_->SignalNetworkState(kNetworkUp);
+  EXPECT_EQ(kQueueTimeMs, controller_->GetPacerQueuingDelayMs());
 }
 
 }  // namespace test

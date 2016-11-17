@@ -19,8 +19,7 @@ import android.test.suitebuilder.annotation.SmallTest;
 public class Camera1CapturerUsingByteBufferTest extends InstrumentationTestCase {
   static final String TAG = "Camera1CapturerUsingByteBufferTest";
 
-  private class TestObjectFactory
-      extends CameraVideoCapturerTestFixtures.TestObjectFactory {
+  private class TestObjectFactory extends CameraVideoCapturerTestFixtures.TestObjectFactory {
     @Override
     public boolean isCapturingToTexture() {
       return false;
@@ -143,7 +142,7 @@ public class Camera1CapturerUsingByteBufferTest extends InstrumentationTestCase 
     fixtures.returnBufferLateEndToEnd();
   }
 
-  // This test that frames forwarded to a renderer is scaled if onOutputFormatRequest is
+  // This test that frames forwarded to a renderer is scaled if adaptOutputFormat is
   // called. This test both Java and C++ parts of of the stack.
   @MediumTest
   public void testScaleCameraOutput() throws InterruptedException {

@@ -21,6 +21,7 @@
 #include <CoreServices/CoreServices.h>
 #include <Security/Security.h>
 #include "macconversion.h"
+#include "webrtc/base/unixfilesystem.h"
 #endif
 
 #ifdef WEBRTC_IOS
@@ -38,11 +39,15 @@
 #include "webrtc/base/pathutils.h"
 #include "webrtc/base/stringutils.h"
 
-#if defined(WEBRTC_WIN)
-#define _TRY_WINHTTP 1
 #define _TRY_JSPROXY 0
 #define _TRY_WM_FINDPROXY 0
+
+#if defined(WEBRTC_WIN)
+#define _TRY_WINHTTP 1
 #define _TRY_IE_LAN_SETTINGS 1
+#else
+#define _TRY_WINHTTP 0
+#define _TRY_IE_LAN_SETTINGS 0
 #endif  // WEBRTC_WIN
 
 // For all platforms try Firefox.
@@ -388,20 +393,10 @@ bool GetFirefoxProfilePath(Pathname* path) {
   path->AppendFolder("Mozilla");
   path->AppendFolder("Firefox");
 #elif defined(WEBRTC_MAC) && !defined(WEBRTC_IOS)
-  FSRef fr;
-  if (0 != FSFindFolder(kUserDomain, kApplicationSupportFolderType,
-                        kCreateFolder, &fr)) {
-    LOG(LS_ERROR) << "FSFindFolder failed";
-    return false;
-  }
-  char buffer[NAME_MAX + 1];
-  if (0 != FSRefMakePath(&fr, reinterpret_cast<uint8_t*>(buffer),
-                         arraysize(buffer))) {
-    LOG(LS_ERROR) << "FSRefMakePath failed";
-    return false;
-  }
-  path->SetFolder(std::string(buffer));
-  path->AppendFolder("Firefox");
+  rtc::UnixFilesystem filesystem;
+  filesystem.SetApplicationName("Firefox");
+  bool result = filesystem.GetAppDataFolder(path, true);
+  return result;
 #else
   char* user_home = getenv("HOME");
   if (user_home == NULL) {
@@ -1170,9 +1165,6 @@ bool GetMacProxySettings(ProxyInfo* proxy) {
       result = p_putPasswordInProxyInfo(proxy);
     }
 
-    // We created the dictionary with something that had the
-    // word 'copy' in it, so we have to release it, according
-    // to the Carbon memory management standards.
     CFRelease(proxyDict);
   } else {
     LOG(LS_ERROR) << "SCDynamicStoreCopyProxies failed";
@@ -1223,9 +1215,6 @@ bool GetiOSProxySettings(ProxyInfo* proxy) {
       result = true;
   }
 
-  // We created the dictionary with something that had the
-  // word 'copy' in it, so we have to release it, according
-  // to the Carbon memory management standards.
   CFRelease(proxy_dict);
 
   return result;

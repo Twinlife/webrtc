@@ -14,7 +14,6 @@
 #include "webrtc/base/helpers.h"
 #include "webrtc/base/logging.h"
 #include "webrtc/base/ratelimiter.h"
-#include "webrtc/base/timing.h"
 #include "webrtc/media/base/codec.h"
 #include "webrtc/media/base/mediaconstants.h"
 #include "webrtc/media/base/rtputils.h"
@@ -36,8 +35,7 @@ static const size_t kMaxSrtpHmacOverhead = 16;
 
 RtpDataEngine::RtpDataEngine() {
   data_codecs_.push_back(
-      DataCodec(kGoogleRtpDataCodecId, kGoogleRtpDataCodecName));
-  SetTiming(new rtc::Timing());
+      DataCodec(kGoogleRtpDataCodecPlType, kGoogleRtpDataCodecName));
 }
 
 DataMediaChannel* RtpDataEngine::CreateChannel(
@@ -45,7 +43,7 @@ DataMediaChannel* RtpDataEngine::CreateChannel(
   if (data_channel_type != DCT_RTP) {
     return NULL;
   }
-  return new RtpDataMediaChannel(timing_.get());
+  return new RtpDataMediaChannel();
 }
 
 bool FindCodecByName(const std::vector<DataCodec>& codecs,
@@ -60,18 +58,13 @@ bool FindCodecByName(const std::vector<DataCodec>& codecs,
   return false;
 }
 
-RtpDataMediaChannel::RtpDataMediaChannel(rtc::Timing* timing) {
-  Construct(timing);
-}
-
 RtpDataMediaChannel::RtpDataMediaChannel() {
-  Construct(NULL);
+  Construct();
 }
 
-void RtpDataMediaChannel::Construct(rtc::Timing* timing) {
+void RtpDataMediaChannel::Construct() {
   sending_ = false;
   receiving_ = false;
-  timing_ = timing;
   send_limiter_.reset(new rtc::RateLimiter(kDataMaxBandwidth / 8, 1.0));
 }
 
@@ -91,7 +84,7 @@ void RtpClock::Tick(double now, int* seq_num, uint32_t* timestamp) {
 }
 
 const DataCodec* FindUnknownCodec(const std::vector<DataCodec>& codecs) {
-  DataCodec data_codec(kGoogleRtpDataCodecId, kGoogleRtpDataCodecName);
+  DataCodec data_codec(kGoogleRtpDataCodecPlType, kGoogleRtpDataCodecName);
   std::vector<DataCodec>::const_iterator iter;
   for (iter = codecs.begin(); iter != codecs.end(); ++iter) {
     if (!iter->Matches(data_codec)) {
@@ -102,7 +95,7 @@ const DataCodec* FindUnknownCodec(const std::vector<DataCodec>& codecs) {
 }
 
 const DataCodec* FindKnownCodec(const std::vector<DataCodec>& codecs) {
-  DataCodec data_codec(kGoogleRtpDataCodecId, kGoogleRtpDataCodecName);
+  DataCodec data_codec(kGoogleRtpDataCodecPlType, kGoogleRtpDataCodecName);
   std::vector<DataCodec>::const_iterator iter;
   for (iter = codecs.begin(); iter != codecs.end(); ++iter) {
     if (iter->Matches(data_codec)) {
@@ -232,8 +225,7 @@ void RtpDataMediaChannel::OnPacketReceived(
     return;
   }
 
-  DataCodec codec;
-  if (!FindCodecById(recv_codecs_, header.payload_type, &codec)) {
+  if (!FindCodecById(recv_codecs_, header.payload_type)) {
     // For bundling, this will be logged for every message.
     // So disable this logging.
     // LOG(LS_WARNING) << "Not receiving packet "
@@ -313,7 +305,8 @@ bool RtpDataMediaChannel::SendData(
     return false;
   }
 
-  double now = timing_->TimerNow();
+  double now =
+      rtc::TimeMicros() / static_cast<double>(rtc::kNumMicrosecsPerSec);
 
   if (!send_limiter_->CanUse(packet_len, now)) {
     LOG(LS_VERBOSE) << "Dropped data packet of len=" << packet_len

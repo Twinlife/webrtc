@@ -23,6 +23,10 @@
 #include "webrtc/base/sigslot.h"
 #include "webrtc/base/thread.h"
 
+namespace webrtc {
+class MetricsObserverInterface;
+}
+
 namespace cricket {
 
 // PortAllocator is responsible for allocating Port types for a given
@@ -71,6 +75,9 @@ enum {
   // detected initially, it would not be used if a Wi-Fi network is present.
   PORTALLOCATOR_DISABLE_COSTLY_NETWORKS = 0x2000,
 };
+
+// Defines various reasons that have caused ICE regathering.
+enum class IceRegatheringReason { NETWORK_CHANGE, NETWORK_FAILURE, MAX_VALUE };
 
 const uint32_t kDefaultPortAllocatorFlags = 0;
 
@@ -158,14 +165,22 @@ class PortAllocatorSession : public sigslot::has_slots<> {
   // Default filter should be CF_ALL.
   virtual void SetCandidateFilter(uint32_t filter) = 0;
 
-  // Starts gathering STUN and Relay configurations.
+  // Starts gathering ports and ICE candidates.
   virtual void StartGettingPorts() = 0;
-  // Completely stops the gathering process and will not start new ones.
+  // Completely stops gathering. Will not gather again unless StartGettingPorts
+  // is called again.
   virtual void StopGettingPorts() = 0;
   // Whether the session is actively getting ports.
   virtual bool IsGettingPorts() = 0;
-  // ClearGettingPorts and IsCleared are used by continual gathering.
-  // Only stops the existing gathering process but may start new ones if needed.
+
+  //
+  // NOTE: The group of methods below is only used for continual gathering.
+  //
+
+  // ClearGettingPorts should have the same immediate effect as
+  // StopGettingPorts, but if the implementation supports continual gathering,
+  // ClearGettingPorts allows additional ports/candidates to be gathered if the
+  // network conditions change.
   virtual void ClearGettingPorts() = 0;
   // Whether it is in the state where the existing gathering process is stopped,
   // but new ones may be started (basically after calling ClearGettingPorts).
@@ -207,6 +222,9 @@ class PortAllocatorSession : public sigslot::has_slots<> {
   sigslot::signal2<PortAllocatorSession*, const std::vector<Candidate>&>
       SignalCandidatesRemoved;
   sigslot::signal1<PortAllocatorSession*> SignalCandidatesAllocationDone;
+
+  sigslot::signal2<PortAllocatorSession*, IceRegatheringReason>
+      SignalIceRegathering;
 
   virtual uint32_t generation() { return generation_; }
   virtual void set_generation(uint32_t generation) { generation_ = generation; }
@@ -362,12 +380,24 @@ class PortAllocator : public sigslot::has_slots<> {
   const std::string& origin() const { return origin_; }
   void set_origin(const std::string& origin) { origin_ = origin; }
 
+  void SetMetricsObserver(webrtc::MetricsObserverInterface* observer) {
+    metrics_observer_ = observer;
+  }
+
  protected:
   virtual PortAllocatorSession* CreateSessionInternal(
       const std::string& content_name,
       int component,
       const std::string& ice_ufrag,
       const std::string& ice_pwd) = 0;
+
+  webrtc::MetricsObserverInterface* metrics_observer() {
+    return metrics_observer_;
+  }
+
+  const std::deque<std::unique_ptr<PortAllocatorSession>>& pooled_sessions() {
+    return pooled_sessions_;
+  }
 
   uint32_t flags_;
   std::string agent_;
@@ -389,6 +419,8 @@ class PortAllocator : public sigslot::has_slots<> {
   int allocated_pooled_session_count_ = 0;
   std::deque<std::unique_ptr<PortAllocatorSession>> pooled_sessions_;
   bool prune_turn_ports_ = false;
+
+  webrtc::MetricsObserverInterface* metrics_observer_ = nullptr;
 };
 
 }  // namespace cricket

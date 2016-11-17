@@ -12,9 +12,6 @@
 #include <memory>
 #include <set>
 
-#include "testing/gmock/include/gmock/gmock.h"
-#include "testing/gtest/include/gtest/gtest.h"
-
 #include "webrtc/base/rate_limiter.h"
 #include "webrtc/common_types.h"
 #include "webrtc/modules/rtp_rtcp/include/rtp_header_parser.h"
@@ -22,6 +19,8 @@
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/nack.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_rtcp_impl.h"
+#include "webrtc/test/gmock.h"
+#include "webrtc/test/gtest.h"
 #include "webrtc/test/rtcp_packet_parser.h"
 
 using ::testing::_;
@@ -79,15 +78,14 @@ class SendTransport : public Transport,
   }
   bool SendRtcp(const uint8_t* data, size_t len) override {
     test::RtcpPacketParser parser;
-    parser.Parse(static_cast<const uint8_t*>(data), len);
-    last_nack_list_ = parser.nack_item()->last_nack_list();
+    parser.Parse(data, len);
+    last_nack_list_ = parser.nack()->packet_ids();
 
     if (clock_) {
       clock_->AdvanceTimeMilliseconds(delay_ms_);
     }
-    EXPECT_TRUE(receiver_ != NULL);
-    EXPECT_EQ(0, receiver_->IncomingRtcpPacket(
-        static_cast<const uint8_t*>(data), len));
+    EXPECT_TRUE(receiver_);
+    EXPECT_EQ(0, receiver_->IncomingRtcpPacket(data, len));
     return true;
   }
   ModuleRtpRtcpImpl* receiver_;
@@ -217,9 +215,9 @@ class RtpRtcpImplTest : public ::testing::Test {
     uint16_t list[1];
     list[0] = sequence_number;
     const uint16_t kListLength = sizeof(list) / sizeof(list[0]);
-    nack.From(sender ? kReceiverSsrc : kSenderSsrc);
-    nack.To(sender ? kSenderSsrc : kReceiverSsrc);
-    nack.WithList(list, kListLength);
+    nack.SetSenderSsrc(sender ? kReceiverSsrc : kSenderSsrc);
+    nack.SetMediaSsrc(sender ? kSenderSsrc : kReceiverSsrc);
+    nack.SetPacketIds(list, kListLength);
     rtc::Buffer packet = nack.Build();
     EXPECT_EQ(0, module->impl_->IncomingRtcpPacket(packet.data(),
                                                    packet.size()));

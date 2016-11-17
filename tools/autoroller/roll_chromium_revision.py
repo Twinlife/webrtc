@@ -56,7 +56,6 @@ def ParseDepsDict(deps_content):
   local_scope = {}
   var = GClientKeywords.VarImpl({}, local_scope)
   global_scope = {
-    'File': GClientKeywords.FileImpl,
     'From': GClientKeywords.FromImpl,
     'Var': var.Lookup,
     'deps_os': {},
@@ -291,6 +290,7 @@ def GenerateCommitMessage(current_cr_rev, new_cr_rev, current_commit_pos,
     commit_msg.append('No update to Clang.\n')
 
   commit_msg.append('TBR=%s' % tbr_authors)
+  commit_msg.append('BUG=None')
   return '\n'.join(commit_msg)
 
 
