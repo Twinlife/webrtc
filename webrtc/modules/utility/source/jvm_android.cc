@@ -17,10 +17,8 @@
 #include "webrtc/base/checks.h"
 
 #define TAG "JVM"
-// -twinlife- 160719
-#define ALOGD(...) // __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
+#define ALOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 #define ALOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
-// -twinlife- 160719
 
 namespace webrtc {
 

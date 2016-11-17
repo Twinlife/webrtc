@@ -40,10 +40,6 @@ static const cricket::VideoFormatPod kVideoFormats[] = {
     {320, 240, FPS_TO_INTERVAL(30), cricket::FOURCC_ANY},
     {320, 180, FPS_TO_INTERVAL(30), cricket::FOURCC_ANY}};
 
-// --twinlife-- 141010
-static const cricket::VideoFormatPod kMinimumFormat =
-  {160, 120, FPS_TO_INTERVAL(30), cricket::FOURCC_ANY};
-
 MediaSourceInterface::SourceState GetReadyState(cricket::CaptureState state) {
   switch (state) {
     case cricket::CS_STARTING:
@@ -323,9 +319,6 @@ void VideoCapturerTrackSource::Initialize(
       }
     }
   }
-
-  // --twinlife-- 141010
-  formats.push_back(cricket::VideoFormat(kMinimumFormat));
 
   if (constraints) {
     MediaConstraintsInterface::Constraints mandatory_constraints =

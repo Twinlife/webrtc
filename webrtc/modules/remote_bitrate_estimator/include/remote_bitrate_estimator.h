@@ -36,8 +36,6 @@ class RemoteBitrateObserver {
                                        uint32_t bitrate) = 0;
   virtual void OnProbeBitrate(uint32_t bitrate) {}
 
-  virtual void OnProbeBitrate(uint32_t bitrate) {}
-
   virtual ~RemoteBitrateObserver() {}
 };
 

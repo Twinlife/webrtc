@@ -142,24 +142,4 @@ TEST_F(TestProbeBitrateEstimator, IgnoreSizeFirstReceivePacket) {
   EXPECT_NEAR(measured_bps_, 800000, 10);
 }
 
-TEST_F(TestProbeBitrateEstimator, IgnoreSizeLastSendPacket) {
-  AddPacketFeedback(0, 1000, 0, 10);
-  AddPacketFeedback(0, 1000, 10, 20);
-  AddPacketFeedback(0, 1000, 20, 30);
-  AddPacketFeedback(0, 1000, 30, 40);
-  AddPacketFeedback(0, 1500, 40, 50);
-
-  CheckResult(0, 800000, 10, 40);
-  CheckResult(1, 800000, 10, 50);
-}
-
-TEST_F(TestProbeBitrateEstimator, IgnoreSizeFirstReceivePacket) {
-  AddPacketFeedback(0, 1500, 0, 10);
-  AddPacketFeedback(0, 1000, 10, 20);
-  AddPacketFeedback(0, 1000, 20, 30);
-  AddPacketFeedback(0, 1000, 30, 40);
-
-  CheckResult(0, 800000, 10, 40);
-}
-
 }  // namespace webrtc

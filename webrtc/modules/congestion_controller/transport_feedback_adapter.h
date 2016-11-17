@@ -54,8 +54,6 @@ class TransportFeedbackAdapter : public TransportFeedbackObserver,
   std::vector<PacketInfo> GetPacketFeedbackVector(
       const rtcp::TransportFeedback& feedback);
 
-  void OnProbeBitrate(uint32_t bitrate) override;
-
   rtc::CriticalSection lock_;
   rtc::CriticalSection bwe_lock_;
   SendTimeHistory send_time_history_ GUARDED_BY(&lock_);
