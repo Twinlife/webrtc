@@ -66,6 +66,10 @@ class OpenSLESRecorder {
   int Init();
   int Terminate();
 
+  // --twinlife-- 170307
+  bool IsAudioStreamingModeEnabled() {return false;}
+  // --twinlife-- 170307
+
   int InitRecording();
   bool RecordingIsInitialized() const { return initialized_; }
 

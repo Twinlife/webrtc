@@ -211,6 +211,13 @@ class AudioDeviceModuleImpl : public AudioDeviceModule {
 
   AudioDeviceGeneric* _ptrAudioDevice;
 
+// --twinlife-- 170307
+#if defined(WEBRTC_ANDROID)
+  AudioDeviceGeneric* _ptrAudioStreamingDevice;
+  AudioDeviceGeneric* _ptrAudioDeviceBackup;
+#endif
+// --twinlife-- 170307
+
   AudioDeviceBuffer _audioDeviceBuffer;
 #if defined(WEBRTC_ANDROID)
   std::unique_ptr<AudioManager> _audioManagerAndroid;

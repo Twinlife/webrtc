@@ -35,6 +35,9 @@
 #include "webrtc/modules/audio_device/android/audio_track_jni.h"
 #include "webrtc/modules/audio_device/android/opensles_player.h"
 #include "webrtc/modules/audio_device/android/opensles_recorder.h"
+// --twinlife-- 170307
+#include "webrtc/modules/audio_device/android/audio_streaming_jni.h"
+// --twinlife-- 170307
 #elif defined(WEBRTC_LINUX)
 #if defined(LINUX_ALSA)
 #include "audio_device_alsa_linux.h"
@@ -124,6 +127,12 @@ AudioDeviceModuleImpl::AudioDeviceModuleImpl(const int32_t id,
       _critSectAudioCb(*CriticalSectionWrapper::CreateCriticalSection()),
       _ptrCbAudioDeviceObserver(NULL),
       _ptrAudioDevice(NULL),
+      // --twinlife-- 170307
+#if defined(WEBRTC_ANDROID)
+      _ptrAudioStreamingDevice(NULL),
+      _ptrAudioDeviceCopy(NULL),
+#endif
+      // --twinlife-- 170307
       _id(id),
       _platformAudioLayer(audioLayer),
       _lastProcessTime(rtc::TimeMillis()),
@@ -274,6 +283,11 @@ int32_t AudioDeviceModuleImpl::CreatePlatformSpecificObjects() {
     // Invalid audio layer.
     ptrAudioDevice = nullptr;
   }
+  // --twinlife-- 170307
+  _ptrAudioStreamingDevice = new AudioDeviceTemplate<AudioStreamingJni, AudioStreamingJni>(
+        audioLayer, audio_manager);
+  _ptrAudioDeviceCopy = ptrAudioDevice;
+  // --twinlife-- 170307
 // END #if defined(WEBRTC_ANDROID)
 
 // Create the *Linux* implementation of the Audio Device
@@ -381,6 +395,15 @@ int32_t AudioDeviceModuleImpl::AttachAudioBuffer() {
 
 AudioDeviceModuleImpl::~AudioDeviceModuleImpl() {
   LOG(INFO) << __FUNCTION__;
+
+  // --twinlife-- 170307
+#if defined(WEBRTC_ANDROID)
+  if (_ptrAudioStreamingDevice && _ptrAudioStreamingDevice != _ptrAudioDevice) {
+    delete _ptrAudioStreamingDevice;
+    _ptrAudioStreamingDevice = NULL;
+  }
+#endif
+  // --twinlife-- 170307
 
   if (_ptrAudioDevice) {
     delete _ptrAudioDevice;
@@ -1363,6 +1386,17 @@ int32_t AudioDeviceModuleImpl::InitRecording() {
   if (RecordingIsInitialized()) {
     return 0;
   }
+  // --twinlife-- 170307
+#if defined(WEBRTC_ANDROID)
+  if (_ptrAudioStreamingDevice->IsAudioStreamingModeEnabled()) {
+    _ptrAudioDevice = _ptrAudioStreamingDevice;
+  } else {
+    if (_ptrAudioDevice == _ptrAudioStreamingDevice) {
+      _ptrAudioDevice = _ptrAudioDeviceCopy;
+    }
+  }
+#endif
+  // --twinlife-- 170307
   int32_t result = _ptrAudioDevice->InitRecording();
   LOG(INFO) << "output: " << result;
   RTC_HISTOGRAM_BOOLEAN("WebRTC.Audio.InitRecordingSuccess",
@@ -1459,6 +1493,13 @@ int32_t AudioDeviceModuleImpl::StopRecording() {
   CHECK_INITIALIZED();
   int32_t result = _ptrAudioDevice->StopRecording();
   _audioDeviceBuffer.StopRecording();
+  // --twinlife-- 170307
+#if defined(WEBRTC_ANDROID)
+  if (_ptrAudioDevice != _ptrAudioDeviceCopy) {
+      _ptrAudioDevice = _ptrAudioDeviceCopy;
+  }
+#endif
+  // --twinlife-- 170307
   LOG(INFO) << "output: " << result;
   RTC_HISTOGRAM_BOOLEAN("WebRTC.Audio.StopRecordingSuccess",
                         static_cast<int>(result == 0));

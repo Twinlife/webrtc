@@ -116,6 +116,10 @@ rtc_static_library("audio_device") {
         "android/opensles_player.h",
         "android/opensles_recorder.cc",
         "android/opensles_recorder.h",
+# --twinlife-- 170307
+        "android/audio_streaming_jni.cc",
+        "android/audio_streaming_jni.h",
+# --twinlife-- 170307
       ]
       libs = [
         "log",

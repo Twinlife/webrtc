@@ -35,6 +35,11 @@ struct {
   {"org/webrtc/voiceengine/WebRtcAudioManager", nullptr},
   {"org/webrtc/voiceengine/WebRtcAudioRecord", nullptr},
   {"org/webrtc/voiceengine/WebRtcAudioTrack", nullptr},
+// -twinlife- 170307
+#if defined(WEBRTC_ANDROID)
+  {"org/webrtc/voiceengine/WebRtcAudioStreaming", nullptr},
+#endif
+// -twinlife- 170307
 };
 
 // Android's FindClass() is trickier than usual because the app-specific

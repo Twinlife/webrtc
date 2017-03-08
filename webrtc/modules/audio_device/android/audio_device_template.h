@@ -90,6 +90,15 @@ class AudioDeviceTemplate : public AudioDeviceGeneric {
     return initialized_;
   }
 
+// --twinlife-- 170307
+#if defined(WEBRTC_ANDROID)
+  bool IsAudioStreamingModeEnabled() override {
+    LOG(INFO) << __FUNCTION__;
+    return input_.IsAudioStreamingModeEnabled();
+  }
+#endif
+// --twinlife-- 170307
+
   int16_t PlayoutDevices() override {
     LOG(INFO) << __FUNCTION__;
     return 1;
