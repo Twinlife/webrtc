@@ -214,7 +214,7 @@ class AudioDeviceModuleImpl : public AudioDeviceModule {
 // --twinlife-- 170307
 #if defined(WEBRTC_ANDROID)
   AudioDeviceGeneric* _ptrAudioStreamingDevice;
-  AudioDeviceGeneric* _ptrAudioDeviceBackup;
+  AudioDeviceGeneric* _ptrAudioDeviceCopy;
 #endif
 // --twinlife-- 170307
 
