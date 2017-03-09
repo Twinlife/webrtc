@@ -1383,9 +1383,6 @@ int32_t AudioDeviceModuleImpl::InitPlayout() {
 int32_t AudioDeviceModuleImpl::InitRecording() {
   LOG(INFO) << __FUNCTION__;
   CHECK_INITIALIZED();
-  if (RecordingIsInitialized()) {
-    return 0;
-  }
   // --twinlife-- 170307
 #if defined(WEBRTC_ANDROID)
   if (_ptrAudioStreamingDevice->IsAudioStreamingModeEnabled()) {
@@ -1397,6 +1394,9 @@ int32_t AudioDeviceModuleImpl::InitRecording() {
   }
 #endif
   // --twinlife-- 170307
+  if (RecordingIsInitialized()) {
+    return 0;
+  }
   int32_t result = _ptrAudioDevice->InitRecording();
   LOG(INFO) << "output: " << result;
   RTC_HISTOGRAM_BOOLEAN("WebRTC.Audio.InitRecordingSuccess",

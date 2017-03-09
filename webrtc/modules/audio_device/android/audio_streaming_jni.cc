@@ -137,7 +137,7 @@ bool AudioStreamingJni::IsAudioStreamingModeEnabled() {
   ALOGD("IsAudioStreamingModeEnabled%s", GetThreadInfo().c_str());
   return j_audio_streaming_->IsAudioStreamingModeEnabled();
 }
-  
+
 int32_t AudioStreamingJni::InitRecording() {
   ALOGD("InitRecording%s", GetThreadInfo().c_str());
   RTC_DCHECK(thread_checker_.CalledOnValidThread());
@@ -151,9 +151,9 @@ int32_t AudioStreamingJni::InitRecording() {
   }
   frames_per_buffer_ = static_cast<size_t>(frames_per_buffer);
   ALOGD("frames_per_buffer: %" PRIuS, frames_per_buffer_);
-  RTC_CHECK_EQ(direct_buffer_capacity_in_bytes_,
-               frames_per_buffer_ * kBytesPerFrame);
-  RTC_CHECK_EQ(frames_per_buffer_, audio_parameters_.frames_per_10ms_buffer());
+  //  RTC_CHECK_EQ(direct_buffer_capacity_in_bytes_,
+  //               frames_per_buffer_ * kBytesPerFrame);
+  //  RTC_CHECK_EQ(frames_per_buffer_, audio_parameters_.frames_per_10ms_buffer());
   initialized_ = true;
   return 0;
 }
