@@ -33,8 +33,8 @@
 #include "webrtc/modules/audio_device/android/audio_common.h"
 
 #define TAG "AudioStreamingJni"
-#define ALOGV(...) __android_log_print(ANDROID_LOG_VERBOSE, TAG, __VA_ARGS__)
-#define ALOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
+#define ALOGV(...) // __android_log_print(ANDROID_LOG_VERBOSE, TAG, __VA_ARGS__)
+#define ALOGD(...) // __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 #define ALOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 #define ALOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
 #define ALOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -151,9 +151,9 @@ int32_t AudioStreamingJni::InitRecording() {
   }
   frames_per_buffer_ = static_cast<size_t>(frames_per_buffer);
   ALOGD("frames_per_buffer: %" PRIuS, frames_per_buffer_);
-  //  RTC_CHECK_EQ(direct_buffer_capacity_in_bytes_,
-  //               frames_per_buffer_ * kBytesPerFrame);
-  //  RTC_CHECK_EQ(frames_per_buffer_, audio_parameters_.frames_per_10ms_buffer());
+  RTC_CHECK_EQ(direct_buffer_capacity_in_bytes_,
+               frames_per_buffer_ * kBytesPerFrame);
+  RTC_CHECK_EQ(frames_per_buffer_, audio_parameters_.frames_per_10ms_buffer());
   initialized_ = true;
   return 0;
 }
@@ -195,16 +195,6 @@ void AudioStreamingJni::AttachAudioBuffer(AudioDeviceBuffer* audioBuffer) {
   ALOGD("AttachAudioBuffer");
   RTC_DCHECK(thread_checker_.CalledOnValidThread());
   audio_device_buffer_ = audioBuffer;
-  const int sample_rate_hz = audio_parameters_.sample_rate();
-  ALOGD("SetRecordingSampleRate(%d)", sample_rate_hz);
-  audio_device_buffer_->SetRecordingSampleRate(sample_rate_hz);
-  const size_t channels = audio_parameters_.channels();
-  ALOGD("SetRecordingChannels(%" PRIuS ")", channels);
-  audio_device_buffer_->SetRecordingChannels(channels);
-  total_delay_in_milliseconds_ =
-      audio_manager_->GetDelayEstimateInMilliseconds();
-  RTC_DCHECK_GT(total_delay_in_milliseconds_, 0);
-  ALOGD("total_delay_in_milliseconds: %d", total_delay_in_milliseconds_);
 }
 
 int32_t AudioStreamingJni::EnableBuiltInAEC(bool enable) {
@@ -226,9 +216,9 @@ int32_t AudioStreamingJni::EnableBuiltInNS(bool enable) {
 }
 
 void JNICALL AudioStreamingJni::CacheDirectBufferAddress(
-    JNIEnv* env, jobject obj, jobject byte_buffer, jlong nativeAudioStreaming) {
+    JNIEnv* env, jobject obj, jobject byte_buffer, jlong native_audio_streaming) {
   webrtc::AudioStreamingJni* this_object =
-      reinterpret_cast<webrtc::AudioStreamingJni*> (nativeAudioStreaming);
+      reinterpret_cast<webrtc::AudioStreamingJni*> (native_audio_streaming);
   this_object->OnCacheDirectBufferAddress(env, byte_buffer);
 }
 
@@ -245,9 +235,9 @@ void AudioStreamingJni::OnCacheDirectBufferAddress(
 }
 
 void JNICALL AudioStreamingJni::DataIsRecorded(
-  JNIEnv* env, jobject obj, jint length, jlong nativeAudioStreaming) {
+  JNIEnv* env, jobject obj, jint length, jlong native_audio_streaming) {
   webrtc::AudioStreamingJni* this_object =
-      reinterpret_cast<webrtc::AudioStreamingJni*> (nativeAudioStreaming);
+      reinterpret_cast<webrtc::AudioStreamingJni*> (native_audio_streaming);
   this_object->OnDataIsRecorded(length);
 }
 
