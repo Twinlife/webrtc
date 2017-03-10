@@ -386,6 +386,15 @@ int32_t AudioDeviceModuleImpl::AttachAudioBuffer() {
 
   _audioDeviceBuffer.SetId(_id);
   _ptrAudioDevice->AttachAudioBuffer(&_audioDeviceBuffer);
+
+  // --twinlife-- 170307
+#if defined(WEBRTC_ANDROID)
+  if (_ptrAudioStreamingDevice) {
+    _ptrAudioStreamingDevice->AttachAudioBuffer(&_audioDeviceBuffer);
+  }
+#endif
+  // --twinlife-- 170307
+
   return 0;
 }
 

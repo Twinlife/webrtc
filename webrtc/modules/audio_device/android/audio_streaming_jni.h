@@ -108,7 +108,7 @@ class AudioStreamingJni {
   // This method will be called by the WebRtcAudioStreaming constructor, i.e.,
   // on the same thread that this object is created on.
   static void JNICALL CacheDirectBufferAddress(
-    JNIEnv* env, jobject obj, jobject byte_buffer, jlong nativeAudioStreaming);
+    JNIEnv* env, jobject obj, jobject byte_buffer, jlong native_audio_streaming);
   void OnCacheDirectBufferAddress(JNIEnv* env, jobject byte_buffer);
 
   // Called periodically by the Java based WebRtcAudioStreaming object when
@@ -118,7 +118,7 @@ class AudioStreamingJni {
   // This method is called on a high-priority thread from Java. The name of
   // the thread is 'AudioStreamingThread'.
   static void JNICALL DataIsRecorded(
-    JNIEnv* env, jobject obj, jint length, jlong nativeAudioStreaming);
+    JNIEnv* env, jobject obj, jint length, jlong native_audio_streaming);
   void OnDataIsRecorded(int length);
 
   // Stores thread ID in constructor.
