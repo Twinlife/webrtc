@@ -25,6 +25,9 @@ float Power(rtc::ArrayView<const float> input) {
 constexpr size_t kLookbackFrames = 650;
 // TODO(ivoc): Verify the size of this buffer.
 constexpr size_t kRenderBufferSize = 30;
+constexpr float kAlpha = 0.001f;
+// 10 seconds of data, updated every 10 ms.
+constexpr size_t kAggregationBufferSize = 10 * 100;
 
 }  // namespace
 
@@ -35,7 +38,8 @@ ResidualEchoDetector::ResidualEchoDetector()
       render_power_(kLookbackFrames),
       render_power_mean_(kLookbackFrames),
       render_power_std_dev_(kLookbackFrames),
-      covariances_(kLookbackFrames){};
+      covariances_(kLookbackFrames),
+      recent_likelihood_max_(kAggregationBufferSize) {}
 
 ResidualEchoDetector::~ResidualEchoDetector() = default;
 
@@ -100,9 +104,14 @@ void ResidualEchoDetector::AnalyzeCaptureAudio(
     echo_likelihood_ = std::max(
         echo_likelihood_, covariances_[delay].normalized_cross_correlation());
   }
+  reliability_ = (1.0f - kAlpha) * reliability_ + kAlpha * 1.0f;
+  echo_likelihood_ *= reliability_;
   int echo_percentage = static_cast<int>(echo_likelihood_ * 100);
   RTC_HISTOGRAM_COUNTS("WebRTC.Audio.ResidualEchoDetector.EchoLikelihood",
                        echo_percentage, 0, 100, 100 /* number of bins */);
+
+  // Update the buffer of recent likelihood values.
+  recent_likelihood_max_.Update(echo_likelihood_);
 
   // Update the next insertion index.
   ++next_insertion_index_;
@@ -116,17 +125,19 @@ void ResidualEchoDetector::Initialize() {
   std::fill(render_power_std_dev_.begin(), render_power_std_dev_.end(), 0.f);
   render_statistics_.Clear();
   capture_statistics_.Clear();
+  recent_likelihood_max_.Clear();
   for (auto& cov : covariances_) {
     cov.Clear();
   }
   echo_likelihood_ = 0.f;
   next_insertion_index_ = 0;
+  reliability_ = 0.f;
 }
 
 void ResidualEchoDetector::PackRenderAudioBuffer(
     AudioBuffer* audio,
     std::vector<float>* packed_buffer) {
-  RTC_DCHECK_GE(160u, audio->num_frames_per_band());
+  RTC_DCHECK_GE(160, audio->num_frames_per_band());
 
   packed_buffer->clear();
   packed_buffer->insert(packed_buffer->end(),
