@@ -18,8 +18,10 @@
 #include "webrtc/base/logging.h"
 #include "webrtc/base/platform_thread.h"
 #include "webrtc/base/rate_limiter.h"
+#include "webrtc/base/timeutils.h"
 #include "webrtc/call/call.h"
 #include "webrtc/common_video/include/frame_callback.h"
+#include "webrtc/common_video/include/video_frame.h"
 #include "webrtc/modules/rtp_rtcp/include/rtp_header_parser.h"
 #include "webrtc/modules/rtp_rtcp/include/rtp_rtcp.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_sender.h"
@@ -40,7 +42,6 @@
 
 #include "webrtc/video/send_statistics_proxy.h"
 #include "webrtc/video/transport_adapter.h"
-#include "webrtc/video_frame.h"
 #include "webrtc/video_send_stream.h"
 
 namespace webrtc {
@@ -263,6 +264,9 @@ TEST_F(VideoSendStreamTest, SupportsVideoRotation) {
     Action OnSendRtp(const uint8_t* packet, size_t length) override {
       RTPHeader header;
       EXPECT_TRUE(parser_->Parse(packet, length, &header));
+      // Only the last packet of the frame is required to have the extension.
+      if (!header.markerBit)
+        return SEND_PACKET;
       EXPECT_TRUE(header.extension.hasVideoRotation);
       EXPECT_EQ(kVideoRotation_90, header.extension.videoRotation);
       observation_complete_.Set();
@@ -285,6 +289,82 @@ TEST_F(VideoSendStreamTest, SupportsVideoRotation) {
 
     void PerformTest() override {
       EXPECT_TRUE(Wait()) << "Timed out while waiting for single RTP packet.";
+    }
+  } test;
+
+  RunBaseTest(&test);
+}
+
+TEST_F(VideoSendStreamTest, SupportsVideoContentType) {
+  class VideoRotationObserver : public test::SendTest {
+   public:
+    VideoRotationObserver() : SendTest(kDefaultTimeoutMs) {
+      EXPECT_TRUE(parser_->RegisterRtpHeaderExtension(
+          kRtpExtensionVideoContentType, test::kVideoContentTypeExtensionId));
+    }
+
+    Action OnSendRtp(const uint8_t* packet, size_t length) override {
+      RTPHeader header;
+      EXPECT_TRUE(parser_->Parse(packet, length, &header));
+      // Only the last packet of the frame must have extension.
+      if (!header.markerBit)
+        return SEND_PACKET;
+      EXPECT_TRUE(header.extension.hasVideoContentType);
+      EXPECT_EQ(VideoContentType::SCREENSHARE,
+                header.extension.videoContentType);
+      observation_complete_.Set();
+      return SEND_PACKET;
+    }
+
+    void ModifyVideoConfigs(
+        VideoSendStream::Config* send_config,
+        std::vector<VideoReceiveStream::Config>* receive_configs,
+        VideoEncoderConfig* encoder_config) override {
+      send_config->rtp.extensions.clear();
+      send_config->rtp.extensions.push_back(
+          RtpExtension(RtpExtension::kVideoContentTypeUri,
+                       test::kVideoContentTypeExtensionId));
+      encoder_config->content_type = VideoEncoderConfig::ContentType::kScreen;
+    }
+
+    void PerformTest() override {
+      EXPECT_TRUE(Wait()) << "Timed out while waiting for single RTP packet.";
+    }
+  } test;
+
+  test::ScopedFieldTrials override_field_trials(
+      "WebRTC-VideoContentTypeExtension/Enabled/");
+  RunBaseTest(&test);
+}
+
+TEST_F(VideoSendStreamTest, SupportsVideoTimingFrames) {
+  class VideoRotationObserver : public test::SendTest {
+   public:
+    VideoRotationObserver() : SendTest(kDefaultTimeoutMs) {
+      EXPECT_TRUE(parser_->RegisterRtpHeaderExtension(
+          kRtpExtensionVideoTiming, test::kVideoTimingExtensionId));
+    }
+
+    Action OnSendRtp(const uint8_t* packet, size_t length) override {
+      RTPHeader header;
+      EXPECT_TRUE(parser_->Parse(packet, length, &header));
+      if (header.extension.has_video_timing) {
+        observation_complete_.Set();
+      }
+      return SEND_PACKET;
+    }
+
+    void ModifyVideoConfigs(
+        VideoSendStream::Config* send_config,
+        std::vector<VideoReceiveStream::Config>* receive_configs,
+        VideoEncoderConfig* encoder_config) override {
+      send_config->rtp.extensions.clear();
+      send_config->rtp.extensions.push_back(RtpExtension(
+          RtpExtension::kVideoTimingUri, test::kVideoTimingExtensionId));
+    }
+
+    void PerformTest() override {
+      EXPECT_TRUE(Wait()) << "Timed out while waiting for timing frames.";
     }
   } test;
 
@@ -1928,17 +2008,14 @@ TEST_F(VideoSendStreamTest, CapturesTextureAndVideoFrames) {
   int width = 168;
   int height = 132;
 
-  test::FakeNativeHandle* handle1 = new test::FakeNativeHandle();
-  test::FakeNativeHandle* handle2 = new test::FakeNativeHandle();
-  test::FakeNativeHandle* handle3 = new test::FakeNativeHandle();
-  input_frames.push_back(test::FakeNativeHandle::CreateFrame(
-      handle1, width, height, 1, 1, kVideoRotation_0));
-  input_frames.push_back(test::FakeNativeHandle::CreateFrame(
-      handle2, width, height, 2, 2, kVideoRotation_0));
+  input_frames.push_back(test::FakeNativeBuffer::CreateFrame(
+      width, height, 1, 1, kVideoRotation_0));
+  input_frames.push_back(test::FakeNativeBuffer::CreateFrame(
+      width, height, 2, 2, kVideoRotation_0));
   input_frames.push_back(CreateVideoFrame(width, height, 3));
   input_frames.push_back(CreateVideoFrame(width, height, 4));
-  input_frames.push_back(test::FakeNativeHandle::CreateFrame(
-      handle3, width, height, 5, 5, kVideoRotation_0));
+  input_frames.push_back(test::FakeNativeBuffer::CreateFrame(
+      width, height, 5, 5, kVideoRotation_0));
 
   video_send_stream_->Start();
   test::FrameForwarder forwarder;
@@ -1974,9 +2051,7 @@ VideoFrame CreateVideoFrame(int width, int height, uint8_t data) {
   const int kSizeY = width * height * 2;
   std::unique_ptr<uint8_t[]> buffer(new uint8_t[kSizeY]);
   memset(buffer.get(), data, kSizeY);
-  VideoFrame frame(
-      I420Buffer::Create(width, height, width, width / 2, width / 2),
-      kVideoRotation_0, data);
+  VideoFrame frame(I420Buffer::Create(width, height), kVideoRotation_0, data);
   frame.set_timestamp(data);
   // Use data as a ms timestamp.
   frame.set_timestamp_us(data * rtc::kNumMicrosecsPerMillisec);

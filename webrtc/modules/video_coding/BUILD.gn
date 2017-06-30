@@ -94,11 +94,14 @@ rtc_static_library("video_coding") {
     ":webrtc_i420",
     ":webrtc_vp8",
     ":webrtc_vp9",
+    "..:module_api",
+    "../..:video_stream_api",
     "../..:webrtc_common",
     "../../base:rtc_base",
     "../../base:rtc_base_approved",
     "../../base:rtc_numerics",
     "../../base:rtc_task_queue",
+    "../../base:sequenced_task_checker",
     "../../common_video",
     "../../system_wrappers",
     "../rtp_rtcp:rtp_rtcp",
@@ -120,6 +123,8 @@ rtc_static_library("video_coding_utility") {
     "utility/quality_scaler.h",
     "utility/vp8_header_parser.cc",
     "utility/vp8_header_parser.h",
+    "utility/vp9_uncompressed_header_parser.cc",
+    "utility/vp9_uncompressed_header_parser.h",
   ]
 
   if (!build_with_chromium && is_clang) {
@@ -128,11 +133,13 @@ rtc_static_library("video_coding_utility") {
   }
 
   deps = [
+    "..:module_api",
     "../..:webrtc_common",
     "../../api/video_codecs:video_codecs_api",
     "../../base:rtc_base_approved",
     "../../base:rtc_numerics",
     "../../base:rtc_task_queue",
+    "../../base:sequenced_task_checker",
     "../../common_video",
     "../../modules/rtp_rtcp:rtp_rtcp",
     "../../system_wrappers",
@@ -224,9 +231,11 @@ rtc_static_library("webrtc_vp8") {
 
   deps = [
     ":video_coding_utility",
+    "..:module_api",
     "../..:webrtc_common",
     "../../api/video_codecs:video_codecs_api",
     "../../base:rtc_base_approved",
+    "../../base:sequenced_task_checker",
     "../../common_video",
     "../../system_wrappers",
   ]
@@ -259,6 +268,7 @@ rtc_static_library("webrtc_vp9") {
 
   deps = [
     ":video_coding_utility",
+    "..:module_api",
     "../../base:rtc_base_approved",
     "../../common_video",
     "../../system_wrappers",
@@ -371,7 +381,7 @@ if (rtc_include_tests) {
     if (is_ios || is_mac) {
       deps += [
         "../../media:rtc_media_base",
-        "../../sdk:webrtc_h264_video_toolbox",
+        "../../sdk:objc_videotoolbox",
       ]
     }
   }
@@ -379,6 +389,12 @@ if (rtc_include_tests) {
   rtc_source_set("video_coding_modules_tests") {
     testonly = true
 
+    # Skip restricting visibility on mobile platforms since the tests on those
+    # gets additional generated targets which would require many lines here to
+    # cover (which would be confusing to read and hard to maintain).
+    if (!is_android && !is_ios) {
+      visibility = [ "//webrtc/modules:modules_tests" ]
+    }
     sources = [
       "codecs/h264/test/h264_impl_unittest.cc",
       "codecs/test/videoprocessor_integrationtest.cc",
@@ -479,6 +495,13 @@ if (rtc_include_tests) {
 
   rtc_source_set("video_coding_unittests") {
     testonly = true
+
+    # Skip restricting visibility on mobile platforms since the tests on those
+    # gets additional generated targets which would require many lines here to
+    # cover (which would be confusing to read and hard to maintain).
+    if (!is_android && !is_ios) {
+      visibility = [ "//webrtc/modules:modules_unittests" ]
+    }
     sources = [
       "codecs/test/packet_manipulator_unittest.cc",
       "codecs/test/stats_unittest.cc",
@@ -490,6 +513,7 @@ if (rtc_include_tests) {
       "codecs/vp8/simulcast_unittest.h",
       "decoding_state_unittest.cc",
       "frame_buffer2_unittest.cc",
+      "generic_encoder_unittest.cc",
       "h264_sprop_parameter_sets_unittest.cc",
       "h264_sps_pps_tracker_unittest.cc",
       "histogram_unittest.cc",
@@ -529,6 +553,7 @@ if (rtc_include_tests) {
       ":webrtc_h264",
       ":webrtc_vp8",
       ":webrtc_vp9",
+      "..:module_api",
       "../..:webrtc_common",
       "../../api:video_frame_api",
       "../../api/video_codecs:video_codecs_api",

@@ -22,7 +22,7 @@
 #include "webrtc/base/stringencode.h"
 #include "webrtc/base/stringutils.h"
 #include "webrtc/media/base/mediaconstants.h"
-#include "webrtc/media/engine/webrtcvideoengine2.h"
+#include "webrtc/media/engine/webrtcvideoengine.h"
 #include "webrtc/modules/video_coding/codecs/h264/include/h264.h"
 #include "webrtc/p2p/base/p2pconstants.h"
 #include "webrtc/pc/mediasession.h"
@@ -694,7 +694,7 @@ static const char kSdpTcpInvalidCandidate[] =
 // One candidate reference string with IPV6 address.
 static const char kRawIPV6Candidate[] =
     "candidate:a0+B/1 1 udp 2130706432 "
-    "abcd::abcd::abcd::abcd::abcd::abcd::abcd::abcd 1234 typ host generation 2";
+    "abcd:abcd:abcd:abcd:abcd:abcd:abcd:abcd 1234 typ host generation 2";
 
 // One candidate reference string.
 static const char kSdpOneCandidateWithUfragPwd[] =

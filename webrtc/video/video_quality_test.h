@@ -51,7 +51,8 @@ class VideoQualityTest : public test::CallTest {
       bool ulpfec;
       bool flexfec;
       std::string encoded_frame_base_path;
-      std::string clip_name;
+      std::string clip_name;  // "Generator" to generate frames instead.
+      size_t capture_device_index;
     } video;
     struct Audio {
       bool enabled;
@@ -62,6 +63,7 @@ class VideoQualityTest : public test::CallTest {
       bool enabled;
       int32_t slide_change_interval;
       int32_t scroll_duration;
+      std::vector<std::string> slides;
     } screenshare;
     struct Analyzer {
       std::string test_label;
@@ -80,6 +82,8 @@ class VideoQualityTest : public test::CallTest {
       int selected_sl;
       // If empty, bitrates are generated in VP9Impl automatically.
       std::vector<SpatialLayer> spatial_layers;
+      // If set, default parameters will be used instead of |streams|.
+      bool infer_streams;
     } ss;
     int num_thumbnails;
   };

@@ -77,6 +77,15 @@ enum {
 
   // When specified, do not collect IPv6 ICE candidates on Wi-Fi.
   PORTALLOCATOR_ENABLE_IPV6_ON_WIFI = 0x4000,
+
+  // When this flag is set, ports not bound to any specific network interface
+  // will be used, in addition to normal ports bound to the enumerated
+  // interfaces. Without this flag, these "any address" ports would only be
+  // used when network enumeration fails or is disabled. But under certain
+  // conditions, these ports may succeed where others fail, so they may allow
+  // the application to work in a wider variety of environments, at the expense
+  // of having to allocate additional candidates.
+  PORTALLOCATOR_ENABLE_ANY_ADDRESS_PORTS = 0x8000,
 };
 
 // Defines various reasons that have caused ICE regathering.
@@ -129,14 +138,23 @@ typedef std::vector<ProtocolAddress> PortList;
 struct RelayServerConfig {
   RelayServerConfig(RelayType type) : type(type) {}
 
+  RelayServerConfig(const rtc::SocketAddress& address,
+                    const std::string& username,
+                    const std::string& password,
+                    ProtocolType proto)
+      : type(RELAY_TURN), credentials(username, password) {
+    ports.push_back(ProtocolAddress(address, proto));
+  }
+
   RelayServerConfig(const std::string& address,
                     int port,
                     const std::string& username,
                     const std::string& password,
                     ProtocolType proto)
-      : type(RELAY_TURN), credentials(username, password) {
-    ports.push_back(ProtocolAddress(rtc::SocketAddress(address, port), proto));
-  }
+      : RelayServerConfig(rtc::SocketAddress(address, port),
+                          username,
+                          password,
+                          proto) {}
 
   // Legacy constructor where "secure" and PROTO_TCP implies PROTO_TLS.
   RelayServerConfig(const std::string& address,

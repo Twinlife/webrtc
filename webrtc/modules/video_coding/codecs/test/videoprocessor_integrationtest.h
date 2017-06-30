@@ -23,8 +23,8 @@
 #include "webrtc/sdk/android/src/jni/androidmediadecoder_jni.h"
 #include "webrtc/sdk/android/src/jni/androidmediaencoder_jni.h"
 #elif defined(WEBRTC_IOS)
-#include "webrtc/sdk/objc/Framework/Classes/h264_video_toolbox_decoder.h"
-#include "webrtc/sdk/objc/Framework/Classes/h264_video_toolbox_encoder.h"
+#include "webrtc/sdk/objc/Framework/Classes/VideoToolbox/decoder.h"
+#include "webrtc/sdk/objc/Framework/Classes/VideoToolbox/encoder.h"
 #endif
 
 #include "webrtc/base/checks.h"
@@ -81,6 +81,7 @@ struct CodecParams {
   bool denoising_on;
   bool frame_dropper_on;
   bool spatial_resize_on;
+  bool resilience_on;
 
   float packet_loss_probability;  // [0.0, 1.0].
 
@@ -248,7 +249,7 @@ class VideoProcessorIntegrationTest : public testing::Test {
         test::OutputPath(), "videoprocessor_integrationtest");
 
     config_.frame_length_in_bytes =
-        CalcBufferSize(kI420, process.width, process.height);
+        CalcBufferSize(VideoType::kI420, process.width, process.height);
     config_.verbose = process.verbose_logging;
     config_.use_single_core = process.use_single_core;
     // Key frame interval and packet loss are set for each test.
@@ -282,6 +283,8 @@ class VideoProcessorIntegrationTest : public testing::Test {
         config_.codec_settings->VP8()->automaticResizeOn =
             process.spatial_resize_on;
         config_.codec_settings->VP8()->keyFrameInterval = kBaseKeyFrameInterval;
+        config_.codec_settings->VP8()->resilience =
+            process.resilience_on ? kResilientStream : kResilienceOff;
         break;
       case kVideoCodecVP9:
         config_.codec_settings->VP9()->denoisingOn = process.denoising_on;
@@ -292,6 +295,7 @@ class VideoProcessorIntegrationTest : public testing::Test {
         config_.codec_settings->VP9()->automaticResizeOn =
             process.spatial_resize_on;
         config_.codec_settings->VP9()->keyFrameInterval = kBaseKeyFrameInterval;
+        config_.codec_settings->VP9()->resilienceOn = process.resilience_on;
         break;
       default:
         RTC_NOTREACHED();
@@ -431,10 +435,12 @@ class VideoProcessorIntegrationTest : public testing::Test {
         " Frame rate: %d \n",
         update_index, bit_rate_, encoding_bitrate_total_, frame_rate_);
     printf(
+        " Number of processed frames: %d, \n"
         " Number of frames to approach target rate: %d, \n"
         " Number of dropped frames: %d, \n"
         " Number of spatial resizes: %d, \n",
-        num_frames_to_hit_target_, num_dropped_frames, num_resize_actions);
+        num_frames_total_, num_frames_to_hit_target_, num_dropped_frames,
+        num_resize_actions);
     EXPECT_LE(perc_encoding_rate_mismatch_,
               rc_expected.max_encoding_rate_mismatch);
     if (num_key_frames_ > 0) {
@@ -490,6 +496,14 @@ class VideoProcessorIntegrationTest : public testing::Test {
     EXPECT_GT(psnr_result.min, quality_thresholds.min_min_psnr);
     EXPECT_GT(ssim_result.average, quality_thresholds.min_avg_ssim);
     EXPECT_GT(ssim_result.min, quality_thresholds.min_min_ssim);
+  }
+
+  void VerifyQpParser(const CodecParams& process, int frame_number) {
+    if (!process.hw_codec && (process.codec_type == kVideoCodecVP8 ||
+      process.codec_type == kVideoCodecVP9)) {
+      EXPECT_EQ(processor_->GetQpFromEncoder(frame_number),
+                processor_->GetQpFromBitstream(frame_number));
+    }
   }
 
   // Temporal layer index corresponding to frame number, for up to 3 layers.
@@ -603,7 +617,7 @@ class VideoProcessorIntegrationTest : public testing::Test {
 
       while (frame_number < num_frames) {
         EXPECT_TRUE(processor_->ProcessFrame(frame_number));
-
+        VerifyQpParser(process, frame_number);
         ++num_frames_per_update_[TemporalLayerIndexForFrame(frame_number)];
         ++num_frames_total_;
         UpdateRateControlMetrics(frame_number);
@@ -686,6 +700,7 @@ class VideoProcessorIntegrationTest : public testing::Test {
                              bool denoising_on,
                              bool frame_dropper_on,
                              bool spatial_resize_on,
+                             bool resilience_on,
                              int width,
                              int height,
                              const std::string& filename,
@@ -701,6 +716,7 @@ class VideoProcessorIntegrationTest : public testing::Test {
     process_settings->denoising_on = denoising_on;
     process_settings->frame_dropper_on = frame_dropper_on;
     process_settings->spatial_resize_on = spatial_resize_on;
+    process_settings->resilience_on = resilience_on;
     process_settings->width = width;
     process_settings->height = height;
     process_settings->filename = filename;
@@ -718,13 +734,14 @@ class VideoProcessorIntegrationTest : public testing::Test {
                              bool error_concealment_on,
                              bool denoising_on,
                              bool frame_dropper_on,
-                             bool spatial_resize_on) {
+                             bool spatial_resize_on,
+                             bool resilience_on) {
     SetCodecParams(process_settings, codec_type, hw_codec, use_single_core,
                    packet_loss_probability, key_frame_interval,
                    num_temporal_layers, error_concealment_on, denoising_on,
-                   frame_dropper_on, spatial_resize_on, kCifWidth, kCifHeight,
-                   kFilenameForemanCif, false /* verbose_logging */,
-                   false /* batch_mode */);
+                   frame_dropper_on, spatial_resize_on, resilience_on,
+                   kCifWidth, kCifHeight, kFilenameForemanCif,
+                   false /* verbose_logging */, false /* batch_mode */);
   }
 
   static void SetQualityThresholds(QualityThresholds* quality_thresholds,

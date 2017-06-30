@@ -21,6 +21,7 @@
 #include "webrtc/base/messagedigest.h"
 #include "webrtc/base/network.h"
 #include "webrtc/base/ptr_util.h"
+#include "webrtc/base/safe_minmax.h"
 #include "webrtc/base/stringencode.h"
 #include "webrtc/base/stringutils.h"
 #include "webrtc/p2p/base/common.h"
@@ -69,7 +70,7 @@ const int DEFAULT_RTT = 3000;  // 3 seconds
 
 // Computes our estimate of the RTT given the current estimate.
 inline int ConservativeRTTEstimate(int rtt) {
-  return std::max(MINIMUM_RTT, std::min(MAXIMUM_RTT, 2 * rtt));
+  return rtc::SafeClamp(2 * rtt, MINIMUM_RTT, MAXIMUM_RTT);
 }
 
 // Weighting of the old rtt value to new data.
@@ -1148,6 +1149,11 @@ void Connection::Prune() {
 }
 
 void Connection::Destroy() {
+  // TODO(deadbeef, nisse): This may leak if an application closes a
+  // PeerConnection and then quickly destroys the PeerConnectionFactory (along
+  // with the networking thread on which this message is posted). Also affects
+  // tests, with a workaround in
+  // AutoSocketServerThread::~AutoSocketServerThread.
   LOG_J(LS_VERBOSE, this) << "Connection destroyed";
   port_->thread()->Post(RTC_FROM_HERE, this, MSG_DELETE);
 }
@@ -1411,12 +1417,7 @@ void Connection::OnConnectionRequestResponse(ConnectionRequest* request,
 
 void Connection::OnConnectionRequestErrorResponse(ConnectionRequest* request,
                                                   StunMessage* response) {
-  const StunErrorCodeAttribute* error_attr = response->GetErrorCode();
-  int error_code = STUN_ERROR_GLOBAL_FAILURE;
-  if (error_attr) {
-    error_code = error_attr->code();
-  }
-
+  int error_code = response->GetErrorCodeValue();
   LOG_J(LS_INFO, this) << "Received STUN error response"
                        << " id=" << rtc::hex_encode(request->id())
                        << " code=" << error_code

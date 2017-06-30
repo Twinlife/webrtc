@@ -43,6 +43,8 @@ namespace webrtc {
 ProbeBitrateEstimator::ProbeBitrateEstimator(RtcEventLog* event_log)
     : event_log_(event_log) {}
 
+ProbeBitrateEstimator::~ProbeBitrateEstimator() = default;
+
 int ProbeBitrateEstimator::HandleProbeAndEstimateBitrate(
     const PacketFeedback& packet_feedback) {
   int cluster_id = packet_feedback.pacing_info.probe_cluster_id;
@@ -133,10 +135,19 @@ int ProbeBitrateEstimator::HandleProbeAndEstimateBitrate(
                << " [receive: " << receive_size << " bytes / "
                << receive_interval_ms << " ms = " << receive_bps / 1000
                << " kb/s]";
+
   float res = std::min(send_bps, receive_bps);
   if (event_log_)
     event_log_->LogProbeResultSuccess(cluster_id, res);
-  return res;
+  estimated_bitrate_bps_ = rtc::Optional<int>(res);
+  return *estimated_bitrate_bps_;
+}
+
+rtc::Optional<int>
+ProbeBitrateEstimator::FetchAndResetLastEstimatedBitrateBps() {
+  rtc::Optional<int> estimated_bitrate_bps = estimated_bitrate_bps_;
+  estimated_bitrate_bps_.reset();
+  return estimated_bitrate_bps;
 }
 
 void ProbeBitrateEstimator::EraseOldClusters(int64_t timestamp_ms) {

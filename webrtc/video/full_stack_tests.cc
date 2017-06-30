@@ -331,7 +331,7 @@ TEST_F(FullStackTest, ScreenshareSlidesVP8_3TL_Simulcast) {
   std::vector<VideoStream> streams = {
       DefaultVideoStream(screenshare_params_low),
       DefaultVideoStream(screenshare_params_high)};
-  screenshare.ss = {streams, 1, 1, 0};
+  screenshare.ss = {streams, 1, 1, 0, std::vector<SpatialLayer>(), false};
   RunTest(screenshare);
 }
 
@@ -374,6 +374,21 @@ TEST_F(FullStackTest, ScreenshareSlidesVP8_2TL_VeryLossyNet) {
   RunTest(screenshare);
 }
 
+TEST_F(FullStackTest, ScreenshareSlidesVP8_2TL_LossyNetRestrictedQueue) {
+  VideoQualityTest::Params screenshare;
+  screenshare.call.send_side_bwe = true;
+  screenshare.video = {true, 1850, 1110, 5, 50000, 200000, 2000000, false,
+                       "VP8", 2, 1, 400000, false, false, "", ""};
+  screenshare.screenshare = {true, 10};
+  screenshare.analyzer = {"screenshare_slides_lossy_limited", 0.0, 0.0,
+                          kFullStackTestDurationSecs};
+  screenshare.pipe.loss_percent = 5;
+  screenshare.pipe.link_capacity_kbps = 200;
+  screenshare.pipe.queue_length_packets = 30;
+
+  RunTest(screenshare);
+}
+
 const VideoQualityTest::Params::Video kSvcVp9Video = {
     true,   1280,    720,     30,
     800000, 2500000, 2500000, false,
@@ -408,7 +423,8 @@ TEST_F(FullStackTest, ScreenshareSlidesVP9_2SL) {
   screenshare.analyzer = {"screenshare_slides_vp9_2sl", 0.0, 0.0,
                           kFullStackTestDurationSecs};
   screenshare.logs = false;
-  screenshare.ss = {std::vector<VideoStream>(), 0, 2, 1};
+  screenshare.ss = {std::vector<VideoStream>(),  0,    2, 1,
+                    std::vector<SpatialLayer>(), false};
   RunTest(screenshare);
 }
 
@@ -419,7 +435,8 @@ TEST_F(FullStackTest, VP9SVC_3SL_High) {
   simulcast.analyzer = {"vp9svc_3sl_high", 0.0, 0.0,
                         kFullStackTestDurationSecs};
   simulcast.logs = false;
-  simulcast.ss = {std::vector<VideoStream>(), 0, 3, 2};
+  simulcast.ss = {std::vector<VideoStream>(),  0,    3, 2,
+                  std::vector<SpatialLayer>(), false};
   RunTest(simulcast);
 }
 
@@ -430,7 +447,8 @@ TEST_F(FullStackTest, VP9SVC_3SL_Medium) {
   simulcast.analyzer = {"vp9svc_3sl_medium", 0.0, 0.0,
                         kFullStackTestDurationSecs};
   simulcast.logs = false;
-  simulcast.ss = {std::vector<VideoStream>(), 0, 3, 1};
+  simulcast.ss = {std::vector<VideoStream>(),  0,    3, 1,
+                  std::vector<SpatialLayer>(), false};
   RunTest(simulcast);
 }
 
@@ -440,10 +458,37 @@ TEST_F(FullStackTest, VP9SVC_3SL_Low) {
   simulcast.video = kSvcVp9Video;
   simulcast.analyzer = {"vp9svc_3sl_low", 0.0, 0.0, kFullStackTestDurationSecs};
   simulcast.logs = false;
-  simulcast.ss = {std::vector<VideoStream>(), 0, 3, 0};
+  simulcast.ss = {std::vector<VideoStream>(),  0,    3, 0,
+                  std::vector<SpatialLayer>(), false};
   RunTest(simulcast);
 }
 #endif  // !defined(RTC_DISABLE_VP9)
+
+// Android bots can't handle FullHD, so disable the test.
+#if defined(WEBRTC_ANDROID)
+#define MAYBE_SimulcastFullHdOveruse DISABLED_SimulcastFullHdOveruse
+#else
+#define MAYBE_SimulcastFullHdOveruse SimulcastFullHdOveruse
+#endif
+
+TEST_F(FullStackTest, MAYBE_SimulcastFullHdOveruse) {
+  VideoQualityTest::Params simulcast;
+  simulcast.call.send_side_bwe = true;
+  simulcast.video = {true,    1920, 1080, 30, 800000, 2500000,
+                     2500000, false,        "VP8",        3,  2,      400000,
+                     false,   false,        "",           "Generator"};
+  simulcast.analyzer = {"simulcast_HD_high", 0.0, 0.0,
+                        kFullStackTestDurationSecs};
+  simulcast.pipe.loss_percent = 0;
+  simulcast.pipe.queue_delay_ms = 100;
+  std::vector<VideoStream> streams = {DefaultVideoStream(simulcast),
+                                      DefaultVideoStream(simulcast),
+                                      DefaultVideoStream(simulcast)};
+  simulcast.ss = {streams, 2, 1, 0, std::vector<SpatialLayer>(), true};
+  webrtc::test::ScopedFieldTrials override_trials(
+      "WebRTC-ForceSimulatedOveruseIntervalMs/1000-50000-300/");
+  RunTest(simulcast);
+}
 
 TEST_F(FullStackTest, SimulcastVP8_3SL_High) {
   VideoQualityTest::Params simulcast;
@@ -463,7 +508,7 @@ TEST_F(FullStackTest, SimulcastVP8_3SL_High) {
   std::vector<VideoStream> streams = {DefaultVideoStream(video_params_low),
                                       DefaultVideoStream(video_params_medium),
                                       DefaultVideoStream(video_params_high)};
-  simulcast.ss = {streams, 2, 1, 0};
+  simulcast.ss = {streams, 2, 1, 0, std::vector<SpatialLayer>(), false};
   RunTest(simulcast);
 }
 
@@ -485,7 +530,7 @@ TEST_F(FullStackTest, SimulcastVP8_3SL_Medium) {
   std::vector<VideoStream> streams = {DefaultVideoStream(video_params_low),
                                       DefaultVideoStream(video_params_medium),
                                       DefaultVideoStream(video_params_high)};
-  simulcast.ss = {streams, 1, 1, 0};
+  simulcast.ss = {streams, 1, 1, 0, std::vector<SpatialLayer>(), false};
   RunTest(simulcast);
 }
 
@@ -507,7 +552,7 @@ TEST_F(FullStackTest, SimulcastVP8_3SL_Low) {
   std::vector<VideoStream> streams = {DefaultVideoStream(video_params_low),
                                       DefaultVideoStream(video_params_medium),
                                       DefaultVideoStream(video_params_high)};
-  simulcast.ss = {streams, 0, 1, 0};
+  simulcast.ss = {streams, 0, 1, 0, std::vector<SpatialLayer>(), false};
   RunTest(simulcast);
 }
 
@@ -530,7 +575,7 @@ TEST_F(FullStackTest, LargeRoomVP8_5thumb) {
                                       DefaultVideoStream(video_params_medium),
                                       DefaultVideoStream(video_params_high)};
   large_room.num_thumbnails = 5;
-  large_room.ss = {streams, 2, 1, 0};
+  large_room.ss = {streams, 2, 1, 0, std::vector<SpatialLayer>(), false};
   RunTest(large_room);
 }
 
@@ -563,7 +608,7 @@ TEST_F(FullStackTest, MAYBE_LargeRoomVP8_15thumb) {
                                       DefaultVideoStream(video_params_medium),
                                       DefaultVideoStream(video_params_high)};
   large_room.num_thumbnails = 15;
-  large_room.ss = {streams, 2, 1, 0};
+  large_room.ss = {streams, 2, 1, 0, std::vector<SpatialLayer>(), false};
   RunTest(large_room);
 }
 
@@ -586,7 +631,7 @@ TEST_F(FullStackTest, MAYBE_LargeRoomVP8_50thumb) {
                                       DefaultVideoStream(video_params_medium),
                                       DefaultVideoStream(video_params_high)};
   large_room.num_thumbnails = 50;
-  large_room.ss = {streams, 2, 1, 0};
+  large_room.ss = {streams, 2, 1, 0, std::vector<SpatialLayer>(), false};
   RunTest(large_room);
 }
 

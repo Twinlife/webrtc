@@ -26,6 +26,11 @@ FakeAudioSendStream::FakeAudioSendStream(
   RTC_DCHECK(config.voe_channel_id != -1);
 }
 
+void FakeAudioSendStream::Reconfigure(
+    const webrtc::AudioSendStream::Config& config) {
+  config_ = config;
+}
+
 const webrtc::AudioSendStream::Config&
     FakeAudioSendStream::GetConfig() const {
   return config_;
@@ -581,6 +586,11 @@ webrtc::Call::Stats FakeCall::GetStats() const {
 void FakeCall::SetBitrateConfig(
     const webrtc::Call::Config::BitrateConfig& bitrate_config) {
   config_.bitrate_config = bitrate_config;
+}
+
+void FakeCall::SetBitrateConfigMask(
+    const webrtc::Call::Config::BitrateConfigMask& mask) {
+  // TODO(zstein): not implemented
 }
 
 void FakeCall::SignalChannelNetworkState(webrtc::MediaType media,

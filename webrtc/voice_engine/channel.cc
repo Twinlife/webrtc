@@ -24,7 +24,7 @@
 #include "webrtc/base/task_queue.h"
 #include "webrtc/base/thread_checker.h"
 #include "webrtc/base/timeutils.h"
-#include "webrtc/call/rtp_transport_controller_send.h"
+#include "webrtc/call/rtp_transport_controller_send_interface.h"
 #include "webrtc/config.h"
 #include "webrtc/logging/rtc_event_log/rtc_event_log.h"
 #include "webrtc/modules/audio_coding/codecs/audio_format_conversion.h"
@@ -76,23 +76,16 @@ class RtcEventLogProxy final : public webrtc::RtcEventLog {
   void StopLogging() override { RTC_NOTREACHED(); }
 
   void LogVideoReceiveStreamConfig(
-      const webrtc::VideoReceiveStream::Config& config) override {
-    rtc::CritScope lock(&crit_);
-    if (event_log_) {
-      event_log_->LogVideoReceiveStreamConfig(config);
-    }
+      const webrtc::rtclog::StreamConfig&) override {
+    RTC_NOTREACHED();
   }
 
-  void LogVideoSendStreamConfig(
-      const webrtc::VideoSendStream::Config& config) override {
-    rtc::CritScope lock(&crit_);
-    if (event_log_) {
-      event_log_->LogVideoSendStreamConfig(config);
-    }
+  void LogVideoSendStreamConfig(const webrtc::rtclog::StreamConfig&) override {
+    RTC_NOTREACHED();
   }
 
   void LogAudioReceiveStreamConfig(
-      const webrtc::AudioReceiveStream::Config& config) override {
+      const webrtc::rtclog::StreamConfig& config) override {
     rtc::CritScope lock(&crit_);
     if (event_log_) {
       event_log_->LogAudioReceiveStreamConfig(config);
@@ -100,7 +93,7 @@ class RtcEventLogProxy final : public webrtc::RtcEventLog {
   }
 
   void LogAudioSendStreamConfig(
-      const webrtc::AudioSendStream::Config& config) override {
+      const webrtc::rtclog::StreamConfig& config) override {
     rtc::CritScope lock(&crit_);
     if (event_log_) {
       event_log_->LogAudioSendStreamConfig(config);
@@ -108,32 +101,28 @@ class RtcEventLogProxy final : public webrtc::RtcEventLog {
   }
 
   void LogRtpHeader(webrtc::PacketDirection direction,
-                    webrtc::MediaType media_type,
                     const uint8_t* header,
                     size_t packet_length) override {
-    LogRtpHeader(direction, media_type, header, packet_length,
-                 PacedPacketInfo::kNotAProbe);
+    LogRtpHeader(direction, header, packet_length, PacedPacketInfo::kNotAProbe);
   }
 
   void LogRtpHeader(webrtc::PacketDirection direction,
-                    webrtc::MediaType media_type,
                     const uint8_t* header,
                     size_t packet_length,
                     int probe_cluster_id) override {
     rtc::CritScope lock(&crit_);
     if (event_log_) {
-      event_log_->LogRtpHeader(direction, media_type, header, packet_length,
+      event_log_->LogRtpHeader(direction, header, packet_length,
                                probe_cluster_id);
     }
   }
 
   void LogRtcpPacket(webrtc::PacketDirection direction,
-                     webrtc::MediaType media_type,
                      const uint8_t* packet,
                      size_t length) override {
     rtc::CritScope lock(&crit_);
     if (event_log_) {
-      event_log_->LogRtcpPacket(direction, media_type, packet, length);
+      event_log_->LogRtcpPacket(direction, packet, length);
     }
   }
 
@@ -671,7 +660,7 @@ MixerParticipant::AudioFrameInfo Channel::GetAudioFrameWithMuted(
     rtc::CritScope cs(&_callbackCritSect);
     if (audio_sink_) {
       AudioSinkInterface::Data data(
-          &audioFrame->data_[0], audioFrame->samples_per_channel_,
+          audioFrame->data(), audioFrame->samples_per_channel_,
           audioFrame->sample_rate_hz_, audioFrame->num_channels_,
           audioFrame->timestamp_);
       audio_sink_->OnData(data);
@@ -1217,7 +1206,11 @@ int32_t Channel::StartSend() {
     return 0;
   }
   channel_state_.SetSending(true);
-
+  {
+    // It is now OK to start posting tasks to the encoder task queue.
+    rtc::CritScope cs(&encoder_queue_lock_);
+    encoder_queue_is_active_ = true;
+  }
   // Resume the previous sequence number which was reset by StopSend(). This
   // needs to be done before |sending| is set to true on the RTP/RTCP module.
   if (send_sequence_number_) {
@@ -1252,8 +1245,15 @@ void Channel::StopSend() {
   // exists and it is therfore guaranteed that the task queue will never try
   // to acccess and invalid channel object.
   RTC_DCHECK(encoder_queue_);
+
   rtc::Event flush(false, false);
-  encoder_queue_->PostTask([&flush]() { flush.Set(); });
+  {
+    // Clear |encoder_queue_is_active_| under lock to prevent any other tasks
+    // than this final "flush task" to be posted on the queue.
+    rtc::CritScope cs(&encoder_queue_lock_);
+    encoder_queue_is_active_ = false;
+    encoder_queue_->PostTask([&flush]() { flush.Set(); });
+  }
   flush.Wait(rtc::Event::kForever);
 
   // Store the sequence number to be able to pick up the same sequence for
@@ -1278,23 +1278,34 @@ bool Channel::SetEncoder(int payload_type,
                          std::unique_ptr<AudioEncoder> encoder) {
   RTC_DCHECK_GE(payload_type, 0);
   RTC_DCHECK_LE(payload_type, 127);
-  // TODO(ossu): Make a CodecInst up for now. It seems like very little of this
-  // information is actually used, possibly only payload type and clock rate.
-  CodecInst lies;
-  lies.pltype = payload_type;
-  strncpy(lies.plname, "audio", sizeof(lies.plname));
-  lies.plname[sizeof(lies.plname) - 1] = 0;
+  // TODO(ossu): Make CodecInsts up, for now: one for the RTP/RTCP module and
+  // one for for us to keep track of sample rate and number of channels, etc.
+
+  // The RTP/RTCP module needs to know the RTP timestamp rate (i.e. clockrate)
+  // as well as some other things, so we collect this info and send it along.
+  CodecInst rtp_codec;
+  rtp_codec.pltype = payload_type;
+  strncpy(rtp_codec.plname, "audio", sizeof(rtp_codec.plname));
+  rtp_codec.plname[sizeof(rtp_codec.plname) - 1] = 0;
   // Seems unclear if it should be clock rate or sample rate. CodecInst
   // supposedly carries the sample rate, but only clock rate seems sensible to
   // send to the RTP/RTCP module.
-  lies.plfreq = encoder->RtpTimestampRateHz();
-  lies.pacsize = 0;
-  lies.channels = encoder->NumChannels();
-  lies.rate = 0;
+  rtp_codec.plfreq = encoder->RtpTimestampRateHz();
+  rtp_codec.pacsize = rtc::CheckedDivExact(
+      static_cast<int>(encoder->Max10MsFramesInAPacket() * rtp_codec.plfreq),
+      100);
+  rtp_codec.channels = encoder->NumChannels();
+  rtp_codec.rate = 0;
 
-  if (_rtpRtcpModule->RegisterSendPayload(lies) != 0) {
+  // For audio encoding we need, instead, the actual sample rate of the codec.
+  // The rest of the information should be the same.
+  CodecInst send_codec = rtp_codec;
+  send_codec.plfreq = encoder->SampleRateHz();
+  cached_send_codec_.emplace(send_codec);
+
+  if (_rtpRtcpModule->RegisterSendPayload(rtp_codec) != 0) {
     _rtpRtcpModule->DeRegisterSendPayload(payload_type);
-    if (_rtpRtcpModule->RegisterSendPayload(lies) != 0) {
+    if (_rtpRtcpModule->RegisterSendPayload(rtp_codec) != 0) {
       WEBRTC_TRACE(
           kTraceError, kTraceVoice, VoEId(_instanceId, _channelId),
           "SetEncoder() failed to register codec to RTP/RTCP module");
@@ -1303,7 +1314,13 @@ bool Channel::SetEncoder(int payload_type,
   }
 
   audio_coding_->SetEncoder(std::move(encoder));
+  codec_manager_.UnsetCodecInst();
   return true;
+}
+
+void Channel::ModifyEncoder(
+    rtc::FunctionView<void(std::unique_ptr<AudioEncoder>*)> modifier) {
+  audio_coding_->ModifyEncoder(modifier);
 }
 
 int32_t Channel::RegisterVoiceEngineObserver(VoiceEngineObserver& observer) {
@@ -1337,10 +1354,15 @@ int32_t Channel::DeRegisterVoiceEngineObserver() {
 }
 
 int32_t Channel::GetSendCodec(CodecInst& codec) {
-  auto send_codec = codec_manager_.GetCodecInst();
-  if (send_codec) {
-    codec = *send_codec;
+  if (cached_send_codec_) {
+    codec = *cached_send_codec_;
     return 0;
+  } else {
+    const CodecInst* send_codec = codec_manager_.GetCodecInst();
+    if (send_codec) {
+      codec = *send_codec;
+      return 0;
+    }
   }
   return -1;
 }
@@ -1369,6 +1391,8 @@ int32_t Channel::SetSendCodec(const CodecInst& codec) {
       return -1;
     }
   }
+
+  cached_send_codec_.reset();
 
   return 0;
 }
@@ -1611,8 +1635,8 @@ bool Channel::EnableAudioNetworkAdaptor(const std::string& config_string) {
   bool success = false;
   audio_coding_->ModifyEncoder([&](std::unique_ptr<AudioEncoder>* encoder) {
     if (*encoder) {
-      success = (*encoder)->EnableAudioNetworkAdaptor(
-          config_string, event_log_proxy_.get(), Clock::GetRealTimeClock());
+      success = (*encoder)->EnableAudioNetworkAdaptor(config_string,
+                                                      event_log_proxy_.get());
     }
   });
   return success;
@@ -2711,7 +2735,11 @@ int Channel::ResendPackets(const uint16_t* sequence_numbers, int length) {
 }
 
 void Channel::ProcessAndEncodeAudio(const AudioFrame& audio_input) {
-  RTC_DCHECK(channel_state_.Get().sending);
+  // Avoid posting any new tasks if sending was already stopped in StopSend().
+  rtc::CritScope cs(&encoder_queue_lock_);
+  if (!encoder_queue_is_active_) {
+    return;
+  }
   std::unique_ptr<AudioFrame> audio_frame(new AudioFrame());
   // TODO(henrika): try to avoid copying by moving ownership of audio frame
   // either into pool of frames or into the task itself.
@@ -2725,7 +2753,11 @@ void Channel::ProcessAndEncodeAudio(const int16_t* audio_data,
                                     int sample_rate,
                                     size_t number_of_frames,
                                     size_t number_of_channels) {
-  RTC_DCHECK(channel_state_.Get().sending);
+  // Avoid posting as new task if sending was already stopped in StopSend().
+  rtc::CritScope cs(&encoder_queue_lock_);
+  if (!encoder_queue_is_active_) {
+    return;
+  }
   CodecInst codec;
   GetSendCodec(codec);
   std::unique_ptr<AudioFrame> audio_frame(new AudioFrame());
@@ -2754,12 +2786,12 @@ void Channel::ProcessAndEncodeAudioOnTaskQueue(AudioFrame* audio_input) {
   if (_includeAudioLevelIndication) {
     size_t length =
         audio_input->samples_per_channel_ * audio_input->num_channels_;
-    RTC_CHECK_LE(length, sizeof(audio_input->data_));
+    RTC_CHECK_LE(length, AudioFrame::kMaxDataSizeBytes);
     if (is_muted && previous_frame_muted_) {
       rms_level_.AnalyzeMuted(length);
     } else {
       rms_level_.Analyze(
-          rtc::ArrayView<const int16_t>(audio_input->data_, length));
+          rtc::ArrayView<const int16_t>(audio_input->data(), length));
     }
   }
   previous_frame_muted_ = is_muted;
@@ -2919,8 +2951,8 @@ int32_t Channel::MixOrReplaceAudioWithFile(AudioFrame* audio_input) {
   if (_mixFileWithMicrophone) {
     // Currently file stream is always mono.
     // TODO(xians): Change the code when FilePlayer supports real stereo.
-    MixWithSat(audio_input->data_, audio_input->num_channels_, fileBuffer.get(),
-               1, fileSamples);
+    MixWithSat(audio_input->mutable_data(), audio_input->num_channels_,
+               fileBuffer.get(), 1, fileSamples);
   } else {
     // Replace ACM audio with file.
     // Currently file stream is always mono.
@@ -2959,8 +2991,8 @@ int32_t Channel::MixAudioWithFile(AudioFrame& audioFrame, int mixingFrequency) {
   if (audioFrame.samples_per_channel_ == fileSamples) {
     // Currently file stream is always mono.
     // TODO(xians): Change the code when FilePlayer supports real stereo.
-    MixWithSat(audioFrame.data_, audioFrame.num_channels_, fileBuffer.get(), 1,
-               fileSamples);
+    MixWithSat(audioFrame.mutable_data(), audioFrame.num_channels_,
+               fileBuffer.get(), 1, fileSamples);
   } else {
     WEBRTC_TRACE(kTraceWarning, kTraceVoice, VoEId(_instanceId, _channelId),
                  "Channel::MixAudioWithFile() samples_per_channel_(%" PRIuS

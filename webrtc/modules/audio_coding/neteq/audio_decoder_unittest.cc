@@ -402,13 +402,12 @@ class AudioDecoderG722Test : public AudioDecoderTest {
     codec_input_rate_hz_ = 16000;
     frame_size_ = 160;
     data_length_ = 10 * frame_size_;
-    decoder_ = new AudioDecoderG722;
+    decoder_ = new AudioDecoderG722Impl;
     assert(decoder_);
-    AudioEncoderG722::Config config;
+    AudioEncoderG722Config config;
     config.frame_size_ms = 10;
-    config.payload_type = payload_type_;
     config.num_channels = 1;
-    audio_encoder_.reset(new AudioEncoderG722(config));
+    audio_encoder_.reset(new AudioEncoderG722Impl(config, payload_type_));
   }
 };
 
@@ -421,11 +420,10 @@ class AudioDecoderG722StereoTest : public AudioDecoderTest {
     data_length_ = 10 * frame_size_;
     decoder_ = new AudioDecoderG722Stereo;
     assert(decoder_);
-    AudioEncoderG722::Config config;
+    AudioEncoderG722Config config;
     config.frame_size_ms = 10;
-    config.payload_type = payload_type_;
     config.num_channels = 2;
-    audio_encoder_.reset(new AudioEncoderG722(config));
+    audio_encoder_.reset(new AudioEncoderG722Impl(config, payload_type_));
   }
 };
 

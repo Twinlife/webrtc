@@ -25,8 +25,8 @@
 #include "webrtc/base/optional.h"
 #include "webrtc/base/stringutils.h"
 #include "webrtc/common_types.h"
-#include "webrtc/common_video/h264/profile_level_id.h"
 #include "webrtc/media/base/cryptoparams.h"
+#include "webrtc/media/base/h264_profile_level_id.h"
 #include "webrtc/media/base/mediaconstants.h"
 #include "webrtc/p2p/base/p2pconstants.h"
 #include "webrtc/pc/channelmanager.h"
@@ -35,10 +35,10 @@
 namespace {
 const char kInline[] = "inline:";
 
-void GetSupportedCryptoSuiteNames(void (*func)(const rtc::CryptoOptions&,
-                                      std::vector<int>*),
-                                  const rtc::CryptoOptions& crypto_options,
-                                  std::vector<std::string>* names) {
+void GetSupportedSdesCryptoSuiteNames(void (*func)(const rtc::CryptoOptions&,
+                                                   std::vector<int>*),
+                                      const rtc::CryptoOptions& crypto_options,
+                                      std::vector<std::string>* names) {
   std::vector<int> crypto_suites;
   func(crypto_options, &crypto_suites);
   for (const auto crypto : crypto_suites) {
@@ -66,6 +66,36 @@ const char kMediaProtocolSctp[] = "SCTP";
 const char kMediaProtocolDtlsSctp[] = "DTLS/SCTP";
 const char kMediaProtocolUdpDtlsSctp[] = "UDP/DTLS/SCTP";
 const char kMediaProtocolTcpDtlsSctp[] = "TCP/DTLS/SCTP";
+
+// Note that the below functions support some protocol strings purely for
+// legacy compatibility, as required by JSEP in Section 5.1.2, Profile Names
+// and Interoperability.
+
+static bool IsDtlsRtp(const std::string& protocol) {
+  // Most-likely values first.
+  return protocol == "UDP/TLS/RTP/SAVPF" || protocol == "TCP/TLS/RTP/SAVPF" ||
+         protocol == "UDP/TLS/RTP/SAVP" || protocol == "TCP/TLS/RTP/SAVP";
+}
+
+static bool IsPlainRtp(const std::string& protocol) {
+  // Most-likely values first.
+  return protocol == "RTP/SAVPF" || protocol == "RTP/AVPF" ||
+         protocol == "RTP/SAVP" || protocol == "RTP/AVP";
+}
+
+static bool IsDtlsSctp(const std::string& protocol) {
+  return protocol == kMediaProtocolDtlsSctp ||
+         protocol == kMediaProtocolUdpDtlsSctp ||
+         protocol == kMediaProtocolTcpDtlsSctp;
+}
+
+static bool IsPlainSctp(const std::string& protocol) {
+  return protocol == kMediaProtocolSctp;
+}
+
+static bool IsSctp(const std::string& protocol) {
+  return IsPlainSctp(protocol) || IsDtlsSctp(protocol);
+}
 
 RtpTransceiverDirection RtpTransceiverDirection::FromMediaContentDirection(
     MediaContentDirection md) {
@@ -179,8 +209,8 @@ bool FindMatchingCrypto(const CryptoParamsVec& cryptos,
 }
 
 // For audio, HMAC 32 is prefered over HMAC 80 because of the low overhead.
-void GetSupportedAudioCryptoSuites(const rtc::CryptoOptions& crypto_options,
-    std::vector<int>* crypto_suites) {
+void GetSupportedAudioSdesCryptoSuites(const rtc::CryptoOptions& crypto_options,
+                                       std::vector<int>* crypto_suites) {
   if (crypto_options.enable_gcm_crypto_suites) {
     crypto_suites->push_back(rtc::SRTP_AEAD_AES_256_GCM);
     crypto_suites->push_back(rtc::SRTP_AEAD_AES_128_GCM);
@@ -189,36 +219,15 @@ void GetSupportedAudioCryptoSuites(const rtc::CryptoOptions& crypto_options,
   crypto_suites->push_back(rtc::SRTP_AES128_CM_SHA1_80);
 }
 
-void GetSupportedAudioCryptoSuiteNames(const rtc::CryptoOptions& crypto_options,
+void GetSupportedAudioSdesCryptoSuiteNames(
+    const rtc::CryptoOptions& crypto_options,
     std::vector<std::string>* crypto_suite_names) {
-  GetSupportedCryptoSuiteNames(GetSupportedAudioCryptoSuites,
-                               crypto_options, crypto_suite_names);
+  GetSupportedSdesCryptoSuiteNames(GetSupportedAudioSdesCryptoSuites,
+                                   crypto_options, crypto_suite_names);
 }
 
-void GetSupportedVideoCryptoSuites(const rtc::CryptoOptions& crypto_options,
-    std::vector<int>* crypto_suites) {
-  GetDefaultSrtpCryptoSuites(crypto_options, crypto_suites);
-}
-
-void GetSupportedVideoCryptoSuiteNames(const rtc::CryptoOptions& crypto_options,
-    std::vector<std::string>* crypto_suite_names) {
-  GetSupportedCryptoSuiteNames(GetSupportedVideoCryptoSuites,
-                               crypto_options, crypto_suite_names);
-}
-
-void GetSupportedDataCryptoSuites(const rtc::CryptoOptions& crypto_options,
-    std::vector<int>* crypto_suites) {
-  GetDefaultSrtpCryptoSuites(crypto_options, crypto_suites);
-}
-
-void GetSupportedDataCryptoSuiteNames(const rtc::CryptoOptions& crypto_options,
-    std::vector<std::string>* crypto_suite_names) {
-  GetSupportedCryptoSuiteNames(GetSupportedDataCryptoSuites,
-                               crypto_options, crypto_suite_names);
-}
-
-void GetDefaultSrtpCryptoSuites(const rtc::CryptoOptions& crypto_options,
-    std::vector<int>* crypto_suites) {
+void GetSupportedVideoSdesCryptoSuites(const rtc::CryptoOptions& crypto_options,
+                                       std::vector<int>* crypto_suites) {
   if (crypto_options.enable_gcm_crypto_suites) {
     crypto_suites->push_back(rtc::SRTP_AEAD_AES_256_GCM);
     crypto_suites->push_back(rtc::SRTP_AEAD_AES_128_GCM);
@@ -226,10 +235,27 @@ void GetDefaultSrtpCryptoSuites(const rtc::CryptoOptions& crypto_options,
   crypto_suites->push_back(rtc::SRTP_AES128_CM_SHA1_80);
 }
 
-void GetDefaultSrtpCryptoSuiteNames(const rtc::CryptoOptions& crypto_options,
+void GetSupportedVideoSdesCryptoSuiteNames(
+    const rtc::CryptoOptions& crypto_options,
     std::vector<std::string>* crypto_suite_names) {
-  GetSupportedCryptoSuiteNames(GetDefaultSrtpCryptoSuites,
-                               crypto_options, crypto_suite_names);
+  GetSupportedSdesCryptoSuiteNames(GetSupportedVideoSdesCryptoSuites,
+                                   crypto_options, crypto_suite_names);
+}
+
+void GetSupportedDataSdesCryptoSuites(const rtc::CryptoOptions& crypto_options,
+                                      std::vector<int>* crypto_suites) {
+  if (crypto_options.enable_gcm_crypto_suites) {
+    crypto_suites->push_back(rtc::SRTP_AEAD_AES_256_GCM);
+    crypto_suites->push_back(rtc::SRTP_AEAD_AES_128_GCM);
+  }
+  crypto_suites->push_back(rtc::SRTP_AES128_CM_SHA1_80);
+}
+
+void GetSupportedDataSdesCryptoSuiteNames(
+    const rtc::CryptoOptions& crypto_options,
+    std::vector<std::string>* crypto_suite_names) {
+  GetSupportedSdesCryptoSuiteNames(GetSupportedDataSdesCryptoSuites,
+                                   crypto_options, crypto_suite_names);
 }
 
 // Support any GCM cipher (if enabled through options). For video support only
@@ -402,11 +428,6 @@ class UsedRtpHeaderExtensionIds : public UsedIds<webrtc::RtpExtension> {
  private:
 };
 
-static bool IsSctp(const MediaContentDescription* desc) {
-  return ((desc->protocol() == kMediaProtocolSctp) ||
-          (desc->protocol() == kMediaProtocolDtlsSctp));
-}
-
 // Adds a StreamParams for each Stream in Streams with media type
 // media_type to content_description.
 // |current_params| - All currently known StreamParams of any media type.
@@ -417,7 +438,7 @@ static bool AddStreamParams(MediaType media_type,
                             MediaContentDescriptionImpl<C>* content_description,
                             const bool add_legacy_stream) {
   // SCTP streams are not negotiated using SDP/ContentDescriptions.
-  if (IsSctp(content_description)) {
+  if (IsSctp(content_description->protocol())) {
     return true;
   }
 
@@ -448,8 +469,7 @@ static bool AddStreamParams(MediaType media_type,
     if (stream_it->type != media_type)
       continue;  // Wrong media type.
 
-    const StreamParams* param =
-        GetStreamByIds(*current_streams, "", stream_it->id);
+    StreamParams* param = GetStreamByIds(*current_streams, "", stream_it->id);
     // groupid is empty for StreamParams generated using
     // MediaSessionDescriptionFactory.
     if (!param) {
@@ -500,6 +520,10 @@ static bool AddStreamParams(MediaType media_type,
       // This is necessary so that we can use the CNAME for other media types.
       current_streams->push_back(stream_param);
     } else {
+      // Use existing generated SSRCs/groups, but update the sync_label if
+      // necessary. This may be needed if a MediaStreamTrack was moved from one
+      // MediaStream to another.
+      param->sync_label = stream_it->sync_label;
       content_description->AddStream(*param);
     }
   }
@@ -1086,26 +1110,6 @@ static bool CreateMediaContentAnswer(
   return true;
 }
 
-static bool IsDtlsRtp(const std::string& protocol) {
-  // Most-likely values first.
-  return protocol == "UDP/TLS/RTP/SAVPF" || protocol == "TCP/TLS/RTP/SAVPF" ||
-         protocol == "UDP/TLS/RTP/SAVP" || protocol == "TCP/TLS/RTP/SAVP";
-}
-
-static bool IsPlainRtp(const std::string& protocol) {
-  // Most-likely values first.
-  return protocol == "RTP/SAVPF" || protocol == "RTP/AVPF" ||
-         protocol == "RTP/SAVP" || protocol == "RTP/AVP";
-}
-
-static bool IsDtlsSctp(const std::string& protocol) {
-  return protocol == "DTLS/SCTP";
-}
-
-static bool IsPlainSctp(const std::string& protocol) {
-  return protocol == "SCTP";
-}
-
 static bool IsMediaProtocolSupported(MediaType type,
                                      const std::string& protocol,
                                      bool secure_transport) {
@@ -1358,8 +1362,8 @@ SessionDescription* MediaSessionDescriptionFactory::CreateOffer(
         video_added = true;
       } else if (IsMediaContentOfType(&*it, MEDIA_TYPE_DATA)) {
         MediaSessionOptions options_copy(options);
-        if (IsSctp(static_cast<const MediaContentDescription*>(
-                it->description))) {
+        if (IsSctp(static_cast<const MediaContentDescription*>(it->description)
+                       ->protocol())) {
           options_copy.data_channel_type = DCT_SCTP;
         }
         if (!AddDataContentForOffer(options_copy, current_description,
@@ -1675,7 +1679,7 @@ bool MediaSessionDescriptionFactory::AddAudioContentForOffer(
 
   std::unique_ptr<AudioContentDescription> audio(new AudioContentDescription());
   std::vector<std::string> crypto_suites;
-  GetSupportedAudioCryptoSuiteNames(options.crypto_options, &crypto_suites);
+  GetSupportedAudioSdesCryptoSuiteNames(options.crypto_options, &crypto_suites);
   if (!CreateMediaContentOffer(
           options,
           audio_codecs,
@@ -1725,7 +1729,7 @@ bool MediaSessionDescriptionFactory::AddVideoContentForOffer(
 
   std::unique_ptr<VideoContentDescription> video(new VideoContentDescription());
   std::vector<std::string> crypto_suites;
-  GetSupportedVideoCryptoSuiteNames(options.crypto_options, &crypto_suites);
+  GetSupportedVideoSdesCryptoSuiteNames(options.crypto_options, &crypto_suites);
   if (!CreateMediaContentOffer(
           options,
           video_codecs,
@@ -1798,10 +1802,14 @@ bool MediaSessionDescriptionFactory::AddDataContentForOffer(
     // before we call CreateMediaContentOffer.  Otherwise,
     // CreateMediaContentOffer won't know this is SCTP and will
     // generate SSRCs rather than SIDs.
+    // TODO(deadbeef): Offer kMediaProtocolUdpDtlsSctp (or TcpDtlsSctp), once
+    // it's safe to do so. Older versions of webrtc would reject these
+    // protocols; see https://bugs.chromium.org/p/webrtc/issues/detail?id=7706.
     data->set_protocol(
         secure_transport ? kMediaProtocolDtlsSctp : kMediaProtocolSctp);
   } else {
-    GetSupportedDataCryptoSuiteNames(options.crypto_options, &crypto_suites);
+    GetSupportedDataSdesCryptoSuiteNames(options.crypto_options,
+                                         &crypto_suites);
   }
 
   if (!CreateMediaContentOffer(

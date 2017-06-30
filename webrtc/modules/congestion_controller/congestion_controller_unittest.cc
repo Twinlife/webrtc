@@ -9,6 +9,7 @@
  */
 
 #include "webrtc/modules/congestion_controller/include/congestion_controller.h"
+#include "webrtc/base/socket.h"
 #include "webrtc/logging/rtc_event_log/mock/mock_rtc_event_log.h"
 #include "webrtc/modules/bitrate_controller/include/bitrate_controller.h"
 #include "webrtc/modules/congestion_controller/congestion_controller_unittests_helper.h"
@@ -16,6 +17,7 @@
 #include "webrtc/modules/pacing/mock/mock_paced_sender.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/bwe_defines.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/mock/mock_remote_bitrate_observer.h"
+#include "webrtc/modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/transport_feedback.h"
 #include "webrtc/system_wrappers/include/clock.h"
 #include "webrtc/test/gmock.h"
@@ -27,6 +29,8 @@ using testing::NiceMock;
 using testing::Return;
 using testing::SaveArg;
 using testing::StrictMock;
+
+namespace webrtc {
 
 namespace {
 const webrtc::PacedPacketInfo kPacingInfo0(0, 5, 2000);
@@ -40,9 +44,17 @@ uint32_t AbsSendTime(int64_t t, int64_t denom) {
   return (((t << 18) + (denom >> 1)) / denom) & 0x00fffffful;
 }
 
+class MockPacketRouter : public PacketRouter {
+ public:
+  MOCK_METHOD2(OnReceiveBitrateChanged,
+               void(const std::vector<uint32_t>& ssrcs,
+                    uint32_t bitrate));
+};
+
+const uint32_t kInitialBitrateBps = 60000;
+
 }  // namespace
 
-namespace webrtc {
 namespace test {
 
 class CongestionControllerTest : public ::testing::Test {
@@ -143,7 +155,6 @@ class CongestionControllerTest : public ::testing::Test {
   std::unique_ptr<RtcpBandwidthObserver> bandwidth_observer_;
   PacketRouter packet_router_;
   std::unique_ptr<CongestionController> controller_;
-  const uint32_t kInitialBitrateBps = 60000;
 
   rtc::Optional<uint32_t> target_bitrate_bps_;
 };
@@ -335,13 +346,11 @@ TEST_F(CongestionControllerTest, GetProbingInterval) {
   controller_->Process();
 }
 
-TEST_F(CongestionControllerTest, OnReceivedPacketWithAbsSendTime) {
-  NiceMock<MockCongestionObserver> observer;
-  StrictMock<MockRemoteBitrateObserver> remote_bitrate_observer;
-  std::unique_ptr<PacedSender> pacer(new NiceMock<MockPacedSender>());
-  controller_.reset(
-      new CongestionController(&clock_, &observer, &remote_bitrate_observer,
-                               &event_log_, &packet_router_, std::move(pacer)));
+TEST(ReceiveSideCongestionControllerTest, OnReceivedPacketWithAbsSendTime) {
+  StrictMock<MockPacketRouter> packet_router;
+  SimulatedClock clock_(123456);
+
+  ReceiveSideCongestionController controller(&clock_, &packet_router);
 
   size_t payload_size = 1000;
   RTPHeader header;
@@ -349,14 +358,14 @@ TEST_F(CongestionControllerTest, OnReceivedPacketWithAbsSendTime) {
   header.extension.hasAbsoluteSendTime = true;
 
   std::vector<unsigned int> ssrcs;
-  EXPECT_CALL(remote_bitrate_observer, OnReceiveBitrateChanged(_, _))
+  EXPECT_CALL(packet_router, OnReceiveBitrateChanged(_, _))
       .WillRepeatedly(SaveArg<0>(&ssrcs));
 
   for (int i = 0; i < 10; ++i) {
     clock_.AdvanceTimeMilliseconds((1000 * payload_size) / kInitialBitrateBps);
     int64_t now_ms = clock_.TimeInMilliseconds();
     header.extension.absoluteSendTime = AbsSendTime(now_ms, 1000);
-    controller_->OnReceivedPacket(now_ms, payload_size, header);
+    controller.OnReceivedPacket(now_ms, payload_size, header);
   }
 
   ASSERT_EQ(1u, ssrcs.size());

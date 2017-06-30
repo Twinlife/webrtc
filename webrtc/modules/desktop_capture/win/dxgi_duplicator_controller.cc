@@ -16,6 +16,7 @@
 #include <string>
 
 #include "webrtc/base/checks.h"
+#include "webrtc/base/logging.h"
 #include "webrtc/base/timeutils.h"
 #include "webrtc/modules/desktop_capture/desktop_capture_types.h"
 #include "webrtc/modules/desktop_capture/win/dxgi_frame.h"
@@ -25,18 +26,30 @@
 namespace webrtc {
 
 // static
-DxgiDuplicatorController* DxgiDuplicatorController::Instance() {
+rtc::scoped_refptr<DxgiDuplicatorController>
+DxgiDuplicatorController::Instance() {
   // The static instance won't be deleted to ensure it can be used by other
   // threads even during program exiting.
   static DxgiDuplicatorController* instance = new DxgiDuplicatorController();
-  return instance;
+  return rtc::scoped_refptr<DxgiDuplicatorController>(instance);
 }
 
-DxgiDuplicatorController::DxgiDuplicatorController() = default;
+DxgiDuplicatorController::DxgiDuplicatorController()
+    : refcount_(0) {}
 
-DxgiDuplicatorController::~DxgiDuplicatorController() {
-  rtc::CritScope lock(&lock_);
-  Deinitialize();
+void DxgiDuplicatorController::AddRef() {
+  int refcount = (++refcount_);
+  RTC_DCHECK(refcount > 0);
+}
+
+void DxgiDuplicatorController::Release() {
+  int refcount = (--refcount_);
+  RTC_DCHECK(refcount >= 0);
+  if (refcount == 0) {
+    LOG(LS_WARNING) << "Count of references reaches zero, "
+                       "DxgiDuplicatorController will be unloaded.";
+    Unload();
+  }
 }
 
 bool DxgiDuplicatorController::IsSupported() {
@@ -129,6 +142,11 @@ DxgiDuplicatorController::DoDuplicate(DxgiFrame* frame, int monitor_id) {
   return Result::DUPLICATION_FAILED;
 }
 
+void DxgiDuplicatorController::Unload() {
+  rtc::CritScope lock(&lock_);
+  Deinitialize();
+}
+
 void DxgiDuplicatorController::Unregister(const Context* const context) {
   rtc::CritScope lock(&lock_);
   if (ContextExpired(context)) {
@@ -182,17 +200,7 @@ bool DxgiDuplicatorController::DoInitialize() {
       d3d_info_.min_feature_level = feature_level;
     }
 
-    if (desktop_rect_.is_empty()) {
-      desktop_rect_ = duplicators_.back().desktop_rect();
-    } else {
-      const DesktopRect& left = desktop_rect_;
-      const DesktopRect& right = duplicators_.back().desktop_rect();
-      desktop_rect_ =
-          DesktopRect::MakeLTRB(std::min(left.left(), right.left()),
-                                std::min(left.top(), right.top()),
-                                std::max(left.right(), right.right()),
-                                std::max(left.bottom(), right.bottom()));
-    }
+    desktop_rect_.UnionWith(duplicators_.back().desktop_rect());
   }
   TranslateRect();
 

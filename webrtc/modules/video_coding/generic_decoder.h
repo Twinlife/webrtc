@@ -30,6 +30,8 @@ struct VCMFrameInformation {
   int64_t decodeStartTimeMs;
   void* userData;
   VideoRotation rotation;
+  VideoContentType content_type;
+  EncodedImage::Timing timing;
 };
 
 class VCMDecodedFrameCallback : public DecodedImageCallback {
@@ -67,6 +69,7 @@ class VCMDecodedFrameCallback : public DecodedImageCallback {
   rtc::CriticalSection lock_;
   VCMTimestampMap _timestampMap GUARDED_BY(lock_);
   uint64_t _lastReceivedPictureID;
+  int64_t ntp_offset_;
 };
 
 class VCMGenericDecoder {
@@ -109,6 +112,7 @@ class VCMGenericDecoder {
   VideoCodecType _codecType;
   bool _isExternal;
   bool _keyFrameDecoded;
+  VideoContentType _last_keyframe_content_type;
 };
 
 }  // namespace webrtc

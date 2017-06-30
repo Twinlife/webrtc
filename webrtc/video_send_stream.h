@@ -69,6 +69,8 @@ class VideoSendStream {
     bool suspended = false;
     bool bw_limited_resolution = false;
     bool cpu_limited_resolution = false;
+    bool bw_limited_framerate = false;
+    bool cpu_limited_framerate = false;
     // Total number of times resolution as been requested to be changed due to
     // CPU/quality adaptation.
     int number_of_cpu_adapt_changes = 0;
@@ -222,9 +224,9 @@ class VideoSendStream {
   enum class DegradationPreference {
     // Don't take any actions based on over-utilization signals.
     kDegradationDisabled,
-    // On over-use, request lost resolution, possibly causing down-scaling.
+    // On over-use, request lower frame rate, possibly causing frame drops.
     kMaintainResolution,
-    // On over-use, request lower frame rate, possible causing frame drops.
+    // On over-use, request lower resolution, possibly causing down-scaling.
     kMaintainFramerate,
     // Try to strike a "pleasing" balance between frame rate or resolution.
     kBalanced,
