@@ -1055,23 +1055,11 @@ class MetaBuildWrapper(object):
     extra_files = []
 
     if android:
-      logdog_command = [
-          '--logdog-bin-cmd', './../../bin/logdog_butler',
-          '--project', 'chromium',
-          '--service-account-json',
-          '/creds/service_accounts/service-account-luci-logdog-publisher.json',
-          '--prefix', 'android/swarming/logcats/${SWARMING_TASK_ID}',
-          '--source', '${ISOLATED_OUTDIR}/logcats',
-          '--name', 'unified_logcats',
-      ]
-      test_cmdline = [
-          self.PathJoin('bin', 'run_%s' % target),
-          '--logcat-output-file', '${ISOLATED_OUTDIR}/logcats',
-      ]
+      cmdline = ['../../build/android/test_wrapper/logdog_wrapper.py',
+                 '--target', target,
+                 '--logdog-bin-cmd', '../../bin/logdog_butler']
       if test_type != 'junit_test':
-        test_cmdline += ['--target-devices-file', '${SWARMING_BOT_FILE}',]
-      cmdline = (['./../../build/android/test_wrapper/logdog_wrapper.py']
-                 + logdog_command + test_cmdline + ['-v'])
+        cmdline += ['--target-devices-file', '${SWARMING_BOT_FILE}']
     else:
       extra_files = ['../../testing/test_env.py']
 
@@ -1099,17 +1087,15 @@ class MetaBuildWrapper(object):
           '--test',
       ]
 
-      gtest_parallel = (test_type != 'non_parallel_console_test_launcher' and
-                        not memcheck)
-      if gtest_parallel:
+      if not memcheck:
         extra_files += [
             '../../third_party/gtest-parallel/gtest-parallel',
-            '../../third_party/gtest-parallel/gtest-parallel-wrapper.py',
+            '../../tools-webrtc/gtest-parallel-wrapper.py',
         ]
         sep = '\\' if self.platform == 'win32' else '/'
         output_dir = '${ISOLATED_OUTDIR}' + sep + 'test_logs'
         gtest_parallel_wrapper = [
-            '../../third_party/gtest-parallel/gtest-parallel-wrapper.py',
+            '../../tools-webrtc/gtest-parallel-wrapper.py',
             '--output_dir=%s' % output_dir,
         ]
 
@@ -1123,17 +1109,21 @@ class MetaBuildWrapper(object):
 
       cmdline = (['../../testing/xvfb.py'] if xvfb else
                  ['../../testing/test_env.py'])
-      if memcheck:
-        cmdline += memcheck_cmdline
-      elif gtest_parallel:
-        cmdline += gtest_parallel_wrapper
-      cmdline += [
-          executable,
+      cmdline += memcheck_cmdline if memcheck else gtest_parallel_wrapper
+      cmdline.append(executable)
+      if test_type == 'non_parallel_console_test_launcher' and not memcheck:
+        # Still use the gtest-parallel-wrapper.py script since we need it to
+        # run tests on swarming, but don't execute tests in parallel.
+        cmdline.append('--workers=1')
+
+      cmdline.extend([
           '--',
           '--asan=%d' % asan,
           '--msan=%d' % msan,
           '--tsan=%d' % tsan,
-      ]
+      ])
+
+    cmdline += isolate_map[target].get('args', [])
 
     return cmdline, extra_files
 

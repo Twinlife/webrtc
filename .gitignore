@@ -72,6 +72,7 @@
 /resources/**/*.INP
 /resources/**/*.OUT*
 /testing
+<<<<<<< HEAD
 /third_party/WebKit
 /third_party/WebKit/Tools/Scripts
 /third_party/accessibility_test_framework
@@ -178,5 +179,18 @@
 /tools/win
 /tools/xdisplaycheck
 /tools/whitespace.txt
+/third_party
+/tools
+/tools-webrtc/android/profiling/flamegraph
+/tools-webrtc/android/profiling/simpleperf
+/tools-webrtc/audio_quality/linux/pesq
+/tools-webrtc/audio_quality/mac/pesq
+/tools-webrtc/audio_quality/win/*.exe
+/tools-webrtc/video_quality_toolchain/linux/ffmpeg
+/tools-webrtc/video_quality_toolchain/linux/zxing
+/tools-webrtc/video_quality_toolchain/mac/ffmpeg
+/tools-webrtc/video_quality_toolchain/mac/zxing
+/tools-webrtc/video_quality_toolchain/win/*.dll
+/tools-webrtc/video_quality_toolchain/win/*.exe
 /x86-generic_out/
 /xcodebuild

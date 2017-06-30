@@ -23,18 +23,21 @@
 #include "webrtc/media/engine/fakewebrtccall.h"
 #include "webrtc/media/engine/fakewebrtcvoiceengine.h"
 #include "webrtc/media/engine/webrtcvoiceengine.h"
-#include "webrtc/modules/audio_coding/codecs/mock/mock_audio_decoder_factory.h"
 #include "webrtc/modules/audio_device/include/mock_audio_device.h"
 #include "webrtc/modules/audio_processing/include/mock_audio_processing.h"
 #include "webrtc/pc/channel.h"
 #include "webrtc/test/field_trial.h"
 #include "webrtc/test/gtest.h"
+#include "webrtc/test/mock_audio_decoder_factory.h"
 #include "webrtc/voice_engine/transmit_mixer.h"
 
+using testing::ContainerEq;
 using testing::Return;
 using testing::StrictMock;
 
 namespace {
+
+constexpr uint32_t kMaxUnsignaledRecvStreams = 1;
 
 const cricket::AudioCodec kPcmuCodec(0, "PCMU", 8000, 64000, 1);
 const cricket::AudioCodec kIsacCodec(103, "ISAC", 16000, 32000, 1);
@@ -61,9 +64,7 @@ constexpr int kRtpHistoryMs = 5000;
 class FakeVoEWrapper : public cricket::VoEWrapper {
  public:
   explicit FakeVoEWrapper(cricket::FakeWebRtcVoiceEngine* engine)
-      : cricket::VoEWrapper(engine,  // base
-                            engine,  // codec
-                            engine) {  // hw
+      : cricket::VoEWrapper(engine) {
   }
 };
 
@@ -74,17 +75,50 @@ class MockTransmitMixer : public webrtc::voe::TransmitMixer {
 
   MOCK_METHOD1(EnableStereoChannelSwapping, void(bool enable));
 };
+
+void AdmSetupExpectations(webrtc::test::MockAudioDeviceModule* adm) {
+  RTC_DCHECK(adm);
+  EXPECT_CALL(*adm, AddRef()).WillOnce(Return(0));
+  EXPECT_CALL(*adm, Release()).WillOnce(Return(0));
+#if !defined(WEBRTC_IOS)
+  EXPECT_CALL(*adm, Recording()).WillOnce(Return(false));
+  EXPECT_CALL(*adm, SetRecordingChannel(webrtc::AudioDeviceModule::
+      ChannelType::kChannelBoth)).WillOnce(Return(0));
+#if defined(WEBRTC_WIN)
+  EXPECT_CALL(*adm, SetRecordingDevice(
+      testing::Matcher<webrtc::AudioDeviceModule::WindowsDeviceType>(
+          webrtc::AudioDeviceModule::kDefaultCommunicationDevice)))
+              .WillOnce(Return(0));
+#else
+  EXPECT_CALL(*adm, SetRecordingDevice(0)).WillOnce(Return(0));
+#endif  // #if defined(WEBRTC_WIN)
+  EXPECT_CALL(*adm, InitMicrophone()).WillOnce(Return(0));
+  EXPECT_CALL(*adm, StereoRecordingIsAvailable(testing::_)).WillOnce(Return(0));
+  EXPECT_CALL(*adm, SetStereoRecording(false)).WillOnce(Return(0));
+  EXPECT_CALL(*adm, Playing()).WillOnce(Return(false));
+#if defined(WEBRTC_WIN)
+  EXPECT_CALL(*adm, SetPlayoutDevice(
+      testing::Matcher<webrtc::AudioDeviceModule::WindowsDeviceType>(
+          webrtc::AudioDeviceModule::kDefaultCommunicationDevice)))
+              .WillOnce(Return(0));
+#else
+  EXPECT_CALL(*adm, SetPlayoutDevice(0)).WillOnce(Return(0));
+#endif  // #if defined(WEBRTC_WIN)
+  EXPECT_CALL(*adm, InitSpeaker()).WillOnce(Return(0));
+  EXPECT_CALL(*adm, StereoPlayoutIsAvailable(testing::_)).WillOnce(Return(0));
+  EXPECT_CALL(*adm, SetStereoPlayout(false)).WillOnce(Return(0));
+#endif  // #if !defined(WEBRTC_IOS)
+  EXPECT_CALL(*adm, BuiltInAECIsAvailable()).WillOnce(Return(false));
+  EXPECT_CALL(*adm, BuiltInAGCIsAvailable()).WillOnce(Return(false));
+  EXPECT_CALL(*adm, BuiltInNSIsAvailable()).WillOnce(Return(false));
+  EXPECT_CALL(*adm, SetAGC(true)).WillOnce(Return(0));
+}
 }  // namespace
 
 // Tests that our stub library "works".
 TEST(WebRtcVoiceEngineTestStubLibrary, StartupShutdown) {
   StrictMock<webrtc::test::MockAudioDeviceModule> adm;
-  EXPECT_CALL(adm, AddRef()).WillOnce(Return(0));
-  EXPECT_CALL(adm, Release()).WillOnce(Return(0));
-  EXPECT_CALL(adm, BuiltInAECIsAvailable()).WillOnce(Return(false));
-  EXPECT_CALL(adm, BuiltInAGCIsAvailable()).WillOnce(Return(false));
-  EXPECT_CALL(adm, BuiltInNSIsAvailable()).WillOnce(Return(false));
-  EXPECT_CALL(adm, SetAGC(true)).WillOnce(Return(0));
+  AdmSetupExpectations(&adm);
   StrictMock<webrtc::test::MockAudioProcessing> apm;
   EXPECT_CALL(apm, ApplyConfig(testing::_));
   EXPECT_CALL(apm, SetExtraOptions(testing::_));
@@ -121,12 +155,7 @@ class WebRtcVoiceEngineTestFake : public testing::Test {
         call_(webrtc::Call::Config(&event_log_)), voe_(&apm_, &transmit_mixer_),
         override_field_trials_(field_trials) {
     // AudioDeviceModule.
-    EXPECT_CALL(adm_, AddRef()).WillOnce(Return(0));
-    EXPECT_CALL(adm_, Release()).WillOnce(Return(0));
-    EXPECT_CALL(adm_, BuiltInAECIsAvailable()).WillOnce(Return(false));
-    EXPECT_CALL(adm_, BuiltInAGCIsAvailable()).WillOnce(Return(false));
-    EXPECT_CALL(adm_, BuiltInNSIsAvailable()).WillOnce(Return(false));
-    EXPECT_CALL(adm_, SetAGC(true)).WillOnce(Return(0));
+    AdmSetupExpectations(&adm_);
     // AudioProcessing.
     EXPECT_CALL(apm_, ApplyConfig(testing::_));
     EXPECT_CALL(apm_, SetExtraOptions(testing::_));
@@ -766,26 +795,12 @@ TEST_F(WebRtcVoiceEngineTestFake, SetRecvCodecs) {
   parameters.codecs[2].id = 126;
   EXPECT_TRUE(channel_->SetRecvParameters(parameters));
   EXPECT_TRUE(AddRecvStream(kSsrcX));
-  int channel_num = voe_.GetLastChannel();
-
-  webrtc::CodecInst gcodec;
-  rtc::strcpyn(gcodec.plname, arraysize(gcodec.plname), "ISAC");
-  gcodec.plfreq = 16000;
-  gcodec.channels = 1;
-  EXPECT_EQ(0, voe_.GetRecPayloadType(channel_num, gcodec));
-  EXPECT_EQ(106, gcodec.pltype);
-  EXPECT_STREQ("ISAC", gcodec.plname);
-
-  rtc::strcpyn(gcodec.plname, arraysize(gcodec.plname), "telephone-event");
-  gcodec.plfreq = 8000;
-  EXPECT_EQ(0, voe_.GetRecPayloadType(channel_num, gcodec));
-  EXPECT_EQ(126, gcodec.pltype);
-  EXPECT_STREQ("telephone-event", gcodec.plname);
-
-  gcodec.plfreq = 32000;
-  EXPECT_EQ(0, voe_.GetRecPayloadType(channel_num, gcodec));
-  EXPECT_EQ(107, gcodec.pltype);
-  EXPECT_STREQ("telephone-event", gcodec.plname);
+  EXPECT_THAT(GetRecvStreamConfig(kSsrcX).decoder_map,
+              (ContainerEq<std::map<int, webrtc::SdpAudioFormat>>(
+                  {{0, {"PCMU", 8000, 1}},
+                   {106, {"ISAC", 16000, 1}},
+                   {126, {"telephone-event", 8000, 1}},
+                   {107, {"telephone-event", 32000, 1}}})));
 }
 
 // Test that we fail to set an unknown inbound codec.
@@ -816,16 +831,11 @@ TEST_F(WebRtcVoiceEngineTestFake, SetRecvCodecsWithOpusNoStereo) {
   parameters.codecs.push_back(kOpusCodec);
   EXPECT_TRUE(channel_->SetRecvParameters(parameters));
   EXPECT_TRUE(AddRecvStream(kSsrcX));
-  int channel_num = voe_.GetLastChannel();
-  webrtc::CodecInst opus;
-  cricket::WebRtcVoiceEngine::ToCodecInst(kOpusCodec, &opus);
-  // Even without stereo parameters, recv codecs still specify channels = 2.
-  EXPECT_EQ(2, opus.channels);
-  EXPECT_EQ(111, opus.pltype);
-  EXPECT_STREQ("opus", opus.plname);
-  opus.pltype = 0;
-  EXPECT_EQ(0, voe_.GetRecPayloadType(channel_num, opus));
-  EXPECT_EQ(111, opus.pltype);
+  EXPECT_THAT(GetRecvStreamConfig(kSsrcX).decoder_map,
+              (ContainerEq<std::map<int, webrtc::SdpAudioFormat>>(
+                  {{0, {"PCMU", 8000, 1}},
+                   {103, {"ISAC", 16000, 1}},
+                   {111, {"opus", 48000, 2}}})));
 }
 
 // Test that we can decode OPUS with stereo = 0.
@@ -838,16 +848,11 @@ TEST_F(WebRtcVoiceEngineTestFake, SetRecvCodecsWithOpus0Stereo) {
   parameters.codecs[2].params["stereo"] = "0";
   EXPECT_TRUE(channel_->SetRecvParameters(parameters));
   EXPECT_TRUE(AddRecvStream(kSsrcX));
-  int channel_num2 = voe_.GetLastChannel();
-  webrtc::CodecInst opus;
-  cricket::WebRtcVoiceEngine::ToCodecInst(kOpusCodec, &opus);
-  // Even when stereo is off, recv codecs still specify channels = 2.
-  EXPECT_EQ(2, opus.channels);
-  EXPECT_EQ(111, opus.pltype);
-  EXPECT_STREQ("opus", opus.plname);
-  opus.pltype = 0;
-  EXPECT_EQ(0, voe_.GetRecPayloadType(channel_num2, opus));
-  EXPECT_EQ(111, opus.pltype);
+  EXPECT_THAT(GetRecvStreamConfig(kSsrcX).decoder_map,
+              (ContainerEq<std::map<int, webrtc::SdpAudioFormat>>(
+                  {{0, {"PCMU", 8000, 1}},
+                   {103, {"ISAC", 16000, 1}},
+                   {111, {"opus", 48000, 2, {{"stereo", "0"}}}}})));
 }
 
 // Test that we can decode OPUS with stereo = 1.
@@ -860,15 +865,11 @@ TEST_F(WebRtcVoiceEngineTestFake, SetRecvCodecsWithOpus1Stereo) {
   parameters.codecs[2].params["stereo"] = "1";
   EXPECT_TRUE(channel_->SetRecvParameters(parameters));
   EXPECT_TRUE(AddRecvStream(kSsrcX));
-  int channel_num2 = voe_.GetLastChannel();
-  webrtc::CodecInst opus;
-  cricket::WebRtcVoiceEngine::ToCodecInst(kOpusCodec, &opus);
-  EXPECT_EQ(2, opus.channels);
-  EXPECT_EQ(111, opus.pltype);
-  EXPECT_STREQ("opus", opus.plname);
-  opus.pltype = 0;
-  EXPECT_EQ(0, voe_.GetRecPayloadType(channel_num2, opus));
-  EXPECT_EQ(111, opus.pltype);
+  EXPECT_THAT(GetRecvStreamConfig(kSsrcX).decoder_map,
+              (ContainerEq<std::map<int, webrtc::SdpAudioFormat>>(
+                  {{0, {"PCMU", 8000, 1}},
+                   {103, {"ISAC", 16000, 1}},
+                   {111, {"opus", 48000, 2, {{"stereo", "1"}}}}})));
 }
 
 // Test that changes to recv codecs are applied to all streams.
@@ -882,28 +883,15 @@ TEST_F(WebRtcVoiceEngineTestFake, SetRecvCodecsWithMultipleStreams) {
   parameters.codecs[0].id = 106;  // collide with existing CN 32k
   parameters.codecs[2].id = 126;
   EXPECT_TRUE(channel_->SetRecvParameters(parameters));
-  EXPECT_TRUE(AddRecvStream(kSsrcX));
-  int channel_num2 = voe_.GetLastChannel();
-
-  webrtc::CodecInst gcodec;
-  rtc::strcpyn(gcodec.plname, arraysize(gcodec.plname), "ISAC");
-  gcodec.plfreq = 16000;
-  gcodec.channels = 1;
-  EXPECT_EQ(0, voe_.GetRecPayloadType(channel_num2, gcodec));
-  EXPECT_EQ(106, gcodec.pltype);
-  EXPECT_STREQ("ISAC", gcodec.plname);
-
-  rtc::strcpyn(gcodec.plname, arraysize(gcodec.plname), "telephone-event");
-  gcodec.plfreq = 8000;
-  gcodec.channels = 1;
-  EXPECT_EQ(0, voe_.GetRecPayloadType(channel_num2, gcodec));
-  EXPECT_EQ(126, gcodec.pltype);
-  EXPECT_STREQ("telephone-event", gcodec.plname);
-
-  gcodec.plfreq = 32000;
-  EXPECT_EQ(0, voe_.GetRecPayloadType(channel_num2, gcodec));
-  EXPECT_EQ(107, gcodec.pltype);
-  EXPECT_STREQ("telephone-event", gcodec.plname);
+  for (const auto& ssrc : {kSsrcX, kSsrcY}) {
+    EXPECT_TRUE(AddRecvStream(ssrc));
+    EXPECT_THAT(GetRecvStreamConfig(ssrc).decoder_map,
+                (ContainerEq<std::map<int, webrtc::SdpAudioFormat>>(
+                    {{0, {"PCMU", 8000, 1}},
+                     {106, {"ISAC", 16000, 1}},
+                     {126, {"telephone-event", 8000, 1}},
+                     {107, {"telephone-event", 32000, 1}}})));
+  }
 }
 
 TEST_F(WebRtcVoiceEngineTestFake, SetRecvCodecsAfterAddingStreams) {
@@ -1181,6 +1169,29 @@ TEST_F(WebRtcVoiceEngineTestFake, SetAndGetRtpSendParameters) {
   // ... And this shouldn't change the params returned by GetRtpSendParameters.
   webrtc::RtpParameters new_params = channel_->GetRtpSendParameters(kSsrcX);
   EXPECT_EQ(initial_params, channel_->GetRtpSendParameters(kSsrcX));
+}
+
+// Test that max_bitrate_bps in send stream config gets updated correctly when
+// SetRtpSendParameters is called.
+TEST_F(WebRtcVoiceEngineTestFake, SetRtpSendParameterUpdatesMaxBitrate) {
+  webrtc::test::ScopedFieldTrials override_field_trials(
+      "WebRTC-Audio-SendSideBwe/Enabled/");
+  EXPECT_TRUE(SetupSendStream());
+  cricket::AudioSendParameters send_parameters;
+  send_parameters.codecs.push_back(kOpusCodec);
+  SetSendParameters(send_parameters);
+
+  webrtc::RtpParameters rtp_parameters = channel_->GetRtpSendParameters(kSsrcX);
+  // Expect empty on parameters.encodings[0].max_bitrate_bps;
+  EXPECT_FALSE(rtp_parameters.encodings[0].max_bitrate_bps);
+
+  constexpr int kMaxBitrateBps = 6000;
+  rtp_parameters.encodings[0].max_bitrate_bps =
+      rtc::Optional<int>(kMaxBitrateBps);
+  EXPECT_TRUE(channel_->SetRtpSendParameters(kSsrcX, rtp_parameters));
+
+  const int max_bitrate = GetSendStreamConfig(kSsrcX).max_bitrate_bps;
+  EXPECT_EQ(max_bitrate, kMaxBitrateBps);
 }
 
 // Test that GetRtpReceiveParameters returns the currently configured codecs.
@@ -1504,16 +1515,16 @@ TEST_F(WebRtcVoiceEngineTestFake, SetSendCodecsCapsMinAndStartBitrate) {
 }
 
 TEST_F(WebRtcVoiceEngineTestFake,
-       SetMaxSendBandwidthShouldPreserveOtherBitrates) {
+       SetMaxSendBandwidthForAudioDoesntAffectBwe) {
   SetSendCodecsShouldWorkForBitrates("100", 100000, "150", 150000, "200",
                                      200000);
-  send_parameters_.max_bandwidth_bps = 300000;
+  send_parameters_.max_bandwidth_bps = 100000;
   SetSendParameters(send_parameters_);
   EXPECT_EQ(100000, call_.GetConfig().bitrate_config.min_bitrate_bps)
       << "Setting max bitrate should keep previous min bitrate.";
   EXPECT_EQ(-1, call_.GetConfig().bitrate_config.start_bitrate_bps)
       << "Setting max bitrate should not reset start bitrate.";
-  EXPECT_EQ(300000, call_.GetConfig().bitrate_config.max_bitrate_bps);
+  EXPECT_EQ(200000, call_.GetConfig().bitrate_config.max_bitrate_bps);
 }
 
 // Test that we can enable NACK with opus as caller.
@@ -2596,13 +2607,12 @@ TEST_F(WebRtcVoiceEngineWithSendSideBweWithOverheadTest, MinAndMaxBitrate) {
   constexpr int kOpusMaxPtimeMs = WEBRTC_OPUS_SUPPORT_120MS_PTIME ? 120 : 60;
   constexpr int kMinOverheadBps =
       kOverheadPerPacket * 8 * 1000 / kOpusMaxPtimeMs;
-  constexpr int kMaxOverheadBps = kOverheadPerPacket * 8 * 1000 / 10;
 
   constexpr int kOpusMinBitrateBps = 6000;
   EXPECT_EQ(kOpusMinBitrateBps + kMinOverheadBps,
             GetSendStreamConfig(kSsrcX).min_bitrate_bps);
   constexpr int kOpusBitrateFbBps = 32000;
-  EXPECT_EQ(kOpusBitrateFbBps + kMaxOverheadBps,
+  EXPECT_EQ(kOpusBitrateFbBps + kMinOverheadBps,
             GetSendStreamConfig(kSsrcX).max_bitrate_bps);
 
   parameters.options.audio_network_adaptor = rtc::Optional<bool>(true);
@@ -2612,13 +2622,40 @@ TEST_F(WebRtcVoiceEngineWithSendSideBweWithOverheadTest, MinAndMaxBitrate) {
 
   constexpr int kMinOverheadWithAnaBps =
       kOverheadPerPacket * 8 * 1000 / kOpusMaxPtimeMs;
-  constexpr int kMaxOverheadWithAnaBps = kOverheadPerPacket * 8 * 1000 / 20;
 
   EXPECT_EQ(kOpusMinBitrateBps + kMinOverheadWithAnaBps,
             GetSendStreamConfig(kSsrcX).min_bitrate_bps);
 
-  EXPECT_EQ(kOpusBitrateFbBps + kMaxOverheadWithAnaBps,
+  EXPECT_EQ(kOpusBitrateFbBps + kMinOverheadWithAnaBps,
             GetSendStreamConfig(kSsrcX).max_bitrate_bps);
+}
+
+// This test is similar to
+// WebRtcVoiceEngineTestFake.SetRtpSendParameterUpdatesMaxBitrate but with an
+// additional field trial.
+TEST_F(WebRtcVoiceEngineWithSendSideBweWithOverheadTest,
+       SetRtpSendParameterUpdatesMaxBitrate) {
+  EXPECT_TRUE(SetupSendStream());
+  cricket::AudioSendParameters send_parameters;
+  send_parameters.codecs.push_back(kOpusCodec);
+  SetSendParameters(send_parameters);
+
+  webrtc::RtpParameters rtp_parameters = channel_->GetRtpSendParameters(kSsrcX);
+  // Expect empty on parameters.encodings[0].max_bitrate_bps;
+  EXPECT_FALSE(rtp_parameters.encodings[0].max_bitrate_bps);
+
+  constexpr int kMaxBitrateBps = 6000;
+  rtp_parameters.encodings[0].max_bitrate_bps =
+      rtc::Optional<int>(kMaxBitrateBps);
+  EXPECT_TRUE(channel_->SetRtpSendParameters(kSsrcX, rtp_parameters));
+
+  const int max_bitrate = GetSendStreamConfig(kSsrcX).max_bitrate_bps;
+#if WEBRTC_OPUS_SUPPORT_120MS_PTIME
+  constexpr int kMinOverhead = 3333;
+#else
+  constexpr int kMinOverhead = 6666;
+#endif
+  EXPECT_EQ(max_bitrate, kMaxBitrateBps + kMinOverhead);
 }
 
 // Test that we can set the outgoing SSRC properly.
@@ -2784,10 +2821,8 @@ TEST_F(WebRtcVoiceEngineTestFake, RecvMultipleUnsignaled) {
   unsigned char packet[sizeof(kPcmuFrame)];
   memcpy(packet, kPcmuFrame, sizeof(kPcmuFrame));
 
-  constexpr uint32_t kMaxUnsignaledCount = 50;
-
   // Note that SSRC = 0 is not supported.
-  for (uint32_t ssrc = 1; ssrc < (1 + kMaxUnsignaledCount); ++ssrc) {
+  for (uint32_t ssrc = 1; ssrc < (1 + kMaxUnsignaledRecvStreams); ++ssrc) {
     rtc::SetBE32(&packet[8], ssrc);
     DeliverPacket(packet, sizeof(packet));
 
@@ -2798,11 +2833,11 @@ TEST_F(WebRtcVoiceEngineTestFake, RecvMultipleUnsignaled) {
   }
 
   // Sending on the same SSRCs again should not create new streams.
-  for (uint32_t ssrc = 1; ssrc < (1 + kMaxUnsignaledCount); ++ssrc) {
+  for (uint32_t ssrc = 1; ssrc < (1 + kMaxUnsignaledRecvStreams); ++ssrc) {
     rtc::SetBE32(&packet[8], ssrc);
     DeliverPacket(packet, sizeof(packet));
 
-    EXPECT_EQ(kMaxUnsignaledCount, call_.GetAudioReceiveStreams().size());
+    EXPECT_EQ(kMaxUnsignaledRecvStreams, call_.GetAudioReceiveStreams().size());
     EXPECT_EQ(2, GetRecvStream(ssrc).received_packets());
     EXPECT_TRUE(GetRecvStream(ssrc).VerifyLastPacket(packet, sizeof(packet)));
   }
@@ -2813,16 +2848,16 @@ TEST_F(WebRtcVoiceEngineTestFake, RecvMultipleUnsignaled) {
   DeliverPacket(packet, sizeof(packet));
 
   const auto& streams = call_.GetAudioReceiveStreams();
-  EXPECT_EQ(kMaxUnsignaledCount, streams.size());
+  EXPECT_EQ(kMaxUnsignaledRecvStreams, streams.size());
   size_t i = 0;
-  for (uint32_t ssrc = 2; ssrc < (1 + kMaxUnsignaledCount); ++ssrc, ++i) {
+  for (uint32_t ssrc = 2; ssrc < (1 + kMaxUnsignaledRecvStreams); ++ssrc, ++i) {
     EXPECT_EQ(ssrc, streams[i]->GetConfig().rtp.remote_ssrc);
     EXPECT_EQ(2, streams[i]->received_packets());
   }
   EXPECT_EQ(kAnotherSsrc, streams[i]->GetConfig().rtp.remote_ssrc);
   EXPECT_EQ(1, streams[i]->received_packets());
   // Sanity check that we've checked all streams.
-  EXPECT_EQ(kMaxUnsignaledCount, (i + 1));
+  EXPECT_EQ(kMaxUnsignaledRecvStreams, (i + 1));
 }
 
 // Test that a default channel is created even after a signaled stream has been
@@ -2934,12 +2969,9 @@ TEST_F(WebRtcVoiceEngineTestFake, AddRecvStreamUnsupportedCodec) {
   parameters.codecs.push_back(kPcmuCodec);
   EXPECT_TRUE(channel_->SetRecvParameters(parameters));
   EXPECT_TRUE(AddRecvStream(kSsrcX));
-  int channel_num2 = voe_.GetLastChannel();
-  webrtc::CodecInst gcodec;
-  rtc::strcpyn(gcodec.plname, arraysize(gcodec.plname), "opus");
-  gcodec.plfreq = 48000;
-  gcodec.channels = 2;
-  EXPECT_EQ(-1, voe_.GetRecPayloadType(channel_num2, gcodec));
+  EXPECT_THAT(GetRecvStreamConfig(kSsrcX).decoder_map,
+              (ContainerEq<std::map<int, webrtc::SdpAudioFormat>>(
+                  {{0, {"PCMU", 8000, 1}}, {103, {"ISAC", 16000, 1}}})));
 }
 
 // Test that we properly clean up any streams that were added, even if
@@ -3302,12 +3334,16 @@ TEST_F(WebRtcVoiceEngineTestFake, SetOutputVolumeUnsignaledRecvStream) {
 
   // Setting gain with SSRC=0 should affect all unsignaled streams.
   EXPECT_TRUE(channel_->SetOutputVolume(kSsrc0, 3));
-  EXPECT_DOUBLE_EQ(3, GetRecvStream(kSsrc1).gain());
+  if (kMaxUnsignaledRecvStreams > 1) {
+    EXPECT_DOUBLE_EQ(3, GetRecvStream(kSsrc1).gain());
+  }
   EXPECT_DOUBLE_EQ(3, GetRecvStream(kSsrcX).gain());
 
   // Setting gain on an individual stream affects only that.
   EXPECT_TRUE(channel_->SetOutputVolume(kSsrcX, 4));
-  EXPECT_DOUBLE_EQ(3, GetRecvStream(kSsrc1).gain());
+  if (kMaxUnsignaledRecvStreams > 1) {
+    EXPECT_DOUBLE_EQ(3, GetRecvStream(kSsrc1).gain());
+  }
   EXPECT_DOUBLE_EQ(4, GetRecvStream(kSsrcX).gain());
 }
 
@@ -3494,24 +3530,34 @@ TEST_F(WebRtcVoiceEngineTestFake, SetRawAudioSinkUnsignaledRecvStream) {
   memcpy(pcmuFrame2, kPcmuFrame, sizeof(kPcmuFrame));
   rtc::SetBE32(&pcmuFrame2[8], kSsrcX);
   DeliverPacket(pcmuFrame2, sizeof(pcmuFrame2));
-  EXPECT_EQ(nullptr, GetRecvStream(kSsrc1).sink());
+  if (kMaxUnsignaledRecvStreams > 1) {
+    EXPECT_EQ(nullptr, GetRecvStream(kSsrc1).sink());
+  }
   EXPECT_NE(nullptr, GetRecvStream(kSsrcX).sink());
 
   // Reset the default sink - the second unsignaled stream should lose it.
   channel_->SetRawAudioSink(kSsrc0, nullptr);
-  EXPECT_EQ(nullptr, GetRecvStream(kSsrc1).sink());
+  if (kMaxUnsignaledRecvStreams > 1) {
+    EXPECT_EQ(nullptr, GetRecvStream(kSsrc1).sink());
+  }
   EXPECT_EQ(nullptr, GetRecvStream(kSsrcX).sink());
 
   // Try setting the default sink while two streams exists.
   channel_->SetRawAudioSink(kSsrc0, std::move(fake_sink_3));
-  EXPECT_EQ(nullptr, GetRecvStream(kSsrc1).sink());
+  if (kMaxUnsignaledRecvStreams > 1) {
+    EXPECT_EQ(nullptr, GetRecvStream(kSsrc1).sink());
+  }
   EXPECT_NE(nullptr, GetRecvStream(kSsrcX).sink());
 
   // Try setting the sink for the first unsignaled stream using its known SSRC.
   channel_->SetRawAudioSink(kSsrc1, std::move(fake_sink_4));
-  EXPECT_NE(nullptr, GetRecvStream(kSsrc1).sink());
+  if (kMaxUnsignaledRecvStreams > 1) {
+    EXPECT_NE(nullptr, GetRecvStream(kSsrc1).sink());
+  }
   EXPECT_NE(nullptr, GetRecvStream(kSsrcX).sink());
-  EXPECT_NE(GetRecvStream(kSsrc1).sink(), GetRecvStream(kSsrcX).sink());
+  if (kMaxUnsignaledRecvStreams > 1) {
+    EXPECT_NE(GetRecvStream(kSsrc1).sink(), GetRecvStream(kSsrcX).sink());
+  }
 }
 
 // Test that, just like the video channel, the voice channel communicates the
@@ -3735,18 +3781,21 @@ TEST(WebRtcVoiceEngineTest, SetRecvCodecs) {
 
 TEST(WebRtcVoiceEngineTest, CollectRecvCodecs) {
   std::vector<webrtc::AudioCodecSpec> specs;
-  webrtc::AudioCodecSpec spec1({"codec1", 48000, 2, {{"param1", "value1"}}});
-  spec1.allow_comfort_noise = false;
-  spec1.supports_network_adaption = true;
+  webrtc::AudioCodecSpec spec1{{"codec1", 48000, 2, {{"param1", "value1"}}},
+                               {48000, 2, 16000, 10000, 20000}};
+  spec1.info.allow_comfort_noise = false;
+  spec1.info.supports_network_adaption = true;
   specs.push_back(spec1);
-  webrtc::AudioCodecSpec spec2({"codec2", 32000, 1});
-  spec2.allow_comfort_noise = false;
+  webrtc::AudioCodecSpec spec2{{"codec2", 32000, 1}, {32000, 1, 32000}};
+  spec2.info.allow_comfort_noise = false;
   specs.push_back(spec2);
-  specs.push_back(webrtc::AudioCodecSpec({"codec3", 16000, 1,
-                                          {{"param1", "value1b"},
-                                           {"param2", "value2"}}}));
-  specs.push_back(webrtc::AudioCodecSpec({"codec4", 8000, 1}));
-  specs.push_back(webrtc::AudioCodecSpec({"codec5", 8000, 2}));
+  specs.push_back(webrtc::AudioCodecSpec{
+      {"codec3", 16000, 1, {{"param1", "value1b"}, {"param2", "value2"}}},
+      {16000, 1, 13300}});
+  specs.push_back(
+      webrtc::AudioCodecSpec{{"codec4", 8000, 1}, {8000, 1, 64000}});
+  specs.push_back(
+      webrtc::AudioCodecSpec{{"codec5", 8000, 2}, {8000, 1, 64000}});
 
   rtc::scoped_refptr<webrtc::MockAudioDecoderFactory> mock_factory =
       new rtc::RefCountedObject<webrtc::MockAudioDecoderFactory>;

@@ -29,31 +29,14 @@
 
 namespace cricket {
 
-#ifndef HAVE_SRTP
-
-// This helper function is used on systems that don't (yet) have SRTP,
-// to log that the functions that require it won't do anything.
-namespace {
-bool SrtpNotAvailable(const char *func) {
-  LOG(LS_ERROR) << func << ": SRTP is not available on your system.";
-  return false;
-}
-}  // anonymous namespace
-
-#endif  // !HAVE_SRTP
-
 // NOTE: This is called from ChannelManager D'tor.
 void ShutdownSrtp() {
-#ifdef HAVE_SRTP
   // If srtp_dealloc is not executed then this will clear all existing sessions.
   // This should be called when application is shutting down.
   SrtpSession::Terminate();
-#endif
 }
 
-SrtpFilter::SrtpFilter()
-    : state_(ST_INIT),
-      signal_silent_time_in_ms_(0) {
+SrtpFilter::SrtpFilter() {
 }
 
 SrtpFilter::~SrtpFilter() {
@@ -226,7 +209,15 @@ bool SrtpFilter::GetSrtpOverhead(int* srtp_overhead) const {
   return true;
 }
 
-#if defined(ENABLE_EXTERNAL_AUTH)
+void SrtpFilter::EnableExternalAuth() {
+  RTC_DCHECK(!IsActive());
+  external_auth_enabled_ = true;
+}
+
+bool SrtpFilter::IsExternalAuthEnabled() const {
+  return external_auth_enabled_;
+}
+
 bool SrtpFilter::IsExternalAuthActive() const {
   if (!IsActive()) {
     LOG(LS_WARNING) << "Failed to check IsExternalAuthActive: SRTP not active";
@@ -236,7 +227,6 @@ bool SrtpFilter::IsExternalAuthActive() const {
   RTC_CHECK(send_session_);
   return send_session_->IsExternalAuthActive();
 }
-#endif
 
 void SrtpFilter::set_signal_silent_time(int signal_silent_time_in_ms) {
   signal_silent_time_in_ms_ = signal_silent_time_in_ms;
@@ -338,6 +328,9 @@ void SrtpFilter::CreateSrtpSessions() {
 
   send_session_->set_signal_silent_time(signal_silent_time_in_ms_);
   recv_session_->set_signal_silent_time(signal_silent_time_in_ms_);
+  if (external_auth_enabled_) {
+    send_session_->EnableExternalAuth();
+  }
 }
 
 bool SrtpFilter::NegotiateParams(const std::vector<CryptoParams>& answer_params,
@@ -468,8 +461,6 @@ bool SrtpFilter::ParseKeyParams(const std::string& key_params,
 ///////////////////////////////////////////////////////////////////////////////
 // SrtpSession
 
-#ifdef HAVE_SRTP
-
 bool SrtpSession::inited_ = false;
 
 // This lock protects SrtpSession::inited_.
@@ -599,7 +590,6 @@ bool SrtpSession::UnprotectRtcp(void* p, int in_len, int* out_len) {
 }
 
 bool SrtpSession::GetRtpAuthParams(uint8_t** key, int* key_len, int* tag_len) {
-#if defined(ENABLE_EXTERNAL_AUTH)
   RTC_DCHECK(thread_checker_.CalledOnValidThread());
   RTC_DCHECK(IsExternalAuthActive());
   if (!IsExternalAuthActive()) {
@@ -624,20 +614,24 @@ bool SrtpSession::GetRtpAuthParams(uint8_t** key, int* key_len, int* tag_len) {
   *key_len = external_hmac->key_length;
   *tag_len = rtp_auth_tag_len_;
   return true;
-#else
-  return false;
-#endif
 }
 
 int SrtpSession::GetSrtpOverhead() const {
   return rtp_auth_tag_len_;
 }
 
-#if defined(ENABLE_EXTERNAL_AUTH)
+void SrtpSession::EnableExternalAuth() {
+  RTC_DCHECK(!session_);
+  external_auth_enabled_ = true;
+}
+
+bool SrtpSession::IsExternalAuthEnabled() const {
+  return external_auth_enabled_;
+}
+
 bool SrtpSession::IsExternalAuthActive() const {
   return external_auth_active_;
 }
-#endif
 
 bool SrtpSession::GetSendStreamPacketIndex(void* p,
                                            int in_len,
@@ -719,13 +713,12 @@ bool SrtpSession::SetKey(int type, int cs, const uint8_t* key, size_t len) {
   // id EXTERNAL_HMAC_SHA1 in the policy structure.
   // We want to set this option only for rtp packets.
   // By default policy structure is initialized to HMAC_SHA1.
-#if defined(ENABLE_EXTERNAL_AUTH)
   // Enable external HMAC authentication only for outgoing streams and only
   // for cipher suites that support it (i.e. only non-GCM cipher suites).
-  if (type == ssrc_any_outbound && !rtc::IsGcmCryptoSuite(cs)) {
+  if (type == ssrc_any_outbound && IsExternalAuthEnabled() &&
+      !rtc::IsGcmCryptoSuite(cs)) {
     policy.rtp.auth_type = EXTERNAL_HMAC_SHA1;
   }
-#endif
   policy.next = nullptr;
 
   int err = srtp_create(&session_, &policy);
@@ -738,9 +731,7 @@ bool SrtpSession::SetKey(int type, int cs, const uint8_t* key, size_t len) {
   srtp_set_user_data(session_, this);
   rtp_auth_tag_len_ = policy.rtp.auth_tag_len;
   rtcp_auth_tag_len_ = policy.rtcp.auth_tag_len;
-#if defined(ENABLE_EXTERNAL_AUTH)
   external_auth_active_ = (policy.rtp.auth_type == EXTERNAL_HMAC_SHA1);
-#endif
   return true;
 }
 
@@ -760,13 +751,12 @@ bool SrtpSession::Init() {
       LOG(LS_ERROR) << "Failed to install SRTP event handler, err=" << err;
       return false;
     }
-#if defined(ENABLE_EXTERNAL_AUTH)
+
     err = external_crypto_init();
     if (err != srtp_err_status_ok) {
       LOG(LS_ERROR) << "Failed to initialize fake auth, err=" << err;
       return false;
     }
-#endif
     inited_ = true;
   }
 
@@ -817,53 +807,8 @@ void SrtpSession::HandleEventThunk(srtp_event_data_t* ev) {
   }
 }
 
-#else   // !HAVE_SRTP
-
-// On some systems, SRTP is not (yet) available.
-
-SrtpSession::SrtpSession() {
-  LOG(WARNING) << "SRTP implementation is missing.";
-}
-
-SrtpSession::~SrtpSession() {
-}
-
-bool SrtpSession::SetSend(const std::string& cs, const uint8_t* key, int len) {
-  return SrtpNotAvailable(__FUNCTION__);
-}
-
-bool SrtpSession::SetRecv(const std::string& cs, const uint8_t* key, int len) {
-  return SrtpNotAvailable(__FUNCTION__);
-}
-
-bool SrtpSession::ProtectRtp(void* data, int in_len, int max_len,
-                             int* out_len) {
-  return SrtpNotAvailable(__FUNCTION__);
-}
-
-bool SrtpSession::ProtectRtcp(void* data, int in_len, int max_len,
-                              int* out_len) {
-  return SrtpNotAvailable(__FUNCTION__);
-}
-
-bool SrtpSession::UnprotectRtp(void* data, int in_len, int* out_len) {
-  return SrtpNotAvailable(__FUNCTION__);
-}
-
-bool SrtpSession::UnprotectRtcp(void* data, int in_len, int* out_len) {
-  return SrtpNotAvailable(__FUNCTION__);
-}
-
-void SrtpSession::set_signal_silent_time(uint32_t signal_silent_time) {
-  // Do nothing.
-}
-
-#endif  // HAVE_SRTP
-
 ///////////////////////////////////////////////////////////////////////////////
 // SrtpStat
-
-#ifdef HAVE_SRTP
 
 SrtpStat::SrtpStat()
     : signal_silent_time_(1000) {
@@ -931,36 +876,5 @@ void SrtpStat::HandleSrtpResult(const SrtpStat::FailureKey& key) {
     }
   }
 }
-
-#else   // !HAVE_SRTP
-
-// On some systems, SRTP is not (yet) available.
-
-SrtpStat::SrtpStat()
-    : signal_silent_time_(1000) {
-  LOG(WARNING) << "SRTP implementation is missing.";
-}
-
-void SrtpStat::AddProtectRtpResult(uint32_t ssrc, int result) {
-  SrtpNotAvailable(__FUNCTION__);
-}
-
-void SrtpStat::AddUnprotectRtpResult(uint32_t ssrc, int result) {
-  SrtpNotAvailable(__FUNCTION__);
-}
-
-void SrtpStat::AddProtectRtcpResult(int result) {
-  SrtpNotAvailable(__FUNCTION__);
-}
-
-void SrtpStat::AddUnprotectRtcpResult(int result) {
-  SrtpNotAvailable(__FUNCTION__);
-}
-
-void SrtpStat::HandleSrtpResult(const SrtpStat::FailureKey& key) {
-  SrtpNotAvailable(__FUNCTION__);
-}
-
-#endif  // HAVE_SRTP
 
 }  // namespace cricket

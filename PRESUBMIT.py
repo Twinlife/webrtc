@@ -13,23 +13,34 @@ import subprocess
 import sys
 
 
-# Directories that will be scanned by cpplint by the presubmit script.
-CPPLINT_DIRS = [
-  'webrtc/api',
-  'webrtc/audio',
-  'webrtc/call',
-  'webrtc/common_video',
-  'webrtc/examples',
-  'webrtc/modules/audio_mixer',
-  'webrtc/modules/bitrate_controller',
-  'webrtc/modules/congestion_controller',
-  'webrtc/modules/pacing',
-  'webrtc/modules/remote_bitrate_estimator',
-  'webrtc/modules/rtp_rtcp',
-  'webrtc/modules/video_coding',
-  'webrtc/modules/video_processing',
-  'webrtc/tools',
-  'webrtc/video',
+# Files and directories that are *skipped* by cpplint in the presubmit script.
+CPPLINT_BLACKLIST = [
+  'tools-webrtc',
+  'webrtc/api/video_codecs/video_decoder.h',
+  'webrtc/api/video_codecs/video_encoder.h',
+  'webrtc/base',
+  'webrtc/examples/objc',
+  'webrtc/media',
+  'webrtc/modules/audio_coding',
+  'webrtc/modules/audio_conference_mixer',
+  'webrtc/modules/audio_device',
+  'webrtc/modules/audio_processing',
+  'webrtc/modules/desktop_capture',
+  'webrtc/modules/include/module_common_types.h',
+  'webrtc/modules/media_file',
+  'webrtc/modules/utility',
+  'webrtc/modules/video_capture',
+  'webrtc/p2p',
+  'webrtc/pc',
+  'webrtc/sdk/android/src/jni',
+  'webrtc/sdk/objc',
+  'webrtc/system_wrappers',
+  'webrtc/test',
+  'webrtc/voice_engine',
+  'webrtc/call.h',
+  'webrtc/common_types.h',
+  'webrtc/common_types.cc',
+  'webrtc/video_send_stream.h',
 ]
 
 # These filters will always be removed, even if the caller specifies a filter
@@ -115,7 +126,7 @@ def _VerifyNativeApiHeadersListIsValid(input_api, output_api):
         non_existing_paths)]
   return []
 
-api_change_msg = """
+API_CHANGE_MSG = """
 You seem to be changing native API header files. Please make sure that you:
   1. Make compatible changes that don't break existing clients. Usually
      this is done by keeping the existing method signatures unchanged.
@@ -144,7 +155,7 @@ def _CheckNativeApiHeaderChanges(input_api, output_api):
           files.append(f)
 
   if files:
-    return [output_api.PresubmitNotifyResult(api_change_msg, files)]
+    return [output_api.PresubmitNotifyResult(API_CHANGE_MSG, files)]
   return []
 
 
@@ -189,7 +200,7 @@ def _CheckNoPragmaOnce(input_api, output_api):
   return []
 
 
-def _CheckNoFRIEND_TEST(input_api, output_api):
+def _CheckNoFRIEND_TEST(input_api, output_api):  # pylint: disable=invalid-name
   """Make sure that gtest's FRIEND_TEST() macro is not used, the
   FRIEND_TEST_ALL_PREFIXES() macro from testsupport/gtest_prod_util.h should be
   used instead since that allows for FLAKY_, FAILS_ and DISABLED_ prefixes."""
@@ -208,17 +219,17 @@ def _CheckNoFRIEND_TEST(input_api, output_api):
       'use FRIEND_TEST_ALL_PREFIXES() instead.\n' + '\n'.join(problems))]
 
 
-def _IsLintWhitelisted(whitelist_dirs, file_path):
-  """ Checks if a file is whitelisted for lint check."""
-  for path in whitelist_dirs:
-    if os.path.dirname(file_path).startswith(path):
+def _IsLintBlacklisted(blacklist_paths, file_path):
+  """ Checks if a file is blacklisted for lint check."""
+  for path in blacklist_paths:
+    if file_path == path or os.path.dirname(file_path).startswith(path):
       return True
   return False
 
 
 def _CheckApprovedFilesLintClean(input_api, output_api,
                                  source_file_filter=None):
-  """Checks that all new or whitelisted .cc and .h files pass cpplint.py.
+  """Checks that all new or non-blacklisted .cc and .h files pass cpplint.py.
   This check is based on _CheckChangeLintsClean in
   depot_tools/presubmit_canned_checks.py but has less filters and only checks
   added files."""
@@ -234,19 +245,20 @@ def _CheckApprovedFilesLintClean(input_api, output_api,
   lint_filters.extend(BLACKLIST_LINT_FILTERS)
   cpplint._SetFilters(','.join(lint_filters))
 
-  # Create a platform independent whitelist for the CPPLINT_DIRS.
-  whitelist_dirs = [input_api.os_path.join(*path.split('/'))
-                    for path in CPPLINT_DIRS]
+  # Create a platform independent blacklist for cpplint.
+  blacklist_paths = [input_api.os_path.join(*path.split('/'))
+                     for path in CPPLINT_BLACKLIST]
 
   # Use the strictest verbosity level for cpplint.py (level 1) which is the
-  # default when running cpplint.py from command line.
-  # To make it possible to work with not-yet-converted code, we're only applying
-  # it to new (or moved/renamed) files and files listed in LINT_FOLDERS.
+  # default when running cpplint.py from command line. To make it possible to
+  # work with not-yet-converted code, we're only applying it to new (or
+  # moved/renamed) files and files not listed in CPPLINT_BLACKLIST.
   verbosity_level = 1
   files = []
   for f in input_api.AffectedSourceFiles(source_file_filter):
     # Note that moved/renamed files also count as added.
-    if f.Action() == 'A' or _IsLintWhitelisted(whitelist_dirs, f.LocalPath()):
+    if f.Action() == 'A' or not _IsLintBlacklisted(blacklist_paths,
+                                                   f.LocalPath()):
       files.append(f.AbsoluteLocalPath())
 
   for file_name in files:
@@ -254,9 +266,7 @@ def _CheckApprovedFilesLintClean(input_api, output_api,
 
   if cpplint._cpplint_state.error_count > 0:
     if input_api.is_committing:
-      # TODO(kjellander): Change back to PresubmitError below when we're
-      # confident with the lint settings.
-      res_type = output_api.PresubmitPromptWarning
+      res_type = output_api.PresubmitError
     else:
       res_type = output_api.PresubmitPromptWarning
     result = [res_type('Changelist failed cpplint.py check.')]
@@ -399,13 +409,18 @@ def _CheckUnwantedDependencies(input_api, output_api):
   results = []
   if error_descriptions:
     results.append(output_api.PresubmitError(
-        'You added one or more #includes that violate checkdeps rules.',
+        'You added one or more #includes that violate checkdeps rules.\n'
+        'Check that the DEPS files in these locations contain valid rules.\n'
+        'See https://cs.chromium.org/chromium/src/buildtools/checkdeps/ for '
+        'more details about checkdeps.',
         error_descriptions))
   if warning_descriptions:
     results.append(output_api.PresubmitPromptOrNotify(
         'You added one or more #includes of files that are temporarily\n'
         'allowed but being removed. Can you avoid introducing the\n'
-        '#include? See relevant DEPS file(s) for details and contacts.',
+        '#include? See relevant DEPS file(s) for details and contacts.\n'
+        'See https://cs.chromium.org/chromium/src/buildtools/checkdeps/ for '
+        'more details about checkdeps.',
         warning_descriptions))
   return results
 
@@ -451,13 +466,15 @@ def _CheckJSONParseErrors(input_api, output_api):
 
 
 def _RunPythonTests(input_api, output_api):
-  def join(*args):
+  def Join(*args):
     return input_api.os_path.join(input_api.PresubmitLocalPath(), *args)
 
   test_directories = [
-      join('webrtc', 'tools', 'py_event_log_analyzer')
+      Join('webrtc', 'tools', 'py_event_log_analyzer'),
+      Join('webrtc', 'tools'),
+      Join('webrtc', 'audio', 'test', 'unittests'),
   ] + [
-      root for root, _, files in os.walk(join('tools-webrtc'))
+      root for root, _, files in os.walk(Join('tools-webrtc'))
       if any(f.endswith('_test.py') for f in files)
   ]
 
@@ -470,6 +487,26 @@ def _RunPythonTests(input_api, output_api):
           directory,
           whitelist=[r'.+_test\.py$']))
   return input_api.RunTests(tests, parallel=True)
+
+
+def _CheckUsageOfGoogleProtobufNamespace(input_api, output_api):
+  """Checks that the namespace google::protobuf has not been used."""
+  files = []
+  pattern = input_api.re.compile(r'google::protobuf')
+  proto_utils_path = os.path.join('webrtc', 'base', 'protobuf_utils.h')
+  for f in input_api.AffectedSourceFiles(input_api.FilterSourceFile):
+    if f.LocalPath() in [proto_utils_path, 'PRESUBMIT.py']:
+      continue
+    contents = input_api.ReadFile(f)
+    if pattern.search(contents):
+      files.append(f)
+
+  if files:
+    return [output_api.PresubmitError(
+        'Please avoid to use namespace `google::protobuf` directly.\n'
+        'Add a using directive in `%s` and include that header instead.'
+        % proto_utils_path, files)]
+  return []
 
 
 def _CommonChecks(input_api, output_api):
@@ -540,6 +577,7 @@ def _CommonChecks(input_api, output_api):
   results.extend(_CheckUnwantedDependencies(input_api, output_api))
   results.extend(_CheckJSONParseErrors(input_api, output_api))
   results.extend(_RunPythonTests(input_api, output_api))
+  results.extend(_CheckUsageOfGoogleProtobufNamespace(input_api, output_api))
   return results
 
 

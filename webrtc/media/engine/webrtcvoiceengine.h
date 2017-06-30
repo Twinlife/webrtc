@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "webrtc/api/rtpreceiverinterface.h"
 #include "webrtc/base/buffer.h"
 #include "webrtc/base/constructormagic.h"
 #include "webrtc/base/networkroute.h"
@@ -25,6 +26,7 @@
 #include "webrtc/call/call.h"
 #include "webrtc/config.h"
 #include "webrtc/media/base/rtputils.h"
+#include "webrtc/media/engine/apm_helpers.h"
 #include "webrtc/media/engine/webrtccommon.h"
 #include "webrtc/media/engine/webrtcvoe.h"
 #include "webrtc/modules/audio_processing/include/audio_processing.h"
@@ -102,7 +104,6 @@ class WebRtcVoiceEngine final : public webrtc::TraceCallback  {
   // ignored. This allows us to selectively turn on and off different options
   // easily at any time.
   bool ApplyOptions(const AudioOptions& options);
-  void SetDefaultDevices();
 
   // webrtc::TraceCallback:
   void Print(webrtc::TraceLevel level, const char* trace, int length) override;
@@ -210,6 +211,8 @@ class WebRtcVoiceMediaChannel final : public VoiceMediaChannel,
       uint32_t ssrc,
       std::unique_ptr<webrtc::AudioSinkInterface> sink) override;
 
+  std::vector<webrtc::RtpSource> GetSources(uint32_t ssrc) const;
+
   // implements Transport interface
   bool SendRtp(const uint8_t* data,
                size_t len,
@@ -251,7 +254,12 @@ class WebRtcVoiceMediaChannel final : public VoiceMediaChannel,
 
   WebRtcVoiceEngine* const engine_ = nullptr;
   std::vector<AudioCodec> send_codecs_;
+
+  // TODO(kwiberg): decoder_map_ and recv_codecs_ store the exact same
+  // information, in slightly different formats. Eliminate recv_codecs_.
+  std::map<int, webrtc::SdpAudioFormat> decoder_map_;
   std::vector<AudioCodec> recv_codecs_;
+
   int max_send_bitrate_bps_ = 0;
   AudioOptions options_;
   rtc::Optional<int> dtmf_payload_type_;
@@ -262,7 +270,6 @@ class WebRtcVoiceMediaChannel final : public VoiceMediaChannel,
   bool playout_ = false;
   bool send_ = false;
   webrtc::Call* const call_ = nullptr;
-  webrtc::Call::Config::BitrateConfig bitrate_config_;
 
   // Queue of unsignaled SSRCs; oldest at the beginning.
   std::vector<uint32_t> unsignaled_recv_ssrcs_;

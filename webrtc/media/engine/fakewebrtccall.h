@@ -97,6 +97,9 @@ class FakeAudioReceiveStream final : public webrtc::AudioReceiveStream {
   int GetOutputLevel() const override { return 0; }
   void SetSink(std::unique_ptr<webrtc::AudioSinkInterface> sink) override;
   void SetGain(float gain) override;
+  std::vector<webrtc::RtpSource> GetSources() const override {
+    return std::vector<webrtc::RtpSource>();
+  }
 
   int id_ = -1;
   webrtc::AudioReceiveStream::Config config_;
@@ -138,6 +141,7 @@ class FakeVideoSendStream final
   bool resolution_scaling_enabled() const {
     return resolution_scaling_enabled_;
   }
+  bool framerate_scaling_enabled() const { return framerate_scaling_enabled_; }
   void InjectVideoSinkWants(const rtc::VideoSinkWants& wants);
 
   rtc::VideoSourceInterface<webrtc::VideoFrame>* source() const {
@@ -169,6 +173,7 @@ class FakeVideoSendStream final
     webrtc::VideoCodecVP9 vp9;
   } vpx_settings_;
   bool resolution_scaling_enabled_;
+  bool framerate_scaling_enabled_;
   rtc::VideoSourceInterface<webrtc::VideoFrame>* source_;
   int num_swapped_frames_;
   rtc::Optional<webrtc::VideoFrame> last_frame_;
