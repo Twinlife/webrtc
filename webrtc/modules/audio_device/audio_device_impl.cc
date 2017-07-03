@@ -23,7 +23,6 @@
 #include <string.h>
 
 #if defined(_WIN32)
-#include "audio_device_wave_win.h"
 #if defined(WEBRTC_WINDOWS_CORE_AUDIO_BUILD)
 #include "audio_device_core_win.h"
 #endif
@@ -35,9 +34,6 @@
 #include "webrtc/modules/audio_device/android/audio_track_jni.h"
 #include "webrtc/modules/audio_device/android/opensles_player.h"
 #include "webrtc/modules/audio_device/android/opensles_recorder.h"
-// --twinlife-- 170307
-#include "webrtc/modules/audio_device/android/audio_streaming_jni.h"
-// --twinlife-- 170307
 #elif defined(WEBRTC_LINUX)
 #if defined(LINUX_ALSA)
 #include "audio_device_alsa_linux.h"
@@ -57,7 +53,6 @@
 
 #include "webrtc/modules/audio_device/dummy/audio_device_dummy.h"
 #include "webrtc/modules/audio_device/dummy/file_audio_device.h"
-#include "webrtc/system_wrappers/include/critical_section_wrapper.h"
 
 #define CHECK_INITIALIZED() \
   {                         \
@@ -122,17 +117,8 @@ rtc::scoped_refptr<AudioDeviceModule> AudioDeviceModule::Create(
 
 AudioDeviceModuleImpl::AudioDeviceModuleImpl(const int32_t id,
                                              const AudioLayer audioLayer)
-    : _critSect(*CriticalSectionWrapper::CreateCriticalSection()),
-      _critSectEventCb(*CriticalSectionWrapper::CreateCriticalSection()),
-      _critSectAudioCb(*CriticalSectionWrapper::CreateCriticalSection()),
-      _ptrCbAudioDeviceObserver(NULL),
+    : _ptrCbAudioDeviceObserver(NULL),
       _ptrAudioDevice(NULL),
-      // --twinlife-- 170307
-#if defined(WEBRTC_ANDROID)
-      _ptrAudioStreamingDevice(NULL),
-      _ptrAudioDeviceCopy(NULL),
-#endif
-      // --twinlife-- 170307
       _id(id),
       _platformAudioLayer(audioLayer),
       _lastProcessTime(rtc::TimeMillis()),
@@ -209,17 +195,6 @@ int32_t AudioDeviceModuleImpl::CreatePlatformSpecificObjects() {
 
 // Create the *Windows* implementation of the Audio Device
 //
-#if defined(_WIN32)
-  if ((audioLayer == kWindowsWaveAudio)
-#if !defined(WEBRTC_WINDOWS_CORE_AUDIO_BUILD)
-      // Wave audio is default if Core audio is not supported in this build
-      || (audioLayer == kPlatformDefaultAudio)
-#endif
-          ) {
-    // create *Windows Wave Audio* implementation
-    ptrAudioDevice = new AudioDeviceWindowsWave(Id());
-    LOG(INFO) << "Windows Wave APIs will be utilized";
-  }
 #if defined(WEBRTC_WINDOWS_CORE_AUDIO_BUILD)
   if ((audioLayer == kWindowsCoreAudio) ||
       (audioLayer == kPlatformDefaultAudio)) {
@@ -229,20 +204,9 @@ int32_t AudioDeviceModuleImpl::CreatePlatformSpecificObjects() {
       // create *Windows Core Audio* implementation
       ptrAudioDevice = new AudioDeviceWindowsCore(Id());
       LOG(INFO) << "Windows Core Audio APIs will be utilized";
-    } else {
-      // create *Windows Wave Audio* implementation
-      ptrAudioDevice = new AudioDeviceWindowsWave(Id());
-      if (ptrAudioDevice != NULL) {
-        // Core Audio was not supported => revert to Windows Wave instead
-        _platformAudioLayer =
-            kWindowsWaveAudio;  // modify the state set at construction
-        LOG(WARNING) << "Windows Core Audio is *not* supported => Wave APIs "
-                        "will be utilized instead";
-      }
     }
   }
 #endif  // defined(WEBRTC_WINDOWS_CORE_AUDIO_BUILD)
-#endif  // #if defined(_WIN32)
 
 #if defined(WEBRTC_ANDROID)
   // Create an Android audio manager.
@@ -283,11 +247,6 @@ int32_t AudioDeviceModuleImpl::CreatePlatformSpecificObjects() {
     // Invalid audio layer.
     ptrAudioDevice = nullptr;
   }
-  // --twinlife-- 170307
-  _ptrAudioStreamingDevice = new AudioDeviceTemplate<AudioStreamingJni, AudioStreamingJni>(
-        audioLayer, audio_manager);
-  _ptrAudioDeviceCopy = ptrAudioDevice;
-  // --twinlife-- 170307
 // END #if defined(WEBRTC_ANDROID)
 
 // Create the *Linux* implementation of the Audio Device
@@ -386,15 +345,6 @@ int32_t AudioDeviceModuleImpl::AttachAudioBuffer() {
 
   _audioDeviceBuffer.SetId(_id);
   _ptrAudioDevice->AttachAudioBuffer(&_audioDeviceBuffer);
-
-  // --twinlife-- 170307
-#if defined(WEBRTC_ANDROID)
-  if (_ptrAudioStreamingDevice) {
-    _ptrAudioStreamingDevice->AttachAudioBuffer(&_audioDeviceBuffer);
-  }
-#endif
-  // --twinlife-- 170307
-
   return 0;
 }
 
@@ -404,24 +354,10 @@ int32_t AudioDeviceModuleImpl::AttachAudioBuffer() {
 
 AudioDeviceModuleImpl::~AudioDeviceModuleImpl() {
   LOG(INFO) << __FUNCTION__;
-
-  // --twinlife-- 170307
-#if defined(WEBRTC_ANDROID)
-  if (_ptrAudioStreamingDevice && _ptrAudioStreamingDevice != _ptrAudioDevice) {
-    delete _ptrAudioStreamingDevice;
-    _ptrAudioStreamingDevice = NULL;
-  }
-#endif
-  // --twinlife-- 170307
-
   if (_ptrAudioDevice) {
     delete _ptrAudioDevice;
     _ptrAudioDevice = NULL;
   }
-
-  delete &_critSect;
-  delete &_critSectEventCb;
-  delete &_critSectAudioCb;
 }
 
 // ============================================================================
@@ -453,7 +389,7 @@ void AudioDeviceModuleImpl::Process() {
 
   // kPlayoutWarning
   if (_ptrAudioDevice->PlayoutWarning()) {
-    CriticalSectionScoped lock(&_critSectEventCb);
+    rtc::CritScope lock(&_critSectEventCb);
     if (_ptrCbAudioDeviceObserver) {
       LOG(WARNING) << "=> OnWarningIsReported(kPlayoutWarning)";
       _ptrCbAudioDeviceObserver->OnWarningIsReported(
@@ -464,7 +400,7 @@ void AudioDeviceModuleImpl::Process() {
 
   // kPlayoutError
   if (_ptrAudioDevice->PlayoutError()) {
-    CriticalSectionScoped lock(&_critSectEventCb);
+    rtc::CritScope lock(&_critSectEventCb);
     if (_ptrCbAudioDeviceObserver) {
       LOG(LERROR) << "=> OnErrorIsReported(kPlayoutError)";
       _ptrCbAudioDeviceObserver->OnErrorIsReported(
@@ -475,7 +411,7 @@ void AudioDeviceModuleImpl::Process() {
 
   // kRecordingWarning
   if (_ptrAudioDevice->RecordingWarning()) {
-    CriticalSectionScoped lock(&_critSectEventCb);
+    rtc::CritScope lock(&_critSectEventCb);
     if (_ptrCbAudioDeviceObserver) {
       LOG(WARNING) << "=> OnWarningIsReported(kRecordingWarning)";
       _ptrCbAudioDeviceObserver->OnWarningIsReported(
@@ -486,7 +422,7 @@ void AudioDeviceModuleImpl::Process() {
 
   // kRecordingError
   if (_ptrAudioDevice->RecordingError()) {
-    CriticalSectionScoped lock(&_critSectEventCb);
+    rtc::CritScope lock(&_critSectEventCb);
     if (_ptrCbAudioDeviceObserver) {
       LOG(LERROR) << "=> OnErrorIsReported(kRecordingError)";
       _ptrCbAudioDeviceObserver->OnErrorIsReported(
@@ -1392,17 +1328,6 @@ int32_t AudioDeviceModuleImpl::InitPlayout() {
 int32_t AudioDeviceModuleImpl::InitRecording() {
   LOG(INFO) << __FUNCTION__;
   CHECK_INITIALIZED();
-  // --twinlife-- 170307
-#if defined(WEBRTC_ANDROID)
-  if (_ptrAudioStreamingDevice->IsAudioStreamingModeEnabled()) {
-    _ptrAudioDevice = _ptrAudioStreamingDevice;
-  } else {
-    if (_ptrAudioDevice == _ptrAudioStreamingDevice) {
-      _ptrAudioDevice = _ptrAudioDeviceCopy;
-    }
-  }
-#endif
-  // --twinlife-- 170307
   if (RecordingIsInitialized()) {
     return 0;
   }
@@ -1502,13 +1427,6 @@ int32_t AudioDeviceModuleImpl::StopRecording() {
   CHECK_INITIALIZED();
   int32_t result = _ptrAudioDevice->StopRecording();
   _audioDeviceBuffer.StopRecording();
-  // --twinlife-- 170307
-#if defined(WEBRTC_ANDROID)
-  if (_ptrAudioDevice != _ptrAudioDeviceCopy) {
-      _ptrAudioDevice = _ptrAudioDeviceCopy;
-  }
-#endif
-  // --twinlife-- 170307
   LOG(INFO) << "output: " << result;
   RTC_HISTOGRAM_BOOLEAN("WebRTC.Audio.StopRecordingSuccess",
                         static_cast<int>(result == 0));
@@ -1532,7 +1450,7 @@ bool AudioDeviceModuleImpl::Recording() const {
 int32_t AudioDeviceModuleImpl::RegisterEventObserver(
     AudioDeviceObserver* eventCallback) {
   LOG(INFO) << __FUNCTION__;
-  CriticalSectionScoped lock(&_critSectEventCb);
+  rtc::CritScope lock(&_critSectEventCb);
   _ptrCbAudioDeviceObserver = eventCallback;
 
   return 0;
@@ -1545,7 +1463,7 @@ int32_t AudioDeviceModuleImpl::RegisterEventObserver(
 int32_t AudioDeviceModuleImpl::RegisterAudioCallback(
     AudioTransport* audioCallback) {
   LOG(INFO) << __FUNCTION__;
-  CriticalSectionScoped lock(&_critSectAudioCb);
+  rtc::CritScope lock(&_critSectAudioCb);
   return _audioDeviceBuffer.RegisterAudioCallback(audioCallback);
 }
 

@@ -304,7 +304,6 @@ class AudioDeviceTemplate : public AudioDeviceGeneric {
 
   int32_t MicrophoneVolumeIsAvailable(bool& available) override{
     available = false;
-    FATAL() << "Should never be called";
     return -1;
   }
 

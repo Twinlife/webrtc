@@ -18,39 +18,20 @@
 #include <stdio.h>
 #include <vector>
 
-#include "webrtc/common_types.h"  // RawVideoTypes.
-#include "webrtc/common_video/rotation.h"
+#include "webrtc/api/video/video_frame.h"
+#include "webrtc/common_types.h"  // VideoTypes.
 #include "webrtc/typedefs.h"
-#include "webrtc/video_frame.h"
 
 namespace webrtc {
 
-// Supported video types.
-enum VideoType {
-  kUnknown,
-  kI420,
-  kIYUV,
-  kRGB24,
-  kABGR,
-  kARGB,
-  kARGB4444,
-  kRGB565,
-  kARGB1555,
-  kYUY2,
-  kYV12,
-  kUYVY,
-  kMJPG,
-  kNV21,
-  kNV12,
-  kBGRA,
-};
+class I420Buffer;
 
 // This is the max PSNR value our algorithms can return.
 const double kPerfectPSNR = 48.0f;
 
-// Conversion between the RawVideoType and the LibYuv videoType.
-// TODO(wu): Consolidate types into one type throughout WebRtc.
-VideoType RawVideoTypeToCommonVideoVideoType(RawVideoType type);
+// TODO(nisse): Some downstream apps call CalcBufferSize with
+// ::webrtc::kI420 as the first argument. Delete after they are updated.
+const VideoType kI420 = VideoType::kI420;
 
 // Calculate the required buffer size.
 // Input:
@@ -97,9 +78,10 @@ int ExtractBuffer(const VideoFrame& input_frame, size_t size, uint8_t* buffer);
 // Return value: 0 if OK, < 0 otherwise.
 
 // TODO(nisse): Delete this wrapper, and let users call libyuv directly. Most
-// calls pass |src_video_type| == kI420, and should use libyuv::I420Copy. The
-// only exception at the time of this writing is
-// VideoCaptureImpl::IncomingFrame, which still needs libyuv::ConvertToI420.
+// calls pass |src_video_type| == kI420, and should use libyuv::I420Copy. Also
+// remember to delete the I420Buffer forward declaration above. The only
+// exception at the time of this writing is VideoCaptureImpl::IncomingFrame,
+// which still needs libyuv::ConvertToI420.
 int ConvertToI420(VideoType src_video_type,
                   const uint8_t* src_frame,
                   int crop_x,
@@ -148,6 +130,8 @@ void NV12Scale(std::vector<uint8_t>* tmp_buffer,
 // than separate NV12->I420 + I420->I420 scaling.
 class NV12ToI420Scaler {
  public:
+  NV12ToI420Scaler();
+  ~NV12ToI420Scaler();
   void NV12ToI420Scale(const uint8_t* src_y, int src_stride_y,
                        const uint8_t* src_uv, int src_stride_uv,
                        int src_width, int src_height,

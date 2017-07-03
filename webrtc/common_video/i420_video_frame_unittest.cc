@@ -11,11 +11,13 @@
 #include <math.h>
 #include <string.h>
 
+#include "webrtc/api/video/video_frame.h"
+#include "webrtc/api/video/i420_buffer.h"
 #include "webrtc/base/bind.h"
+#include "webrtc/base/timeutils.h"
 #include "webrtc/test/fake_texture_frame.h"
 #include "webrtc/test/frame_utils.h"
 #include "webrtc/test/gtest.h"
-#include "webrtc/video_frame.h"
 
 namespace webrtc {
 
@@ -111,12 +113,6 @@ void CheckRotate(int width, int height, webrtc::VideoRotation rotation,
 
 }  // namespace
 
-TEST(TestVideoFrame, InitialValues) {
-  VideoFrame frame;
-  EXPECT_TRUE(frame.IsZeroSize());
-  EXPECT_EQ(kVideoRotation_0, frame.rotation());
-}
-
 TEST(TestVideoFrame, WidthHeightValues) {
   VideoFrame frame(I420Buffer::Create(10, 10, 10, 14, 90),
                    webrtc::kVideoRotation_0,
@@ -134,7 +130,7 @@ TEST(TestVideoFrame, WidthHeightValues) {
 TEST(TestVideoFrame, ShallowCopy) {
   uint32_t timestamp = 1;
   int64_t ntp_time_ms = 2;
-  int64_t render_time_ms = 3;
+  int64_t timestamp_us = 3;
   int stride_y = 15;
   int stride_u = 10;
   int stride_v = 10;
@@ -151,20 +147,16 @@ TEST(TestVideoFrame, ShallowCopy) {
   memset(buffer_y, 16, kSizeY);
   memset(buffer_u, 8, kSizeU);
   memset(buffer_v, 4, kSizeV);
-  // TODO(nisse): This new + Copy looks quite awkward. Consider adding
-  // an alternative I420Buffer::Create method.
+
   VideoFrame frame1(
-      I420Buffer::Copy(*rtc::scoped_refptr<VideoFrameBuffer>(
-          new rtc::RefCountedObject<webrtc::WrappedI420Buffer>(
-              width, height,
-              buffer_y, stride_y,
-              buffer_u, stride_u,
-              buffer_v, stride_v,
-              rtc::Callback0<void>([](){})))),
+      I420Buffer::Copy(width, height,
+                       buffer_y, stride_y,
+                       buffer_u, stride_u,
+                       buffer_v, stride_v),
       kRotation, 0);
   frame1.set_timestamp(timestamp);
   frame1.set_ntp_time_ms(ntp_time_ms);
-  frame1.set_render_time_ms(render_time_ms);
+  frame1.set_timestamp_us(timestamp_us);
   VideoFrame frame2(frame1);
 
   EXPECT_EQ(frame1.video_frame_buffer(), frame2.video_frame_buffer());
@@ -177,17 +169,17 @@ TEST(TestVideoFrame, ShallowCopy) {
 
   EXPECT_EQ(frame2.timestamp(), frame1.timestamp());
   EXPECT_EQ(frame2.ntp_time_ms(), frame1.ntp_time_ms());
-  EXPECT_EQ(frame2.render_time_ms(), frame1.render_time_ms());
+  EXPECT_EQ(frame2.timestamp_us(), frame1.timestamp_us());
   EXPECT_EQ(frame2.rotation(), frame1.rotation());
 
   frame2.set_timestamp(timestamp + 1);
   frame2.set_ntp_time_ms(ntp_time_ms + 1);
-  frame2.set_render_time_ms(render_time_ms + 1);
+  frame2.set_timestamp_us(timestamp_us + 1);
   frame2.set_rotation(kVideoRotation_90);
 
   EXPECT_NE(frame2.timestamp(), frame1.timestamp());
   EXPECT_NE(frame2.ntp_time_ms(), frame1.ntp_time_ms());
-  EXPECT_NE(frame2.render_time_ms(), frame1.render_time_ms());
+  EXPECT_NE(frame2.timestamp_us(), frame1.timestamp_us());
   EXPECT_NE(frame2.rotation(), frame1.rotation());
 }
 
@@ -204,8 +196,8 @@ TEST(TestVideoFrame, TextureInitialValues) {
 
   frame.set_timestamp(200);
   EXPECT_EQ(200u, frame.timestamp());
-  frame.set_render_time_ms(20);
-  EXPECT_EQ(20, frame.render_time_ms());
+  frame.set_timestamp_us(20);
+  EXPECT_EQ(20, frame.timestamp_us());
 }
 
 TEST(TestI420FrameBuffer, Copy) {
@@ -290,7 +282,7 @@ class TestI420BufferRotate
 TEST_P(TestI420BufferRotate, Rotates) {
   rtc::scoped_refptr<VideoFrameBuffer> buffer = CreateGradient(640, 480);
   rtc::scoped_refptr<VideoFrameBuffer> rotated_buffer =
-      I420Buffer::Rotate(buffer, GetParam());
+      I420Buffer::Rotate(*buffer, GetParam());
   CheckRotate(640, 480, GetParam(), *rotated_buffer);
 }
 

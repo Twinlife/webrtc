@@ -16,10 +16,12 @@
 #include "webrtc/base/array_view.h"
 #include "webrtc/modules/audio_processing/echo_detector/circular_buffer.h"
 #include "webrtc/modules/audio_processing/echo_detector/mean_variance_estimator.h"
+#include "webrtc/modules/audio_processing/echo_detector/moving_max.h"
 #include "webrtc/modules/audio_processing/echo_detector/normalized_covariance_estimator.h"
 
 namespace webrtc {
 
+class ApmDataDumper;
 class AudioBuffer;
 class EchoDetector;
 
@@ -37,13 +39,22 @@ class ResidualEchoDetector {
   // This function should be called while holding the capture lock.
   void Initialize();
 
+  // This function is for testing purposes only.
+  void SetReliabilityForTest(float value) { reliability_ = value; }
+
   static void PackRenderAudioBuffer(AudioBuffer* audio,
                                     std::vector<float>* packed_buffer);
 
   // This function should be called while holding the capture lock.
   float echo_likelihood() const { return echo_likelihood_; }
 
+  float echo_likelihood_recent_max() const {
+    return recent_likelihood_max_.max();
+  }
+
  private:
+  static int instance_count_;
+  std::unique_ptr<ApmDataDumper> data_dumper_;
   // Keep track if the |Process| function has been previously called.
   bool first_process_call_ = true;
   // Buffer for storing the power of incoming farend buffers. This is needed for
@@ -71,6 +82,11 @@ class ResidualEchoDetector {
   MeanVarianceEstimator capture_statistics_;
   // Current echo likelihood.
   float echo_likelihood_ = 0.f;
+  // Reliability of the current likelihood.
+  float reliability_ = 0.f;
+  MovingMax recent_likelihood_max_;
+
+  int log_counter_ = 0;
 };
 
 }  // namespace webrtc

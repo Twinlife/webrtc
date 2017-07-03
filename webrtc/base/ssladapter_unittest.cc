@@ -165,8 +165,8 @@ class SSLAdapterTestDummyServer : public sigslot::has_slots<> {
   }
 
   int Send(const std::string& message) {
-    if (ssl_stream_adapter_ == NULL
-        || ssl_stream_adapter_->GetState() != rtc::SS_OPEN) {
+    if (ssl_stream_adapter_ == nullptr ||
+        ssl_stream_adapter_->GetState() != rtc::SS_OPEN) {
       // No connection yet.
       return -1;
     }
@@ -187,7 +187,7 @@ class SSLAdapterTestDummyServer : public sigslot::has_slots<> {
 
   void AcceptConnection(const rtc::SocketAddress& address) {
     // Only a single connection is supported.
-    ASSERT_TRUE(ssl_stream_adapter_ == NULL);
+    ASSERT_TRUE(ssl_stream_adapter_ == nullptr);
 
     // This is only for DTLS.
     ASSERT_EQ(rtc::SSL_MODE_DTLS, ssl_mode_);
@@ -202,9 +202,9 @@ class SSLAdapterTestDummyServer : public sigslot::has_slots<> {
 
   void OnServerSocketReadEvent(rtc::AsyncSocket* socket) {
     // Only a single connection is supported.
-    ASSERT_TRUE(ssl_stream_adapter_ == NULL);
+    ASSERT_TRUE(ssl_stream_adapter_ == nullptr);
 
-    DoHandshake(server_socket_->Accept(NULL));
+    DoHandshake(server_socket_->Accept(nullptr));
   }
 
   void OnSSLStreamAdapterEvent(rtc::StreamInterface* stream, int sig, int err) {
@@ -274,7 +274,8 @@ class SSLAdapterTestBase : public testing::Test,
   explicit SSLAdapterTestBase(const rtc::SSLMode& ssl_mode,
                               const rtc::KeyParams& key_params)
       : ssl_mode_(ssl_mode),
-        ss_scope_(new rtc::VirtualSocketServer(NULL)),
+        vss_(new rtc::VirtualSocketServer()),
+        thread_(vss_.get()),
         server_(new SSLAdapterTestDummyServer(ssl_mode_, key_params)),
         client_(new SSLAdapterTestDummyClient(ssl_mode_)),
         handshake_wait_(kTimeout) {}
@@ -338,8 +339,8 @@ class SSLAdapterTestBase : public testing::Test,
  private:
   const rtc::SSLMode ssl_mode_;
 
-  const rtc::SocketServerScope ss_scope_;
-
+  std::unique_ptr<rtc::VirtualSocketServer> vss_;
+  rtc::AutoSocketServerThread thread_;
   std::unique_ptr<SSLAdapterTestDummyServer> server_;
   std::unique_ptr<SSLAdapterTestDummyClient> client_;
 
@@ -369,8 +370,6 @@ class SSLAdapterTestDTLS_ECDSA : public SSLAdapterTestBase {
   SSLAdapterTestDTLS_ECDSA()
       : SSLAdapterTestBase(rtc::SSL_MODE_DTLS, rtc::KeyParams::ECDSA()) {}
 };
-
-#if SSL_USE_OPENSSL
 
 // Basic tests: TLS
 
@@ -419,5 +418,3 @@ TEST_F(SSLAdapterTestDTLS_ECDSA, TestDTLSTransfer) {
   TestHandshake(true);
   TestTransfer("Hello, world!");
 }
-
-#endif  // SSL_USE_OPENSSL

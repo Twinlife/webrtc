@@ -14,7 +14,6 @@
 #include <memory>
 #include <vector>
 
-#include "webrtc/base/asyncfile.h"
 #include "webrtc/base/nethelpers.h"
 #include "webrtc/base/socketserver.h"
 #include "webrtc/base/criticalsection.h"
@@ -79,8 +78,6 @@ class PhysicalSocketServer : public SocketServer {
   void Remove(Dispatcher* dispatcher);
 
 #if defined(WEBRTC_POSIX)
-  AsyncFile* CreateFile(int fd);
-
   // Sets the function to be executed in response to the specified POSIX signal.
   // The function is executed from inside Wait() using the "self-pipe trick"--
   // regardless of which thread receives the signal--and hence can safely
@@ -154,8 +151,6 @@ class PhysicalSocket : public AsyncSocket, public sigslot::has_slots<> {
 
   int Close() override;
 
-  int EstimateMTU(uint16_t* mtu) override;
-
   SocketServer* socketserver() { return ss_; }
 
  protected:
@@ -176,11 +171,15 @@ class PhysicalSocket : public AsyncSocket, public sigslot::has_slots<> {
   void UpdateLastError();
   void MaybeRemapSendError();
 
+  uint8_t enabled_events() const { return enabled_events_; }
+  void SetEnabledEvents(uint8_t events);
+  void EnableEvents(uint8_t events);
+  void DisableEvents(uint8_t events);
+
   static int TranslateOption(Option opt, int* slevel, int* sopt);
 
   PhysicalSocketServer* ss_;
   SOCKET s_;
-  uint8_t enabled_events_;
   bool udp_;
   CriticalSection crit_;
   int error_ GUARDED_BY(crit_);
@@ -190,6 +189,9 @@ class PhysicalSocket : public AsyncSocket, public sigslot::has_slots<> {
 #if !defined(NDEBUG)
   std::string dbg_addr_;
 #endif
+
+ private:
+  uint8_t enabled_events_ = 0;
 };
 
 class SocketDispatcher : public Dispatcher, public PhysicalSocket {

@@ -6,27 +6,41 @@
 # in the file PATENTS.  All contributing project authors may
 # be found in the AUTHORS file in the root of the source tree.
 
+import json
 import os
 import re
+import subprocess
 import sys
 
 
-# Directories that will be scanned by cpplint by the presubmit script.
-CPPLINT_DIRS = [
-  'webrtc/audio',
-  'webrtc/call',
-  'webrtc/common_video',
-  'webrtc/examples',
-  'webrtc/modules/audio_mixer',
-  'webrtc/modules/bitrate_controller',
-  'webrtc/modules/congestion_controller',
-  'webrtc/modules/pacing',
-  'webrtc/modules/remote_bitrate_estimator',
-  'webrtc/modules/rtp_rtcp',
-  'webrtc/modules/video_coding',
-  'webrtc/modules/video_processing',
-  'webrtc/tools',
-  'webrtc/video',
+# Files and directories that are *skipped* by cpplint in the presubmit script.
+CPPLINT_BLACKLIST = [
+  'tools_webrtc',
+  'webrtc/api/video_codecs/video_decoder.h',
+  'webrtc/api/video_codecs/video_encoder.h',
+  'webrtc/base',
+  'webrtc/examples/objc',
+  'webrtc/media',
+  'webrtc/modules/audio_coding',
+  'webrtc/modules/audio_conference_mixer',
+  'webrtc/modules/audio_device',
+  'webrtc/modules/audio_processing',
+  'webrtc/modules/desktop_capture',
+  'webrtc/modules/include/module_common_types.h',
+  'webrtc/modules/media_file',
+  'webrtc/modules/utility',
+  'webrtc/modules/video_capture',
+  'webrtc/p2p',
+  'webrtc/pc',
+  'webrtc/sdk/android/src/jni',
+  'webrtc/sdk/objc',
+  'webrtc/system_wrappers',
+  'webrtc/test',
+  'webrtc/voice_engine',
+  'webrtc/call.h',
+  'webrtc/common_types.h',
+  'webrtc/common_types.cc',
+  'webrtc/video_send_stream.h',
 ]
 
 # These filters will always be removed, even if the caller specifies a filter
@@ -83,6 +97,18 @@ LEGACY_API_DIRS = (
 API_DIRS = NATIVE_API_DIRS[:] + LEGACY_API_DIRS[:]
 
 
+def _RunCommand(command, cwd):
+  """Runs a command and returns the output from that command."""
+  p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                       cwd=cwd)
+  stdout = p.stdout.read()
+  stderr = p.stderr.read()
+  p.wait()
+  p.stdout.close()
+  p.stderr.close()
+  return p.returncode, stdout, stderr
+
+
 def _VerifyNativeApiHeadersListIsValid(input_api, output_api):
   """Ensures the list of native API header directories is up to date."""
   non_existing_paths = []
@@ -100,10 +126,11 @@ def _VerifyNativeApiHeadersListIsValid(input_api, output_api):
         non_existing_paths)]
   return []
 
-api_change_msg = """
+API_CHANGE_MSG = """
 You seem to be changing native API header files. Please make sure that you:
-  1. Make compatible changes that don't break existing clients.
-  2. Mark the old stuff as deprecated.
+  1. Make compatible changes that don't break existing clients. Usually
+     this is done by keeping the existing method signatures unchanged.
+  2. Mark the old stuff as deprecated (see RTC_DEPRECATED macro).
   3. Create a timeline and plan for when the deprecated stuff will be
      removed. (The amount of time we give users to change their code
      should be informed by how much work it is for them. If they just
@@ -128,7 +155,7 @@ def _CheckNativeApiHeaderChanges(input_api, output_api):
           files.append(f)
 
   if files:
-    return [output_api.PresubmitNotifyResult(api_change_msg, files)]
+    return [output_api.PresubmitNotifyResult(API_CHANGE_MSG, files)]
   return []
 
 
@@ -153,7 +180,27 @@ def _CheckNoIOStreamInHeaders(input_api, output_api):
   return []
 
 
-def _CheckNoFRIEND_TEST(input_api, output_api):
+def _CheckNoPragmaOnce(input_api, output_api):
+  """Make sure that banned functions are not used."""
+  files = []
+  pattern = input_api.re.compile(r'^#pragma\s+once',
+                                 input_api.re.MULTILINE)
+  for f in input_api.AffectedSourceFiles(input_api.FilterSourceFile):
+    if not f.LocalPath().endswith('.h'):
+      continue
+    contents = input_api.ReadFile(f)
+    if pattern.search(contents):
+      files.append(f)
+
+  if files:
+    return [output_api.PresubmitError(
+        'Do not use #pragma once in header files.\n'
+        'See http://www.chromium.org/developers/coding-style#TOC-File-headers',
+        files)]
+  return []
+
+
+def _CheckNoFRIEND_TEST(input_api, output_api):  # pylint: disable=invalid-name
   """Make sure that gtest's FRIEND_TEST() macro is not used, the
   FRIEND_TEST_ALL_PREFIXES() macro from testsupport/gtest_prod_util.h should be
   used instead since that allows for FLAKY_, FAILS_ and DISABLED_ prefixes."""
@@ -172,17 +219,17 @@ def _CheckNoFRIEND_TEST(input_api, output_api):
       'use FRIEND_TEST_ALL_PREFIXES() instead.\n' + '\n'.join(problems))]
 
 
-def _IsLintWhitelisted(whitelist_dirs, file_path):
-  """ Checks if a file is whitelisted for lint check."""
-  for path in whitelist_dirs:
-    if os.path.dirname(file_path).startswith(path):
+def _IsLintBlacklisted(blacklist_paths, file_path):
+  """ Checks if a file is blacklisted for lint check."""
+  for path in blacklist_paths:
+    if file_path == path or os.path.dirname(file_path).startswith(path):
       return True
   return False
 
 
 def _CheckApprovedFilesLintClean(input_api, output_api,
                                  source_file_filter=None):
-  """Checks that all new or whitelisted .cc and .h files pass cpplint.py.
+  """Checks that all new or non-blacklisted .cc and .h files pass cpplint.py.
   This check is based on _CheckChangeLintsClean in
   depot_tools/presubmit_canned_checks.py but has less filters and only checks
   added files."""
@@ -198,19 +245,20 @@ def _CheckApprovedFilesLintClean(input_api, output_api,
   lint_filters.extend(BLACKLIST_LINT_FILTERS)
   cpplint._SetFilters(','.join(lint_filters))
 
-  # Create a platform independent whitelist for the CPPLINT_DIRS.
-  whitelist_dirs = [input_api.os_path.join(*path.split('/'))
-                    for path in CPPLINT_DIRS]
+  # Create a platform independent blacklist for cpplint.
+  blacklist_paths = [input_api.os_path.join(*path.split('/'))
+                     for path in CPPLINT_BLACKLIST]
 
   # Use the strictest verbosity level for cpplint.py (level 1) which is the
-  # default when running cpplint.py from command line.
-  # To make it possible to work with not-yet-converted code, we're only applying
-  # it to new (or moved/renamed) files and files listed in LINT_FOLDERS.
+  # default when running cpplint.py from command line. To make it possible to
+  # work with not-yet-converted code, we're only applying it to new (or
+  # moved/renamed) files and files not listed in CPPLINT_BLACKLIST.
   verbosity_level = 1
   files = []
   for f in input_api.AffectedSourceFiles(source_file_filter):
     # Note that moved/renamed files also count as added.
-    if f.Action() == 'A' or _IsLintWhitelisted(whitelist_dirs, f.LocalPath()):
+    if f.Action() == 'A' or not _IsLintBlacklisted(blacklist_paths,
+                                                   f.LocalPath()):
       files.append(f.AbsoluteLocalPath())
 
   for file_name in files:
@@ -218,109 +266,14 @@ def _CheckApprovedFilesLintClean(input_api, output_api,
 
   if cpplint._cpplint_state.error_count > 0:
     if input_api.is_committing:
-      # TODO(kjellander): Change back to PresubmitError below when we're
-      # confident with the lint settings.
-      res_type = output_api.PresubmitPromptWarning
+      res_type = output_api.PresubmitError
     else:
       res_type = output_api.PresubmitPromptWarning
     result = [res_type('Changelist failed cpplint.py check.')]
 
   return result
 
-def _CheckNoRtcBaseDeps(input_api, gyp_files, output_api):
-  pattern = input_api.re.compile(r"base.gyp:rtc_base\s*'")
-  violating_files = []
-  for f in gyp_files:
-    gyp_exceptions = (
-        'audio_device.gypi',
-        'base_tests.gyp',
-        'desktop_capture.gypi',
-        'p2p.gyp',
-        'sdk.gyp',
-        'webrtc_test_common.gyp',
-        'webrtc_tests.gypi',
-    )
-    if f.LocalPath().endswith(gyp_exceptions):
-      continue
-    contents = input_api.ReadFile(f)
-    if pattern.search(contents):
-      violating_files.append(f)
-  if violating_files:
-    return [output_api.PresubmitError(
-        'Depending on rtc_base is not allowed. Change your dependency to '
-        'rtc_base_approved and possibly sanitize and move the desired source '
-        'file(s) to rtc_base_approved.\nChanged GYP files:',
-        items=violating_files)]
-  return []
-
-def _CheckNoRtcBaseDepsGn(input_api, gn_files, output_api):
-  pattern = input_api.re.compile(r'base:rtc_base\s*"')
-  violating_files = []
-  for f in gn_files:
-    gn_exceptions = (
-        os.path.join('audio_device', 'BUILD.gn'),
-        os.path.join('base_tests', 'BUILD.gn'),
-        os.path.join('desktop_capture', 'BUILD.gn'),
-        os.path.join('p2p', 'BUILD.gn'),
-        os.path.join('sdk', 'BUILD.gn'),
-        os.path.join('webrtc_test_common', 'BUILD.gn'),
-        os.path.join('webrtc_tests', 'BUILD.gn'),
-
-        # TODO(ehmaldonado): Clean up references to rtc_base in these files.
-        # See https://bugs.chromium.org/p/webrtc/issues/detail?id=3806
-        os.path.join('webrtc', 'BUILD.gn'),
-        os.path.join('xmllite', 'BUILD.gn'),
-        os.path.join('xmpp', 'BUILD.gn'),
-        os.path.join('modules', 'BUILD.gn'),
-        os.path.join('audio_device', 'BUILD.gn'),
-        os.path.join('pc', 'BUILD.gn'),
-    )
-    if f.LocalPath().endswith(gn_exceptions):
-      continue
-    contents = input_api.ReadFile(f)
-    if pattern.search(contents):
-      violating_files.append(f)
-  if violating_files:
-    return [output_api.PresubmitError(
-        'Depending on rtc_base is not allowed. Change your dependency to '
-        'rtc_base_approved and possibly sanitize and move the desired source '
-        'file(s) to rtc_base_approved.\nChanged GN files:',
-        items=violating_files)]
-  return []
-
-def _CheckNoSourcesAboveGyp(input_api, gyp_files, output_api):
-  # Disallow referencing source files with paths above the GYP file location.
-  source_pattern = input_api.re.compile(r'\'sources\'.*?\[(.*?)\]',
-                                        re.MULTILINE | re.DOTALL)
-  file_pattern = input_api.re.compile(r"'((\.\./.*?)|(<\(webrtc_root\).*?))'")
-  violating_gyp_files = set()
-  violating_source_entries = []
-  for gyp_file in gyp_files:
-    if 'supplement.gypi' in gyp_file.LocalPath():
-      # Exclude supplement.gypi from this check, as the LSan and TSan
-      # suppression files are located in a different location.
-      continue
-    contents = input_api.ReadFile(gyp_file)
-    for source_block_match in source_pattern.finditer(contents):
-      # Find all source list entries starting with ../ in the source block
-      # (exclude overrides entries).
-      for file_list_match in file_pattern.finditer(source_block_match.group(1)):
-        source_file = file_list_match.group(1)
-        if 'overrides/' not in source_file:
-          violating_source_entries.append(source_file)
-          violating_gyp_files.add(gyp_file)
-  if violating_gyp_files:
-    return [output_api.PresubmitError(
-        'Referencing source files above the directory of the GYP file is not '
-        'allowed. Please introduce new GYP targets and/or GYP files in the '
-        'proper location instead.\n'
-        'Invalid source entries:\n'
-        '%s\n'
-        'Violating GYP files:' % '\n'.join(violating_source_entries),
-        items=violating_gyp_files)]
-  return []
-
-def _CheckNoSourcesAboveGn(input_api, gn_files, output_api):
+def _CheckNoSourcesAbove(input_api, gn_files, output_api):
   # Disallow referencing source files with paths above the GN file location.
   source_pattern = input_api.re.compile(r' +sources \+?= \[(.*?)\]',
                                         re.MULTILINE | re.DOTALL)
@@ -340,32 +293,56 @@ def _CheckNoSourcesAboveGn(input_api, gn_files, output_api):
   if violating_gn_files:
     return [output_api.PresubmitError(
         'Referencing source files above the directory of the GN file is not '
-        'allowed. Please introduce new GYP targets and/or GN files in the '
-        'proper location instead.\n'
+        'allowed. Please introduce new GN targets in the proper location '
+        'instead.\n'
         'Invalid source entries:\n'
         '%s\n'
         'Violating GN files:' % '\n'.join(violating_source_entries),
         items=violating_gn_files)]
   return []
 
-def _CheckGypChanges(input_api, output_api):
-  source_file_filter = lambda x: input_api.FilterSourceFile(
-      x, white_list=(r'.+\.(gyp|gypi)$',))
+def _CheckNoMixingCAndCCSources(input_api, gn_files, output_api):
+  # Disallow mixing .c and .cc source files in the same target.
+  source_pattern = input_api.re.compile(r' +sources \+?= \[(.*?)\]',
+                                        re.MULTILINE | re.DOTALL)
+  file_pattern = input_api.re.compile(r'"(.*)"')
+  violating_gn_files = dict()
+  for gn_file in gn_files:
+    contents = input_api.ReadFile(gn_file)
+    for source_block_match in source_pattern.finditer(contents):
+      c_files = []
+      cc_files = []
+      for file_list_match in file_pattern.finditer(source_block_match.group(1)):
+        source_file = file_list_match.group(1)
+        if source_file.endswith('.c'):
+          c_files.append(source_file)
+        if source_file.endswith('.cc'):
+          cc_files.append(source_file)
+      if c_files and cc_files:
+        violating_gn_files[gn_file.LocalPath()] = sorted(c_files + cc_files)
+  if violating_gn_files:
+    return [output_api.PresubmitError(
+        'GN targets cannot mix .cc and .c source files. Please create a '
+        'separate target for each collection of sources.\n'
+        'Mixed sources: \n'
+        '%s\n'
+        'Violating GN files:' % json.dumps(violating_gn_files, indent=2),
+        items=violating_gn_files.keys())]
+  return []
 
-  gyp_files = []
-  for f in input_api.AffectedSourceFiles(source_file_filter):
-    if f.LocalPath().startswith('webrtc'):
-      gyp_files.append(f)
-
-  result = []
-  if gyp_files:
-    result.append(output_api.PresubmitNotifyResult(
-        'As you\'re changing GYP files: please make sure corresponding '
-        'BUILD.gn files are also updated.\nChanged GYP files:',
-        items=gyp_files))
-    result.extend(_CheckNoRtcBaseDeps(input_api, gyp_files, output_api))
-    result.extend(_CheckNoSourcesAboveGyp(input_api, gyp_files, output_api))
-  return result
+def _CheckNoPackageBoundaryViolations(input_api, gn_files, output_api):
+  cwd = input_api.PresubmitLocalPath()
+  script_path = os.path.join('tools_webrtc', 'presubmit_checks_lib',
+                             'check_package_boundaries.py')
+  webrtc_path = os.path.join('webrtc')
+  command = [sys.executable, script_path, webrtc_path]
+  command += [gn_file.LocalPath() for gn_file in gn_files]
+  returncode, _, stderr = _RunCommand(command, cwd)
+  if returncode:
+    return [output_api.PresubmitError(
+        'There are package boundary violations in the following GN files:\n\n'
+        '%s' % stderr)]
+  return []
 
 def _CheckGnChanges(input_api, output_api):
   source_file_filter = lambda x: input_api.FilterSourceFile(
@@ -378,12 +355,10 @@ def _CheckGnChanges(input_api, output_api):
 
   result = []
   if gn_files:
-    result.append(output_api.PresubmitNotifyResult(
-        'As you\'re changing GN files: please make sure corresponding GYP'
-        'files are also updated.\nChanged GN files:',
-        items=gn_files))
-    result.extend(_CheckNoRtcBaseDepsGn(input_api, gn_files, output_api))
-    result.extend(_CheckNoSourcesAboveGn(input_api, gn_files, output_api))
+    result.extend(_CheckNoSourcesAbove(input_api, gn_files, output_api))
+    result.extend(_CheckNoMixingCAndCCSources(input_api, gn_files, output_api))
+    result.extend(_CheckNoPackageBoundaryViolations(
+        input_api, gn_files, output_api))
   return result
 
 def _CheckUnwantedDependencies(input_api, output_api):
@@ -435,13 +410,18 @@ def _CheckUnwantedDependencies(input_api, output_api):
   results = []
   if error_descriptions:
     results.append(output_api.PresubmitError(
-        'You added one or more #includes that violate checkdeps rules.',
+        'You added one or more #includes that violate checkdeps rules.\n'
+        'Check that the DEPS files in these locations contain valid rules.\n'
+        'See https://cs.chromium.org/chromium/src/buildtools/checkdeps/ for '
+        'more details about checkdeps.',
         error_descriptions))
   if warning_descriptions:
     results.append(output_api.PresubmitPromptOrNotify(
         'You added one or more #includes of files that are temporarily\n'
         'allowed but being removed. Can you avoid introducing the\n'
-        '#include? See relevant DEPS file(s) for details and contacts.',
+        '#include? See relevant DEPS file(s) for details and contacts.\n'
+        'See https://cs.chromium.org/chromium/src/buildtools/checkdeps/ for '
+        'more details about checkdeps.',
         warning_descriptions))
   return results
 
@@ -487,12 +467,16 @@ def _CheckJSONParseErrors(input_api, output_api):
 
 
 def _RunPythonTests(input_api, output_api):
-  def join(*args):
+  def Join(*args):
     return input_api.os_path.join(input_api.PresubmitLocalPath(), *args)
 
   test_directories = [
-    join('tools', 'autoroller', 'unittests'),
-    join('webrtc', 'tools', 'py_event_log_analyzer'),
+      Join('webrtc', 'tools', 'py_event_log_analyzer'),
+      Join('webrtc', 'tools'),
+      Join('webrtc', 'audio', 'test', 'unittests'),
+  ] + [
+      root for root, _, files in os.walk(Join('tools_webrtc'))
+      if any(f.endswith('_test.py') for f in files)
   ]
 
   tests = []
@@ -504,6 +488,26 @@ def _RunPythonTests(input_api, output_api):
           directory,
           whitelist=[r'.+_test\.py$']))
   return input_api.RunTests(tests, parallel=True)
+
+
+def _CheckUsageOfGoogleProtobufNamespace(input_api, output_api):
+  """Checks that the namespace google::protobuf has not been used."""
+  files = []
+  pattern = input_api.re.compile(r'google::protobuf')
+  proto_utils_path = os.path.join('webrtc', 'base', 'protobuf_utils.h')
+  for f in input_api.AffectedSourceFiles(input_api.FilterSourceFile):
+    if f.LocalPath() in [proto_utils_path, 'PRESUBMIT.py']:
+      continue
+    contents = input_api.ReadFile(f)
+    if pattern.search(contents):
+      files.append(f)
+
+  if files:
+    return [output_api.PresubmitError(
+        'Please avoid to use namespace `google::protobuf` directly.\n'
+        'Add a using directive in `%s` and include that header instead.'
+        % proto_utils_path, files)]
+  return []
 
 
 def _CommonChecks(input_api, output_api):
@@ -520,38 +524,19 @@ def _CommonChecks(input_api, output_api):
   results.extend(_CheckApprovedFilesLintClean(
       input_api, output_api, source_file_filter))
   results.extend(input_api.canned_checks.RunPylint(input_api, output_api,
-      black_list=(r'^.*gviz_api\.py$',
-                  r'^.*gaeunit\.py$',
-                  # Embedded shell-script fakes out pylint.
+      black_list=(r'^base[\\\/].*\.py$',
                   r'^build[\\\/].*\.py$',
                   r'^buildtools[\\\/].*\.py$',
-                  r'^chromium[\\\/].*\.py$',
-                  r'^mojo.*[\\\/].*\.py$',
+                  r'^infra[\\\/].*\.py$',
+                  r'^ios[\\\/].*\.py$',
                   r'^out.*[\\\/].*\.py$',
                   r'^testing[\\\/].*\.py$',
                   r'^third_party[\\\/].*\.py$',
-                  r'^tools[\\\/]clang[\\\/].*\.py$',
-                  r'^tools[\\\/]generate_library_loader[\\\/].*\.py$',
-                  r'^tools[\\\/]generate_stubs[\\\/].*\.py$',
-                  r'^tools[\\\/]gn[\\\/].*\.py$',
-                  r'^tools[\\\/]gyp[\\\/].*\.py$',
-                  r'^tools[\\\/]isolate_driver.py$',
-                  r'^tools[\\\/]mb[\\\/].*\.py$',
-                  r'^tools[\\\/]protoc_wrapper[\\\/].*\.py$',
-                  r'^tools[\\\/]python[\\\/].*\.py$',
-                  r'^tools[\\\/]python_charts[\\\/]data[\\\/].*\.py$',
-                  r'^tools[\\\/]refactoring[\\\/].*\.py$',
-                  r'^tools[\\\/]swarming_client[\\\/].*\.py$',
-                  r'^tools[\\\/]vim[\\\/].*\.py$',
+                  r'^tools[\\\/].*\.py$',
                   # TODO(phoglund): should arguably be checked.
-                  r'^tools[\\\/]valgrind-webrtc[\\\/].*\.py$',
-                  r'^tools[\\\/]valgrind[\\\/].*\.py$',
-                  r'^tools[\\\/]win[\\\/].*\.py$',
+                  r'^tools_webrtc[\\\/]mb[\\\/].*\.py$',
+                  r'^tools_webrtc[\\\/]valgrind[\\\/].*\.py$',
                   r'^xcodebuild.*[\\\/].*\.py$',),
-      disabled_warnings=['F0401',  # Failed to import x
-                         'E0611',  # No package y in x
-                         'W0232',  # Class has no __init__ method
-                        ],
       pylintrc='pylintrc'))
 
   # TODO(nisse): talk/ is no more, so make below checks simpler?
@@ -562,9 +547,8 @@ def _CommonChecks(input_api, output_api):
   # .m and .mm files are ObjC files. For simplicity we will consider .h files in
   # ObjC subdirectories ObjC headers.
   objc_filter_list = (r'.+\.m$', r'.+\.mm$', r'.+objc\/.+\.h$')
-  # Skip long-lines check for DEPS, GN and GYP files.
-  build_file_filter_list = (r'.+\.gyp$', r'.+\.gypi$', r'.+\.gn$', r'.+\.gni$',
-      'DEPS')
+  # Skip long-lines check for DEPS and GN files.
+  build_file_filter_list = (r'.+\.gn$', r'.+\.gni$', 'DEPS')
   eighty_char_sources = lambda x: input_api.FilterSourceFile(x,
       black_list=build_file_filter_list + objc_filter_list)
   hundred_char_sources = lambda x: input_api.FilterSourceFile(x,
@@ -579,16 +563,20 @@ def _CommonChecks(input_api, output_api):
       input_api, output_api))
   results.extend(input_api.canned_checks.CheckChangeHasNoStrayWhitespace(
       input_api, output_api))
+  results.extend(input_api.canned_checks.CheckAuthorizedAuthor(
+      input_api, output_api))
   results.extend(input_api.canned_checks.CheckChangeTodoHasOwner(
       input_api, output_api))
   results.extend(_CheckNativeApiHeaderChanges(input_api, output_api))
   results.extend(_CheckNoIOStreamInHeaders(input_api, output_api))
+  results.extend(_CheckNoPragmaOnce(input_api, output_api))
   results.extend(_CheckNoFRIEND_TEST(input_api, output_api))
-  results.extend(_CheckGypChanges(input_api, output_api))
   results.extend(_CheckGnChanges(input_api, output_api))
   results.extend(_CheckUnwantedDependencies(input_api, output_api))
   results.extend(_CheckJSONParseErrors(input_api, output_api))
   results.extend(_RunPythonTests(input_api, output_api))
+  results.extend(_CheckUsageOfGoogleProtobufNamespace(input_api, output_api))
+  results.extend(_CheckOrphanHeaders(input_api, output_api))
   return results
 
 
@@ -610,9 +598,37 @@ def CheckChangeOnCommit(input_api, output_api):
   results.extend(input_api.canned_checks.CheckChangeHasDescription(
       input_api, output_api))
   results.extend(_CheckChangeHasBugField(input_api, output_api))
-  results.extend(input_api.canned_checks.CheckChangeHasTestField(
-      input_api, output_api))
   results.extend(input_api.canned_checks.CheckTreeIsOpen(
       input_api, output_api,
       json_url='http://webrtc-status.appspot.com/current?format=json'))
+  return results
+
+
+def _CheckOrphanHeaders(input_api, output_api):
+  # We need to wait until we have an input_api object and use this
+  # roundabout construct to import prebubmit_checks_lib because this file is
+  # eval-ed and thus doesn't have __file__.
+  error_msg = """Header file {} is not listed in any GN target.
+  Please create a target or add it to an existing one in {}"""
+  results = []
+  original_sys_path = sys.path
+  try:
+    sys.path = sys.path + [input_api.os_path.join(
+        input_api.PresubmitLocalPath(), 'tools_webrtc', 'presubmit_checks_lib')]
+    from check_orphan_headers import GetBuildGnPathFromFilePath
+    from check_orphan_headers import IsHeaderInBuildGn
+  finally:
+    # Restore sys.path to what it was before.
+    sys.path = original_sys_path
+
+  for f in input_api.AffectedSourceFiles(input_api.FilterSourceFile):
+    if f.LocalPath().endswith('.h') and f.Action() == 'A':
+      file_path = os.path.abspath(f.LocalPath())
+      root_dir = os.getcwd()
+      gn_file_path = GetBuildGnPathFromFilePath(file_path, os.path.exists,
+                                                root_dir)
+      in_build_gn = IsHeaderInBuildGn(file_path, gn_file_path)
+      if not in_build_gn:
+        results.append(output_api.PresubmitError(error_msg.format(
+            file_path, gn_file_path)))
   return results

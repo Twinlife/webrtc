@@ -163,13 +163,13 @@ std::string* MakeCheckOpString<std::string, std::string>(
   inline std::string* Check##name##Impl(const t1& v1, const t2& v2,          \
                                         const char* names) {                 \
     if (rtc::safe_cmp::name(v1, v2))                                         \
-      return NULL;                                                           \
+      return nullptr;                                                        \
     else                                                                     \
       return rtc::MakeCheckOpString(v1, v2, names);                          \
   }                                                                          \
   inline std::string* Check##name##Impl(int v1, int v2, const char* names) { \
     if (rtc::safe_cmp::name(v1, v2))                                         \
-      return NULL;                                                           \
+      return nullptr;                                                        \
     else                                                                     \
       return rtc::MakeCheckOpString(v1, v2, names);                          \
   }
@@ -246,8 +246,7 @@ class FatalMessage {
 // remainder is zero.
 template <typename T>
 inline T CheckedDivExact(T a, T b) {
-  RTC_CHECK_EQ(a % b, static_cast<T>(0)) << a << " is not evenly divisible by "
-                                         << b;
+  RTC_CHECK_EQ(a % b, 0) << a << " is not evenly divisible by " << b;
   return a / b;
 }
 

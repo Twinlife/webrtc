@@ -27,7 +27,6 @@
 #include "webrtc/modules/audio_coding/neteq/include/neteq.h"
 #include "webrtc/modules/include/module_common_types.h"
 #include "webrtc/typedefs.h"
-#include "webrtc/voice_engine_configurations.h"
 
 namespace webrtc {
 
@@ -79,6 +78,9 @@ class AcmReceiver {
   //                           -1 if NetEq returned an error.
   //
   int GetAudio(int desired_freq_hz, AudioFrame* audio_frame, bool* muted);
+
+  // Replace the current set of decoders with the specified set.
+  void SetCodecs(const std::map<int, SdpAudioFormat>& codecs);
 
   //
   // Adds a new codec to the NetEq codec database.

@@ -10,81 +10,48 @@
 
 #include "webrtc/common_video/libyuv/include/webrtc_libyuv.h"
 
-#include <assert.h>
 #include <string.h>
 
-// NOTE(ajm): Path provided by gyp.
+#include "webrtc/base/checks.h"
+// TODO(nisse): Only needed for the deprecated ConvertToI420.
+#include "webrtc/api/video/i420_buffer.h"
+
+// NOTE(ajm): Path provided by gn.
 #include "libyuv.h"  // NOLINT
 
 namespace webrtc {
 
-VideoType RawVideoTypeToCommonVideoVideoType(RawVideoType type) {
-  switch (type) {
-    case kVideoI420:
-      return kI420;
-    case kVideoIYUV:
-      return kIYUV;
-    case kVideoRGB24:
-      return kRGB24;
-    case kVideoARGB:
-      return kARGB;
-    case kVideoARGB4444:
-      return kARGB4444;
-    case kVideoRGB565:
-      return kRGB565;
-    case kVideoARGB1555:
-      return kARGB1555;
-    case kVideoYUY2:
-      return kYUY2;
-    case kVideoYV12:
-      return kYV12;
-    case kVideoUYVY:
-      return kUYVY;
-    case kVideoNV21:
-      return kNV21;
-    case kVideoNV12:
-      return kNV12;
-    case kVideoBGRA:
-      return kBGRA;
-    case kVideoMJPEG:
-      return kMJPG;
-    default:
-      assert(false);
-  }
-  return kUnknown;
-}
-
 size_t CalcBufferSize(VideoType type, int width, int height) {
-  assert(width >= 0);
-  assert(height >= 0);
+  RTC_DCHECK_GE(width, 0);
+  RTC_DCHECK_GE(height, 0);
   size_t buffer_size = 0;
   switch (type) {
-    case kI420:
-    case kNV12:
-    case kNV21:
-    case kIYUV:
-    case kYV12: {
+    case VideoType::kI420:
+    case VideoType::kNV12:
+    case VideoType::kNV21:
+    case VideoType::kIYUV:
+    case VideoType::kYV12: {
       int half_width = (width + 1) >> 1;
       int half_height = (height + 1) >> 1;
       buffer_size = width * height + half_width * half_height * 2;
       break;
     }
-    case kARGB4444:
-    case kRGB565:
-    case kARGB1555:
-    case kYUY2:
-    case kUYVY:
+    case VideoType::kARGB4444:
+    case VideoType::kRGB565:
+    case VideoType::kARGB1555:
+    case VideoType::kYUY2:
+    case VideoType::kUYVY:
       buffer_size = width * height * 2;
       break;
-    case kRGB24:
+    case VideoType::kRGB24:
       buffer_size = width * height * 3;
       break;
-    case kBGRA:
-    case kARGB:
+    case VideoType::kBGRA:
+    case VideoType::kARGB:
       buffer_size = width * height * 4;
       break;
     default:
-      assert(false);
+      RTC_NOTREACHED();
       break;
   }
   return buffer_size;
@@ -127,20 +94,18 @@ int PrintVideoFrame(const VideoFrameBuffer& frame, FILE* file) {
 }
 
 int PrintVideoFrame(const VideoFrame& frame, FILE* file) {
-  if (frame.IsZeroSize())
-    return -1;
   return PrintVideoFrame(*frame.video_frame_buffer(), file);
 }
 
 int ExtractBuffer(const rtc::scoped_refptr<VideoFrameBuffer>& input_frame,
                   size_t size,
                   uint8_t* buffer) {
-  assert(buffer);
+  RTC_DCHECK(buffer);
   if (!input_frame)
     return -1;
   int width = input_frame->width();
   int height = input_frame->height();
-  size_t length = CalcBufferSize(kI420, width, height);
+  size_t length = CalcBufferSize(VideoType::kI420, width, height);
   if (size < length) {
      return -1;
   }
@@ -200,45 +165,45 @@ libyuv::RotationMode ConvertRotationMode(VideoRotation rotation) {
     case kVideoRotation_270:
       return libyuv::kRotate270;
   }
-  assert(false);
+  RTC_NOTREACHED();
   return libyuv::kRotate0;
 }
 
 int ConvertVideoType(VideoType video_type) {
   switch (video_type) {
-    case kUnknown:
+    case VideoType::kUnknown:
       return libyuv::FOURCC_ANY;
-    case  kI420:
+    case VideoType::kI420:
       return libyuv::FOURCC_I420;
-    case kIYUV:  // same as KYV12
-    case kYV12:
+    case VideoType::kIYUV:  // same as VideoType::kYV12
+    case VideoType::kYV12:
       return libyuv::FOURCC_YV12;
-    case kRGB24:
+    case VideoType::kRGB24:
       return libyuv::FOURCC_24BG;
-    case kABGR:
+    case VideoType::kABGR:
       return libyuv::FOURCC_ABGR;
-    case kRGB565:
+    case VideoType::kRGB565:
       return libyuv::FOURCC_RGBP;
-    case kYUY2:
+    case VideoType::kYUY2:
       return libyuv::FOURCC_YUY2;
-    case kUYVY:
+    case VideoType::kUYVY:
       return libyuv::FOURCC_UYVY;
-    case kMJPG:
+    case VideoType::kMJPEG:
       return libyuv::FOURCC_MJPG;
-    case kNV21:
+    case VideoType::kNV21:
       return libyuv::FOURCC_NV21;
-    case kNV12:
+    case VideoType::kNV12:
       return libyuv::FOURCC_NV12;
-    case kARGB:
+    case VideoType::kARGB:
       return libyuv::FOURCC_ARGB;
-    case kBGRA:
+    case VideoType::kBGRA:
       return libyuv::FOURCC_BGRA;
-    case kARGB4444:
+    case VideoType::kARGB4444:
       return libyuv::FOURCC_R444;
-    case kARGB1555:
+    case VideoType::kARGB1555:
       return libyuv::FOURCC_RGBO;
   }
-  assert(false);
+  RTC_NOTREACHED();
   return libyuv::FOURCC_ANY;
 }
 
@@ -287,22 +252,24 @@ int ConvertFromI420(const VideoFrame& src_frame,
       ConvertVideoType(dst_video_type));
 }
 
-// Compute PSNR for an I420 frame (all planes)
+// Compute PSNR for an I420 frame (all planes). Can upscale test frame.
 double I420PSNR(const VideoFrameBuffer& ref_buffer,
                 const VideoFrameBuffer& test_buffer) {
+  RTC_DCHECK_GE(ref_buffer.width(), test_buffer.width());
+  RTC_DCHECK_GE(ref_buffer.height(), test_buffer.height());
   if ((ref_buffer.width() != test_buffer.width()) ||
-      (ref_buffer.height() != test_buffer.height()))
-    return -1;
-  else if (ref_buffer.width() < 0 || ref_buffer.height() < 0)
-    return -1;
-
-  double psnr = libyuv::I420Psnr(ref_buffer.DataY(), ref_buffer.StrideY(),
-                                 ref_buffer.DataU(), ref_buffer.StrideU(),
-                                 ref_buffer.DataV(), ref_buffer.StrideV(),
-                                 test_buffer.DataY(), test_buffer.StrideY(),
-                                 test_buffer.DataU(), test_buffer.StrideU(),
-                                 test_buffer.DataV(), test_buffer.StrideV(),
-                                 test_buffer.width(), test_buffer.height());
+      (ref_buffer.height() != test_buffer.height())) {
+    rtc::scoped_refptr<I420Buffer> scaled_buffer =
+        I420Buffer::Create(ref_buffer.width(), ref_buffer.height());
+    scaled_buffer->ScaleFrom(test_buffer);
+    return I420PSNR(ref_buffer, *scaled_buffer);
+  }
+  double psnr = libyuv::I420Psnr(
+      ref_buffer.DataY(), ref_buffer.StrideY(), ref_buffer.DataU(),
+      ref_buffer.StrideU(), ref_buffer.DataV(), ref_buffer.StrideV(),
+      test_buffer.DataY(), test_buffer.StrideY(), test_buffer.DataU(),
+      test_buffer.StrideU(), test_buffer.DataV(), test_buffer.StrideV(),
+      test_buffer.width(), test_buffer.height());
   // LibYuv sets the max psnr value to 128, we restrict it here.
   // In case of 0 mse in one frame, 128 can skew the results significantly.
   return (psnr > kPerfectPSNR) ? kPerfectPSNR : psnr;
@@ -316,22 +283,24 @@ double I420PSNR(const VideoFrame* ref_frame, const VideoFrame* test_frame) {
                   *test_frame->video_frame_buffer());
 }
 
-// Compute SSIM for an I420 frame (all planes)
+// Compute SSIM for an I420 frame (all planes). Can upscale test_buffer.
 double I420SSIM(const VideoFrameBuffer& ref_buffer,
                 const VideoFrameBuffer& test_buffer) {
+  RTC_DCHECK_GE(ref_buffer.width(), test_buffer.width());
+  RTC_DCHECK_GE(ref_buffer.height(), test_buffer.height());
   if ((ref_buffer.width() != test_buffer.width()) ||
-      (ref_buffer.height() != test_buffer.height()))
-    return -1;
-  else if (ref_buffer.width() < 0 || ref_buffer.height() < 0)
-    return -1;
-
-  return libyuv::I420Ssim(ref_buffer.DataY(), ref_buffer.StrideY(),
-                          ref_buffer.DataU(), ref_buffer.StrideU(),
-                          ref_buffer.DataV(), ref_buffer.StrideV(),
-                          test_buffer.DataY(), test_buffer.StrideY(),
-                          test_buffer.DataU(), test_buffer.StrideU(),
-                          test_buffer.DataV(), test_buffer.StrideV(),
-                          test_buffer.width(), test_buffer.height());
+      (ref_buffer.height() != test_buffer.height())) {
+    rtc::scoped_refptr<I420Buffer> scaled_buffer =
+        I420Buffer::Create(ref_buffer.width(), ref_buffer.height());
+    scaled_buffer->ScaleFrom(test_buffer);
+    return I420SSIM(ref_buffer, *scaled_buffer);
+  }
+  return libyuv::I420Ssim(
+      ref_buffer.DataY(), ref_buffer.StrideY(), ref_buffer.DataU(),
+      ref_buffer.StrideU(), ref_buffer.DataV(), ref_buffer.StrideV(),
+      test_buffer.DataY(), test_buffer.StrideY(), test_buffer.DataU(),
+      test_buffer.StrideU(), test_buffer.DataV(), test_buffer.StrideV(),
+      test_buffer.width(), test_buffer.height());
 }
 double I420SSIM(const VideoFrame* ref_frame, const VideoFrame* test_frame) {
   if (!ref_frame || !test_frame)
@@ -397,6 +366,9 @@ void NV12Scale(std::vector<uint8_t>* tmp_buffer,
                        dst_uv, dst_stride_uv,
                        dst_chroma_width, dst_chroma_height);
 }
+
+NV12ToI420Scaler::NV12ToI420Scaler() = default;
+NV12ToI420Scaler::~NV12ToI420Scaler() = default;
 
 void NV12ToI420Scaler::NV12ToI420Scale(
     const uint8_t* src_y, int src_stride_y,

@@ -20,6 +20,8 @@
 #include "webrtc/base/checks.h"
 #include "webrtc/base/gtest_prod_util.h"
 #include "webrtc/base/ignore_wundef.h"
+#include "webrtc/base/protobuf_utils.h"
+#include "webrtc/base/safe_minmax.h"
 #include "webrtc/common_audio/include/audio_util.h"
 #include "webrtc/common_audio/resampler/include/push_resampler.h"
 #include "webrtc/common_audio/resampler/push_sinc_resampler.h"
@@ -41,7 +43,7 @@ RTC_PUSH_IGNORING_WUNDEF()
 #ifdef WEBRTC_ANDROID_PLATFORM_BUILD
 #include "external/webrtc/webrtc/modules/audio_processing/test/unittest.pb.h"
 #else
-#include "webrtc/modules/audio_processing/unittest.pb.h"
+#include "webrtc/modules/audio_processing/test/unittest.pb.h"
 #endif
 RTC_POP_IGNORING_WUNDEF()
 
@@ -58,7 +60,7 @@ namespace {
 // file. This is the typical case. When the file should be updated, it can
 // be set to true with the command-line switch --write_ref_data.
 bool write_ref_data = false;
-const google::protobuf::int32 kChannels[] = {1, 2};
+const int32_t kChannels[] = {1, 2};
 const int kSampleRates[] = {8000, 16000, 32000, 48000};
 
 #if defined(WEBRTC_AUDIOPROC_FIXED_PROFILE)
@@ -185,7 +187,10 @@ void EnableAllAPComponents(AudioProcessing* ap) {
   EXPECT_NOERR(ap->gain_control()->Enable(true));
 #endif
 
-  EXPECT_NOERR(ap->high_pass_filter()->Enable(true));
+  AudioProcessing::Config apm_config;
+  apm_config.high_pass_filter.enabled = true;
+  ap->ApplyConfig(apm_config);
+
   EXPECT_NOERR(ap->level_estimator()->Enable(true));
   EXPECT_NOERR(ap->noise_suppression()->Enable(true));
 
@@ -227,7 +232,7 @@ void WriteStatsMessage(const AudioProcessing::Statistic& output,
 #endif
 
 void OpenFileAndWriteMessage(const std::string filename,
-                             const ::google::protobuf::MessageLite& msg) {
+                             const MessageLite& msg) {
   FILE* file = fopen(filename.c_str(), "wb");
   ASSERT_TRUE(file != NULL);
 
@@ -296,8 +301,7 @@ void ClearTempFiles() {
     remove(kv.second.c_str());
 }
 
-void OpenFileAndReadMessage(std::string filename,
-                            ::google::protobuf::MessageLite* msg) {
+void OpenFileAndReadMessage(std::string filename, MessageLite* msg) {
   FILE* file = fopen(filename.c_str(), "rb");
   ASSERT_TRUE(file != NULL);
   ReadMessageFromFile(file, msg);
@@ -391,7 +395,6 @@ class ApmTest : public ::testing::Test {
   void VerifyDebugDumpTest(Format format);
 
   const std::string output_path_;
-  const std::string ref_path_;
   const std::string ref_filename_;
   std::unique_ptr<AudioProcessing> apm_;
   AudioFrame* frame_;
@@ -407,21 +410,18 @@ class ApmTest : public ::testing::Test {
 
 ApmTest::ApmTest()
     : output_path_(test::OutputPath()),
-#ifndef WEBRTC_IOS
-      ref_path_(test::ProjectRootPath() + "data/audio_processing/"),
-#else
-      // On iOS test data is flat in the project root dir
-      ref_path_(test::ProjectRootPath()),
-#endif
 #if defined(WEBRTC_AUDIOPROC_FIXED_PROFILE)
-      ref_filename_(ref_path_ + "output_data_fixed.pb"),
+      ref_filename_(test::ResourcePath("audio_processing/output_data_fixed",
+                                       "pb")),
 #elif defined(WEBRTC_AUDIOPROC_FLOAT_PROFILE)
 #if defined(WEBRTC_MAC)
       // A different file for Mac is needed because on this platform the AEC
       // constant |kFixedDelayMs| value is 20 and not 50 as it is on the rest.
-      ref_filename_(ref_path_ + "output_data_mac.pb"),
+      ref_filename_(test::ResourcePath("audio_processing/output_data_mac",
+                                       "pb")),
 #else
-      ref_filename_(ref_path_ + "output_data_float.pb"),
+      ref_filename_(test::ResourcePath("audio_processing/output_data_float",
+                                       "pb")),
 #endif
 #endif
       frame_(NULL),
@@ -679,7 +679,7 @@ void ApmTest::ProcessDelayVerificationTest(int delay_ms, int system_delay_ms,
   // Calculate expected delay estimate and acceptable regions. Further,
   // limit them w.r.t. AEC delay estimation support.
   const size_t samples_per_ms =
-      std::min(static_cast<size_t>(16), frame_->samples_per_channel_ / 10);
+      rtc::SafeMin<size_t>(16u, frame_->samples_per_channel_ / 10);
   int expected_median = std::min(std::max(delay_ms - system_delay_ms,
                                           delay_min), delay_max);
   int expected_median_high = std::min(
@@ -862,8 +862,6 @@ TEST_F(ApmTest, ChannelsInt16Interface) {
   for (size_t i = 1; i < 4; i++) {
     TestChangingChannelsInt16Interface(i, kNoErr);
     EXPECT_EQ(i, apm_->num_input_channels());
-    // We always force the number of reverse channels used for processing to 1.
-    EXPECT_EQ(1u, apm_->num_reverse_channels());
   }
 }
 
@@ -1395,10 +1393,11 @@ TEST_F(ApmTest, NoiseSuppression) {
 
 TEST_F(ApmTest, HighPassFilter) {
   // Turn HP filter on/off
-  EXPECT_EQ(apm_->kNoError, apm_->high_pass_filter()->Enable(true));
-  EXPECT_TRUE(apm_->high_pass_filter()->is_enabled());
-  EXPECT_EQ(apm_->kNoError, apm_->high_pass_filter()->Enable(false));
-  EXPECT_FALSE(apm_->high_pass_filter()->is_enabled());
+  AudioProcessing::Config apm_config;
+  apm_config.high_pass_filter.enabled = true;
+  apm_->ApplyConfig(apm_config);
+  apm_config.high_pass_filter.enabled = false;
+  apm_->ApplyConfig(apm_config);
 }
 
 TEST_F(ApmTest, LevelEstimator) {

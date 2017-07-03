@@ -14,6 +14,7 @@
 #include <string.h>  // Provide access to size_t.
 
 #include <string>
+#include <vector>
 
 #include "webrtc/base/constructormagic.h"
 #include "webrtc/base/optional.h"
@@ -26,7 +27,6 @@ namespace webrtc {
 
 // Forward declarations.
 class AudioFrame;
-struct WebRtcRTPHeader;
 class AudioDecoderFactory;
 
 struct NetEqNetworkStatistics {
@@ -76,7 +76,6 @@ class NetEq {
   struct Config {
     Config()
         : sample_rate_hz(16000),
-          enable_audio_classifier(false),
           enable_post_decode_vad(false),
           max_packets_in_buffer(50),
           // |max_delay_ms| has the same effect as calling SetMaximumDelay().
@@ -88,7 +87,6 @@ class NetEq {
     std::string ToString() const;
 
     int sample_rate_hz;  // Initial value. Will change with input data.
-    bool enable_audio_classifier;
     bool enable_post_decode_vad;
     size_t max_packets_in_buffer;
     int max_delay_ms;
@@ -143,9 +141,15 @@ class NetEq {
   // of the time when the packet was received, and should be measured with
   // the same tick rate as the RTP timestamp of the current payload.
   // Returns 0 on success, -1 on failure.
-  virtual int InsertPacket(const WebRtcRTPHeader& rtp_header,
+  virtual int InsertPacket(const RTPHeader& rtp_header,
                            rtc::ArrayView<const uint8_t> payload,
                            uint32_t receive_timestamp) = 0;
+
+  // Lets NetEq know that a packet arrived with an empty payload. This typically
+  // happens when empty packets are used for probing the network channel, and
+  // these packets use RTP sequence numbers from the same series as the actual
+  // audio packets.
+  virtual void InsertEmptyPacket(const RTPHeader& rtp_header) = 0;
 
   // Instructs NetEq to deliver 10 ms of audio data. The data is written to
   // |audio_frame|. All data in |audio_frame| is wiped; |data_|, |speech_type_|,
@@ -158,6 +162,9 @@ class NetEq {
   // all zeros.
   // Returns kOK on success, or kFail in case of an error.
   virtual int GetAudio(AudioFrame* audio_frame, bool* muted) = 0;
+
+  // Replaces the current set of decoders with the given one.
+  virtual void SetCodecs(const std::map<int, SdpAudioFormat>& codecs) = 0;
 
   // Associates |rtp_payload_type| with |codec| and |codec_name|, and stores the
   // information in the codec database. Returns 0 on success, -1 on failure.
@@ -211,8 +218,9 @@ class NetEq {
   // Not implemented.
   virtual int SetTargetDelay() = 0;
 
-  // Not implemented.
-  virtual int TargetDelay() = 0;
+  // Returns the current target delay in ms. This includes any extra delay
+  // requested through SetMinimumDelay.
+  virtual int TargetDelayMs() = 0;
 
   // Returns the current total delay (packet buffer and sync buffer) in ms.
   virtual int CurrentDelayMs() const = 0;
@@ -301,6 +309,16 @@ class NetEq {
   // retransmitted, given an estimate of the round-trip time in milliseconds.
   virtual std::vector<uint16_t> GetNackList(
       int64_t round_trip_time_ms) const = 0;
+
+  // Returns a vector containing the timestamps of the packets that were decoded
+  // in the last GetAudio call. If no packets were decoded in the last call, the
+  // vector is empty.
+  // Mainly intended for testing.
+  virtual std::vector<uint32_t> LastDecodedTimestamps() const = 0;
+
+  // Returns the length of the audio yet to play in the sync buffer.
+  // Mainly intended for testing.
+  virtual int SyncBufferSizeMs() const = 0;
 
  protected:
   NetEq() {}

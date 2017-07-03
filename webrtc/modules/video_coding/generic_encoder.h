@@ -21,14 +21,13 @@
 #include "webrtc/base/race_checker.h"
 
 namespace webrtc {
-class CriticalSectionWrapper;
 
 namespace media_optimization {
 class MediaOptimization;
 }  // namespace media_optimization
 
 struct EncoderParameters {
-  uint32_t target_bitrate;
+  BitrateAllocation target_bitrate;
   uint8_t loss_rate;
   int64_t rtt;
   uint32_t input_frame_rate;

@@ -110,7 +110,7 @@ class LinkedSet {
 };
 
 const int kMinBitrateKbps = 10;
-const int kMaxBitrateKbps = 2500;
+const int kMaxBitrateKbps = 25000;
 
 class BweSender : public Module {
  public:
@@ -180,7 +180,7 @@ enum BandwidthEstimatorType {
   kTcpEstimator
 };
 
-const std::string bwe_names[] = {"Null", "NADA", "REMB", "GCC", "TCP"};
+const char* const bwe_names[] = {"Null", "NADA", "REMB", "GCC", "TCP"};
 
 int64_t GetAbsSendTimeInMs(uint32_t abs_send_time);
 

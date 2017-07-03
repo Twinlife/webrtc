@@ -26,7 +26,6 @@
 #include "webrtc/modules/desktop_capture/mac/desktop_configuration_monitor.h"
 #include "webrtc/modules/desktop_capture/mac/full_screen_chrome_window_detector.h"
 #include "webrtc/modules/desktop_capture/mouse_cursor.h"
-#include "webrtc/system_wrappers/include/logging.h"
 
 namespace webrtc {
 
@@ -37,7 +36,7 @@ namespace {
 // setting.
 NSImage* PaintInCurrentContext(NSImage* source) {
   NSSize size = [source size];
-  NSImage* new_image = [[[NSImage alloc] initWithSize:size] autorelease];
+  NSImage* new_image = [[NSImage alloc] initWithSize:size];
   [new_image lockFocus];
   NSRect frame = NSMakeRect(0, 0, size.width, size.height);
   [source drawInRect:frame

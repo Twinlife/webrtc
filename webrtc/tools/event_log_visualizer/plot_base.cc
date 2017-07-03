@@ -71,5 +71,9 @@ void Plot::SetTitle(std::string title) {
   title_ = title;
 }
 
+void Plot::AppendTimeSeries(TimeSeries&& time_series) {
+  series_list_.emplace_back(std::move(time_series));
+}
+
 }  // namespace plotting
 }  // namespace webrtc

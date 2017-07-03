@@ -18,7 +18,10 @@
 #include <windows.h>
 #include <algorithm>
 
-#include "webrtc/system_wrappers/include/utf_util_win.h"
+#include "Shlwapi.h"
+#include "WinDef.h"
+
+#include "webrtc/base/win32.h"
 #define GET_CURRENT_DIR _getcwd
 #else
 #include <unistd.h>
@@ -98,9 +101,15 @@ void SetExecutablePath(const std::string& path) {
   relative_dir_path_set = true;
 }
 
-bool FileExists(std::string& file_name) {
+bool FileExists(const std::string& file_name) {
   struct stat file_info = {0};
   return stat(file_name.c_str(), &file_info) == 0;
+}
+
+bool DirExists(const std::string& directory_name) {
+  struct stat directory_info = {0};
+  return stat(directory_name.c_str(), &directory_info) == 0 && S_ISDIR(
+      directory_info.st_mode);
 }
 
 #ifdef WEBRTC_ANDROID
@@ -127,24 +136,23 @@ std::string ProjectRootPath() {
   if (path == kFallbackPath) {
     return kCannotFindProjectRootDir;
   }
-  if (relative_dir_path_set && strcmp(relative_dir_path, ".") != 0) {
+  if (relative_dir_path_set) {
     path = path + kPathDelimiter + relative_dir_path;
   }
-  // Remove two directory levels from the path, i.e. a path like
-  // /absolute/path/src/out/Debug will become /absolute/path/src/
-  size_t path_delimiter_index = path.find_last_of(kPathDelimiter);
-  if (path_delimiter_index != std::string::npos) {
-    // Move up one directory in the directory tree.
-    path = path.substr(0, path_delimiter_index);
-    path_delimiter_index = path.find_last_of(kPathDelimiter);
-    if (path_delimiter_index != std::string::npos) {
-      // Move up another directory in the directory tree. We should now be at
-      // the project root.
-      return path.substr(0, path_delimiter_index) + kPathDelimiter;
-    }
+  path = path + kPathDelimiter + ".." + kPathDelimiter + "..";
+  char canonical_path[FILENAME_MAX];
+#ifdef WIN32
+  BOOL succeeded = PathCanonicalizeA(canonical_path, path.c_str());
+#else
+  bool succeeded = realpath(path.c_str(), canonical_path) != NULL;
+#endif
+  if (succeeded) {
+    path = std::string(canonical_path) + kPathDelimiter;
+    return path;
+  } else {
+    fprintf(stderr, "Cannot find project root directory!\n");
+    return kCannotFindProjectRootDir;
   }
-  fprintf(stderr, "Cannot find project root directory!\n");
-  return kCannotFindProjectRootDir;
 #endif
 }
 
@@ -181,9 +189,9 @@ std::string WorkingDir() {
 std::string TempFilename(const std::string &dir, const std::string &prefix) {
 #ifdef WIN32
   wchar_t filename[MAX_PATH];
-  if (::GetTempFileName(ToUtf16(dir).c_str(),
-                        ToUtf16(prefix).c_str(), 0, filename) != 0)
-    return ToUtf8(filename);
+  if (::GetTempFileName(rtc::ToUtf16(dir).c_str(),
+                        rtc::ToUtf16(prefix).c_str(), 0, filename) != 0)
+    return rtc::ToUtf8(filename);
   assert(false);
   return "";
 #else
@@ -204,7 +212,7 @@ std::string TempFilename(const std::string &dir, const std::string &prefix) {
 #endif
 }
 
-bool CreateDir(std::string directory_name) {
+bool CreateDir(const std::string& directory_name) {
   struct stat path_info = {0};
   // Check if the path exists already:
   if (stat(directory_name.c_str(), &path_info) == 0) {
@@ -224,7 +232,24 @@ bool CreateDir(std::string directory_name) {
   return true;
 }
 
-std::string ResourcePath(std::string name, std::string extension) {
+bool RemoveDir(const std::string& directory_name) {
+#ifdef WIN32
+    return RemoveDirectoryA(directory_name.c_str()) != FALSE;
+#else
+    return rmdir(directory_name.c_str()) == 0;
+#endif
+}
+
+bool RemoveFile(const std::string& file_name) {
+#ifdef WIN32
+  return DeleteFileA(file_name.c_str()) != FALSE;
+#else
+  return unlink(file_name.c_str()) == 0;
+#endif
+}
+
+std::string ResourcePath(const std::string& name,
+                         const std::string& extension) {
 #if defined(WEBRTC_IOS)
   return IOSResourcePath(name, extension);
 #else
@@ -268,7 +293,7 @@ std::string ResourcePath(std::string name, std::string extension) {
 #endif  // defined (WEBRTC_IOS)
 }
 
-size_t GetFileSize(std::string filename) {
+size_t GetFileSize(const std::string& filename) {
   FILE* f = fopen(filename.c_str(), "rb");
   size_t size = 0;
   if (f != NULL) {

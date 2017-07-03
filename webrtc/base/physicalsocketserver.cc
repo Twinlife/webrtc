@@ -42,12 +42,11 @@
 #include "webrtc/base/arraysize.h"
 #include "webrtc/base/basictypes.h"
 #include "webrtc/base/byteorder.h"
-#include "webrtc/base/common.h"
+#include "webrtc/base/checks.h"
 #include "webrtc/base/logging.h"
 #include "webrtc/base/networkmonitor.h"
 #include "webrtc/base/nullsocketserver.h"
 #include "webrtc/base/timeutils.h"
-#include "webrtc/base/winping.h"
 #include "webrtc/base/win32socketinit.h"
 
 #if defined(WEBRTC_POSIX)
@@ -122,7 +121,7 @@ static const int ICMP_PING_TIMEOUT_MILLIS = 10000u;
 #endif
 
 PhysicalSocket::PhysicalSocket(PhysicalSocketServer* ss, SOCKET s)
-  : ss_(ss), s_(s), enabled_events_(0), error_(0),
+  : ss_(ss), s_(s), error_(0),
     state_((s == INVALID_SOCKET) ? CS_CLOSED : CS_CONNECTED),
     resolver_(nullptr) {
 #if defined(WEBRTC_WIN)
@@ -134,11 +133,13 @@ PhysicalSocket::PhysicalSocket(PhysicalSocketServer* ss, SOCKET s)
   EnsureWinsockInit();
 #endif
   if (s_ != INVALID_SOCKET) {
-    enabled_events_ = DE_READ | DE_WRITE;
+    SetEnabledEvents(DE_READ | DE_WRITE);
 
     int type = SOCK_STREAM;
     socklen_t len = sizeof(type);
-    VERIFY(0 == getsockopt(s_, SOL_SOCKET, SO_TYPE, (SockOptArg)&type, &len));
+    const int res =
+        getsockopt(s_, SOL_SOCKET, SO_TYPE, (SockOptArg)&type, &len);
+    RTC_DCHECK_EQ(0, res);
     udp_ = (SOCK_DGRAM == type);
   }
 }
@@ -152,8 +153,9 @@ bool PhysicalSocket::Create(int family, int type) {
   s_ = ::socket(family, type, 0);
   udp_ = (SOCK_DGRAM == type);
   UpdateLastError();
-  if (udp_)
-    enabled_events_ = DE_READ | DE_WRITE;
+  if (udp_) {
+    SetEnabledEvents(DE_READ | DE_WRITE);
+  }
   return s_ != INVALID_SOCKET;
 }
 
@@ -188,8 +190,42 @@ SocketAddress PhysicalSocket::GetRemoteAddress() const {
 }
 
 int PhysicalSocket::Bind(const SocketAddress& bind_addr) {
+  SocketAddress copied_bind_addr = bind_addr;
+  // If a network binder is available, use it to bind a socket to an interface
+  // instead of bind(), since this is more reliable on an OS with a weak host
+  // model.
+  if (ss_->network_binder() && !bind_addr.IsAnyIP()) {
+    NetworkBindingResult result =
+        ss_->network_binder()->BindSocketToNetwork(s_, bind_addr.ipaddr());
+    if (result == NetworkBindingResult::SUCCESS) {
+      // Since the network binder handled binding the socket to the desired
+      // network interface, we don't need to (and shouldn't) include an IP in
+      // the bind() call; bind() just needs to assign a port.
+      copied_bind_addr.SetIP(GetAnyIP(copied_bind_addr.ipaddr().family()));
+    } else if (result == NetworkBindingResult::NOT_IMPLEMENTED) {
+      LOG(LS_INFO) << "Can't bind socket to network because "
+                      "network binding is not implemented for this OS.";
+    } else {
+      if (bind_addr.IsLoopbackIP()) {
+        // If we couldn't bind to a loopback IP (which should only happen in
+        // test scenarios), continue on. This may be expected behavior.
+        LOG(LS_VERBOSE) << "Binding socket to loopback address "
+                        << bind_addr.ipaddr().ToString()
+                        << " failed; result: " << static_cast<int>(result);
+      } else {
+        LOG(LS_WARNING) << "Binding socket to network address "
+                        << bind_addr.ipaddr().ToString()
+                        << " failed; result: " << static_cast<int>(result);
+        // If a network binding was attempted and failed, we should stop here
+        // and not try to use the socket. Otherwise, we may end up sending
+        // packets with an invalid source address.
+        // See: https://bugs.chromium.org/p/webrtc/issues/detail?id=7026
+        return -1;
+      }
+    }
+  }
   sockaddr_storage addr_storage;
-  size_t len = bind_addr.ToSockAddrStorage(&addr_storage);
+  size_t len = copied_bind_addr.ToSockAddrStorage(&addr_storage);
   sockaddr* addr = reinterpret_cast<sockaddr*>(&addr_storage);
   int err = ::bind(s_, addr, static_cast<int>(len));
   UpdateLastError();
@@ -199,14 +235,6 @@ int PhysicalSocket::Bind(const SocketAddress& bind_addr) {
     dbg_addr_.append(GetLocalAddress().ToString());
   }
 #endif
-  if (ss_->network_binder()) {
-    int result =
-        ss_->network_binder()->BindSocketToNetwork(s_, bind_addr.ipaddr());
-    if (result < 0) {
-      LOG(LS_INFO) << "Binding socket to network address "
-                   << bind_addr.ipaddr().ToString() << " result " << result;
-    }
-  }
   return err;
 }
 
@@ -239,16 +267,17 @@ int PhysicalSocket::DoConnect(const SocketAddress& connect_addr) {
   sockaddr* addr = reinterpret_cast<sockaddr*>(&addr_storage);
   int err = ::connect(s_, addr, static_cast<int>(len));
   UpdateLastError();
+  uint8_t events = DE_READ | DE_WRITE;
   if (err == 0) {
     state_ = CS_CONNECTED;
   } else if (IsBlockingError(GetError())) {
     state_ = CS_CONNECTING;
-    enabled_events_ |= DE_CONNECT;
+    events |= DE_CONNECT;
   } else {
     return SOCKET_ERROR;
   }
 
-  enabled_events_ |= DE_READ | DE_WRITE;
+  EnableEvents(events);
   return 0;
 }
 
@@ -311,10 +340,10 @@ int PhysicalSocket::Send(const void* pv, size_t cb) {
   UpdateLastError();
   MaybeRemapSendError();
   // We have seen minidumps where this may be false.
-  ASSERT(sent <= static_cast<int>(cb));
+  RTC_DCHECK(sent <= static_cast<int>(cb));
   if ((sent > 0 && sent < static_cast<int>(cb)) ||
       (sent < 0 && IsBlockingError(GetError()))) {
-    enabled_events_ |= DE_WRITE;
+    EnableEvents(DE_WRITE);
   }
   return sent;
 }
@@ -336,10 +365,10 @@ int PhysicalSocket::SendTo(const void* buffer,
   UpdateLastError();
   MaybeRemapSendError();
   // We have seen minidumps where this may be false.
-  ASSERT(sent <= static_cast<int>(length));
+  RTC_DCHECK(sent <= static_cast<int>(length));
   if ((sent > 0 && sent < static_cast<int>(length)) ||
       (sent < 0 && IsBlockingError(GetError()))) {
-    enabled_events_ |= DE_WRITE;
+    EnableEvents(DE_WRITE);
   }
   return sent;
 }
@@ -354,7 +383,7 @@ int PhysicalSocket::Recv(void* buffer, size_t length, int64_t* timestamp) {
     LOG(LS_WARNING) << "EOF from socket; deferring close event";
     // Must turn this back on so that the select() loop will notice the close
     // event.
-    enabled_events_ |= DE_READ;
+    EnableEvents(DE_READ);
     SetError(EWOULDBLOCK);
     return SOCKET_ERROR;
   }
@@ -365,7 +394,7 @@ int PhysicalSocket::Recv(void* buffer, size_t length, int64_t* timestamp) {
   int error = GetError();
   bool success = (received >= 0) || IsBlockingError(error);
   if (udp_ || success) {
-    enabled_events_ |= DE_READ;
+    EnableEvents(DE_READ);
   }
   if (!success) {
     LOG_F(LS_VERBOSE) << "Error = " << error;
@@ -391,7 +420,7 @@ int PhysicalSocket::RecvFrom(void* buffer,
   int error = GetError();
   bool success = (received >= 0) || IsBlockingError(error);
   if (udp_ || success) {
-    enabled_events_ |= DE_READ;
+    EnableEvents(DE_READ);
   }
   if (!success) {
     LOG_F(LS_VERBOSE) << "Error = " << error;
@@ -404,7 +433,7 @@ int PhysicalSocket::Listen(int backlog) {
   UpdateLastError();
   if (err == 0) {
     state_ = CS_CONNECTING;
-    enabled_events_ |= DE_ACCEPT;
+    EnableEvents(DE_ACCEPT);
 #if !defined(NDEBUG)
     dbg_addr_ = "Listening @ ";
     dbg_addr_.append(GetLocalAddress().ToString());
@@ -416,7 +445,7 @@ int PhysicalSocket::Listen(int backlog) {
 AsyncSocket* PhysicalSocket::Accept(SocketAddress* out_addr) {
   // Always re-subscribe DE_ACCEPT to make sure new incoming connections will
   // trigger an event even if DoAccept returns an error here.
-  enabled_events_ |= DE_ACCEPT;
+  EnableEvents(DE_ACCEPT);
   sockaddr_storage addr_storage;
   socklen_t addr_len = sizeof(addr_storage);
   sockaddr* addr = reinterpret_cast<sockaddr*>(&addr_storage);
@@ -436,76 +465,12 @@ int PhysicalSocket::Close() {
   UpdateLastError();
   s_ = INVALID_SOCKET;
   state_ = CS_CLOSED;
-  enabled_events_ = 0;
+  SetEnabledEvents(0);
   if (resolver_) {
     resolver_->Destroy(false);
     resolver_ = nullptr;
   }
   return err;
-}
-
-int PhysicalSocket::EstimateMTU(uint16_t* mtu) {
-  SocketAddress addr = GetRemoteAddress();
-  if (addr.IsAnyIP()) {
-    SetError(ENOTCONN);
-    return -1;
-  }
-
-#if defined(WEBRTC_WIN)
-  // Gets the interface MTU (TTL=1) for the interface used to reach |addr|.
-  WinPing ping;
-  if (!ping.IsValid()) {
-    SetError(EINVAL);  // can't think of a better error ID
-    return -1;
-  }
-  int header_size = ICMP_HEADER_SIZE;
-  if (addr.family() == AF_INET6) {
-    header_size += IPV6_HEADER_SIZE;
-  } else if (addr.family() == AF_INET) {
-    header_size += IP_HEADER_SIZE;
-  }
-
-  for (int level = 0; PACKET_MAXIMUMS[level + 1] > 0; ++level) {
-    int32_t size = PACKET_MAXIMUMS[level] - header_size;
-    WinPing::PingResult result = ping.Ping(addr.ipaddr(), size,
-                                           ICMP_PING_TIMEOUT_MILLIS,
-                                           1, false);
-    if (result == WinPing::PING_FAIL) {
-      SetError(EINVAL);  // can't think of a better error ID
-      return -1;
-    } else if (result != WinPing::PING_TOO_LARGE) {
-      *mtu = PACKET_MAXIMUMS[level];
-      return 0;
-    }
-  }
-
-  ASSERT(false);
-  return -1;
-#elif defined(WEBRTC_MAC)
-  // No simple way to do this on Mac OS X.
-  // SIOCGIFMTU would work if we knew which interface would be used, but
-  // figuring that out is pretty complicated. For now we'll return an error
-  // and let the caller pick a default MTU.
-  SetError(EINVAL);
-  return -1;
-#elif defined(WEBRTC_LINUX)
-  // Gets the path MTU.
-  int value;
-  socklen_t vlen = sizeof(value);
-  int err = getsockopt(s_, IPPROTO_IP, IP_MTU, &value, &vlen);
-  if (err < 0) {
-    UpdateLastError();
-    return err;
-  }
-
-  ASSERT((0 <= value) && (value <= 65536));
-  *mtu = value;
-  return 0;
-#elif defined(__native_client__)
-  // Most socket operations, including this, will fail in NaCl's sandbox.
-  error_ = EACCES;
-  return -1;
-#endif
 }
 
 SOCKET PhysicalSocket::DoAccept(SOCKET socket,
@@ -562,6 +527,18 @@ void PhysicalSocket::MaybeRemapSendError() {
 #endif
 }
 
+void PhysicalSocket::SetEnabledEvents(uint8_t events) {
+  enabled_events_ = events;
+}
+
+void PhysicalSocket::EnableEvents(uint8_t events) {
+  enabled_events_ |= events;
+}
+
+void PhysicalSocket::DisableEvents(uint8_t events) {
+  enabled_events_ &= ~events;
+}
+
 int PhysicalSocket::TranslateOption(Option opt, int* slevel, int* sopt) {
   switch (opt) {
     case OPT_DONTFRAGMENT:
@@ -595,7 +572,7 @@ int PhysicalSocket::TranslateOption(Option opt, int* slevel, int* sopt) {
     case OPT_RTP_SENDTIME_EXTN_ID:
       return -1;  // No logging is necessary as this not a OS socket option.
     default:
-      ASSERT(false);
+      RTC_NOTREACHED();
       return -1;
   }
   return 0;
@@ -624,7 +601,7 @@ SocketDispatcher::~SocketDispatcher() {
 }
 
 bool SocketDispatcher::Initialize() {
-  ASSERT(s_ != INVALID_SOCKET);
+  RTC_DCHECK(s_ != INVALID_SOCKET);
   // Must be a non-blocking
 #if defined(WEBRTC_WIN)
   u_long argp = 1;
@@ -687,6 +664,13 @@ int SocketDispatcher::GetDescriptor() {
 }
 
 bool SocketDispatcher::IsDescriptorClosed() {
+  if (udp_) {
+    // The MSG_PEEK trick doesn't work for UDP, since (at least in some
+    // circumstances) it requires reading an entire UDP packet, which would be
+    // bad for performance here. So, just check whether |s_| has been closed,
+    // which should be sufficient.
+    return s_ == INVALID_SOCKET;
+  }
   // We don't have a reliable way of distinguishing end-of-stream
   // from readability.  So test on each readable call.  Is this
   // inefficient?  Probably.
@@ -705,6 +689,11 @@ bool SocketDispatcher::IsDescriptorClosed() {
       // Returned during ungraceful peer shutdown.
       case ECONNRESET:
         return true;
+      // The normal blocking error; don't log anything.
+      case EWOULDBLOCK:
+      // Interrupted system call.
+      case EINTR:
+        return false;
       default:
         // Assume that all other errors are just blocking errors, meaning the
         // connection is still good but we just can't read from it right now.
@@ -724,7 +713,7 @@ bool SocketDispatcher::IsDescriptorClosed() {
 #endif // WEBRTC_POSIX
 
 uint32_t SocketDispatcher::GetRequestedEvents() {
-  return enabled_events_;
+  return enabled_events();
 }
 
 void SocketDispatcher::OnPreEvent(uint32_t ff) {
@@ -748,7 +737,7 @@ void SocketDispatcher::OnEvent(uint32_t ff, int err) {
   if (((ff & DE_CONNECT) != 0) && (id_ == cache_id)) {
     if (ff != DE_CONNECT)
       LOG(LS_VERBOSE) << "Signalled with DE_CONNECT: " << ff;
-    enabled_events_ &= ~DE_CONNECT;
+    DisableEvents(DE_CONNECT);
 #if !defined(NDEBUG)
     dbg_addr_ = "Connected @ ";
     dbg_addr_.append(GetRemoteAddress().ToString());
@@ -756,15 +745,15 @@ void SocketDispatcher::OnEvent(uint32_t ff, int err) {
     SignalConnectEvent(this);
   }
   if (((ff & DE_ACCEPT) != 0) && (id_ == cache_id)) {
-    enabled_events_ &= ~DE_ACCEPT;
+    DisableEvents(DE_ACCEPT);
     SignalReadEvent(this);
   }
   if ((ff & DE_READ) != 0) {
-    enabled_events_ &= ~DE_READ;
+    DisableEvents(DE_READ);
     SignalReadEvent(this);
   }
   if (((ff & DE_WRITE) != 0) && (id_ == cache_id)) {
-    enabled_events_ &= ~DE_WRITE;
+    DisableEvents(DE_WRITE);
     SignalWriteEvent(this);
   }
   if (((ff & DE_CLOSE) != 0) && (id_ == cache_id)) {
@@ -779,24 +768,24 @@ void SocketDispatcher::OnEvent(uint32_t ff, int err) {
   // Make sure we deliver connect/accept first. Otherwise, consumers may see
   // something like a READ followed by a CONNECT, which would be odd.
   if ((ff & DE_CONNECT) != 0) {
-    enabled_events_ &= ~DE_CONNECT;
+    DisableEvents(DE_CONNECT);
     SignalConnectEvent(this);
   }
   if ((ff & DE_ACCEPT) != 0) {
-    enabled_events_ &= ~DE_ACCEPT;
+    DisableEvents(DE_ACCEPT);
     SignalReadEvent(this);
   }
   if ((ff & DE_READ) != 0) {
-    enabled_events_ &= ~DE_READ;
+    DisableEvents(DE_READ);
     SignalReadEvent(this);
   }
   if ((ff & DE_WRITE) != 0) {
-    enabled_events_ &= ~DE_WRITE;
+    DisableEvents(DE_WRITE);
     SignalWriteEvent(this);
   }
   if ((ff & DE_CLOSE) != 0) {
     // The socket is now dead to us, so stop checking it.
-    enabled_events_ = 0;
+    SetEnabledEvents(0);
     SignalCloseEvent(this, err);
   }
 }
@@ -834,9 +823,9 @@ class EventDispatcher : public Dispatcher {
     CritScope cs(&crit_);
     if (!fSignaled_) {
       const uint8_t b[1] = {0};
-      if (VERIFY(1 == write(afd_[1], b, sizeof(b)))) {
-        fSignaled_ = true;
-      }
+      const ssize_t res = write(afd_[1], b, sizeof(b));
+      RTC_DCHECK_EQ(1, res);
+      fSignaled_ = true;
     }
   }
 
@@ -849,12 +838,13 @@ class EventDispatcher : public Dispatcher {
     CritScope cs(&crit_);
     if (fSignaled_) {
       uint8_t b[4];  // Allow for reading more than 1 byte, but expect 1.
-      VERIFY(1 == read(afd_[0], b, sizeof(b)));
+      const ssize_t res = read(afd_[0], b, sizeof(b));
+      RTC_DCHECK_EQ(1, res);
       fSignaled_ = false;
     }
   }
 
-  void OnEvent(uint32_t ff, int err) override { ASSERT(false); }
+  void OnEvent(uint32_t ff, int err) override { RTC_NOTREACHED(); }
 
   int GetDescriptor() override { return afd_[0]; }
 
@@ -889,7 +879,7 @@ class PosixSignalHandler {
 
   // Returns true if the given signal number is set.
   bool IsSignalSet(int signum) const {
-    ASSERT(signum < static_cast<int>(arraysize(received_signal_)));
+    RTC_DCHECK(signum < static_cast<int>(arraysize(received_signal_)));
     if (signum < static_cast<int>(arraysize(received_signal_))) {
       return received_signal_[signum];
     } else {
@@ -899,7 +889,7 @@ class PosixSignalHandler {
 
   // Clears the given signal number.
   void ClearSignal(int signum) {
-    ASSERT(signum < static_cast<int>(arraysize(received_signal_)));
+    RTC_DCHECK(signum < static_cast<int>(arraysize(received_signal_)));
     if (signum < static_cast<int>(arraysize(received_signal_))) {
       received_signal_[signum] = false;
     }
@@ -1051,61 +1041,6 @@ class PosixSignalDispatcher : public Dispatcher {
   PhysicalSocketServer *owner_;
 };
 
-class FileDispatcher: public Dispatcher, public AsyncFile {
- public:
-  FileDispatcher(int fd, PhysicalSocketServer *ss) : ss_(ss), fd_(fd) {
-    set_readable(true);
-
-    ss_->Add(this);
-
-    fcntl(fd_, F_SETFL, fcntl(fd_, F_GETFL, 0) | O_NONBLOCK);
-  }
-
-  ~FileDispatcher() override {
-    ss_->Remove(this);
-  }
-
-  SocketServer* socketserver() { return ss_; }
-
-  int GetDescriptor() override { return fd_; }
-
-  bool IsDescriptorClosed() override { return false; }
-
-  uint32_t GetRequestedEvents() override { return flags_; }
-
-  void OnPreEvent(uint32_t ff) override {}
-
-  void OnEvent(uint32_t ff, int err) override {
-    if ((ff & DE_READ) != 0)
-      SignalReadEvent(this);
-    if ((ff & DE_WRITE) != 0)
-      SignalWriteEvent(this);
-    if ((ff & DE_CLOSE) != 0)
-      SignalCloseEvent(this, err);
-  }
-
-  bool readable() override { return (flags_ & DE_READ) != 0; }
-
-  void set_readable(bool value) override {
-    flags_ = value ? (flags_ | DE_READ) : (flags_ & ~DE_READ);
-  }
-
-  bool writable() override { return (flags_ & DE_WRITE) != 0; }
-
-  void set_writable(bool value) override {
-    flags_ = value ? (flags_ | DE_WRITE) : (flags_ & ~DE_WRITE);
-  }
-
- private:
-  PhysicalSocketServer* ss_;
-  int fd_;
-  int flags_;
-};
-
-AsyncFile* PhysicalSocketServer::CreateFile(int fd) {
-  return new FileDispatcher(fd, this);
-}
-
 #endif // WEBRTC_POSIX
 
 #if defined(WEBRTC_WIN)
@@ -1132,15 +1067,15 @@ class EventDispatcher : public Dispatcher {
   }
 
   ~EventDispatcher() {
-    if (hev_ != NULL) {
+    if (hev_ != nullptr) {
       ss_->Remove(this);
       WSACloseEvent(hev_);
-      hev_ = NULL;
+      hev_ = nullptr;
     }
   }
 
   virtual void Signal() {
-    if (hev_ != NULL)
+    if (hev_ != nullptr)
       WSASetEvent(hev_);
   }
 
@@ -1199,7 +1134,7 @@ PhysicalSocketServer::~PhysicalSocketServer() {
   signal_dispatcher_.reset();
 #endif
   delete signal_wakeup_;
-  ASSERT(dispatchers_.empty());
+  RTC_DCHECK(dispatchers_.empty());
 }
 
 void PhysicalSocketServer::WakeUp() {
@@ -1282,7 +1217,7 @@ void PhysicalSocketServer::Remove(Dispatcher *pdispatcher) {
 bool PhysicalSocketServer::Wait(int cmsWait, bool process_io) {
   // Calculate timing information
 
-  struct timeval *ptvWait = NULL;
+  struct timeval* ptvWait = nullptr;
   struct timeval tvWait;
   struct timeval tvStop;
   if (cmsWait != kForever) {
@@ -1292,7 +1227,7 @@ bool PhysicalSocketServer::Wait(int cmsWait, bool process_io) {
     ptvWait = &tvWait;
 
     // Calculate when to return in a timeval
-    gettimeofday(&tvStop, NULL);
+    gettimeofday(&tvStop, nullptr);
     tvStop.tv_sec += tvWait.tv_sec;
     tvStop.tv_usec += tvWait.tv_usec;
     if (tvStop.tv_usec >= 1000000) {
@@ -1325,7 +1260,7 @@ bool PhysicalSocketServer::Wait(int cmsWait, bool process_io) {
       for (size_t i = 0; i < dispatchers_.size(); ++i) {
         // Query dispatchers for read and write wait state
         Dispatcher *pdispatcher = dispatchers_[i];
-        ASSERT(pdispatcher);
+        RTC_DCHECK(pdispatcher);
         if (!process_io && (pdispatcher != signal_wakeup_))
           continue;
         int fd = pdispatcher->GetDescriptor();
@@ -1344,7 +1279,7 @@ bool PhysicalSocketServer::Wait(int cmsWait, bool process_io) {
     // < 0 means error
     // 0 means timeout
     // > 0 means count of descriptors ready
-    int n = select(fdmax + 1, &fdsRead, &fdsWrite, NULL, ptvWait);
+    int n = select(fdmax + 1, &fdsRead, &fdsWrite, nullptr, ptvWait);
 
     // If error, return error.
     if (n < 0) {
@@ -1419,14 +1354,14 @@ bool PhysicalSocketServer::Wait(int cmsWait, bool process_io) {
       ptvWait->tv_sec = 0;
       ptvWait->tv_usec = 0;
       struct timeval tvT;
-      gettimeofday(&tvT, NULL);
+      gettimeofday(&tvT, nullptr);
       if ((tvStop.tv_sec > tvT.tv_sec)
           || ((tvStop.tv_sec == tvT.tv_sec)
               && (tvStop.tv_usec > tvT.tv_usec))) {
         ptvWait->tv_sec = tvStop.tv_sec - tvT.tv_sec;
         ptvWait->tv_usec = tvStop.tv_usec - tvT.tv_usec;
         if (ptvWait->tv_usec < 0) {
-          ASSERT(ptvWait->tv_sec > 0);
+          RTC_DCHECK(ptvWait->tv_sec > 0);
           ptvWait->tv_usec += 1000000;
           ptvWait->tv_sec -= 1;
         }
@@ -1487,7 +1422,7 @@ bool PhysicalSocketServer::InstallSignal(int signum, void (*handler)(int)) {
 #else
   act.sa_flags = 0;
 #endif
-  if (sigaction(signum, &act, NULL) != 0) {
+  if (sigaction(signum, &act, nullptr) != 0) {
     LOG_ERR(LS_ERROR) << "Couldn't set sigaction";
     return false;
   }
@@ -1530,7 +1465,7 @@ bool PhysicalSocketServer::Wait(int cmsWait, bool process_io) {
           event_owners.push_back(disp);
         }
       }
-      ASSERT(iterators_.back() == &i);
+      RTC_DCHECK(iterators_.back() == &i);
       iterators_.pop_back();
     }
 
@@ -1554,7 +1489,7 @@ bool PhysicalSocketServer::Wait(int cmsWait, bool process_io) {
       // Failed?
       // TODO(pthatcher): need a better strategy than this!
       WSAGetLastError();
-      ASSERT(false);
+      RTC_NOTREACHED();
       return false;
     } else if (dw == WSA_WAIT_TIMEOUT) {
       // Timeout?
@@ -1633,9 +1568,9 @@ bool PhysicalSocketServer::Wait(int cmsWait, bool process_io) {
             }
           }
         }
-        ASSERT(iterators_.back() == &end);
+        RTC_DCHECK(iterators_.back() == &end);
         iterators_.pop_back();
-        ASSERT(iterators_.back() == &i);
+        RTC_DCHECK(iterators_.back() == &i);
         iterators_.pop_back();
       }
 

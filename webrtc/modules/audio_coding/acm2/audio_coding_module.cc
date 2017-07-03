@@ -10,13 +10,14 @@
 
 #include "webrtc/modules/audio_coding/include/audio_coding_module.h"
 
+#include "webrtc/api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "webrtc/base/checks.h"
+#include "webrtc/base/logging.h"
 #include "webrtc/base/safe_conversions.h"
 #include "webrtc/modules/audio_coding/acm2/acm_receiver.h"
 #include "webrtc/modules/audio_coding/acm2/acm_resampler.h"
 #include "webrtc/modules/audio_coding/acm2/codec_manager.h"
 #include "webrtc/modules/audio_coding/acm2/rent_a_codec.h"
-#include "webrtc/modules/audio_coding/codecs/builtin_audio_decoder_factory.h"
 #include "webrtc/system_wrappers/include/metrics.h"
 #include "webrtc/system_wrappers/include/trace.h"
 
@@ -120,6 +121,8 @@ class AudioCodingModuleImpl final : public AudioCodingModule {
 
   // Get current playout frequency.
   int PlayoutFrequency() const override;
+
+  void SetReceiveCodecs(const std::map<int, SdpAudioFormat>& codecs) override;
 
   bool RegisterReceiveCodec(int rtp_payload_type,
                             const SdpAudioFormat& audio_format) override;
@@ -318,16 +321,6 @@ void UpdateCodecTypeHistogram(size_t codec_type) {
           webrtc::AudioEncoder::CodecType::kMaxLoggedAudioCodecTypes));
 }
 
-// TODO(turajs): the same functionality is used in NetEq. If both classes
-// need them, make it a static function in ACMCodecDB.
-bool IsCodecRED(const CodecInst& codec) {
-  return (STR_CASE_CMP(codec.plname, "RED") == 0);
-}
-
-bool IsCodecCN(const CodecInst& codec) {
-  return (STR_CASE_CMP(codec.plname, "CN") == 0);
-}
-
 // Stereo-to-mono can be used as in-place.
 int DownMix(const AudioFrame& frame,
             size_t length_out_buff,
@@ -370,7 +363,7 @@ void ConvertEncodedInfoToFragmentationHeader(
     frag->fragmentationOffset[i] = offset;
     offset += info.redundant[i].encoded_bytes;
     frag->fragmentationLength[i] = info.redundant[i].encoded_bytes;
-    frag->fragmentationTimeDiff[i] = rtc::checked_cast<uint16_t>(
+    frag->fragmentationTimeDiff[i] = rtc::dchecked_cast<uint16_t>(
         info.encoded_timestamp - info.redundant[i].encoded_timestamp);
     frag->fragmentationPlType[i] = info.redundant[i].payload_type;
   }
@@ -406,12 +399,6 @@ class RawAudioEncoderWrapper final : public AudioEncoder {
   }
   void SetMaxPlaybackRate(int frequency_hz) override {
     return enc_->SetMaxPlaybackRate(frequency_hz);
-  }
-  void SetProjectedPacketLossRate(double fraction) override {
-    return enc_->SetProjectedPacketLossRate(fraction);
-  }
-  void SetTargetBitrate(int target_bps) override {
-    return enc_->SetTargetBitrate(target_bps);
   }
 
  private:
@@ -536,7 +523,7 @@ int32_t AudioCodingModuleImpl::Encode(const InputData& input_data) {
     frame_type = kEmptyFrame;
     encoded_info.payload_type = previous_pltype;
   } else {
-    RTC_DCHECK_GT(encode_buffer_.size(), 0u);
+    RTC_DCHECK_GT(encode_buffer_.size(), 0);
     frame_type = encoded_info.speech ? kAudioFrameSpeech : kAudioFrameCN;
   }
 
@@ -654,7 +641,8 @@ int AudioCodingModuleImpl::SendFrequency() const {
 void AudioCodingModuleImpl::SetBitRate(int bitrate_bps) {
   rtc::CritScope lock(&acm_crit_sect_);
   if (encoder_stack_) {
-    encoder_stack_->SetTargetBitrate(bitrate_bps);
+    encoder_stack_->OnReceivedUplinkBandwidth(bitrate_bps,
+                                              rtc::Optional<int64_t>());
   }
 }
 
@@ -906,7 +894,7 @@ int AudioCodingModuleImpl::SetCodecFEC(bool enable_codec_fec) {
 int AudioCodingModuleImpl::SetPacketLossRate(int loss_rate) {
   rtc::CritScope lock(&acm_crit_sect_);
   if (HaveValidEncoder("SetPacketLossRate")) {
-    encoder_stack_->SetProjectedPacketLossRate(loss_rate / 100.0);
+    encoder_stack_->OnReceivedUplinkPacketLossFraction(loss_rate / 100.0);
   }
   return 0;
 }
@@ -961,19 +949,6 @@ int AudioCodingModuleImpl::InitializeReceiverSafe() {
   receiver_.SetMaximumDelay(0);
   receiver_.FlushBuffers();
 
-  // Register RED and CN.
-  auto db = acm2::RentACodec::Database();
-  for (size_t i = 0; i < db.size(); i++) {
-    if (IsCodecRED(db[i]) || IsCodecCN(db[i])) {
-      if (receiver_.AddCodec(static_cast<int>(i),
-                             static_cast<uint8_t>(db[i].pltype), 1,
-                             db[i].plfreq, nullptr, db[i].plname) < 0) {
-        WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, id_,
-                     "Cannot register master codec.");
-        return -1;
-      }
-    }
-  }
   receiver_initialized_ = true;
   return 0;
 }
@@ -990,6 +965,12 @@ int AudioCodingModuleImpl::PlayoutFrequency() const {
   WEBRTC_TRACE(webrtc::kTraceStream, webrtc::kTraceAudioCoding, id_,
                "PlayoutFrequency()");
   return receiver_.last_output_sample_rate_hz();
+}
+
+void AudioCodingModuleImpl::SetReceiveCodecs(
+    const std::map<int, SdpAudioFormat>& codecs) {
+  rtc::CritScope lock(&acm_crit_sect_);
+  receiver_.SetCodecs(codecs);
 }
 
 bool AudioCodingModuleImpl::RegisterReceiveCodec(
@@ -1098,6 +1079,7 @@ rtc::Optional<SdpAudioFormat> AudioCodingModuleImpl::ReceiveFormat() const {
 int AudioCodingModuleImpl::IncomingPacket(const uint8_t* incoming_payload,
                                           const size_t payload_length,
                                           const WebRtcRTPHeader& rtp_header) {
+  RTC_DCHECK_EQ(payload_length == 0, incoming_payload == nullptr);
   return receiver_.InsertPacket(
       rtp_header,
       rtc::ArrayView<const uint8_t>(incoming_payload, payload_length));
