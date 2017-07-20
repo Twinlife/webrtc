@@ -32,12 +32,12 @@ CPPLINT_BLACKLIST = [
   'webrtc/modules/video_capture',
   'webrtc/p2p',
   'webrtc/pc',
+  'webrtc/rtc_base',
   'webrtc/sdk/android/src/jni',
   'webrtc/sdk/objc',
   'webrtc/system_wrappers',
   'webrtc/test',
   'webrtc/voice_engine',
-  'webrtc/call.h',
   'webrtc/common_types.h',
   'webrtc/common_types.cc',
   'webrtc/video_send_stream.h',
@@ -471,8 +471,8 @@ def _RunPythonTests(input_api, output_api):
     return input_api.os_path.join(input_api.PresubmitLocalPath(), *args)
 
   test_directories = [
-      Join('webrtc', 'tools', 'py_event_log_analyzer'),
-      Join('webrtc', 'tools'),
+      Join('webrtc', 'rtc_tools', 'py_event_log_analyzer'),
+      Join('webrtc', 'rtc_tools'),
       Join('webrtc', 'audio', 'test', 'unittests'),
   ] + [
       root for root, _, files in os.walk(Join('tools_webrtc'))
@@ -507,6 +507,26 @@ def _CheckUsageOfGoogleProtobufNamespace(input_api, output_api):
         'Please avoid to use namespace `google::protobuf` directly.\n'
         'Add a using directive in `%s` and include that header instead.'
         % proto_utils_path, files)]
+  return []
+
+
+def _CheckNoChangesToWebRTCBase(input_api, output_api):
+  """Checks that no changes refer to webrtc/base."""
+  problems = []
+
+  for f in input_api.AffectedFiles():
+    if os.path.join('webrtc', 'base') in f.LocalPath():
+      problems.append('    ' + f.LocalPath())
+      continue
+    for line_num, line in f.ChangedContents():
+      if 'webrtc/base' in line:
+        problems.append('    %s: %s' % (f.LocalPath(), line_num))
+
+  if problems:
+    return [output_api.PresubmitPromptWarning(
+        'webrtc/base is being moved to webrtc/rtc_base (See '
+        'bugs.webrtc.org/7634). Please refer to webrtc/rtc_base instead in the '
+        'following files:\n' + '\n'.join(problems))]
   return []
 
 
@@ -577,6 +597,8 @@ def _CommonChecks(input_api, output_api):
   results.extend(_RunPythonTests(input_api, output_api))
   results.extend(_CheckUsageOfGoogleProtobufNamespace(input_api, output_api))
   results.extend(_CheckOrphanHeaders(input_api, output_api))
+  results.extend(_CheckNewLineAtTheEndOfProtoFiles(input_api, output_api))
+  results.extend(_CheckNoChangesToWebRTCBase(input_api, output_api))
   return results
 
 
@@ -631,4 +653,19 @@ def _CheckOrphanHeaders(input_api, output_api):
       if not in_build_gn:
         results.append(output_api.PresubmitError(error_msg.format(
             file_path, gn_file_path)))
+  return results
+
+
+def _CheckNewLineAtTheEndOfProtoFiles(input_api, output_api):
+  """Checks that all .proto files are terminated with a newline."""
+  error_msg = 'File {} must end with exactly one newline.'
+  results = []
+  source_file_filter = lambda x: input_api.FilterSourceFile(
+      x, white_list=(r'.+\.proto$',))
+  for f in input_api.AffectedSourceFiles(source_file_filter):
+    file_path = f.LocalPath()
+    with open(file_path) as f:
+      lines = f.readlines()
+      if lines[-1] != '\n' or lines[-2] == '\n':
+        results.append(output_api.PresubmitError(error_msg.format(file_path)))
   return results

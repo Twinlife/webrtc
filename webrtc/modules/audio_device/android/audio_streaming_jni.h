@@ -60,8 +60,6 @@ class AudioStreamingJni {
     jmethodID init_recording_;
     jmethodID start_recording_;
     jmethodID stop_recording_;
-    jmethodID enable_built_in_aec_;
-    jmethodID enable_built_in_ns_;
   };
 
   explicit AudioStreamingJni(AudioManager* audio_manager);
