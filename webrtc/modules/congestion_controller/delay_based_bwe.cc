@@ -14,15 +14,15 @@
 #include <cmath>
 #include <string>
 
-#include "webrtc/base/checks.h"
-#include "webrtc/base/constructormagic.h"
-#include "webrtc/base/logging.h"
-#include "webrtc/base/thread_annotations.h"
 #include "webrtc/logging/rtc_event_log/rtc_event_log.h"
 #include "webrtc/modules/congestion_controller/include/congestion_controller.h"
 #include "webrtc/modules/pacing/paced_sender.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/remote_bitrate_estimator.h"
 #include "webrtc/modules/remote_bitrate_estimator/test/bwe_test_logging.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/constructormagic.h"
+#include "webrtc/rtc_base/logging.h"
+#include "webrtc/rtc_base/thread_annotations.h"
 #include "webrtc/system_wrappers/include/field_trial.h"
 #include "webrtc/system_wrappers/include/metrics.h"
 #include "webrtc/typedefs.h"
@@ -201,14 +201,29 @@ DelayBasedBwe::Result DelayBasedBwe::MaybeUpdateEstimate(
         rate_control_.TimeToReduceFurther(now_ms, *acked_bitrate_bps)) {
       result.updated = UpdateEstimate(now_ms, acked_bitrate_bps, overusing,
                                       &result.target_bitrate_bps);
+    } else if (!acked_bitrate_bps && rate_control_.ValidEstimate() &&
+               rate_control_.TimeToReduceFurther(
+                   now_ms, rate_control_.LatestEstimate() / 2 - 1)) {
+      // Overusing before we have a measured acknowledged bitrate. We check
+      // TimeToReduceFurther (with a fake acknowledged bitrate) to avoid
+      // reducing too often.
+      // TODO(tschumim): Improve this and/or the acknowledged bitrate estimator
+      // so that we (almost) always have a bitrate estimate.
+      rate_control_.SetEstimate(rate_control_.LatestEstimate() / 2, now_ms);
+      result.updated = true;
+      result.probe = false;
+      result.target_bitrate_bps = rate_control_.LatestEstimate();
     }
   } else {
     if (probe_bitrate_bps) {
-      rate_control_.SetEstimate(*probe_bitrate_bps, now_ms);
       result.probe = true;
+      result.updated = true;
+      result.target_bitrate_bps = *probe_bitrate_bps;
+      rate_control_.SetEstimate(*probe_bitrate_bps, now_ms);
+    } else {
+      result.updated = UpdateEstimate(now_ms, acked_bitrate_bps, overusing,
+                                      &result.target_bitrate_bps);
     }
-    result.updated = UpdateEstimate(now_ms, acked_bitrate_bps, overusing,
-                                    &result.target_bitrate_bps);
   }
   if (result.updated) {
     BWE_TEST_LOGGING_PLOT(1, "target_bitrate_bps", now_ms,
@@ -233,8 +248,10 @@ bool DelayBasedBwe::UpdateEstimate(int64_t now_ms,
   const RateControlInput input(
       overusing ? BandwidthUsage::kBwOverusing : detector_.State(),
       acked_bitrate_bps, 0);
+  uint32_t prev_target_bitrate_bps = rate_control_.LatestEstimate();
   *target_bitrate_bps = rate_control_.Update(&input, now_ms);
-  return rate_control_.ValidEstimate();
+  return rate_control_.ValidEstimate() &&
+         prev_target_bitrate_bps != *target_bitrate_bps;
 }
 
 void DelayBasedBwe::OnRttUpdate(int64_t avg_rtt_ms, int64_t max_rtt_ms) {

@@ -322,6 +322,7 @@ rtc_static_library("ilbc") {
     ":legacy_encoded_audio_frame",
     "../..:webrtc_common",
     "../../api/audio_codecs:audio_codecs_api",
+    "../../api/audio_codecs/ilbc:audio_encoder_ilbc_config",
     "../../base:rtc_base_approved",
     "../../common_audio",
   ]
@@ -633,6 +634,16 @@ rtc_source_set("isac_fix_common") {
   public_configs = [ ":isac_fix_config" ]
 }
 
+rtc_source_set("isac_fix_c_arm_asm") {
+  sources = []
+  if (current_cpu == "arm" && arm_version >= 7) {
+    sources += [
+      "codecs/isac/fix/source/lattice_armv7.S",
+      "codecs/isac/fix/source/pitch_filter_armv6.S",
+    ]
+  }
+}
+
 rtc_source_set("isac_fix_c") {
   visibility = [ ":*" ]  # Only targets in this file can depend on this.
   sources = [
@@ -701,14 +712,11 @@ rtc_source_set("isac_fix_c") {
   }
 
   if (current_cpu == "arm" && arm_version >= 7) {
-    sources += [
-      "codecs/isac/fix/source/lattice_armv7.S",
-      "codecs/isac/fix/source/pitch_filter_armv6.S",
-    ]
     sources -= [
       "codecs/isac/fix/source/lattice_c.c",
       "codecs/isac/fix/source/pitch_filter_c.c",
     ]
+    deps += [ ":isac_fix_c_arm_asm" ]
   }
 
   if (current_cpu == "mipsel") {
@@ -828,6 +836,7 @@ rtc_static_library("webrtc_opus") {
     ":audio_network_adaptor",
     "../..:webrtc_common",
     "../../api/audio_codecs:audio_codecs_api",
+    "../../api/audio_codecs/opus:audio_encoder_opus_config",
     "../../base:protobuf_utils",
     "../../base:rtc_base_approved",
     "../../base:rtc_numerics",
@@ -839,11 +848,6 @@ rtc_static_library("webrtc_opus") {
   ]
 
   defines = audio_codec_defines
-  if (rtc_opus_variable_complexity) {
-    defines += [ "WEBRTC_OPUS_VARIABLE_COMPLEXITY=1" ]
-  } else {
-    defines += [ "WEBRTC_OPUS_VARIABLE_COMPLEXITY=0" ]
-  }
 
   if (rtc_build_opus) {
     public_deps += [ rtc_opus_dir ]
@@ -1260,7 +1264,7 @@ if (rtc_include_tests) {
     # gets additional generated targets which would require many lines here to
     # cover (which would be confusing to read and hard to maintain).
     if (!is_android && !is_ios) {
-      visibility = [ "//webrtc/modules:modules_tests" ]
+      visibility = [ "..:modules_tests" ]
     }
     sources = [
       "test/ACMTest.h",
@@ -1327,7 +1331,7 @@ if (rtc_include_tests) {
     # gets additional generated targets which would require many lines here to
     # cover (which would be confusing to read and hard to maintain).
     if (!is_android && !is_ios) {
-      visibility = [ "//webrtc:webrtc_perf_tests" ]
+      visibility = [ "../..:webrtc_perf_tests" ]
     }
     sources = [
       "codecs/opus/opus_complexity_unittest.cc",
@@ -1449,7 +1453,7 @@ if (rtc_include_tests) {
   }  # insert_packet_with_timing
 
   audio_decoder_unittests_resources =
-      [ "//resources/audio_coding/testfile32kHz.pcm" ]
+      [ "../../../resources/audio_coding/testfile32kHz.pcm" ]
 
   if (is_ios) {
     bundle_data("audio_decoder_unittests_bundle_data") {
@@ -1484,6 +1488,7 @@ if (rtc_include_tests) {
       ":neteq",
       ":neteq_tools",
       "../../api/audio_codecs:audio_codecs_api",
+      "../../api/audio_codecs/opus:audio_encoder_opus",
       "../../base:protobuf_utils",
       "../../common_audio",
       "../../test:test_main",
@@ -2056,7 +2061,7 @@ if (rtc_include_tests) {
     # gets additional generated targets which would require many lines here to
     # cover (which would be confusing to read and hard to maintain).
     if (!is_android && !is_ios) {
-      visibility = [ "//webrtc/modules:modules_unittests" ]
+      visibility = [ "..:modules_unittests" ]
     }
     sources = [
       "acm2/acm_receiver_unittest.cc",
@@ -2116,6 +2121,7 @@ if (rtc_include_tests) {
       "neteq/mock/mock_external_decoder_pcm16b.h",
       "neteq/mock/mock_packet_buffer.h",
       "neteq/mock/mock_red_payload_splitter.h",
+      "neteq/mock/mock_statistics_calculator.h",
       "neteq/nack_tracker_unittest.cc",
       "neteq/neteq_external_decoder_unittest.cc",
       "neteq/neteq_impl_unittest.cc",

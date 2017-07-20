@@ -11,15 +11,14 @@
 #include "webrtc/modules/audio_coding/include/audio_coding_module.h"
 
 #include "webrtc/api/audio_codecs/builtin_audio_decoder_factory.h"
-#include "webrtc/base/checks.h"
-#include "webrtc/base/logging.h"
-#include "webrtc/base/safe_conversions.h"
 #include "webrtc/modules/audio_coding/acm2/acm_receiver.h"
 #include "webrtc/modules/audio_coding/acm2/acm_resampler.h"
 #include "webrtc/modules/audio_coding/acm2/codec_manager.h"
 #include "webrtc/modules/audio_coding/acm2/rent_a_codec.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/logging.h"
+#include "webrtc/rtc_base/safe_conversions.h"
 #include "webrtc/system_wrappers/include/metrics.h"
-#include "webrtc/system_wrappers/include/trace.h"
 
 namespace webrtc {
 
@@ -466,10 +465,9 @@ AudioCodingModuleImpl::AudioCodingModuleImpl(
       codec_histogram_bins_log_(),
       number_of_consecutive_empty_packets_(0) {
   if (InitializeReceiverSafe() < 0) {
-    WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, id_,
-                 "Cannot initialize receiver");
+    LOG(LS_ERROR) << "Cannot initialize receiver";
   }
-  WEBRTC_TRACE(webrtc::kTraceMemory, webrtc::kTraceAudioCoding, id_, "Created");
+  LOG(LS_INFO) << "Created";
 }
 
 AudioCodingModuleImpl::~AudioCodingModuleImpl() = default;
@@ -638,13 +636,10 @@ rtc::Optional<CodecInst> AudioCodingModuleImpl::SendCodec() const {
 
 // Get current send frequency.
 int AudioCodingModuleImpl::SendFrequency() const {
-  WEBRTC_TRACE(webrtc::kTraceStream, webrtc::kTraceAudioCoding, id_,
-               "SendFrequency()");
   rtc::CritScope lock(&acm_crit_sect_);
 
   if (!encoder_stack_) {
-    WEBRTC_TRACE(webrtc::kTraceStream, webrtc::kTraceAudioCoding, id_,
-                 "SendFrequency Failed, no codec is registered");
+    LOG(LS_ERROR) << "SendFrequency Failed, no codec is registered";
     return -1;
   }
 
@@ -680,30 +675,26 @@ int AudioCodingModuleImpl::Add10MsDataInternal(const AudioFrame& audio_frame,
                                                InputData* input_data) {
   if (audio_frame.samples_per_channel_ == 0) {
     assert(false);
-    WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, id_,
-                 "Cannot Add 10 ms audio, payload length is zero");
+    LOG(LS_ERROR) << "Cannot Add 10 ms audio, payload length is zero";
     return -1;
   }
 
   if (audio_frame.sample_rate_hz_ > 48000) {
     assert(false);
-    WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, id_,
-                 "Cannot Add 10 ms audio, input frequency not valid");
+    LOG(LS_ERROR) << "Cannot Add 10 ms audio, input frequency not valid";
     return -1;
   }
 
   // If the length and frequency matches. We currently just support raw PCM.
   if (static_cast<size_t>(audio_frame.sample_rate_hz_ / 100) !=
       audio_frame.samples_per_channel_) {
-    WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, id_,
-                 "Cannot Add 10 ms audio, input frequency and length doesn't"
-                 " match");
+    LOG(LS_ERROR)
+        << "Cannot Add 10 ms audio, input frequency and length doesn't match";
     return -1;
   }
 
   if (audio_frame.num_channels_ != 1 && audio_frame.num_channels_ != 2) {
-    WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, id_,
-                 "Cannot Add 10 ms audio, invalid number of channels.");
+    LOG(LS_ERROR) << "Cannot Add 10 ms audio, invalid number of channels.";
     return -1;
   }
 
@@ -835,8 +826,7 @@ int AudioCodingModuleImpl::PreprocessToAddData(const AudioFrame& in_frame,
         dest_ptr_audio);
 
     if (samples_per_channel < 0) {
-      WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, id_,
-                   "Cannot add 10 ms audio, resampling failed");
+      LOG(LS_ERROR) << "Cannot add 10 ms audio, resampling failed";
       return -1;
     }
     preprocess_frame_.samples_per_channel_ =
@@ -873,8 +863,7 @@ int AudioCodingModuleImpl::SetREDStatus(bool enable_red) {
     encoder_stack_ = encoder_factory_->rent_a_codec.RentEncoderStack(sp);
   return 0;
 #else
-  WEBRTC_TRACE(webrtc::kTraceWarning, webrtc::kTraceAudioCoding, id_,
-               "  WEBRTC_CODEC_RED is undefined");
+  LOG(LS_WARNING) << "  WEBRTC_CODEC_RED is undefined";
   return -1;
 #endif
 }
@@ -976,8 +965,6 @@ int AudioCodingModuleImpl::ReceiveFrequency() const {
 
 // Get current playout frequency.
 int AudioCodingModuleImpl::PlayoutFrequency() const {
-  WEBRTC_TRACE(webrtc::kTraceStream, webrtc::kTraceAudioCoding, id_,
-               "PlayoutFrequency()");
   return receiver_.last_output_sample_rate_hz();
 }
 
@@ -1102,8 +1089,7 @@ int AudioCodingModuleImpl::IncomingPacket(const uint8_t* incoming_payload,
 // Minimum playout delay (Used for lip-sync).
 int AudioCodingModuleImpl::SetMinimumPlayoutDelay(int time_ms) {
   if ((time_ms < 0) || (time_ms > 10000)) {
-    WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, id_,
-                 "Delay must be in the range of 0-1000 milliseconds.");
+    LOG(LS_ERROR) << "Delay must be in the range of 0-1000 milliseconds.";
     return -1;
   }
   return receiver_.SetMinimumDelay(time_ms);
@@ -1111,8 +1097,7 @@ int AudioCodingModuleImpl::SetMinimumPlayoutDelay(int time_ms) {
 
 int AudioCodingModuleImpl::SetMaximumPlayoutDelay(int time_ms) {
   if ((time_ms < 0) || (time_ms > 10000)) {
-    WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, id_,
-                 "Delay must be in the range of 0-1000 milliseconds.");
+    LOG(LS_ERROR) << "Delay must be in the range of 0-1000 milliseconds.";
     return -1;
   }
   return receiver_.SetMaximumDelay(time_ms);
@@ -1125,8 +1110,7 @@ int AudioCodingModuleImpl::PlayoutData10Ms(int desired_freq_hz,
                                            bool* muted) {
   // GetAudio always returns 10 ms, at the requested sample rate.
   if (receiver_.GetAudio(desired_freq_hz, audio_frame, muted) != 0) {
-    WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, id_,
-                 "PlayoutData failed, RecOut Failed");
+    LOG(LS_ERROR) << "PlayoutData failed, RecOut Failed";
     return -1;
   }
   audio_frame->id_ = id_;
@@ -1153,8 +1137,7 @@ int AudioCodingModuleImpl::GetNetworkStatistics(NetworkStatistics* statistics) {
 }
 
 int AudioCodingModuleImpl::RegisterVADCallback(ACMVADCallback* vad_callback) {
-  WEBRTC_TRACE(webrtc::kTraceDebug, webrtc::kTraceAudioCoding, id_,
-               "RegisterVADCallback()");
+  LOG(LS_VERBOSE) << "RegisterVADCallback()";
   rtc::CritScope lock(&callback_crit_sect_);
   vad_callback_ = vad_callback;
   return 0;
@@ -1253,8 +1236,7 @@ int AudioCodingModuleImpl::FilteredCurrentDelayMs() const {
 
 bool AudioCodingModuleImpl::HaveValidEncoder(const char* caller_name) const {
   if (!encoder_stack_) {
-    WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, id_,
-                 "%s failed: No send codec is registered.", caller_name);
+    LOG(LS_ERROR) << caller_name << " failed: No send codec is registered.";
     return false;
   }
   return true;
@@ -1378,8 +1360,7 @@ int AudioCodingModule::Codec(const char* payload_name,
 bool AudioCodingModule::IsCodecValid(const CodecInst& codec) {
   bool valid = acm2::RentACodec::IsCodecValid(codec);
   if (!valid)
-    WEBRTC_TRACE(webrtc::kTraceError, webrtc::kTraceAudioCoding, -1,
-                 "Invalid codec setting");
+    LOG(LS_ERROR) << "Invalid codec setting";
   return valid;
 }
 

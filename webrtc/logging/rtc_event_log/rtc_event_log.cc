@@ -11,16 +11,9 @@
 #include "webrtc/logging/rtc_event_log/rtc_event_log.h"
 
 #include <limits>
+#include <utility>
 #include <vector>
 
-#include "webrtc/base/checks.h"
-#include "webrtc/base/constructormagic.h"
-#include "webrtc/base/event.h"
-#include "webrtc/base/logging.h"
-#include "webrtc/base/protobuf_utils.h"
-#include "webrtc/base/swap_queue.h"
-#include "webrtc/base/thread_checker.h"
-#include "webrtc/base/timeutils.h"
 #include "webrtc/logging/rtc_event_log/rtc_event_log_helper_thread.h"
 #include "webrtc/modules/audio_coding/audio_network_adaptor/include/audio_network_adaptor.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/bwe_defines.h"
@@ -36,6 +29,15 @@
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/rtpfb.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/sdes.h"
 #include "webrtc/modules/rtp_rtcp/source/rtcp_packet/sender_report.h"
+#include "webrtc/rtc_base/atomicops.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/constructormagic.h"
+#include "webrtc/rtc_base/event.h"
+#include "webrtc/rtc_base/logging.h"
+#include "webrtc/rtc_base/protobuf_utils.h"
+#include "webrtc/rtc_base/swap_queue.h"
+#include "webrtc/rtc_base/thread_checker.h"
+#include "webrtc/rtc_base/timeutils.h"
 #include "webrtc/system_wrappers/include/file_wrapper.h"
 
 #ifdef ENABLE_RTC_EVENT_LOG
@@ -52,8 +54,9 @@ namespace webrtc {
 #ifdef ENABLE_RTC_EVENT_LOG
 
 class RtcEventLogImpl final : public RtcEventLog {
+  friend std::unique_ptr<RtcEventLog> RtcEventLog::Create();
+
  public:
-  RtcEventLogImpl();
   ~RtcEventLogImpl() override;
 
   bool StartLogging(const std::string& file_name,
@@ -92,10 +95,15 @@ class RtcEventLogImpl final : public RtcEventLog {
                              ProbeFailureReason failure_reason) override;
 
  private:
-  void StoreEvent(std::unique_ptr<rtclog::Event>* event);
+  // Private constructor to ensure that creation is done by RtcEventLog::Create.
+  RtcEventLogImpl();
+
+  void StoreEvent(std::unique_ptr<rtclog::Event> event);
   void LogProbeResult(int id,
                       rtclog::BweProbeResult::ResultType result,
                       int bitrate_bps);
+
+  static volatile int log_count_;
 
   // Message queue for passing control messages to the logging thread.
   SwapQueue<RtcEventLogHelperThread::ControlMessage> message_queue_;
@@ -162,6 +170,8 @@ static const int kEventsPerSecond = 1000;
 static const int kControlMessagesPerSecond = 10;
 }  // namespace
 
+volatile int RtcEventLogImpl::log_count_ = 0;
+
 // RtcEventLogImpl member functions.
 RtcEventLogImpl::RtcEventLogImpl()
     // Allocate buffers for roughly one second of history.
@@ -175,6 +185,8 @@ RtcEventLogImpl::RtcEventLogImpl()
 RtcEventLogImpl::~RtcEventLogImpl() {
   // The RtcEventLogHelperThread destructor closes the file
   // and waits for the thread to terminate.
+  int count = rtc::AtomicOps::Decrement(&RtcEventLogImpl::log_count_);
+  RTC_DCHECK_GE(count, 0);
 }
 
 bool RtcEventLogImpl::StartLogging(const std::string& file_name,
@@ -288,7 +300,7 @@ void RtcEventLogImpl::LogVideoReceiveStreamConfig(
       rtx->mutable_config()->set_rtx_payload_type(d.rtx_payload_type);
     }
   }
-  StoreEvent(&event);
+  StoreEvent(std::move(event));
 }
 
 void RtcEventLogImpl::LogVideoSendStreamConfig(
@@ -327,7 +339,7 @@ void RtcEventLogImpl::LogVideoSendStreamConfig(
     }
   }
 
-  StoreEvent(&event);
+  StoreEvent(std::move(event));
 }
 
 void RtcEventLogImpl::LogAudioReceiveStreamConfig(
@@ -347,7 +359,7 @@ void RtcEventLogImpl::LogAudioReceiveStreamConfig(
     extension->set_name(e.uri);
     extension->set_id(e.id);
   }
-  StoreEvent(&event);
+  StoreEvent(std::move(event));
 }
 
 void RtcEventLogImpl::LogAudioSendStreamConfig(
@@ -367,7 +379,7 @@ void RtcEventLogImpl::LogAudioSendStreamConfig(
     extension->set_id(e.id);
   }
 
-  StoreEvent(&event);
+  StoreEvent(std::move(event));
 }
 
 void RtcEventLogImpl::LogRtpHeader(PacketDirection direction,
@@ -404,7 +416,7 @@ void RtcEventLogImpl::LogRtpHeader(PacketDirection direction,
   rtp_event->mutable_rtp_packet()->set_header(header, header_length);
   if (probe_cluster_id != PacedPacketInfo::kNotAProbe)
     rtp_event->mutable_rtp_packet()->set_probe_cluster_id(probe_cluster_id);
-  StoreEvent(&rtp_event);
+  StoreEvent(std::move(rtp_event));
 }
 
 void RtcEventLogImpl::LogRtcpPacket(PacketDirection direction,
@@ -452,7 +464,7 @@ void RtcEventLogImpl::LogRtcpPacket(PacketDirection direction,
     block_begin += block_size;
   }
   rtcp_event->mutable_rtcp_packet()->set_packet_data(buffer, buffer_length);
-  StoreEvent(&rtcp_event);
+  StoreEvent(std::move(rtcp_event));
 }
 
 void RtcEventLogImpl::LogAudioPlayout(uint32_t ssrc) {
@@ -461,7 +473,7 @@ void RtcEventLogImpl::LogAudioPlayout(uint32_t ssrc) {
   event->set_type(rtclog::Event::AUDIO_PLAYOUT_EVENT);
   auto playout_event = event->mutable_audio_playout_event();
   playout_event->set_local_ssrc(ssrc);
-  StoreEvent(&event);
+  StoreEvent(std::move(event));
 }
 
 void RtcEventLogImpl::LogLossBasedBweUpdate(int32_t bitrate_bps,
@@ -474,7 +486,7 @@ void RtcEventLogImpl::LogLossBasedBweUpdate(int32_t bitrate_bps,
   bwe_event->set_bitrate_bps(bitrate_bps);
   bwe_event->set_fraction_loss(fraction_loss);
   bwe_event->set_total_packets(total_packets);
-  StoreEvent(&event);
+  StoreEvent(std::move(event));
 }
 
 void RtcEventLogImpl::LogDelayBasedBweUpdate(int32_t bitrate_bps,
@@ -485,7 +497,7 @@ void RtcEventLogImpl::LogDelayBasedBweUpdate(int32_t bitrate_bps,
   auto bwe_event = event->mutable_delay_based_bwe_update();
   bwe_event->set_bitrate_bps(bitrate_bps);
   bwe_event->set_detector_state(ConvertDetectorState(detector_state));
-  StoreEvent(&event);
+  StoreEvent(std::move(event));
 }
 
 void RtcEventLogImpl::LogAudioNetworkAdaptation(
@@ -508,7 +520,7 @@ void RtcEventLogImpl::LogAudioNetworkAdaptation(
     audio_network_adaptation->set_enable_dtx(*config.enable_dtx);
   if (config.num_channels)
     audio_network_adaptation->set_num_channels(*config.num_channels);
-  StoreEvent(&event);
+  StoreEvent(std::move(event));
 }
 
 void RtcEventLogImpl::LogProbeClusterCreated(int id,
@@ -524,7 +536,7 @@ void RtcEventLogImpl::LogProbeClusterCreated(int id,
   probe_cluster->set_bitrate_bps(bitrate_bps);
   probe_cluster->set_min_packets(min_probes);
   probe_cluster->set_min_bytes(min_bytes);
-  StoreEvent(&event);
+  StoreEvent(std::move(event));
 }
 
 void RtcEventLogImpl::LogProbeResultSuccess(int id, int bitrate_bps) {
@@ -550,13 +562,12 @@ void RtcEventLogImpl::LogProbeResult(int id,
   probe_result->set_result(result);
   if (result == rtclog::BweProbeResult::SUCCESS)
     probe_result->set_bitrate_bps(bitrate_bps);
-  StoreEvent(&event);
+  StoreEvent(std::move(event));
 }
 
-void RtcEventLogImpl::StoreEvent(std::unique_ptr<rtclog::Event>* event) {
-  RTC_DCHECK(event != nullptr);
-  RTC_DCHECK(event->get() != nullptr);
-  if (!event_queue_.Insert(event)) {
+void RtcEventLogImpl::StoreEvent(std::unique_ptr<rtclog::Event> event) {
+  RTC_DCHECK(event.get() != nullptr);
+  if (!event_queue_.Insert(&event)) {
     LOG(LS_ERROR) << "WebRTC event log queue full. Dropping event.";
   }
   helper_thread_.SignalNewEvent();
@@ -583,6 +594,14 @@ bool RtcEventLog::ParseRtcEventLog(const std::string& file_name,
 // RtcEventLog member functions.
 std::unique_ptr<RtcEventLog> RtcEventLog::Create() {
 #ifdef ENABLE_RTC_EVENT_LOG
+  constexpr int kMaxLogCount = 5;
+  int count = rtc::AtomicOps::Increment(&RtcEventLogImpl::log_count_);
+  if (count > kMaxLogCount) {
+    LOG(LS_WARNING) << "Denied creation of additional WebRTC event logs. "
+                    << count - 1 << " logs open already.";
+    rtc::AtomicOps::Decrement(&RtcEventLogImpl::log_count_);
+    return std::unique_ptr<RtcEventLog>(new RtcEventLogNullImpl());
+  }
   return std::unique_ptr<RtcEventLog>(new RtcEventLogImpl());
 #else
   return std::unique_ptr<RtcEventLog>(new RtcEventLogNullImpl());

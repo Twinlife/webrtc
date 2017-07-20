@@ -19,10 +19,11 @@
 #include <stdio.h>  // FILE
 #include <vector>
 
-#include "webrtc/base/arraysize.h"
-#include "webrtc/base/platform_file.h"
 #include "webrtc/modules/audio_processing/beamformer/array_util.h"
 #include "webrtc/modules/audio_processing/include/config.h"
+#include "webrtc/rtc_base/arraysize.h"
+#include "webrtc/rtc_base/platform_file.h"
+#include "webrtc/rtc_base/refcount.h"
 #include "webrtc/typedefs.h"
 
 namespace webrtc {
@@ -233,7 +234,7 @@ struct Intelligibility {
 // // Close the application...
 // delete apm;
 //
-class AudioProcessing {
+class AudioProcessing : public rtc::RefCountInterface {
  public:
   // The struct below constitutes the new parameter scheme for the audio
   // processing. It is being introduced gradually and until it is fully
@@ -300,7 +301,7 @@ class AudioProcessing {
   // Only for testing.
   static AudioProcessing* Create(const webrtc::Config& config,
                                  NonlinearBeamformer* beamformer);
-  virtual ~AudioProcessing() {}
+  ~AudioProcessing() override {}
 
   // Initializes internal states, while retaining all user settings. This
   // should be called before beginning to process a new audio stream. However,

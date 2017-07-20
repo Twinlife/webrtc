@@ -12,12 +12,12 @@
 
 #include <limits>
 
-#include "webrtc/base/constructormagic.h"
 #include "webrtc/modules/remote_bitrate_estimator/test/estimators/bbr.h"
 #include "webrtc/modules/remote_bitrate_estimator/test/estimators/nada.h"
 #include "webrtc/modules/remote_bitrate_estimator/test/estimators/remb.h"
 #include "webrtc/modules/remote_bitrate_estimator/test/estimators/send_side.h"
 #include "webrtc/modules/remote_bitrate_estimator/test/estimators/tcp.h"
+#include "webrtc/rtc_base/constructormagic.h"
 
 namespace webrtc {
 namespace testing {
@@ -95,7 +95,7 @@ BweSender* CreateBweSender(BandwidthEstimatorType estimator,
     case kNadaEstimator:
       return new NadaBweSender(kbps, observer, clock);
     case kBbrEstimator:
-      return new BbrBweSender();
+      return new BbrBweSender(clock);
     case kTcpEstimator:
       FALLTHROUGH();
     case kNullEstimator:

@@ -10,52 +10,25 @@
 
 #include "webrtc/call/rtp_demuxer.h"
 
-#include "webrtc/base/checks.h"
-#include "webrtc/base/logging.h"
+#include "webrtc/call/rsid_resolution_observer.h"
 #include "webrtc/call/rtp_packet_sink_interface.h"
+#include "webrtc/call/rtp_rtcp_demuxer_helper.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_header_extensions.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_packet_received.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/logging.h"
 
 namespace webrtc {
 
-namespace {
-
-constexpr size_t kMaxProcessedSsrcs = 1000;  // Prevent memory overuse.
-
-template <typename Key, typename Value>
-bool MultimapAssociationExists(const std::multimap<Key, Value>& multimap,
-                               Key key,
-                               Value val) {
-  auto it_range = multimap.equal_range(key);
-  using Reference = typename std::multimap<Key, Value>::const_reference;
-  return std::any_of(it_range.first, it_range.second,
-                     [val](Reference elem) { return elem.second == val; });
-}
-
-template <typename Key, typename Value>
-size_t RemoveFromMultimapByValue(std::multimap<Key, Value*>* multimap,
-                                 const Value* value) {
-  size_t count = 0;
-  for (auto it = multimap->begin(); it != multimap->end();) {
-    if (it->second == value) {
-      it = multimap->erase(it);
-      ++count;
-    } else {
-      ++it;
-    }
-  }
-  return count;
-}
-
-}  // namespace
-
-RtpDemuxer::RtpDemuxer() {}
+RtpDemuxer::RtpDemuxer() = default;
 
 RtpDemuxer::~RtpDemuxer() {
-  RTC_DCHECK(sinks_.empty());
+  RTC_DCHECK(ssrc_sinks_.empty());
+  RTC_DCHECK(rsid_sinks_.empty());
 }
 
 void RtpDemuxer::AddSink(uint32_t ssrc, RtpPacketSinkInterface* sink) {
+  RTC_DCHECK(sink);
   RecordSsrcToSinkAssociation(ssrc, sink);
 }
 
@@ -66,14 +39,11 @@ void RtpDemuxer::AddSink(const std::string& rsid,
   RTC_DCHECK(!MultimapAssociationExists(rsid_sinks_, rsid, sink));
 
   rsid_sinks_.emplace(rsid, sink);
-
-  // This RSID might now map to an SSRC which we saw earlier.
-  processed_ssrcs_.clear();
 }
 
 bool RtpDemuxer::RemoveSink(const RtpPacketSinkInterface* sink) {
   RTC_DCHECK(sink);
-  return (RemoveFromMultimapByValue(&sinks_, sink) +
+  return (RemoveFromMultimapByValue(&ssrc_sinks_, sink) +
           RemoveFromMultimapByValue(&rsid_sinks_, sink)) > 0;
 }
 
@@ -82,28 +52,44 @@ void RtpDemuxer::RecordSsrcToSinkAssociation(uint32_t ssrc,
   RTC_DCHECK(sink);
   // The association might already have been set by a different
   // configuration source.
-  if (!MultimapAssociationExists(sinks_, ssrc, sink)) {
-    sinks_.emplace(ssrc, sink);
+  if (!MultimapAssociationExists(ssrc_sinks_, ssrc, sink)) {
+    ssrc_sinks_.emplace(ssrc, sink);
   }
 }
 
 bool RtpDemuxer::OnRtpPacket(const RtpPacketReceived& packet) {
-  FindSsrcAssociations(packet);
-  auto it_range = sinks_.equal_range(packet.Ssrc());
+  // TODO(eladalon): This will now check every single packet, but soon a CL will
+  // be added which will change the many-to-many association of packets to sinks
+  // to a many-to-one, meaning each packet will be associated with one sink
+  // at most. Then, only packets with an unknown SSRC will be checked for RSID.
+  ResolveRsidToSsrcAssociations(packet);
+
+  auto it_range = ssrc_sinks_.equal_range(packet.Ssrc());
   for (auto it = it_range.first; it != it_range.second; ++it) {
     it->second->OnRtpPacket(packet);
   }
   return it_range.first != it_range.second;
 }
 
-void RtpDemuxer::FindSsrcAssociations(const RtpPacketReceived& packet) {
-  // Avoid expensive string comparisons for RSID by looking the sinks up only
-  // by SSRC whenever possible.
-  if (processed_ssrcs_.find(packet.Ssrc()) != processed_ssrcs_.cend()) {
-    return;
-  }
+void RtpDemuxer::RegisterRsidResolutionObserver(
+    RsidResolutionObserver* observer) {
+  RTC_DCHECK(observer);
+  RTC_DCHECK(!ContainerHasKey(rsid_resolution_observers_, observer));
 
-  // RSID-based associations:
+  rsid_resolution_observers_.push_back(observer);
+}
+
+void RtpDemuxer::DeregisterRsidResolutionObserver(
+    const RsidResolutionObserver* observer) {
+  RTC_DCHECK(observer);
+  auto it = std::find(rsid_resolution_observers_.begin(),
+                      rsid_resolution_observers_.end(), observer);
+  RTC_DCHECK(it != rsid_resolution_observers_.end());
+  rsid_resolution_observers_.erase(it);
+}
+
+void RtpDemuxer::ResolveRsidToSsrcAssociations(
+    const RtpPacketReceived& packet) {
   std::string rsid;
   if (packet.GetExtension<RtpStreamId>(&rsid)) {
     // All streams associated with this RSID need to be marked as associated
@@ -113,17 +99,18 @@ void RtpDemuxer::FindSsrcAssociations(const RtpPacketReceived& packet) {
       RecordSsrcToSinkAssociation(packet.Ssrc(), it->second);
     }
 
+    NotifyObserversOfRsidResolution(rsid, packet.Ssrc());
+
     // To prevent memory-overuse attacks, forget this RSID. Future packets
     // with this RSID, but a different SSRC, will not spawn new associations.
     rsid_sinks_.erase(it_range.first, it_range.second);
   }
+}
 
-  if (processed_ssrcs_.size() < kMaxProcessedSsrcs) {  // Prevent memory overuse
-    processed_ssrcs_.insert(packet.Ssrc());  // Avoid re-examining in-depth.
-  } else if (!logged_max_processed_ssrcs_exceeded_) {
-    LOG(LS_WARNING) << "More than " << kMaxProcessedSsrcs
-                    << " different SSRCs seen.";
-    logged_max_processed_ssrcs_exceeded_ = true;
+void RtpDemuxer::NotifyObserversOfRsidResolution(const std::string& rsid,
+                                                 uint32_t ssrc) {
+  for (auto* observer : rsid_resolution_observers_) {
+    observer->OnRsidResolved(rsid, ssrc);
   }
 }
 

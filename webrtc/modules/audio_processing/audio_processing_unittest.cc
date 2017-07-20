@@ -7,7 +7,6 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
-
 #include <math.h>
 #include <stdio.h>
 
@@ -16,14 +15,6 @@
 #include <memory>
 #include <queue>
 
-#include "webrtc/base/arraysize.h"
-#include "webrtc/base/checks.h"
-#include "webrtc/base/gtest_prod_util.h"
-#include "webrtc/base/ignore_wundef.h"
-#include "webrtc/base/protobuf_utils.h"
-#include "webrtc/base/safe_minmax.h"
-#include "webrtc/base/task_queue.h"
-#include "webrtc/base/thread.h"
 #include "webrtc/common_audio/include/audio_util.h"
 #include "webrtc/common_audio/resampler/include/push_resampler.h"
 #include "webrtc/common_audio/resampler/push_sinc_resampler.h"
@@ -37,6 +28,14 @@
 #include "webrtc/modules/audio_processing/test/protobuf_utils.h"
 #include "webrtc/modules/audio_processing/test/test_utils.h"
 #include "webrtc/modules/include/module_common_types.h"
+#include "webrtc/rtc_base/arraysize.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/gtest_prod_util.h"
+#include "webrtc/rtc_base/ignore_wundef.h"
+#include "webrtc/rtc_base/protobuf_utils.h"
+#include "webrtc/rtc_base/safe_minmax.h"
+#include "webrtc/rtc_base/task_queue.h"
+#include "webrtc/rtc_base/thread.h"
 #include "webrtc/system_wrappers/include/event_wrapper.h"
 #include "webrtc/system_wrappers/include/trace.h"
 #include "webrtc/test/gtest.h"
@@ -2805,7 +2804,7 @@ TEST(ApmConfiguration, DefaultBehavior) {
   // the config, and that the default initial level is maintained after the
   // config has been applied.
   std::unique_ptr<AudioProcessingImpl> apm(
-      new AudioProcessingImpl(webrtc::Config()));
+      new rtc::RefCountedObject<AudioProcessingImpl>(webrtc::Config()));
   AudioProcessing::Config config;
   EXPECT_FALSE(apm->config_.level_controller.enabled);
   // TODO(peah): Add test for the existence of the level controller object once
@@ -2835,7 +2834,7 @@ TEST(ApmConfiguration, ValidConfigBehavior) {
   // Verify that the initial level can be specified and is retained after the
   // config has been applied.
   std::unique_ptr<AudioProcessingImpl> apm(
-      new AudioProcessingImpl(webrtc::Config()));
+      new rtc::RefCountedObject<AudioProcessingImpl>(webrtc::Config()));
   AudioProcessing::Config config;
   config.level_controller.initial_peak_level_dbfs = -50.f;
   apm->ApplyConfig(config);
@@ -2857,7 +2856,7 @@ TEST(ApmConfiguration, InValidConfigBehavior) {
   // Verify that the config is properly reset when the specified initial peak
   // level is too low.
   std::unique_ptr<AudioProcessingImpl> apm(
-      new AudioProcessingImpl(webrtc::Config()));
+      new rtc::RefCountedObject<AudioProcessingImpl>(webrtc::Config()));
   AudioProcessing::Config config;
   config.level_controller.enabled = true;
   config.level_controller.initial_peak_level_dbfs = -101.f;
@@ -2875,7 +2874,7 @@ TEST(ApmConfiguration, InValidConfigBehavior) {
 
   // Verify that the config is properly reset when the specified initial peak
   // level is too high.
-  apm.reset(new AudioProcessingImpl(webrtc::Config()));
+  apm.reset(new rtc::RefCountedObject<AudioProcessingImpl>(webrtc::Config()));
   config = AudioProcessing::Config();
   config.level_controller.enabled = true;
   config.level_controller.initial_peak_level_dbfs = 1.f;

@@ -11,7 +11,7 @@
 package org.webrtc;
 
 /** Factory for creating VideoEncoders. */
-interface VideoEncoderFactory {
+public interface VideoEncoderFactory {
   /** Creates an encoder for the given video codec. */
   public VideoEncoder createEncoder(VideoCodecInfo info);
 

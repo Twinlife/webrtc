@@ -14,7 +14,6 @@
 #include <utility>
 
 #include "webrtc/api/test/mock_audio_mixer.h"
-#include "webrtc/base/ptr_util.h"
 #include "webrtc/call/audio_state.h"
 #include "webrtc/call/call.h"
 #include "webrtc/call/fake_rtp_transport_controller_send.h"
@@ -23,6 +22,7 @@
 #include "webrtc/modules/audio_mixer/audio_mixer_impl.h"
 #include "webrtc/modules/congestion_controller/include/mock/mock_send_side_congestion_controller.h"
 #include "webrtc/modules/rtp_rtcp/include/rtp_rtcp.h"
+#include "webrtc/rtc_base/ptr_util.h"
 #include "webrtc/test/gtest.h"
 #include "webrtc/test/mock_audio_decoder_factory.h"
 #include "webrtc/test/mock_transport.h"
@@ -37,8 +37,8 @@ struct CallHelper {
     webrtc::AudioState::Config audio_state_config;
     audio_state_config.voice_engine = &voice_engine_;
     audio_state_config.audio_mixer = webrtc::AudioMixerImpl::Create();
+    audio_state_config.audio_processing = webrtc::AudioProcessing::Create();
     EXPECT_CALL(voice_engine_, audio_device_module());
-    EXPECT_CALL(voice_engine_, audio_processing());
     EXPECT_CALL(voice_engine_, audio_transport());
     webrtc::Call::Config config(&event_log_);
     config.audio_state = webrtc::AudioState::Create(audio_state_config);
@@ -453,11 +453,13 @@ TEST(CallTest, RecreatingAudioStreamWithSameSsrcReusesRtpState) {
   };
   ScopedVoiceEngine voice_engine;
 
-  voice_engine.base->Init(&mock_adm);
   AudioState::Config audio_state_config;
   audio_state_config.voice_engine = voice_engine.voe;
   audio_state_config.audio_mixer = mock_mixer;
+  audio_state_config.audio_processing = AudioProcessing::Create();
+  voice_engine.base->Init(&mock_adm, audio_state_config.audio_processing.get());
   auto audio_state = AudioState::Create(audio_state_config);
+
   RtcEventLogNullImpl event_log;
   Call::Config call_config(&event_log);
   call_config.audio_state = audio_state;

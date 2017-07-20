@@ -13,13 +13,6 @@
 #include <algorithm>
 #include <utility>
 
-#include "webrtc/base/arraysize.h"
-#include "webrtc/base/checks.h"
-#include "webrtc/base/logging.h"
-#include "webrtc/base/rate_limiter.h"
-#include "webrtc/base/safe_minmax.h"
-#include "webrtc/base/timeutils.h"
-#include "webrtc/base/trace_event.h"
 #include "webrtc/logging/rtc_event_log/rtc_event_log.h"
 #include "webrtc/modules/remote_bitrate_estimator/test/bwe_test_logging.h"
 #include "webrtc/modules/rtp_rtcp/include/rtp_cvo.h"
@@ -30,6 +23,13 @@
 #include "webrtc/modules/rtp_rtcp/source/rtp_sender_audio.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_sender_video.h"
 #include "webrtc/modules/rtp_rtcp/source/time_util.h"
+#include "webrtc/rtc_base/arraysize.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/logging.h"
+#include "webrtc/rtc_base/rate_limiter.h"
+#include "webrtc/rtc_base/safe_minmax.h"
+#include "webrtc/rtc_base/timeutils.h"
+#include "webrtc/rtc_base/trace_event.h"
 #include "webrtc/system_wrappers/include/field_trial.h"
 
 namespace webrtc {
@@ -736,6 +736,14 @@ bool RTPSender::PrepareAndSendPacket(std::unique_ptr<RtpPacketToSend> packet,
     packet_to_send = packet_rtx.get();
   }
 
+  // Bug webrtc:7859. While FEC is invoked from rtp_sender_video, and not after
+  // the pacer, these modifications of the header below are happening after the
+  // FEC protection packets are calculated. This will corrupt recovered packets
+  // at the same place. It's not an issue for extensions, which are present in
+  // all the packets (their content just may be incorrect on recovered packets).
+  // In case of VideoTimingExtension, since it's present not in every packet,
+  // data after rtp header may be corrupted if these packets are protected by
+  // the FEC.
   int64_t now_ms = clock_->TimeInMilliseconds();
   int64_t diff_ms = now_ms - capture_time_ms;
   packet_to_send->SetExtension<TransmissionOffset>(kTimestampTicksPerMs *
@@ -1279,6 +1287,26 @@ void RTPSender::UpdateRtpOverhead(const RtpPacketToSend& packet) {
     overhead_bytes_per_packet = rtp_overhead_bytes_per_packet_;
   }
   overhead_observer_->OnOverheadChanged(overhead_bytes_per_packet);
+}
+
+int64_t RTPSender::LastTimestampTimeMs() const {
+  rtc::CritScope lock(&send_critsect_);
+  return last_timestamp_time_ms_;
+}
+
+void RTPSender::SendKeepAlive(uint8_t payload_type) {
+  std::unique_ptr<RtpPacketToSend> packet = AllocatePacket();
+  packet->SetPayloadType(payload_type);
+  // Set marker bit and timestamps in the same manner as plain padding packets.
+  packet->SetMarker(false);
+  {
+    rtc::CritScope lock(&send_critsect_);
+    packet->SetTimestamp(last_rtp_timestamp_);
+    packet->set_capture_time_ms(capture_time_ms_);
+  }
+  AssignSequenceNumber(packet.get());
+  SendToNetwork(std::move(packet), StorageType::kDontRetransmit,
+                RtpPacketSender::Priority::kLowPriority);
 }
 
 }  // namespace webrtc

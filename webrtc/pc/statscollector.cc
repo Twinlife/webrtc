@@ -14,10 +14,10 @@
 #include <utility>
 #include <vector>
 
-#include "webrtc/base/base64.h"
-#include "webrtc/base/checks.h"
 #include "webrtc/pc/channel.h"
 #include "webrtc/pc/peerconnection.h"
+#include "webrtc/rtc_base/base64.h"
+#include "webrtc/rtc_base/checks.h"
 
 namespace webrtc {
 namespace {
@@ -146,6 +146,9 @@ void ExtractStats(const cricket::VoiceReceiverInfo& info, StatsReport* report) {
     { StatsReport::kStatsValueNameAccelerateRate, info.accelerate_rate },
     { StatsReport::kStatsValueNamePreemptiveExpandRate,
       info.preemptive_expand_rate },
+    { StatsReport::kStatsValueNameTotalAudioEnergy, info.total_output_energy },
+    { StatsReport::kStatsValueNameTotalSamplesDuration,
+      info.total_output_duration }
   };
 
   const IntForAdd ints[] = {
@@ -195,6 +198,12 @@ void ExtractStats(const cricket::VoiceSenderInfo& info, StatsReport* report) {
       info.aec_quality_min, info.echo_delay_std_ms,
       info.residual_echo_likelihood, info.residual_echo_likelihood_recent_max);
 
+  const FloatForAdd floats[] = {
+    { StatsReport::kStatsValueNameTotalAudioEnergy, info.total_input_energy },
+    { StatsReport::kStatsValueNameTotalSamplesDuration,
+      info.total_input_duration }
+  };
+
   RTC_DCHECK_GE(info.audio_level, 0);
   const IntForAdd ints[] = {
     { StatsReport::kStatsValueNameAudioInputLevel, info.audio_level},
@@ -202,6 +211,10 @@ void ExtractStats(const cricket::VoiceSenderInfo& info, StatsReport* report) {
     { StatsReport::kStatsValueNamePacketsLost, info.packets_lost },
     { StatsReport::kStatsValueNamePacketsSent, info.packets_sent },
   };
+
+  for (const auto& f : floats) {
+    report->AddFloat(f.name, f.value);
+  }
 
   for (const auto& i : ints) {
     if (i.value >= 0) {
@@ -249,6 +262,14 @@ void ExtractStats(const cricket::VideoReceiverInfo& info, StatsReport* report) {
   for (const auto& i : ints)
     report->AddInt(i.name, i.value);
   report->AddString(StatsReport::kStatsValueNameMediaType, "video");
+
+  if (info.timing_frame_info) {
+    report->AddString(StatsReport::kStatsValueNameTimingFrameInfo,
+                      info.timing_frame_info->ToString());
+  }
+
+  report->AddInt64(StatsReport::kStatsValueNameInterframeDelaySumMs,
+                   info.interframe_delay_sum_ms);
 }
 
 void ExtractStats(const cricket::VideoSenderInfo& info, StatsReport* report) {

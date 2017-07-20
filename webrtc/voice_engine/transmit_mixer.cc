@@ -13,9 +13,9 @@
 #include <memory>
 
 #include "webrtc/audio/utility/audio_frame_operations.h"
-#include "webrtc/base/format_macros.h"
-#include "webrtc/base/location.h"
-#include "webrtc/base/logging.h"
+#include "webrtc/rtc_base/format_macros.h"
+#include "webrtc/rtc_base/location.h"
+#include "webrtc/rtc_base/logging.h"
 #include "webrtc/system_wrappers/include/event_wrapper.h"
 #include "webrtc/system_wrappers/include/trace.h"
 #include "webrtc/voice_engine/channel.h"
@@ -247,9 +247,15 @@ void TransmitMixer::GetSendCodecInfo(int* max_sample_rate,
     Channel* channel = it.GetChannel();
     if (channel->Sending()) {
       CodecInst codec;
-      channel->GetSendCodec(codec);
-      *max_sample_rate = std::max(*max_sample_rate, codec.plfreq);
-      *max_channels = std::max(*max_channels, codec.channels);
+      // TODO(ossu): Investigate how this could happen. b/62909493
+      if (channel->GetSendCodec(codec) == 0) {
+        *max_sample_rate = std::max(*max_sample_rate, codec.plfreq);
+        *max_channels = std::max(*max_channels, codec.channels);
+      } else {
+        LOG(LS_WARNING) << "Unable to get send codec for channel "
+                        << channel->ChannelId();
+        RTC_NOTREACHED();
+      }
     }
   }
 }
@@ -308,6 +314,20 @@ TransmitMixer::PrepareDemux(const void* audioSamples,
 
     // --- Measure audio level of speech after all processing.
     _audioLevel.ComputeLevel(_audioFrame);
+
+    // See the description for "totalAudioEnergy" in the WebRTC stats spec
+    // (https://w3c.github.io/webrtc-stats/#dom-rtcmediastreamtrackstats-totalaudioenergy)
+    // for an explanation of these formulas. In short, we need a value that can
+    // be used to compute RMS audio levels over different time intervals, by
+    // taking the difference between the results from two getStats calls. To do
+    // this, the value needs to be of units "squared sample value * time".
+    double additional_energy =
+        static_cast<double>(_audioLevel.LevelFullRange()) / INT16_MAX;
+    additional_energy *= additional_energy;
+    double sample_duration = static_cast<double>(nSamples) / samplesPerSec;
+    totalInputEnergy_ += additional_energy * sample_duration;
+    totalInputDuration_ += sample_duration;
+
     return 0;
 }
 
@@ -849,6 +869,14 @@ int16_t TransmitMixer::AudioLevelFullRange() const
 {
     // Speech + file level [0,32767]
     return _audioLevel.LevelFullRange();
+}
+
+double TransmitMixer::GetTotalInputEnergy() const {
+  return totalInputEnergy_;
+}
+
+double TransmitMixer::GetTotalInputDuration() const {
+  return totalInputDuration_;
 }
 
 bool TransmitMixer::IsRecordingCall()

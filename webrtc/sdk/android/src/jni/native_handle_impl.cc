@@ -12,13 +12,13 @@
 
 #include <memory>
 
-#include "webrtc/base/bind.h"
-#include "webrtc/base/checks.h"
-#include "webrtc/base/keep_ref_until_done.h"
-#include "webrtc/base/logging.h"
-#include "webrtc/base/scoped_ref_ptr.h"
-#include "webrtc/base/timeutils.h"
 #include "webrtc/common_video/include/video_frame_buffer.h"
+#include "webrtc/rtc_base/bind.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/keep_ref_until_done.h"
+#include "webrtc/rtc_base/logging.h"
+#include "webrtc/rtc_base/scoped_ref_ptr.h"
+#include "webrtc/rtc_base/timeutils.h"
 #include "webrtc/sdk/android/src/jni/classreferenceholder.h"
 #include "webrtc/sdk/android/src/jni/jni_helpers.h"
 #include "webrtc/system_wrappers/include/aligned_malloc.h"
@@ -43,12 +43,25 @@ Matrix Matrix::fromAndroidGraphicsMatrix(JNIEnv* jni, jobject j_matrix) {
   jfloat* array_3x3_ptr = jni->GetFloatArrayElements(array_3x3, nullptr);
   Matrix matrix;
   memset(matrix.elem_, 0, sizeof(matrix.elem_));
-  for (int y = 0; y < 3; ++y) {
-    for (int x = 0; x < 3; ++x) {
-      matrix.elem_[y * 4 + x] = array_3x3_ptr[x + y * 3];
-    }
-  }
-  matrix.elem_[3 + 3 * 3] = 1;  // Bottom-right corner should be 1.
+  // The android.graphics.Matrix looks like this:
+  // [x1 y1 w1]
+  // [x2 y2 w2]
+  // [x3 y3 w3]
+  // We want to contruct a matrix that looks like this:
+  // [x1 y1  0 w1]
+  // [x2 y2  0 w2]
+  // [ 0  0  1  0]
+  // [x3 y3  0 w3]
+  matrix.elem_[0 * 4 + 0] = array_3x3_ptr[0 * 3 + 0];
+  matrix.elem_[0 * 4 + 1] = array_3x3_ptr[0 * 3 + 1];
+  matrix.elem_[0 * 4 + 3] = array_3x3_ptr[0 * 3 + 2];
+  matrix.elem_[1 * 4 + 0] = array_3x3_ptr[1 * 3 + 0];
+  matrix.elem_[1 * 4 + 1] = array_3x3_ptr[1 * 3 + 1];
+  matrix.elem_[1 * 4 + 3] = array_3x3_ptr[1 * 3 + 2];
+  matrix.elem_[2 * 4 + 2] = 1;  // Z-scale should be 1.
+  matrix.elem_[3 * 4 + 0] = array_3x3_ptr[2 * 3 + 0];
+  matrix.elem_[3 * 4 + 1] = array_3x3_ptr[2 * 3 + 1];
+  matrix.elem_[3 * 4 + 3] = array_3x3_ptr[2 * 3 + 2];
   return matrix;
 }
 
@@ -189,10 +202,9 @@ rtc::scoped_refptr<webrtc::I420BufferInterface> AndroidTextureBuffer::ToI420() {
   uint8_t* u_data = y_data + height() * stride;
   uint8_t* v_data = u_data + stride/2;
 
-  rtc::scoped_refptr<webrtc::I420BufferInterface> copy =
-      new rtc::RefCountedObject<webrtc::WrappedI420Buffer>(
-          width(), height(), y_data, stride, u_data, stride, v_data, stride,
-          rtc::Bind(&webrtc::AlignedFree, yuv_data.release()));
+  rtc::scoped_refptr<webrtc::I420BufferInterface> copy = webrtc::WrapI420Buffer(
+      width(), height(), y_data, stride, u_data, stride, v_data, stride,
+      rtc::Bind(&webrtc::AlignedFree, yuv_data.release()));
 
   JNIEnv* jni = AttachCurrentThreadIfNeeded();
   ScopedLocalRefFrame local_ref_frame(jni);

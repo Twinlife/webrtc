@@ -10,9 +10,9 @@
 
 #include <string>
 
-#include "webrtc/base/gunit.h"
 #include "webrtc/p2p/base/fakepackettransport.h"
 #include "webrtc/pc/rtptransport.h"
+#include "webrtc/rtc_base/gunit.h"
 
 namespace webrtc {
 
@@ -162,7 +162,7 @@ class SignalPacketReceivedCounter : public sigslot::has_slots<> {
 
  private:
   void OnPacketReceived(bool rtcp,
-                        rtc::CopyOnWriteBuffer&,
+                        rtc::CopyOnWriteBuffer*,
                         const rtc::PacketTime&) {
     if (rtcp) {
       ++rtcp_count_;

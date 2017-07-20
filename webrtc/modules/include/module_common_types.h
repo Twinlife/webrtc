@@ -18,14 +18,14 @@
 #include <limits>
 
 #include "webrtc/api/video/video_rotation.h"
-#include "webrtc/base/constructormagic.h"
-#include "webrtc/base/deprecation.h"
-#include "webrtc/base/optional.h"
-#include "webrtc/base/safe_conversions.h"
 #include "webrtc/common_types.h"
 #include "webrtc/modules/video_coding/codecs/h264/include/h264_globals.h"
 #include "webrtc/modules/video_coding/codecs/vp8/include/vp8_globals.h"
 #include "webrtc/modules/video_coding/codecs/vp9/include/vp9_globals.h"
+#include "webrtc/rtc_base/constructormagic.h"
+#include "webrtc/rtc_base/deprecation.h"
+#include "webrtc/rtc_base/optional.h"
+#include "webrtc/rtc_base/safe_conversions.h"
 #include "webrtc/typedefs.h"
 
 namespace webrtc {
@@ -61,7 +61,7 @@ struct RTPVideoHeader {
 
   VideoContentType content_type;
 
-  VideoTiming video_timing;
+  VideoSendTiming video_timing;
 
   bool is_first_packet_in_frame;
   uint8_t simulcastIdx;  // Index if the simulcast encoder creating
@@ -307,6 +307,11 @@ class AudioFrame {
 
   // Resets all members to their default state.
   void Reset();
+  // Same as Reset(), but leaves mute state unchanged. Muting a frame requires
+  // the buffer to be zeroed on the next call to mutable_data(). Callers
+  // intending to write to the buffer immediately after Reset() can instead use
+  // ResetWithoutMuting() to skip this wasteful zeroing.
+  void ResetWithoutMuting();
 
   void UpdateFrame(int id, uint32_t timestamp, const int16_t* data,
                    size_t samples_per_channel, int sample_rate_hz,
@@ -370,13 +375,17 @@ inline AudioFrame::AudioFrame() {
 }
 
 inline void AudioFrame::Reset() {
+  ResetWithoutMuting();
+  muted_ = true;
+}
+
+inline void AudioFrame::ResetWithoutMuting() {
   id_ = -1;
   // TODO(wu): Zero is a valid value for |timestamp_|. We should initialize
   // to an invalid value, or add a new member to indicate invalidity.
   timestamp_ = 0;
   elapsed_time_ms_ = -1;
   ntp_time_ms_ = -1;
-  muted_ = true;
   samples_per_channel_ = 0;
   sample_rate_hz_ = 0;
   num_channels_ = 0;

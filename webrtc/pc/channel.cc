@@ -8,21 +8,24 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include <algorithm>
+#include <iterator>
 #include <utility>
 
 #include "webrtc/pc/channel.h"
 
 #include "webrtc/api/call/audio_sink.h"
-#include "webrtc/base/bind.h"
-#include "webrtc/base/byteorder.h"
-#include "webrtc/base/checks.h"
-#include "webrtc/base/copyonwritebuffer.h"
-#include "webrtc/base/dscp.h"
-#include "webrtc/base/logging.h"
-#include "webrtc/base/networkroute.h"
-#include "webrtc/base/trace_event.h"
 #include "webrtc/media/base/mediaconstants.h"
 #include "webrtc/media/base/rtputils.h"
+#include "webrtc/rtc_base/bind.h"
+#include "webrtc/rtc_base/byteorder.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/copyonwritebuffer.h"
+#include "webrtc/rtc_base/dscp.h"
+#include "webrtc/rtc_base/logging.h"
+#include "webrtc/rtc_base/networkroute.h"
+#include "webrtc/rtc_base/ptr_util.h"
+#include "webrtc/rtc_base/trace_event.h"
 // Adding 'nogncheck' to disable the gn include headers check to support modular
 // WebRTC build targets.
 #include "webrtc/media/engine/webrtcvoiceengine.h"  // nogncheck
@@ -45,20 +48,6 @@ struct SendPacketMessageData : public rtc::MessageData {
   rtc::CopyOnWriteBuffer packet;
   rtc::PacketOptions options;
 };
-
-#if defined(ENABLE_EXTERNAL_AUTH)
-// Returns the named header extension if found among all extensions,
-// nullptr otherwise.
-const webrtc::RtpExtension* FindHeaderExtension(
-    const std::vector<webrtc::RtpExtension>& extensions,
-    const std::string& uri) {
-  for (const auto& extension : extensions) {
-    if (extension.uri == uri)
-      return &extension;
-  }
-  return nullptr;
-}
-#endif
 
 }  // namespace
 
@@ -130,6 +119,7 @@ static const MediaContentDescription* GetContentDescription(
 template <class Codec>
 void RtpParametersFromMediaDescription(
     const MediaContentDescriptionImpl<Codec>* desc,
+    const RtpHeaderExtensions& extensions,
     RtpParameters<Codec>* params) {
   // TODO(pthatcher): Remove this once we're sure no one will give us
   // a description without codecs (currently a CA_UPDATE with just
@@ -140,7 +130,7 @@ void RtpParametersFromMediaDescription(
   // TODO(pthatcher): See if we really need
   // rtp_header_extensions_set() and remove it if we don't.
   if (desc->rtp_header_extensions_set()) {
-    params->extensions = desc->rtp_header_extensions();
+    params->extensions = extensions;
   }
   params->rtcp.reduced_size = desc->rtcp_reduced_size();
 }
@@ -148,8 +138,9 @@ void RtpParametersFromMediaDescription(
 template <class Codec>
 void RtpSendParametersFromMediaDescription(
     const MediaContentDescriptionImpl<Codec>* desc,
+    const RtpHeaderExtensions& extensions,
     RtpSendParameters<Codec>* send_params) {
-  RtpParametersFromMediaDescription(desc, send_params);
+  RtpParametersFromMediaDescription(desc, extensions, send_params);
   send_params->max_bandwidth_bps = desc->bandwidth();
 }
 
@@ -165,7 +156,7 @@ BaseChannel::BaseChannel(rtc::Thread* worker_thread,
       signaling_thread_(signaling_thread),
       content_name_(content_name),
       rtcp_mux_required_(rtcp_mux_required),
-      rtp_transport_(rtcp_mux_required),
+      rtp_transport_(rtc::MakeUnique<webrtc::RtpTransport>(rtcp_mux_required)),
       srtp_required_(srtp_required),
       media_channel_(media_channel),
       selected_candidate_pair_(nullptr) {
@@ -173,12 +164,12 @@ BaseChannel::BaseChannel(rtc::Thread* worker_thread,
 #if defined(ENABLE_EXTERNAL_AUTH)
   srtp_filter_.EnableExternalAuth();
 #endif
-  rtp_transport_.SignalReadyToSend.connect(
+  rtp_transport_->SignalReadyToSend.connect(
       this, &BaseChannel::OnTransportReadyToSend);
   // TODO(zstein):  RtpTransport::SignalPacketReceived will probably be replaced
   // with a callback interface later so that the demuxer can select which
   // channel to signal.
-  rtp_transport_.SignalPacketReceived.connect(this,
+  rtp_transport_->SignalPacketReceived.connect(this,
                                               &BaseChannel::OnPacketReceived);
   LOG(LS_INFO) << "Created channel for " << content_name;
 }
@@ -206,17 +197,17 @@ void BaseChannel::DisconnectTransportChannels_n() {
   // media_channel may use them from a different thread.
   if (rtp_dtls_transport_) {
     DisconnectFromDtlsTransport(rtp_dtls_transport_);
-  } else if (rtp_transport_.rtp_packet_transport()) {
-    DisconnectFromPacketTransport(rtp_transport_.rtp_packet_transport());
+  } else if (rtp_transport_->rtp_packet_transport()) {
+    DisconnectFromPacketTransport(rtp_transport_->rtp_packet_transport());
   }
   if (rtcp_dtls_transport_) {
     DisconnectFromDtlsTransport(rtcp_dtls_transport_);
-  } else if (rtp_transport_.rtcp_packet_transport()) {
-    DisconnectFromPacketTransport(rtp_transport_.rtcp_packet_transport());
+  } else if (rtp_transport_->rtcp_packet_transport()) {
+    DisconnectFromPacketTransport(rtp_transport_->rtcp_packet_transport());
   }
 
-  rtp_transport_.SetRtpPacketTransport(nullptr);
-  rtp_transport_.SetRtcpPacketTransport(nullptr);
+  rtp_transport_->SetRtpPacketTransport(nullptr);
+  rtp_transport_->SetRtcpPacketTransport(nullptr);
 
   // Clear pending read packets/messages.
   network_thread_->Clear(&invoker_);
@@ -295,7 +286,7 @@ void BaseChannel::SetTransports_n(
     RTC_DCHECK(rtp_dtls_transport == rtp_packet_transport);
     RTC_DCHECK(rtcp_dtls_transport == rtcp_packet_transport);
     // Can't go from non-DTLS to DTLS.
-    RTC_DCHECK(!rtp_transport_.rtp_packet_transport() || rtp_dtls_transport_);
+    RTC_DCHECK(!rtp_transport_->rtp_packet_transport() || rtp_dtls_transport_);
   } else {
     // Can't go from DTLS to non-DTLS.
     RTC_DCHECK(!rtp_dtls_transport_);
@@ -312,7 +303,7 @@ void BaseChannel::SetTransports_n(
   } else {
     debug_name = rtp_packet_transport->debug_name();
   }
-  if (rtp_packet_transport == rtp_transport_.rtp_packet_transport()) {
+  if (rtp_packet_transport == rtp_transport_->rtp_packet_transport()) {
     // Nothing to do if transport isn't changing.
     return;
   }
@@ -352,8 +343,8 @@ void BaseChannel::SetTransport_n(
   DtlsTransportInternal*& old_dtls_transport =
       rtcp ? rtcp_dtls_transport_ : rtp_dtls_transport_;
   rtc::PacketTransportInternal* old_packet_transport =
-      rtcp ? rtp_transport_.rtcp_packet_transport()
-           : rtp_transport_.rtp_packet_transport();
+      rtcp ? rtp_transport_->rtcp_packet_transport()
+           : rtp_transport_->rtp_packet_transport();
 
   if (!old_packet_transport && !new_packet_transport) {
     // Nothing to do.
@@ -368,9 +359,9 @@ void BaseChannel::SetTransport_n(
   }
 
   if (rtcp) {
-    rtp_transport_.SetRtcpPacketTransport(new_packet_transport);
+    rtp_transport_->SetRtcpPacketTransport(new_packet_transport);
   } else {
-    rtp_transport_.SetRtpPacketTransport(new_packet_transport);
+    rtp_transport_->SetRtpPacketTransport(new_packet_transport);
   }
   old_dtls_transport = new_dtls_transport;
 
@@ -559,12 +550,12 @@ int BaseChannel::SetOption_n(SocketType type,
   rtc::PacketTransportInternal* transport = nullptr;
   switch (type) {
     case ST_RTP:
-      transport = rtp_transport_.rtp_packet_transport();
+      transport = rtp_transport_->rtp_packet_transport();
       socket_options_.push_back(
           std::pair<rtc::Socket::Option, int>(opt, value));
       break;
     case ST_RTCP:
-      transport = rtp_transport_.rtcp_packet_transport();
+      transport = rtp_transport_->rtcp_packet_transport();
       rtcp_socket_options_.push_back(
           std::pair<rtc::Socket::Option, int>(opt, value));
       break;
@@ -573,8 +564,8 @@ int BaseChannel::SetOption_n(SocketType type,
 }
 
 void BaseChannel::OnWritableState(rtc::PacketTransportInternal* transport) {
-  RTC_DCHECK(transport == rtp_transport_.rtp_packet_transport() ||
-             transport == rtp_transport_.rtcp_packet_transport());
+  RTC_DCHECK(transport == rtp_transport_->rtp_packet_transport() ||
+             transport == rtp_transport_->rtcp_packet_transport());
   RTC_DCHECK(network_thread_->IsCurrent());
   UpdateWritableState_n();
 }
@@ -653,7 +644,7 @@ bool BaseChannel::SendPacket(bool rtcp,
   // packet before doing anything. (We might get RTCP packets that we don't
   // intend to send.) If we've negotiated RTCP mux, send RTCP over the RTP
   // transport.
-  if (!rtp_transport_.IsWritable(rtcp)) {
+  if (!rtp_transport_->IsWritable(rtcp)) {
     return false;
   }
 
@@ -749,15 +740,15 @@ bool BaseChannel::SendPacket(bool rtcp,
 
   // Bon voyage.
   int flags = (secure() && secure_dtls()) ? PF_SRTP_BYPASS : PF_NORMAL;
-  return rtp_transport_.SendPacket(rtcp, packet, updated_options, flags);
+  return rtp_transport_->SendPacket(rtcp, packet, updated_options, flags);
 }
 
 bool BaseChannel::HandlesPayloadType(int packet_type) const {
-  return rtp_transport_.HandlesPayloadType(packet_type);
+  return rtp_transport_->HandlesPayloadType(packet_type);
 }
 
 void BaseChannel::OnPacketReceived(bool rtcp,
-                                   rtc::CopyOnWriteBuffer& packet,
+                                   rtc::CopyOnWriteBuffer* packet,
                                    const rtc::PacketTime& packet_time) {
   if (!has_received_packet_ && !rtcp) {
     has_received_packet_ = true;
@@ -767,8 +758,8 @@ void BaseChannel::OnPacketReceived(bool rtcp,
   // Unprotect the packet, if needed.
   if (srtp_filter_.IsActive()) {
     TRACE_EVENT0("webrtc", "SRTP Decode");
-    char* data = packet.data<char>();
-    int len = static_cast<int>(packet.size());
+    char* data = packet->data<char>();
+    int len = static_cast<int>(packet->size());
     bool res;
     if (!rtcp) {
       res = srtp_filter_.UnprotectRtp(data, len, &len);
@@ -793,7 +784,7 @@ void BaseChannel::OnPacketReceived(bool rtcp,
       }
     }
 
-    packet.SetSize(len);
+    packet->SetSize(len);
   } else if (srtp_required_) {
     // Our session description indicates that SRTP is required, but we got a
     // packet before our SRTP filter is active. This means either that
@@ -813,7 +804,7 @@ void BaseChannel::OnPacketReceived(bool rtcp,
 
   invoker_.AsyncInvoke<void>(
       RTC_FROM_HERE, worker_thread_,
-      Bind(&BaseChannel::ProcessPacket, this, rtcp, packet, packet_time));
+      Bind(&BaseChannel::ProcessPacket, this, rtcp, *packet, packet_time));
 }
 
 void BaseChannel::ProcessPacket(bool rtcp,
@@ -881,9 +872,9 @@ void BaseChannel::DisableMedia_w() {
 
 void BaseChannel::UpdateWritableState_n() {
   rtc::PacketTransportInternal* rtp_packet_transport =
-      rtp_transport_.rtp_packet_transport();
+      rtp_transport_->rtp_packet_transport();
   rtc::PacketTransportInternal* rtcp_packet_transport =
-      rtp_transport_.rtcp_packet_transport();
+      rtp_transport_->rtcp_packet_transport();
   if (rtp_packet_transport && rtp_packet_transport->writable() &&
       (!rtcp_packet_transport || rtcp_packet_transport->writable())) {
     ChannelWritable_n();
@@ -998,16 +989,30 @@ bool BaseChannel::SetupDtlsSrtp_n(bool rtcp) {
     recv_key = &server_write_key;
   }
 
-  if (rtcp) {
-    ret = srtp_filter_.SetRtcpParams(selected_crypto_suite, &(*send_key)[0],
-                                     static_cast<int>(send_key->size()),
-                                     selected_crypto_suite, &(*recv_key)[0],
-                                     static_cast<int>(recv_key->size()));
+  if (!srtp_filter_.IsActive()) {
+    if (rtcp) {
+      ret = srtp_filter_.SetRtcpParams(selected_crypto_suite, &(*send_key)[0],
+                                       static_cast<int>(send_key->size()),
+                                       selected_crypto_suite, &(*recv_key)[0],
+                                       static_cast<int>(recv_key->size()));
+    } else {
+      ret = srtp_filter_.SetRtpParams(selected_crypto_suite, &(*send_key)[0],
+                                      static_cast<int>(send_key->size()),
+                                      selected_crypto_suite, &(*recv_key)[0],
+                                      static_cast<int>(recv_key->size()));
+    }
   } else {
-    ret = srtp_filter_.SetRtpParams(selected_crypto_suite, &(*send_key)[0],
-                                    static_cast<int>(send_key->size()),
-                                    selected_crypto_suite, &(*recv_key)[0],
-                                    static_cast<int>(recv_key->size()));
+    if (rtcp) {
+      // RTCP doesn't need to be updated because UpdateRtpParams is only used
+      // to update the set of encrypted RTP header extension IDs.
+      ret = true;
+    } else {
+      ret = srtp_filter_.UpdateRtpParams(
+          selected_crypto_suite,
+          &(*send_key)[0], static_cast<int>(send_key->size()),
+          selected_crypto_suite,
+          &(*recv_key)[0], static_cast<int>(recv_key->size()));
+    }
   }
 
   if (!ret) {
@@ -1055,26 +1060,39 @@ bool BaseChannel::SetRtpTransportParameters(
     const MediaContentDescription* content,
     ContentAction action,
     ContentSource src,
+    const RtpHeaderExtensions& extensions,
     std::string* error_desc) {
   if (action == CA_UPDATE) {
     // These parameters never get changed by a CA_UDPATE.
     return true;
   }
 
+  std::vector<int> encrypted_extension_ids;
+  for (const webrtc::RtpExtension& extension : extensions) {
+    if (extension.encrypt) {
+      LOG(LS_INFO) << "Using " << (src == CS_LOCAL ? "local" : "remote")
+          << " encrypted extension: " << extension.ToString();
+      encrypted_extension_ids.push_back(extension.id);
+    }
+  }
+
   // Cache srtp_required_ for belt and suspenders check on SendPacket
   return network_thread_->Invoke<bool>(
       RTC_FROM_HERE, Bind(&BaseChannel::SetRtpTransportParameters_n, this,
-                          content, action, src, error_desc));
+                          content, action, src, encrypted_extension_ids,
+                          error_desc));
 }
 
 bool BaseChannel::SetRtpTransportParameters_n(
     const MediaContentDescription* content,
     ContentAction action,
     ContentSource src,
+    const std::vector<int>& encrypted_extension_ids,
     std::string* error_desc) {
   RTC_DCHECK(network_thread_->IsCurrent());
 
-  if (!SetSrtp_n(content->cryptos(), action, src, error_desc)) {
+  if (!SetSrtp_n(content->cryptos(), action, src, encrypted_extension_ids,
+      error_desc)) {
     return false;
   }
 
@@ -1101,6 +1119,7 @@ bool BaseChannel::CheckSrtpConfig_n(const std::vector<CryptoParams>& cryptos,
 bool BaseChannel::SetSrtp_n(const std::vector<CryptoParams>& cryptos,
                             ContentAction action,
                             ContentSource src,
+                            const std::vector<int>& encrypted_extension_ids,
                             std::string* error_desc) {
   TRACE_EVENT0("webrtc", "BaseChannel::SetSrtp_w");
   if (action == CA_UPDATE) {
@@ -1113,6 +1132,7 @@ bool BaseChannel::SetSrtp_n(const std::vector<CryptoParams>& cryptos,
   if (!ret) {
     return false;
   }
+  srtp_filter_.SetEncryptedHeaderExtensionIds(src, encrypted_extension_ids);
   switch (action) {
     case CA_OFFER:
       // If DTLS is already active on the channel, we could be renegotiating
@@ -1137,6 +1157,14 @@ bool BaseChannel::SetSrtp_n(const std::vector<CryptoParams>& cryptos,
       break;
     default:
       break;
+  }
+  // Only update SRTP filter if using DTLS. SDES is handled internally
+  // by the SRTP filter.
+  // TODO(jbauch): Only update if encrypted extension ids have changed.
+  if (ret && dtls_keyed_ && rtp_dtls_transport_ &&
+      rtp_dtls_transport_->dtls_state() == DTLS_TRANSPORT_CONNECTED) {
+    bool rtcp = false;
+    ret = SetupDtlsSrtp_n(rtcp);
   }
   if (!ret) {
     SafeSetError("Failed to setup SRTP filter.", error_desc);
@@ -1175,12 +1203,12 @@ bool BaseChannel::SetRtcpMux_n(bool enable,
         // the RTCP transport.
         std::string debug_name =
             transport_name_.empty()
-                ? rtp_transport_.rtp_packet_transport()->debug_name()
+                ? rtp_transport_->rtp_packet_transport()->debug_name()
                 : transport_name_;
         ;
         LOG(LS_INFO) << "Enabling rtcp-mux for " << content_name()
                      << "; no longer need RTCP transport for " << debug_name;
-        if (rtp_transport_.rtcp_packet_transport()) {
+        if (rtp_transport_->rtcp_packet_transport()) {
           SetTransport_n(true, nullptr, nullptr);
           SignalRtcpMuxFullyActive(transport_name_);
         }
@@ -1198,13 +1226,13 @@ bool BaseChannel::SetRtcpMux_n(bool enable,
     SafeSetError("Failed to setup RTCP mux filter.", error_desc);
     return false;
   }
-  rtp_transport_.SetRtcpMuxEnabled(rtcp_mux_filter_.IsActive());
+  rtp_transport_->SetRtcpMuxEnabled(rtcp_mux_filter_.IsActive());
   // |rtcp_mux_filter_| can be active if |action| is CA_PRANSWER or
   // CA_ANSWER, but we only want to tear down the RTCP transport if we received
   // a final answer.
   if (rtcp_mux_filter_.IsActive()) {
     // If the RTP transport is already writable, then so are we.
-    if (rtp_transport_.rtp_packet_transport()->writable()) {
+    if (rtp_transport_->rtp_packet_transport()->writable()) {
       ChannelWritable_n();
     }
   }
@@ -1369,6 +1397,23 @@ bool BaseChannel::UpdateRemoteStreams_w(
   return ret;
 }
 
+RtpHeaderExtensions BaseChannel::GetFilteredRtpHeaderExtensions(
+    const RtpHeaderExtensions& extensions) {
+  if (!rtp_dtls_transport_ ||
+      !rtp_dtls_transport_->crypto_options()
+          .enable_encrypted_rtp_header_extensions) {
+    RtpHeaderExtensions filtered;
+    auto pred = [](const webrtc::RtpExtension& extension) {
+        return !extension.encrypt;
+    };
+    std::copy_if(extensions.begin(), extensions.end(),
+        std::back_inserter(filtered), pred);
+    return filtered;
+  }
+
+  return webrtc::RtpExtension::FilterDuplicateNonEncrypted(extensions);
+}
+
 void BaseChannel::MaybeCacheRtpAbsSendTimeHeaderExtension_w(
     const std::vector<webrtc::RtpExtension>& extensions) {
 // Absolute Send Time extension id is used only with external auth,
@@ -1376,7 +1421,8 @@ void BaseChannel::MaybeCacheRtpAbsSendTimeHeaderExtension_w(
 // something that is not used.
 #if defined(ENABLE_EXTERNAL_AUTH)
   const webrtc::RtpExtension* send_time_extension =
-      FindHeaderExtension(extensions, webrtc::RtpExtension::kAbsSendTimeUri);
+      webrtc::RtpExtension::FindHeaderExtensionByUri(
+          extensions, webrtc::RtpExtension::kAbsSendTimeUri);
   int rtp_abs_sendtime_extn_id =
       send_time_extension ? send_time_extension->id : -1;
   invoker_.AsyncInvoke<void>(
@@ -1412,7 +1458,7 @@ void BaseChannel::OnMessage(rtc::Message *pmsg) {
 }
 
 void BaseChannel::AddHandledPayloadType(int payload_type) {
-  rtp_transport_.AddHandledPayloadType(payload_type);
+  rtp_transport_->AddHandledPayloadType(payload_type);
 }
 
 void BaseChannel::FlushRtcpMessages_n() {
@@ -1632,7 +1678,7 @@ void VoiceChannel::GetActiveStreams_w(AudioInfo::StreamList* actives) {
 }
 
 void VoiceChannel::OnPacketReceived(bool rtcp,
-                                    rtc::CopyOnWriteBuffer& packet,
+                                    rtc::CopyOnWriteBuffer* packet,
                                     const rtc::PacketTime& packet_time) {
   BaseChannel::OnPacketReceived(rtcp, packet, packet_time);
   // Set a flag when we've received an RTP packet. If we're waiting for early
@@ -1724,12 +1770,16 @@ bool VoiceChannel::SetLocalContent_w(const MediaContentDescription* content,
     return false;
   }
 
-  if (!SetRtpTransportParameters(content, action, CS_LOCAL, error_desc)) {
+  RtpHeaderExtensions rtp_header_extensions =
+      GetFilteredRtpHeaderExtensions(audio->rtp_header_extensions());
+
+  if (!SetRtpTransportParameters(content, action, CS_LOCAL,
+      rtp_header_extensions, error_desc)) {
     return false;
   }
 
   AudioRecvParameters recv_params = last_recv_params_;
-  RtpParametersFromMediaDescription(audio, &recv_params);
+  RtpParametersFromMediaDescription(audio, rtp_header_extensions, &recv_params);
   if (!media_channel()->SetRecvParameters(recv_params)) {
     SafeSetError("Failed to set local audio description recv parameters.",
                  error_desc);
@@ -1769,12 +1819,17 @@ bool VoiceChannel::SetRemoteContent_w(const MediaContentDescription* content,
     return false;
   }
 
-  if (!SetRtpTransportParameters(content, action, CS_REMOTE, error_desc)) {
+  RtpHeaderExtensions rtp_header_extensions =
+      GetFilteredRtpHeaderExtensions(audio->rtp_header_extensions());
+
+  if (!SetRtpTransportParameters(content, action, CS_REMOTE,
+      rtp_header_extensions, error_desc)) {
     return false;
   }
 
   AudioSendParameters send_params = last_send_params_;
-  RtpSendParametersFromMediaDescription(audio, &send_params);
+  RtpSendParametersFromMediaDescription(audio, rtp_header_extensions,
+      &send_params);
   if (audio->agc_minus_10db()) {
     send_params.options.adjust_agc_delta = rtc::Optional<int>(kAgcMinus10db);
   }
@@ -1797,7 +1852,7 @@ bool VoiceChannel::SetRemoteContent_w(const MediaContentDescription* content,
   }
 
   if (audio->rtp_header_extensions_set()) {
-    MaybeCacheRtpAbsSendTimeHeaderExtension_w(audio->rtp_header_extensions());
+    MaybeCacheRtpAbsSendTimeHeaderExtension_w(rtp_header_extensions);
   }
 
   set_remote_content_direction(content->direction());
@@ -2002,12 +2057,16 @@ bool VideoChannel::SetLocalContent_w(const MediaContentDescription* content,
     return false;
   }
 
-  if (!SetRtpTransportParameters(content, action, CS_LOCAL, error_desc)) {
+  RtpHeaderExtensions rtp_header_extensions =
+      GetFilteredRtpHeaderExtensions(video->rtp_header_extensions());
+
+  if (!SetRtpTransportParameters(content, action, CS_LOCAL,
+      rtp_header_extensions, error_desc)) {
     return false;
   }
 
   VideoRecvParameters recv_params = last_recv_params_;
-  RtpParametersFromMediaDescription(video, &recv_params);
+  RtpParametersFromMediaDescription(video, rtp_header_extensions, &recv_params);
   if (!media_channel()->SetRecvParameters(recv_params)) {
     SafeSetError("Failed to set local video description recv parameters.",
                  error_desc);
@@ -2047,12 +2106,17 @@ bool VideoChannel::SetRemoteContent_w(const MediaContentDescription* content,
     return false;
   }
 
-  if (!SetRtpTransportParameters(content, action, CS_REMOTE, error_desc)) {
+  RtpHeaderExtensions rtp_header_extensions =
+      GetFilteredRtpHeaderExtensions(video->rtp_header_extensions());
+
+  if (!SetRtpTransportParameters(content, action, CS_REMOTE,
+      rtp_header_extensions, error_desc)) {
     return false;
   }
 
   VideoSendParameters send_params = last_send_params_;
-  RtpSendParametersFromMediaDescription(video, &send_params);
+  RtpSendParametersFromMediaDescription(video, rtp_header_extensions,
+      &send_params);
   if (video->conference_mode()) {
     send_params.conference_mode = true;
   }
@@ -2076,7 +2140,7 @@ bool VideoChannel::SetRemoteContent_w(const MediaContentDescription* content,
   }
 
   if (video->rtp_header_extensions_set()) {
-    MaybeCacheRtpAbsSendTimeHeaderExtension_w(video->rtp_header_extensions());
+    MaybeCacheRtpAbsSendTimeHeaderExtension_w(rtp_header_extensions);
   }
 
   set_remote_content_direction(content->direction());
@@ -2197,12 +2261,16 @@ bool RtpDataChannel::SetLocalContent_w(const MediaContentDescription* content,
     return false;
   }
 
-  if (!SetRtpTransportParameters(content, action, CS_LOCAL, error_desc)) {
+  RtpHeaderExtensions rtp_header_extensions =
+      GetFilteredRtpHeaderExtensions(data->rtp_header_extensions());
+
+  if (!SetRtpTransportParameters(content, action, CS_LOCAL,
+      rtp_header_extensions, error_desc)) {
     return false;
   }
 
   DataRecvParameters recv_params = last_recv_params_;
-  RtpParametersFromMediaDescription(data, &recv_params);
+  RtpParametersFromMediaDescription(data, rtp_header_extensions, &recv_params);
   if (!media_channel()->SetRecvParameters(recv_params)) {
     SafeSetError("Failed to set remote data description recv parameters.",
                  error_desc);
@@ -2251,13 +2319,18 @@ bool RtpDataChannel::SetRemoteContent_w(const MediaContentDescription* content,
     return false;
   }
 
+  RtpHeaderExtensions rtp_header_extensions =
+      GetFilteredRtpHeaderExtensions(data->rtp_header_extensions());
+
   LOG(LS_INFO) << "Setting remote data description";
-  if (!SetRtpTransportParameters(content, action, CS_REMOTE, error_desc)) {
+  if (!SetRtpTransportParameters(content, action, CS_REMOTE,
+      rtp_header_extensions, error_desc)) {
     return false;
   }
 
   DataSendParameters send_params = last_send_params_;
-  RtpSendParametersFromMediaDescription<DataCodec>(data, &send_params);
+  RtpSendParametersFromMediaDescription<DataCodec>(data, rtp_header_extensions,
+      &send_params);
   if (!media_channel()->SetSendParameters(send_params)) {
     SafeSetError("Failed to set remote data description send parameters.",
                  error_desc);

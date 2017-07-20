@@ -13,13 +13,16 @@
 #include <memory>
 #include <string>
 
-#include "webrtc/base/arraysize.h"
-#include "webrtc/base/checks.h"
-#include "webrtc/base/ptr_util.h"
+#include "webrtc/call/rsid_resolution_observer.h"
 #include "webrtc/call/rtp_packet_sink_interface.h"
+#include "webrtc/common_types.h"
 #include "webrtc/modules/rtp_rtcp/include/rtp_header_extension_map.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_header_extensions.h"
 #include "webrtc/modules/rtp_rtcp/source/rtp_packet_received.h"
+#include "webrtc/rtc_base/arraysize.h"
+#include "webrtc/rtc_base/basictypes.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/ptr_util.h"
 #include "webrtc/test/gmock.h"
 #include "webrtc/test/gtest.h"
 
@@ -35,6 +38,11 @@ using ::testing::NiceMock;
 class MockRtpPacketSink : public RtpPacketSinkInterface {
  public:
   MOCK_METHOD1(OnRtpPacket, void(const RtpPacketReceived&));
+};
+
+class MockRsidResolutionObserver : public RsidResolutionObserver {
+ public:
+  MOCK_METHOD2(OnRsidResolved, void(const std::string& rsid, uint32_t ssrc));
 };
 
 MATCHER_P(SamePacketAs, other, "") {
@@ -119,20 +127,18 @@ TEST(RtpDemuxerTest, OnRtpPacketCalledOnCorrectSinkByRsid) {
 TEST(RtpDemuxerTest, PacketsDeliveredInRightOrder) {
   RtpDemuxer demuxer;
 
-  constexpr uint32_t ssrcs[] = {101, 202, 303};
-  MockRtpPacketSink sinks[arraysize(ssrcs)];
-  for (size_t i = 0; i < arraysize(ssrcs); i++) {
-    demuxer.AddSink(ssrcs[i], &sinks[i]);
-  }
+  constexpr uint32_t ssrc = 101;
+  MockRtpPacketSink sink;
+  demuxer.AddSink(ssrc, &sink);
 
   std::unique_ptr<RtpPacketReceived> packets[5];
   for (size_t i = 0; i < arraysize(packets); i++) {
-    packets[i] = CreateRtpPacketReceived(ssrcs[0], i);
+    packets[i] = CreateRtpPacketReceived(ssrc, i);
   }
 
   InSequence sequence;
   for (const auto& packet : packets) {
-    EXPECT_CALL(sinks[0], OnRtpPacket(SamePacketAs(*packet))).Times(1);
+    EXPECT_CALL(sink, OnRtpPacket(SamePacketAs(*packet))).Times(1);
   }
 
   for (const auto& packet : packets) {
@@ -140,9 +146,7 @@ TEST(RtpDemuxerTest, PacketsDeliveredInRightOrder) {
   }
 
   // Test tear-down
-  for (const auto& sink : sinks) {
-    demuxer.RemoveSink(&sink);
-  }
+  demuxer.RemoveSink(&sink);
 }
 
 TEST(RtpDemuxerTest, MultipleSinksMappedToSameSsrc) {
@@ -377,18 +381,22 @@ TEST(RtpDemuxerTest, FirstSsrcAssociatedWithAnRsidIsNotForgotten) {
   EXPECT_CALL(sink_a, OnRtpPacket(SamePacketAs(*packet_a))).Times(1);
   EXPECT_TRUE(demuxer.OnRtpPacket(*packet_a));
 
-  // Second, a packet with |rsid_b| is received. Its RSID is ignored.
+  // Second, a packet with |rsid_b| is received. We guarantee that |sink_a|
+  // would receive it, and make no guarantees about |sink_b|.
   auto packet_b = CreateRtpPacketReceivedWithRsid(rsid_b, shared_ssrc, 20);
   EXPECT_CALL(sink_a, OnRtpPacket(SamePacketAs(*packet_b))).Times(1);
+  EXPECT_CALL(sink_b, OnRtpPacket(SamePacketAs(*packet_b))).Times(AtLeast(0));
   EXPECT_TRUE(demuxer.OnRtpPacket(*packet_b));
 
   // Known edge-case; adding a new RSID association makes us re-examine all
   // SSRCs. |sink_b| may or may not be associated with the SSRC now; we make
   // no promises on that. We do however still guarantee that |sink_a| still
   // receives the new packets.
-  MockRtpPacketSink sink_ignored;
-  demuxer.AddSink("ignored", &sink_ignored);
-  auto packet_c = CreateRtpPacketReceivedWithRsid(rsid_b, shared_ssrc, 30);
+  MockRtpPacketSink sink_c;
+  const std::string rsid_c = "c";
+  constexpr uint32_t some_other_ssrc = shared_ssrc + 1;
+  demuxer.AddSink(some_other_ssrc, &sink_c);
+  auto packet_c = CreateRtpPacketReceivedWithRsid(rsid_c, shared_ssrc, 30);
   EXPECT_CALL(sink_a, OnRtpPacket(SamePacketAs(*packet_c))).Times(1);
   EXPECT_CALL(sink_b, OnRtpPacket(SamePacketAs(*packet_c))).Times(AtLeast(0));
   EXPECT_TRUE(demuxer.OnRtpPacket(*packet_c));
@@ -396,7 +404,7 @@ TEST(RtpDemuxerTest, FirstSsrcAssociatedWithAnRsidIsNotForgotten) {
   // Test tear-down
   demuxer.RemoveSink(&sink_a);
   demuxer.RemoveSink(&sink_b);
-  demuxer.RemoveSink(&sink_ignored);
+  demuxer.RemoveSink(&sink_c);
 }
 
 TEST(RtpDemuxerTest, MultipleRsidsOnSameSink) {
@@ -422,6 +430,31 @@ TEST(RtpDemuxerTest, MultipleRsidsOnSameSink) {
 
   // Test tear-down
   demuxer.RemoveSink(&sink);
+}
+
+TEST(RtpDemuxerTest, RsidUsedByMultipleSinks) {
+  RtpDemuxer demuxer;
+
+  MockRtpPacketSink sinks[3];
+  const std::string shared_rsid = "a";
+
+  for (MockRtpPacketSink& sink : sinks) {
+    demuxer.AddSink(shared_rsid, &sink);
+  }
+
+  constexpr uint32_t shared_ssrc = 888;
+  auto packet = CreateRtpPacketReceivedWithRsid(shared_rsid, shared_ssrc);
+
+  for (auto& sink : sinks) {
+    EXPECT_CALL(sink, OnRtpPacket(SamePacketAs(*packet))).Times(1);
+  }
+
+  EXPECT_TRUE(demuxer.OnRtpPacket(*packet));
+
+  // Test tear-down
+  for (MockRtpPacketSink& sink : sinks) {
+    demuxer.RemoveSink(&sink);
+  }
 }
 
 TEST(RtpDemuxerTest, SinkWithBothRsidAndSsrcAssociations) {
@@ -468,6 +501,60 @@ TEST(RtpDemuxerTest, AssociatingByRsidAndBySsrcCannotTriggerDoubleCall) {
   demuxer.RemoveSink(&sink);
 }
 
+TEST(RtpDemuxerTest, RsidObserversInformedOfResolutions) {
+  RtpDemuxer demuxer;
+
+  constexpr uint32_t ssrc = 111;
+  const std::string rsid = "a";
+
+  MockRsidResolutionObserver rsid_resolution_observers[3];
+  for (auto& observer : rsid_resolution_observers) {
+    demuxer.RegisterRsidResolutionObserver(&observer);
+    EXPECT_CALL(observer, OnRsidResolved(rsid, ssrc)).Times(1);
+  }
+
+  // The expected calls to OnRsidResolved() will be triggered by this.
+  demuxer.OnRtpPacket(*CreateRtpPacketReceivedWithRsid(rsid, ssrc));
+
+  // Test tear-down
+  for (auto& observer : rsid_resolution_observers) {
+    demuxer.DeregisterRsidResolutionObserver(&observer);
+  }
+}
+
+TEST(RtpDemuxerTest, DeregisteredRsidObserversNotInformedOfResolutions) {
+  RtpDemuxer demuxer;
+
+  constexpr uint32_t ssrc = 111;
+  const std::string rsid = "a";
+  NiceMock<MockRtpPacketSink> sink;
+  demuxer.AddSink(rsid, &sink);
+
+  // Register several, then deregister only one, to show that not all of the
+  // observers had been forgotten when one was removed.
+  MockRsidResolutionObserver observer_1;
+  MockRsidResolutionObserver observer_2_removed;
+  MockRsidResolutionObserver observer_3;
+
+  demuxer.RegisterRsidResolutionObserver(&observer_1);
+  demuxer.RegisterRsidResolutionObserver(&observer_2_removed);
+  demuxer.RegisterRsidResolutionObserver(&observer_3);
+
+  demuxer.DeregisterRsidResolutionObserver(&observer_2_removed);
+
+  EXPECT_CALL(observer_1, OnRsidResolved(rsid, ssrc)).Times(1);
+  EXPECT_CALL(observer_2_removed, OnRsidResolved(_, _)).Times(0);
+  EXPECT_CALL(observer_3, OnRsidResolved(rsid, ssrc)).Times(1);
+
+  // The expected calls to OnRsidResolved() will be triggered by this.
+  demuxer.OnRtpPacket(*CreateRtpPacketReceivedWithRsid(rsid, ssrc));
+
+  // Test tear-down
+  demuxer.RemoveSink(&sink);
+  demuxer.DeregisterRsidResolutionObserver(&observer_1);
+  demuxer.DeregisterRsidResolutionObserver(&observer_3);
+}
+
 #if RTC_DCHECK_IS_ON && GTEST_HAS_DEATH_TEST && !defined(WEBRTC_ANDROID)
 TEST(RtpDemuxerTest, RsidMustBeNonEmpty) {
   RtpDemuxer demuxer;
@@ -493,7 +580,25 @@ TEST(RtpDemuxerTest, RepeatedRsidAssociationsDisallowed) {
   MockRtpPacketSink sink;
   demuxer.AddSink("a", &sink);
   EXPECT_DEATH(demuxer.AddSink("a", &sink), "");
+  demuxer.RemoveSink(&sink);
 }
+
+TEST(RtpDemuxerTest,
+     DoubleRegisterationOfNeverRegisteredRsidResolutionObserverDisallowed) {
+  RtpDemuxer demuxer;
+  MockRsidResolutionObserver observer;
+  demuxer.RegisterRsidResolutionObserver(&observer);
+  EXPECT_DEATH(demuxer.RegisterRsidResolutionObserver(&observer), "");
+  demuxer.DeregisterRsidResolutionObserver(&observer);
+}
+
+TEST(RtpDemuxerTest,
+     DregisterationOfNeverRegisteredRsidResolutionObserverDisallowed) {
+  RtpDemuxer demuxer;
+  MockRsidResolutionObserver observer;
+  EXPECT_DEATH(demuxer.DeregisterRsidResolutionObserver(&observer), "");
+}
+
 #endif
 
 }  // namespace

@@ -10,8 +10,8 @@
 
 #include "webrtc/modules/rtp_rtcp/include/flexfec_receiver.h"
 
-#include "webrtc/base/logging.h"
-#include "webrtc/base/scoped_ref_ptr.h"
+#include "webrtc/rtc_base/logging.h"
+#include "webrtc/rtc_base/scoped_ref_ptr.h"
 
 namespace webrtc {
 
@@ -34,7 +34,8 @@ FlexfecReceiver::FlexfecReceiver(
     RecoveredPacketReceiver* recovered_packet_receiver)
     : ssrc_(ssrc),
       protected_media_ssrc_(protected_media_ssrc),
-      erasure_code_(ForwardErrorCorrection::CreateFlexfec()),
+      erasure_code_(
+          ForwardErrorCorrection::CreateFlexfec(ssrc, protected_media_ssrc)),
       recovered_packet_receiver_(recovered_packet_receiver),
       clock_(Clock::GetRealTimeClock()),
       last_recovered_packet_ms_(-1) {

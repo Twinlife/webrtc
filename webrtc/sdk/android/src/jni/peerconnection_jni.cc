@@ -48,20 +48,20 @@
 #include "webrtc/api/rtpreceiverinterface.h"
 #include "webrtc/api/rtpsenderinterface.h"
 #include "webrtc/api/videosourceproxy.h"
-#include "webrtc/base/bind.h"
-#include "webrtc/base/checks.h"
-#include "webrtc/base/event_tracer.h"
-#include "webrtc/base/logging.h"
-#include "webrtc/base/logsinks.h"
-#include "webrtc/base/messagequeue.h"
-#include "webrtc/base/networkmonitor.h"
-#include "webrtc/base/rtccertificategenerator.h"
-#include "webrtc/base/ssladapter.h"
-#include "webrtc/base/stringutils.h"
 #include "webrtc/media/base/mediaengine.h"
 #include "webrtc/media/base/videocapturer.h"
 #include "webrtc/modules/utility/include/jvm_android.h"
 #include "webrtc/pc/webrtcsdp.h"
+#include "webrtc/rtc_base/bind.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/event_tracer.h"
+#include "webrtc/rtc_base/logging.h"
+#include "webrtc/rtc_base/logsinks.h"
+#include "webrtc/rtc_base/messagequeue.h"
+#include "webrtc/rtc_base/networkmonitor.h"
+#include "webrtc/rtc_base/rtccertificategenerator.h"
+#include "webrtc/rtc_base/ssladapter.h"
+#include "webrtc/rtc_base/stringutils.h"
 #include "webrtc/sdk/android/src/jni/androidnetworkmonitor_jni.h"
 // Adding 'nogncheck' to disable the gn include headers check.
 // We don't want to always depend on audio and video related targets.
@@ -1121,13 +1121,17 @@ PeerConnectionFactoryInterface::Options ParseOptionsFromJava(JNIEnv* jni,
   return native_options;
 }
 
-JOW(jlong, PeerConnectionFactory_nativeCreatePeerConnectionFactory)(
-    JNIEnv* jni, jclass, jobject joptions) {
+JOW(jlong, PeerConnectionFactory_nativeCreatePeerConnectionFactory)
+(JNIEnv* jni,
+ jclass,
+ jobject joptions,
+ jobject jencoder_factory,
+ jobject jdecoder_factory) {
   // talk/ assumes pretty widely that the current Thread is ThreadManager'd, but
   // ThreadManager only WrapCurrentThread()s the thread where it is first
   // created.  Since the semantics around when auto-wrapping happens in
-  // webrtc/base/ are convoluted, we simply wrap here to avoid having to think
-  // about ramifications of auto-wrapping there.
+  // webrtc/rtc_base/ are convoluted, we simply wrap here to avoid having to
+  // think about ramifications of auto-wrapping there.
   rtc::ThreadManager::Instance()->WrapCurrentThread();
   webrtc::Trace::CreateTrace();
 
@@ -1157,8 +1161,8 @@ JOW(jlong, PeerConnectionFactory_nativeCreatePeerConnectionFactory)(
   }
 
   if (video_hw_acceleration_enabled) {
-    video_encoder_factory = CreateVideoEncoderFactory();
-    video_decoder_factory = CreateVideoDecoderFactory();
+    video_encoder_factory = CreateVideoEncoderFactory(jni, jencoder_factory);
+    video_decoder_factory = CreateVideoDecoderFactory(jni, jdecoder_factory);
   }
   // Do not create network_monitor_factory only if the options are
   // provided and disable_network_monitor therein is set to true.
@@ -1533,6 +1537,16 @@ static void JavaRTCConfigurationToJsepRTCConfiguration(
   jfieldID j_disable_ipv6_on_wifi_id =
       GetFieldID(jni, j_rtc_config_class, "disableIPv6OnWifi", "Z");
 
+  jfieldID j_ice_regather_interval_range_id =
+      GetFieldID(jni, j_rtc_config_class, "iceRegatherIntervalRange",
+                 "Lorg/webrtc/PeerConnection$IntervalRange;");
+  jclass j_interval_range_class =
+      jni->FindClass("org/webrtc/PeerConnection$IntervalRange");
+  jmethodID get_min_id =
+      GetMethodID(jni, j_interval_range_class, "getMin", "()I");
+  jmethodID get_max_id =
+      GetMethodID(jni, j_interval_range_class, "getMax", "()I");
+
   rtc_config->type =
       JavaIceTransportsTypeToNativeType(jni, j_ice_transports_type);
   rtc_config->bundle_policy =
@@ -1571,6 +1585,13 @@ static void JavaRTCConfigurationToJsepRTCConfiguration(
   }
   rtc_config->disable_ipv6_on_wifi =
       GetBooleanField(jni, j_rtc_config, j_disable_ipv6_on_wifi_id);
+  jobject j_ice_regather_interval_range = GetNullableObjectField(
+      jni, j_rtc_config, j_ice_regather_interval_range_id);
+  if (!IsNull(jni, j_ice_regather_interval_range)) {
+    int min = jni->CallIntMethod(j_ice_regather_interval_range, get_min_id);
+    int max = jni->CallIntMethod(j_ice_regather_interval_range, get_max_id);
+    rtc_config->ice_regather_interval_range.emplace(min, max);
+  }
 }
 
 JOW(jlong, PeerConnectionFactory_nativeCreatePeerConnection)(

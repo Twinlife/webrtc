@@ -13,7 +13,6 @@
 
 #include <stddef.h>
 #include <string.h>
-
 #include <ostream>
 #include <string>
 #include <vector>
@@ -21,9 +20,9 @@
 #include "webrtc/api/video/video_content_type.h"
 #include "webrtc/api/video/video_rotation.h"
 #include "webrtc/api/video/video_timing.h"
-#include "webrtc/base/array_view.h"
-#include "webrtc/base/checks.h"
-#include "webrtc/base/optional.h"
+#include "webrtc/rtc_base/array_view.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/optional.h"
 #include "webrtc/typedefs.h"
 
 #if defined(_MSC_VER)
@@ -646,6 +645,10 @@ class BitrateAllocation {
     return !(*this == other);
   }
 
+  // Expensive, please use only in tests.
+  std::string ToString() const;
+  std::ostream& operator<<(std::ostream& os) const;
+
  private:
   uint32_t sum_;
   uint32_t bitrates_[kMaxSpatialLayers][kMaxTemporalStreams];
@@ -778,7 +781,7 @@ struct RTPHeaderExtension {
   VideoContentType videoContentType;
 
   bool has_video_timing;
-  VideoTiming video_timing;
+  VideoSendTiming video_timing;
 
   PlayoutDelay playout_delay = {-1, -1};
 
@@ -907,6 +910,17 @@ enum class RtcpMode { kOff, kCompound, kReducedSize };
 enum NetworkState {
   kNetworkUp,
   kNetworkDown,
+};
+
+struct RtpKeepAliveConfig {
+  // If no packet has been sent for |timeout_interval_ms|, send a keep-alive
+  // packet. The keep-alive packet is an empty (no payload) RTP packet with a
+  // payload type of 20 as long as the other end has not negotiated the use of
+  // this value. If this value has already been negotiated, then some other
+  // unused static payload type from table 5 of RFC 3551 shall be used and set
+  // in |payload_type|.
+  int64_t timeout_interval_ms = -1;
+  uint8_t payload_type = 20;
 };
 
 }  // namespace webrtc

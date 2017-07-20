@@ -15,16 +15,16 @@
 
 #include <cmath>
 
-#include "webrtc/base/array_view.h"
-#include "webrtc/base/atomicops.h"
-#include "webrtc/base/bind.h"
-#include "webrtc/base/checks.h"
-#include "webrtc/base/criticalsection.h"
-#include "webrtc/base/logging.h"
-#include "webrtc/base/thread.h"
-#include "webrtc/base/thread_annotations.h"
-#include "webrtc/base/timeutils.h"
 #include "webrtc/modules/audio_device/fine_audio_buffer.h"
+#include "webrtc/rtc_base/array_view.h"
+#include "webrtc/rtc_base/atomicops.h"
+#include "webrtc/rtc_base/bind.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/criticalsection.h"
+#include "webrtc/rtc_base/logging.h"
+#include "webrtc/rtc_base/thread.h"
+#include "webrtc/rtc_base/thread_annotations.h"
+#include "webrtc/rtc_base/timeutils.h"
 #include "webrtc/sdk/objc/Framework/Classes/Common/helpers.h"
 #include "webrtc/system_wrappers/include/metrics.h"
 
@@ -245,6 +245,7 @@ int32_t AudioDeviceIOS::StartPlayout() {
   }
   rtc::AtomicOps::ReleaseStore(&playing_, 1);
   num_playout_callbacks_ = 0;
+  num_detected_playout_glitches_ = 0;
   return 0;
 }
 
@@ -263,6 +264,7 @@ int32_t AudioDeviceIOS::StopPlayout() {
   // Derive average number of calls to OnGetPlayoutData() between detected
   // audio glitches and add the result to a histogram.
   int average_number_of_playout_callbacks_between_glitches = 100000;
+  RTC_DCHECK_GE(num_playout_callbacks_, num_detected_playout_glitches_);
   if (num_detected_playout_glitches_ > 0) {
     average_number_of_playout_callbacks_between_glitches =
         num_playout_callbacks_ / num_detected_playout_glitches_;
@@ -621,6 +623,12 @@ void AudioDeviceIOS::HandleSampleRateChange(float sample_rate) {
     return;
   }
 
+  // Extra sanity check to ensure that the new sample rate is valid.
+  if (session_sample_rate <= 0.0) {
+    RTCLogError(@"Sample rate is invalid: %f", session_sample_rate);
+    return;
+  }
+
   // We need to adjust our format and buffer sizes.
   // The stream format is about to be changed and it requires that we first
   // stop and uninitialize the audio unit to deallocate its resources.
@@ -672,6 +680,12 @@ void AudioDeviceIOS::HandlePlayoutGlitchDetected() {
   num_detected_playout_glitches_++;
   RTCLog(@"Number of detected playout glitches: %lld",
          num_detected_playout_glitches_);
+
+  int64_t glitch_count = num_detected_playout_glitches_;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    RTCAudioSession* session = [RTCAudioSession sharedInstance];
+    [session notifyDidDetectPlayoutGlitch:glitch_count];
+  });
 }
 
 void AudioDeviceIOS::HandleOutputVolumeChange() {
@@ -921,6 +935,10 @@ void AudioDeviceIOS::ShutdownPlayOrRecord() {
 
   // Close and delete the voice-processing I/O unit.
   audio_unit_.reset();
+
+  // Detach thread checker for the AURemoteIO::IOThread to ensure that the
+  // next session uses a fresh thread id.
+  io_thread_checker_.DetachFromThread();
 
   // Remove audio session notification observers.
   RTCAudioSession* session = [RTCAudioSession sharedInstance];

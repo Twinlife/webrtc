@@ -10,11 +10,11 @@
 
 #include "webrtc/pc/rtptransport.h"
 
-#include "webrtc/base/checks.h"
-#include "webrtc/base/copyonwritebuffer.h"
-#include "webrtc/base/trace_event.h"
 #include "webrtc/media/base/rtputils.h"
 #include "webrtc/p2p/base/packettransportinterface.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/copyonwritebuffer.h"
+#include "webrtc/rtc_base/trace_event.h"
 
 namespace webrtc {
 
@@ -190,7 +190,7 @@ void RtpTransport::OnReadPacket(rtc::PacketTransportInternal* transport,
   }
 
   // This mutates |packet| if it is protected.
-  SignalPacketReceived(rtcp, packet, packet_time);
+  SignalPacketReceived(rtcp, &packet, packet_time);
 }
 
 bool RtpTransport::WantsPacket(bool rtcp,

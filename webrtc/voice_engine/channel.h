@@ -16,10 +16,6 @@
 #include "webrtc/api/audio/audio_mixer.h"
 #include "webrtc/api/audio_codecs/audio_encoder.h"
 #include "webrtc/api/call/audio_sink.h"
-#include "webrtc/base/criticalsection.h"
-#include "webrtc/base/event.h"
-#include "webrtc/base/optional.h"
-#include "webrtc/base/thread_checker.h"
 #include "webrtc/common_audio/resampler/include/push_resampler.h"
 #include "webrtc/common_types.h"
 #include "webrtc/modules/audio_coding/acm2/codec_manager.h"
@@ -31,6 +27,10 @@
 #include "webrtc/modules/rtp_rtcp/include/rtp_header_parser.h"
 #include "webrtc/modules/rtp_rtcp/include/rtp_receiver.h"
 #include "webrtc/modules/rtp_rtcp/include/rtp_rtcp.h"
+#include "webrtc/rtc_base/criticalsection.h"
+#include "webrtc/rtc_base/event.h"
+#include "webrtc/rtc_base/optional.h"
+#include "webrtc/rtc_base/thread_checker.h"
 #include "webrtc/voice_engine/audio_level.h"
 #include "webrtc/voice_engine/file_player.h"
 #include "webrtc/voice_engine/file_recorder.h"
@@ -260,6 +260,10 @@ class Channel
   void SetChannelOutputVolumeScaling(float scaling);
   int GetSpeechOutputLevel() const;
   int GetSpeechOutputLevelFullRange() const;
+  // See description of "totalAudioEnergy" in the WebRTC stats spec:
+  // https://w3c.github.io/webrtc-stats/#dom-rtcmediastreamtrackstats-totalaudioenergy
+  double GetTotalOutputEnergy() const;
+  double GetTotalOutputDuration() const;
 
   // Stats.
   int GetNetworkStatistics(NetworkStatistics& stats);
@@ -470,6 +474,8 @@ class Channel
   acm2::RentACodec rent_a_codec_;
   std::unique_ptr<AudioSinkInterface> audio_sink_;
   AudioLevel _outputAudioLevel;
+  double totalOutputEnergy_ = 0.0;
+  double totalOutputDuration_ = 0.0;
   bool _externalTransport;
   // Downsamples to the codec rate if necessary.
   PushResampler<int16_t> input_resampler_;

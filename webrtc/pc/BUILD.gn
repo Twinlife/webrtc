@@ -50,6 +50,8 @@ rtc_static_library("rtc_pc_base") {
     "rtptransport.h",
     "srtpfilter.cc",
     "srtpfilter.h",
+    "srtpsession.cc",
+    "srtpsession.h",
     "voicechannel.h",
   ]
 
@@ -61,6 +63,7 @@ rtc_static_library("rtc_pc_base") {
     "../base:rtc_base",
     "../base:rtc_task_queue",
     "../media:rtc_data",
+    "../media:rtc_h264_profile_id",
     "../media:rtc_media_base",
     "../p2p:rtc_p2p",
   ]
@@ -184,7 +187,7 @@ rtc_static_library("peerconnection") {
 # need should use CreateModularCreatePeerConnectionFactory instead, using the
 # "peerconnection" build target and other targets specific to their
 # requrements. See comment in peerconnectionfactoryinterface.h.
-rtc_source_set("create_pc_factory") {
+rtc_static_library("create_pc_factory") {
   sources = [
     "createpeerconnectionfactory.cc",
   ]
@@ -202,6 +205,7 @@ rtc_source_set("create_pc_factory") {
     "../logging:rtc_event_log_api",
     "../media:rtc_audio_video",
     "../modules/audio_device:audio_device",
+    "../modules/audio_processing:audio_processing",
   ]
 
   configs += [ ":libjingle_peerconnection_warnings_config" ]
@@ -255,6 +259,8 @@ if (rtc_include_tests) {
       "rtcpmuxfilter_unittest.cc",
       "rtptransport_unittest.cc",
       "srtpfilter_unittest.cc",
+      "srtpsession_unittest.cc",
+      "srtptestutil.h",
     ]
 
     include_dirs = [ "//third_party/libsrtp/srtp" ]
@@ -349,7 +355,6 @@ if (rtc_include_tests) {
         # See https://bugs.chromium.org/p/webrtc/issues/detail?id=6267
         # for -Wno-sign-compare
         "-Wno-sign-compare",
-        "-Wno-unused-function",
       ]
     }
 
@@ -426,9 +431,9 @@ if (rtc_include_tests) {
         "test/androidtestinitializer.h",
       ]
       deps += [
+        "../sdk/android:libjingle_peerconnection_java",
+        "../sdk/android:libjingle_peerconnection_jni",
         "//testing/android/native_test:native_test_support",
-        "//webrtc/sdk/android:libjingle_peerconnection_java",
-        "//webrtc/sdk/android:libjingle_peerconnection_jni",
       ]
     }
 

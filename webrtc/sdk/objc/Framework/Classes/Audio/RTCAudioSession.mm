@@ -12,10 +12,9 @@
 
 #import <UIKit/UIKit.h>
 
-#include "webrtc/base/atomicops.h"
-#include "webrtc/base/checks.h"
-#include "webrtc/base/criticalsection.h"
-
+#include "webrtc/rtc_base/atomicops.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/criticalsection.h"
 
 #import "WebRTC/RTCAudioSessionConfiguration.h"
 #import "WebRTC/RTCLogging.h"
@@ -910,6 +909,15 @@ NSString * const kRTCAudioSessionOutputVolumeSelector = @"outputVolume";
     SEL sel = @selector(audioSession:didChangeOutputVolume:);
     if ([delegate respondsToSelector:sel]) {
       [delegate audioSession:self didChangeOutputVolume:volume];
+    }
+  }
+}
+
+- (void)notifyDidDetectPlayoutGlitch:(int64_t)totalNumberOfGlitches {
+  for (auto delegate : self.delegates) {
+    SEL sel = @selector(audioSession:didDetectPlayoutGlitch:);
+    if ([delegate respondsToSelector:sel]) {
+      [delegate audioSession:self didDetectPlayoutGlitch:totalNumberOfGlitches];
     }
   }
 }

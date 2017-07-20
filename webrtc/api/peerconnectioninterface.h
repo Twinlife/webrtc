@@ -84,17 +84,17 @@
 #include "webrtc/api/stats/rtcstatscollectorcallback.h"
 #include "webrtc/api/statstypes.h"
 #include "webrtc/api/umametrics.h"
-#include "webrtc/base/fileutils.h"
-#include "webrtc/base/network.h"
-#include "webrtc/base/rtccertificate.h"
-#include "webrtc/base/rtccertificategenerator.h"
-#include "webrtc/base/socketaddress.h"
-#include "webrtc/base/sslstreamadapter.h"
 #include "webrtc/call/callfactoryinterface.h"
 #include "webrtc/logging/rtc_event_log/rtc_event_log_factory_interface.h"
 #include "webrtc/media/base/mediachannel.h"
 #include "webrtc/media/base/videocapturer.h"
 #include "webrtc/p2p/base/portallocator.h"
+#include "webrtc/rtc_base/fileutils.h"
+#include "webrtc/rtc_base/network.h"
+#include "webrtc/rtc_base/rtccertificate.h"
+#include "webrtc/rtc_base/rtccertificategenerator.h"
+#include "webrtc/rtc_base/socketaddress.h"
+#include "webrtc/rtc_base/sslstreamadapter.h"
 
 namespace rtc {
 class SSLIdentity;
@@ -453,6 +453,13 @@ class PeerConnectionInterface : public rtc::RefCountInterface {
     // (STUN pings), in milliseconds.
     rtc::Optional<int> ice_check_min_interval;
 
+
+    // ICE Periodic Regathering
+    // If set, WebRTC will periodically create and propose candidates without
+    // starting a new ICE generation. The regathering happens continuously with
+    // interval specified in milliseconds by the uniform distribution [a, b].
+    rtc::Optional<rtc::IntervalRange> ice_regather_interval_range;
+
     //
     // Don't forget to update operator== if adding something.
     //
@@ -755,9 +762,7 @@ class PeerConnectionInterface : public rtc::RefCountInterface {
   //
   // Setting |current_bitrate_bps| will reset the current bitrate estimate
   // to the provided value.
-  virtual RTCError SetBitrate(const BitrateParameters& bitrate) {
-    return RTCError::OK();
-  }
+  virtual RTCError SetBitrate(const BitrateParameters& bitrate) = 0;
 
   // Returns the current SignalingState.
   virtual SignalingState signaling_state() = 0;
@@ -1080,6 +1085,24 @@ rtc::scoped_refptr<PeerConnectionFactoryInterface> CreatePeerConnectionFactory(
     cricket::WebRtcVideoEncoderFactory* encoder_factory,
     cricket::WebRtcVideoDecoderFactory* decoder_factory);
 
+// Create a new instance of PeerConnectionFactoryInterface with optional
+// external audio mixed and audio processing modules.
+//
+// If |audio_mixer| is null, an internal audio mixer will be created and used.
+// If |audio_processing| is null, an internal audio processing module will be
+// created and used.
+rtc::scoped_refptr<PeerConnectionFactoryInterface> CreatePeerConnectionFactory(
+    rtc::Thread* network_thread,
+    rtc::Thread* worker_thread,
+    rtc::Thread* signaling_thread,
+    AudioDeviceModule* default_adm,
+    rtc::scoped_refptr<AudioEncoderFactory> audio_encoder_factory,
+    rtc::scoped_refptr<AudioDecoderFactory> audio_decoder_factory,
+    cricket::WebRtcVideoEncoderFactory* video_encoder_factory,
+    cricket::WebRtcVideoDecoderFactory* video_decoder_factory,
+    rtc::scoped_refptr<AudioMixer> audio_mixer,
+    rtc::scoped_refptr<AudioProcessing> audio_processing);
+
 // Create a new instance of PeerConnectionFactoryInterface with external audio
 // mixer.
 //
@@ -1162,6 +1185,8 @@ CreatePeerConnectionFactory(
 // If non-null, a reference is added to |default_adm|, and ownership of
 // |video_encoder_factory| and |video_decoder_factory| is transferred to the
 // returned factory.
+//
+// If |audio_mixer| is null, an internal audio mixer will be created and used.
 //
 // TODO(deadbeef): Use rtc::scoped_refptr<> and std::unique_ptr<> to make this
 // ownership transfer and ref counting more obvious.

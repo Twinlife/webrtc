@@ -12,7 +12,7 @@
 #define WEBRTC_MODULES_AUDIO_CODING_CODECS_G722_AUDIO_DECODER_G722_H_
 
 #include "webrtc/api/audio_codecs/audio_decoder.h"
-#include "webrtc/base/constructormagic.h"
+#include "webrtc/rtc_base/constructormagic.h"
 
 typedef struct WebRtcG722DecInst G722DecInst;
 
@@ -42,10 +42,10 @@ class AudioDecoderG722Impl final : public AudioDecoder {
   RTC_DISALLOW_COPY_AND_ASSIGN(AudioDecoderG722Impl);
 };
 
-class AudioDecoderG722Stereo final : public AudioDecoder {
+class AudioDecoderG722StereoImpl final : public AudioDecoder {
  public:
-  AudioDecoderG722Stereo();
-  ~AudioDecoderG722Stereo() override;
+  AudioDecoderG722StereoImpl();
+  ~AudioDecoderG722StereoImpl() override;
   void Reset() override;
   std::vector<ParseResult> ParsePayload(rtc::Buffer&& payload,
                                         uint32_t timestamp) override;
@@ -71,7 +71,7 @@ class AudioDecoderG722Stereo final : public AudioDecoder {
 
   G722DecInst* dec_state_left_;
   G722DecInst* dec_state_right_;
-  RTC_DISALLOW_COPY_AND_ASSIGN(AudioDecoderG722Stereo);
+  RTC_DISALLOW_COPY_AND_ASSIGN(AudioDecoderG722StereoImpl);
 };
 
 }  // namespace webrtc

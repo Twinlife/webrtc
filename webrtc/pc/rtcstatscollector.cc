@@ -17,14 +17,14 @@
 
 #include "webrtc/api/mediastreaminterface.h"
 #include "webrtc/api/peerconnectioninterface.h"
-#include "webrtc/base/checks.h"
-#include "webrtc/base/timeutils.h"
 #include "webrtc/media/base/mediachannel.h"
 #include "webrtc/p2p/base/candidate.h"
 #include "webrtc/p2p/base/p2pconstants.h"
 #include "webrtc/p2p/base/port.h"
 #include "webrtc/pc/peerconnection.h"
 #include "webrtc/pc/webrtcsession.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/timeutils.h"
 
 namespace webrtc {
 
@@ -374,6 +374,9 @@ ProduceMediaStreamTrackStatsFromVoiceSenderInfo(
     audio_track_stats->audio_level = DoubleAudioLevelFromIntAudioLevel(
         voice_sender_info.audio_level);
   }
+  audio_track_stats->total_audio_energy = voice_sender_info.total_input_energy;
+  audio_track_stats->total_samples_duration =
+      voice_sender_info.total_input_duration;
   if (voice_sender_info.echo_return_loss != -100) {
     audio_track_stats->echo_return_loss = static_cast<double>(
         voice_sender_info.echo_return_loss);
@@ -405,6 +408,10 @@ ProduceMediaStreamTrackStatsFromVoiceReceiverInfo(
     audio_track_stats->audio_level = DoubleAudioLevelFromIntAudioLevel(
         voice_receiver_info.audio_level);
   }
+  audio_track_stats->total_audio_energy =
+      voice_receiver_info.total_output_energy;
+  audio_track_stats->total_samples_duration =
+      voice_receiver_info.total_output_duration;
   return audio_track_stats;
 }
 
@@ -1201,22 +1208,15 @@ std::map<MediaStreamTrackInterface*, std::string>
 RTCStatsCollector::PrepareTrackToID_s() const {
   RTC_DCHECK(signaling_thread_->IsCurrent());
   std::map<MediaStreamTrackInterface*, std::string> track_to_id;
-  StreamCollectionInterface* local_and_remote_streams[] =
-      { pc_->local_streams().get(), pc_->remote_streams().get() };
-  for (auto& streams : local_and_remote_streams) {
-    if (streams) {
-      for (size_t i = 0; i < streams->count(); ++i) {
-        MediaStreamInterface* stream = streams->at(i);
-        for (const rtc::scoped_refptr<AudioTrackInterface>& audio_track :
-             stream->GetAudioTracks()) {
-          track_to_id[audio_track.get()] = audio_track->id();
-        }
-        for (const rtc::scoped_refptr<VideoTrackInterface>& video_track :
-             stream->GetVideoTracks()) {
-          track_to_id[video_track.get()] = video_track->id();
-        }
-      }
-    }
+  for (auto sender : pc_->GetSenders()) {
+    auto track = sender->track();
+    if (track)
+      track_to_id[track.get()] = track->id();
+  }
+  for (auto receiver : pc_->GetReceivers()) {
+    auto track = receiver->track();
+    if (track)
+      track_to_id[track.get()] = track->id();
   }
   return track_to_id;
 }

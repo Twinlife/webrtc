@@ -14,10 +14,9 @@
 #include <D3DCommon.h>
 
 #include <atomic>
+#include <string>
 #include <vector>
 
-#include "webrtc/base/criticalsection.h"
-#include "webrtc/base/scoped_ref_ptr.h"
 #include "webrtc/modules/desktop_capture/desktop_geometry.h"
 #include "webrtc/modules/desktop_capture/resolution_change_detector.h"
 #include "webrtc/modules/desktop_capture/shared_desktop_frame.h"
@@ -25,6 +24,8 @@
 #include "webrtc/modules/desktop_capture/win/dxgi_adapter_duplicator.h"
 #include "webrtc/modules/desktop_capture/win/dxgi_context.h"
 #include "webrtc/modules/desktop_capture/win/dxgi_frame.h"
+#include "webrtc/rtc_base/criticalsection.h"
+#include "webrtc/rtc_base/scoped_ref_ptr.h"
 
 namespace webrtc {
 
@@ -60,6 +61,7 @@ class DxgiDuplicatorController {
 
   enum class Result {
     SUCCEEDED,
+    UNSUPPORTED_SESSION,
     FRAME_PREPARE_FAILED,
     INITIALIZATION_FAILED,
     DUPLICATION_FAILED,
@@ -69,12 +71,17 @@ class DxgiDuplicatorController {
   // Returns the singleton instance of DxgiDuplicatorController.
   static rtc::scoped_refptr<DxgiDuplicatorController> Instance();
 
+  // See ScreenCapturerWinDirectx::IsCurrentSessionSupported().
+  static bool IsCurrentSessionSupported();
+
   // All the following public functions implicitly call Initialize() function.
 
   // Detects whether the system supports DXGI based capturer.
   bool IsSupported();
 
-  // Returns a copy of D3dInfo composed by last Initialize() function call.
+  // Returns a copy of D3dInfo composed by last Initialize() function call. This
+  // function always copies the latest information into |info|. But once the
+  // function returns false, the information in |info| may not accurate.
   bool RetrieveD3dInfo(D3dInfo* info);
 
   // Captures current screen and writes into |frame|.
@@ -98,10 +105,15 @@ class DxgiDuplicatorController {
   // support DXGI based capturer, this function returns 0.
   int ScreenCount();
 
+  // Returns the device names of all screens on the system in utf8 encoding.
+  // These screens can be retrieved by an integer in the range of
+  // [0, output->size()). If system does not support DXGI based capturer, this
+  // function returns false.
+  bool GetDeviceNames(std::vector<std::string>* output);
+
  private:
-  // DxgiFrameContext calls private Unregister(Context*) function during
-  // destructing.
-  friend DxgiFrameContext::~DxgiFrameContext();
+  // DxgiFrameContext calls private Unregister(Context*) function in Reset().
+  friend void DxgiFrameContext::Reset();
 
   // scoped_refptr<DxgiDuplicatorController> accesses private AddRef() and
   // Release() functions.
@@ -180,6 +192,8 @@ class DxgiDuplicatorController {
 
   int ScreenCountUnlocked() const;
 
+  void GetDeviceNamesUnlocked(std::vector<std::string>* output) const;
+
   // Returns the desktop size of the selected screen |monitor_id|. Setting
   // |monitor_id| < 0 to return the entire screen size.
   DesktopSize SelectedDesktopSize(int monitor_id) const;
@@ -211,6 +225,8 @@ class DxgiDuplicatorController {
   std::vector<DxgiAdapterDuplicator> duplicators_;
   D3dInfo d3d_info_;
   ResolutionChangeDetector resolution_change_detector_;
+  // A number to indicate how many succeeded duplications have been performed.
+  uint32_t succeeded_duplications_ = 0;
 };
 
 }  // namespace webrtc

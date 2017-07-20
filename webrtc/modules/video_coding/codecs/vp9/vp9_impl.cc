@@ -21,15 +21,15 @@
 #include "vpx/vp8cx.h"
 #include "vpx/vp8dx.h"
 
-#include "webrtc/base/checks.h"
-#include "webrtc/base/keep_ref_until_done.h"
-#include "webrtc/base/logging.h"
-#include "webrtc/base/random.h"
-#include "webrtc/base/timeutils.h"
-#include "webrtc/base/trace_event.h"
 #include "webrtc/common_video/include/video_frame_buffer.h"
 #include "webrtc/common_video/libyuv/include/webrtc_libyuv.h"
 #include "webrtc/modules/video_coding/codecs/vp9/screenshare_layers.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/keep_ref_until_done.h"
+#include "webrtc/rtc_base/logging.h"
+#include "webrtc/rtc_base/random.h"
+#include "webrtc/rtc_base/timeutils.h"
+#include "webrtc/rtc_base/trace_event.h"
 
 namespace webrtc {
 
@@ -381,7 +381,7 @@ int VP9EncoderImpl::NumberOfThreads(int width,
   // tiles, which is (1, 2, 4, 8). See comments below for VP9E_SET_TILE_COLUMNS.
   if (width * height >= 1280 * 720 && number_of_cores > 4) {
     return 4;
-  } else if (width * height >= 640 * 480 && number_of_cores > 2) {
+  } else if (width * height >= 640 * 360 && number_of_cores > 2) {
     return 2;
   } else {
     // 1 thread less than VGA.
@@ -427,6 +427,7 @@ int VP9EncoderImpl::InitAndSetControlSettings(const VideoCodec* inst) {
   vpx_codec_control(encoder_, VP9E_SET_AQ_MODE,
                     inst->VP9().adaptiveQpMode ? 3 : 0);
 
+  vpx_codec_control(encoder_, VP9E_SET_FRAME_PARALLEL_DECODING, 0);
   vpx_codec_control(
       encoder_, VP9E_SET_SVC,
       (num_temporal_layers_ > 1 || num_spatial_layers_ > 1) ? 1 : 0);

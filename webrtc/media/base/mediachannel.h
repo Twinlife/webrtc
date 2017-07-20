@@ -17,22 +17,23 @@
 
 #include "webrtc/api/rtpparameters.h"
 #include "webrtc/api/rtpreceiverinterface.h"
-#include "webrtc/base/basictypes.h"
-#include "webrtc/base/buffer.h"
-#include "webrtc/base/copyonwritebuffer.h"
-#include "webrtc/base/dscp.h"
-#include "webrtc/base/logging.h"
-#include "webrtc/base/networkroute.h"
-#include "webrtc/base/optional.h"
-#include "webrtc/base/sigslot.h"
-#include "webrtc/base/socket.h"
-#include "webrtc/base/window.h"
+#include "webrtc/api/video/video_timing.h"
 #include "webrtc/config.h"
 #include "webrtc/media/base/codec.h"
 #include "webrtc/media/base/mediaconstants.h"
 #include "webrtc/media/base/streamparams.h"
 #include "webrtc/media/base/videosinkinterface.h"
 #include "webrtc/media/base/videosourceinterface.h"
+#include "webrtc/rtc_base/basictypes.h"
+#include "webrtc/rtc_base/buffer.h"
+#include "webrtc/rtc_base/copyonwritebuffer.h"
+#include "webrtc/rtc_base/dscp.h"
+#include "webrtc/rtc_base/logging.h"
+#include "webrtc/rtc_base/networkroute.h"
+#include "webrtc/rtc_base/optional.h"
+#include "webrtc/rtc_base/sigslot.h"
+#include "webrtc/rtc_base/socket.h"
+#include "webrtc/rtc_base/window.h"
 // TODO(juberti): re-evaluate this include
 #include "webrtc/pc/audiomonitor.h"
 
@@ -614,6 +615,8 @@ struct VoiceSenderInfo : public MediaSenderInfo {
       : ext_seqnum(0),
         jitter_ms(0),
         audio_level(0),
+        total_input_energy(0.0),
+        total_input_duration(0.0),
         aec_quality_min(0.0),
         echo_delay_median_ms(0),
         echo_delay_std_ms(0),
@@ -626,6 +629,10 @@ struct VoiceSenderInfo : public MediaSenderInfo {
   int ext_seqnum;
   int jitter_ms;
   int audio_level;
+  // See description of "totalAudioEnergy" in the WebRTC stats spec:
+  // https://w3c.github.io/webrtc-stats/#dom-rtcmediastreamtrackstats-totalaudioenergy
+  double total_input_energy;
+  double total_input_duration;
   float aec_quality_min;
   int echo_delay_median_ms;
   int echo_delay_std_ms;
@@ -644,6 +651,8 @@ struct VoiceReceiverInfo : public MediaReceiverInfo {
         jitter_buffer_preferred_ms(0),
         delay_estimate_ms(0),
         audio_level(0),
+        total_output_energy(0.0),
+        total_output_duration(0.0),
         expand_rate(0),
         speech_expand_rate(0),
         secondary_decoded_rate(0),
@@ -664,6 +673,10 @@ struct VoiceReceiverInfo : public MediaReceiverInfo {
   int jitter_buffer_preferred_ms;
   int delay_estimate_ms;
   int audio_level;
+  // See description of "totalAudioEnergy" in the WebRTC stats spec:
+  // https://w3c.github.io/webrtc-stats/#dom-rtcmediastreamtrackstats-totalaudioenergy
+  double total_output_energy;
+  double total_output_duration;
   // fraction of synthesized audio inserted through expansion.
   float expand_rate;
   // fraction of synthesized speech inserted through expansion.
@@ -740,6 +753,7 @@ struct VideoReceiverInfo : public MediaReceiverInfo {
         frames_received(0),
         frames_decoded(0),
         frames_rendered(0),
+        interframe_delay_sum_ms(0),
         decode_ms(0),
         max_decode_ms(0),
         jitter_buffer_ms(0),
@@ -747,8 +761,7 @@ struct VideoReceiverInfo : public MediaReceiverInfo {
         render_delay_ms(0),
         target_delay_ms(0),
         current_delay_ms(0),
-        capture_start_ntp_time_ms(-1) {
-  }
+        capture_start_ntp_time_ms(-1) {}
 
   std::vector<SsrcGroup> ssrc_groups;
   // TODO(hbos): Move this to |VideoMediaInfo::receive_codecs|?
@@ -770,6 +783,7 @@ struct VideoReceiverInfo : public MediaReceiverInfo {
   uint32_t frames_decoded;
   uint32_t frames_rendered;
   rtc::Optional<uint64_t> qp_sum;
+  uint64_t interframe_delay_sum_ms;
 
   // All stats below are gathered per-VideoReceiver, but some will be correlated
   // across MediaStreamTracks.  NOTE(hta): when sinking stats into per-SSRC
@@ -793,6 +807,10 @@ struct VideoReceiverInfo : public MediaReceiverInfo {
 
   // Estimated capture start time in NTP time in ms.
   int64_t capture_start_ntp_time_ms;
+
+  // Timing frame info: all important timestamps for a full lifetime of a
+  // single 'timing frame'.
+  rtc::Optional<webrtc::TimingFrameInfo> timing_frame_info;
 };
 
 struct DataSenderInfo : public MediaSenderInfo {

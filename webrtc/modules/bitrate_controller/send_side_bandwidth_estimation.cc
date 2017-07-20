@@ -15,10 +15,10 @@
 #include <limits>
 #include <string>
 
-#include "webrtc/base/checks.h"
-#include "webrtc/base/logging.h"
 #include "webrtc/logging/rtc_event_log/rtc_event_log.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/bwe_defines.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/logging.h"
 #include "webrtc/system_wrappers/include/field_trial.h"
 #include "webrtc/system_wrappers/include/metrics.h"
 
@@ -209,8 +209,10 @@ void SendSideBandwidthEstimation::UpdateReceiverBlock(uint8_t fraction_loss,
   if (first_report_time_ms_ == -1)
     first_report_time_ms_ = now_ms;
 
-  // Update RTT.
-  last_round_trip_time_ms_ = rtt;
+  // Update RTT if we were able to compute an RTT based on this RTCP.
+  // FlexFEC doesn't send RTCP SR, which means we won't be able to compute RTT.
+  if (rtt > 0)
+    last_round_trip_time_ms_ = rtt;
 
   // Check sequence number diff and weight loss report
   if (number_of_packets > 0) {

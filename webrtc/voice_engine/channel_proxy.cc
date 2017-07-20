@@ -13,10 +13,10 @@
 #include <utility>
 
 #include "webrtc/api/call/audio_sink.h"
-#include "webrtc/base/checks.h"
-#include "webrtc/base/logging.h"
-#include "webrtc/base/safe_minmax.h"
 #include "webrtc/call/rtp_transport_controller_send_interface.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/logging.h"
+#include "webrtc/rtc_base/safe_minmax.h"
 #include "webrtc/voice_engine/channel.h"
 
 namespace webrtc {
@@ -152,6 +152,16 @@ int ChannelProxy::GetSpeechOutputLevel() const {
 int ChannelProxy::GetSpeechOutputLevelFullRange() const {
   RTC_DCHECK(worker_thread_checker_.CalledOnValidThread());
   return channel()->GetSpeechOutputLevelFullRange();
+}
+
+double ChannelProxy::GetTotalOutputEnergy() const {
+  RTC_DCHECK(worker_thread_checker_.CalledOnValidThread());
+  return channel()->GetTotalOutputEnergy();
+}
+
+double ChannelProxy::GetTotalOutputDuration() const {
+  RTC_DCHECK(worker_thread_checker_.CalledOnValidThread());
+  return channel()->GetTotalOutputDuration();
 }
 
 uint32_t ChannelProxy::GetDelayEstimate() const {

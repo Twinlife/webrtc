@@ -107,9 +107,12 @@ if (rtc_include_tests) {
       "../modules/video_coding:webrtc_vp9",
       "../system_wrappers",
       "../test:test_common",
+      "../test:test_renderer",
       "../test:test_support",
+      "../test:video_test_common",
       "../voice_engine",
       "//testing/gtest",
+      "//webrtc/test:rtp_test_utils",
       "//webrtc/test:test_renderer",
       "//webrtc/test:video_test_common",
     ]
@@ -126,17 +129,18 @@ if (rtc_include_tests) {
     # gets additional generated targets which would require many lines here to
     # cover (which would be confusing to read and hard to maintain).
     if (!is_android && !is_ios) {
-      visibility = [ "//webrtc:webrtc_perf_tests" ]
+      visibility = [ "..:webrtc_perf_tests" ]
     }
     sources = [
       "full_stack_tests.cc",
     ]
     deps = [
       ":video_quality_test",
+      "../modules/pacing:pacing",
       "../test:field_trial",
+      "../test:test_common",
       "../test:test_support",
       "//testing/gtest",
-      "//webrtc/test:test_common",
     ]
     if (!build_with_chromium && is_clang) {
       # Suppress warnings from the Chromium Clang plugin (bugs.webrtc.org/163).
@@ -154,6 +158,7 @@ if (rtc_include_tests) {
     ]
     deps = [
       ":video_quality_test",
+      "../base:rtc_base_approved",
       "../system_wrappers:metrics_default",
       "../test:field_trial",
       "../test:run_test",
@@ -231,7 +236,7 @@ if (rtc_include_tests) {
     # gets additional generated targets which would require many lines here to
     # cover (which would be confusing to read and hard to maintain).
     if (!is_android && !is_ios) {
-      visibility = [ "//webrtc:video_engine_tests" ]
+      visibility = [ "..:video_engine_tests" ]
     }
     defines = []
     sources = [
@@ -240,6 +245,7 @@ if (rtc_include_tests) {
       "end_to_end_tests.cc",
       "overuse_frame_detector_unittest.cc",
       "payload_router_unittest.cc",
+      "picture_id_tests.cc",
       "quality_threshold_unittest.cc",
       "receive_statistics_proxy_unittest.cc",
       "report_block_stats_unittest.cc",
@@ -260,6 +266,7 @@ if (rtc_include_tests) {
       "../base:rtc_base_approved",
       "../base:rtc_base_tests_utils",
       "../call:call_interfaces",
+      "../call:rtp_receiver",
       "../common_video",
       "../logging:rtc_event_log_api",
       "../media:rtc_media",

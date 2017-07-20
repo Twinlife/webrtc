@@ -11,12 +11,12 @@
 #include "webrtc/voice_engine/utility.h"
 
 #include "webrtc/audio/utility/audio_frame_operations.h"
-#include "webrtc/base/checks.h"
-#include "webrtc/base/logging.h"
 #include "webrtc/common_audio/resampler/include/push_resampler.h"
 #include "webrtc/common_audio/signal_processing/include/signal_processing_library.h"
 #include "webrtc/common_types.h"
 #include "webrtc/modules/include/module_common_types.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/logging.h"
 #include "webrtc/voice_engine/voice_engine_defines.h"
 
 namespace webrtc {
@@ -41,7 +41,7 @@ void RemixAndResample(const int16_t* src_data,
                       AudioFrame* dst_frame) {
   const int16_t* audio_ptr = src_data;
   size_t audio_ptr_num_channels = num_channels;
-  int16_t downsmixed_audio[AudioFrame::kMaxDataSizeSamples];
+  int16_t downmixed_audio[AudioFrame::kMaxDataSizeSamples];
 
   // Downmix before resampling.
   if (num_channels > dst_frame->num_channels_) {
@@ -52,8 +52,8 @@ void RemixAndResample(const int16_t* src_data,
 
     AudioFrameOperations::DownmixChannels(
         src_data, num_channels, samples_per_channel, dst_frame->num_channels_,
-        downsmixed_audio);
-    audio_ptr = downsmixed_audio;
+        downmixed_audio);
+    audio_ptr = downmixed_audio;
     audio_ptr_num_channels = dst_frame->num_channels_;
   }
 

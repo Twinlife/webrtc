@@ -10,7 +10,9 @@
 
 #include "webrtc/api/audio_codecs/audio_decoder_factory_template.h"
 #include "webrtc/api/audio_codecs/g722/audio_decoder_g722.h"
-#include "webrtc/base/ptr_util.h"
+#include "webrtc/api/audio_codecs/ilbc/audio_decoder_ilbc.h"
+#include "webrtc/api/audio_codecs/opus/audio_decoder_opus.h"
+#include "webrtc/rtc_base/ptr_util.h"
 #include "webrtc/test/gmock.h"
 #include "webrtc/test/gtest.h"
 #include "webrtc/test/mock_audio_decoder.h"
@@ -119,9 +121,46 @@ TEST(AudioDecoderFactoryTemplateTest, G722) {
   EXPECT_FALSE(factory->IsSupportedDecoder({"foo", 8000, 1}));
   EXPECT_TRUE(factory->IsSupportedDecoder({"g722", 8000, 1}));
   EXPECT_EQ(nullptr, factory->MakeAudioDecoder({"bar", 16000, 1}));
-  auto dec = factory->MakeAudioDecoder({"g722", 8000, 1});
+  auto dec1 = factory->MakeAudioDecoder({"g722", 8000, 1});
+  ASSERT_NE(nullptr, dec1);
+  EXPECT_EQ(16000, dec1->SampleRateHz());
+  EXPECT_EQ(1u, dec1->Channels());
+  auto dec2 = factory->MakeAudioDecoder({"g722", 8000, 2});
+  ASSERT_NE(nullptr, dec2);
+  EXPECT_EQ(16000, dec2->SampleRateHz());
+  EXPECT_EQ(2u, dec2->Channels());
+  auto dec3 = factory->MakeAudioDecoder({"g722", 8000, 3});
+  ASSERT_EQ(nullptr, dec3);
+}
+
+TEST(AudioDecoderFactoryTemplateTest, Ilbc) {
+  auto factory = CreateAudioDecoderFactory<AudioDecoderIlbc>();
+  EXPECT_THAT(factory->GetSupportedDecoders(),
+              testing::ElementsAre(
+                  AudioCodecSpec{{"ILBC", 8000, 1}, {8000, 1, 13300}}));
+  EXPECT_FALSE(factory->IsSupportedDecoder({"foo", 8000, 1}));
+  EXPECT_TRUE(factory->IsSupportedDecoder({"ilbc", 8000, 1}));
+  EXPECT_EQ(nullptr, factory->MakeAudioDecoder({"bar", 8000, 1}));
+  auto dec = factory->MakeAudioDecoder({"ilbc", 8000, 1});
   ASSERT_NE(nullptr, dec);
-  EXPECT_EQ(16000, dec->SampleRateHz());
+  EXPECT_EQ(8000, dec->SampleRateHz());
+}
+
+TEST(AudioDecoderFactoryTemplateTest, Opus) {
+  auto factory = CreateAudioDecoderFactory<AudioDecoderOpus>();
+  AudioCodecInfo opus_info{48000, 1, 64000, 6000, 510000};
+  opus_info.allow_comfort_noise = false;
+  opus_info.supports_network_adaption = true;
+  const SdpAudioFormat opus_format(
+      {"opus", 48000, 2, {{"minptime", "10"}, {"useinbandfec", "1"}}});
+  EXPECT_THAT(factory->GetSupportedDecoders(),
+              testing::ElementsAre(AudioCodecSpec{opus_format, opus_info}));
+  EXPECT_FALSE(factory->IsSupportedDecoder({"opus", 48000, 1}));
+  EXPECT_TRUE(factory->IsSupportedDecoder({"opus", 48000, 2}));
+  EXPECT_EQ(nullptr, factory->MakeAudioDecoder({"bar", 16000, 1}));
+  auto dec = factory->MakeAudioDecoder({"opus", 48000, 2});
+  ASSERT_NE(nullptr, dec);
+  EXPECT_EQ(48000, dec->SampleRateHz());
 }
 
 }  // namespace webrtc

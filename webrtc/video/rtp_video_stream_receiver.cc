@@ -13,9 +13,6 @@
 #include <utility>
 #include <vector>
 
-#include "webrtc/base/checks.h"
-#include "webrtc/base/location.h"
-#include "webrtc/base/logging.h"
 #include "webrtc/common_types.h"
 #include "webrtc/config.h"
 #include "webrtc/media/base/mediaconstants.h"
@@ -34,6 +31,9 @@
 #include "webrtc/modules/video_coding/h264_sps_pps_tracker.h"
 #include "webrtc/modules/video_coding/packet_buffer.h"
 #include "webrtc/modules/video_coding/video_coding_impl.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/location.h"
+#include "webrtc/rtc_base/logging.h"
 #include "webrtc/system_wrappers/include/field_trial.h"
 #include "webrtc/system_wrappers/include/metrics.h"
 #include "webrtc/system_wrappers/include/timestamp_extrapolator.h"
@@ -100,7 +100,7 @@ RtpVideoStreamReceiver::RtpVideoStreamReceiver(
                                                      this,
                                                      &rtp_payload_registry_)),
       rtp_receive_statistics_(ReceiveStatistics::Create(clock_)),
-      ulpfec_receiver_(UlpfecReceiver::Create(this)),
+      ulpfec_receiver_(UlpfecReceiver::Create(config->rtp.remote_ssrc, this)),
       receiving_(false),
       restored_packet_in_use_(false),
       last_packet_log_ms_(-1),

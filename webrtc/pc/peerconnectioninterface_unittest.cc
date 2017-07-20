@@ -21,15 +21,10 @@
 #include "webrtc/api/rtpreceiverinterface.h"
 #include "webrtc/api/rtpsenderinterface.h"
 #include "webrtc/api/test/fakeconstraints.h"
-#include "webrtc/base/gunit.h"
-#include "webrtc/base/ssladapter.h"
-#include "webrtc/base/sslstreamadapter.h"
-#include "webrtc/base/stringutils.h"
-#include "webrtc/base/thread.h"
-#include "webrtc/base/virtualsocketserver.h"
 #include "webrtc/media/base/fakevideocapturer.h"
 #include "webrtc/media/engine/webrtcmediaengine.h"
 #include "webrtc/media/sctp/sctptransportinternal.h"
+#include "webrtc/modules/audio_processing/include/audio_processing.h"
 #include "webrtc/p2p/base/fakeportallocator.h"
 #include "webrtc/pc/audiotrack.h"
 #include "webrtc/pc/mediasession.h"
@@ -42,6 +37,12 @@
 #include "webrtc/pc/test/testsdpstrings.h"
 #include "webrtc/pc/videocapturertracksource.h"
 #include "webrtc/pc/videotrack.h"
+#include "webrtc/rtc_base/gunit.h"
+#include "webrtc/rtc_base/ssladapter.h"
+#include "webrtc/rtc_base/sslstreamadapter.h"
+#include "webrtc/rtc_base/stringutils.h"
+#include "webrtc/rtc_base/thread.h"
+#include "webrtc/rtc_base/virtualsocketserver.h"
 #include "webrtc/test/gmock.h"
 
 #ifdef WEBRTC_ANDROID
@@ -650,7 +651,7 @@ class PeerConnectionFactoryForTest : public webrtc::PeerConnectionFactory {
     auto media_engine = std::unique_ptr<cricket::MediaEngineInterface>(
         cricket::WebRtcMediaEngineFactory::Create(
             nullptr, audio_encoder_factory, audio_decoder_factory, nullptr,
-            nullptr, nullptr));
+            nullptr, nullptr, webrtc::AudioProcessing::Create()));
 
     std::unique_ptr<webrtc::CallFactoryInterface> call_factory =
         webrtc::CreateCallFactory();
@@ -793,6 +794,17 @@ class PeerConnectionInterfaceTest : public testing::Test {
     rtc::scoped_refptr<PeerConnectionInterface> pc;
     pc = pc_factory_->CreatePeerConnection(config, nullptr, nullptr, nullptr,
                                            &observer_);
+    EXPECT_EQ(nullptr, pc);
+  }
+
+  void CreatePeerConnectionExpectFail(
+      PeerConnectionInterface::RTCConfiguration config) {
+    PeerConnectionInterface::IceServer server;
+    server.uri = kTurnIceServerUri;
+    server.password = kTurnPassword;
+    config.servers.push_back(server);
+    rtc::scoped_refptr<PeerConnectionInterface> pc =
+        pc_factory_->CreatePeerConnection(config, nullptr, nullptr, &observer_);
     EXPECT_EQ(nullptr, pc);
   }
 
@@ -1277,14 +1289,15 @@ TEST_F(PeerConnectionInterfaceTest, CreatePeerConnectionWithPooledCandidates) {
 // and on the correct thread.
 TEST_F(PeerConnectionInterfaceTest,
        CreatePeerConnectionInitializesPortAllocator) {
-  rtc::Thread network_thread;
-  network_thread.Start();
+  std::unique_ptr<rtc::Thread> network_thread(
+      rtc::Thread::CreateWithSocketServer());
+  network_thread->Start();
   rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> pc_factory(
       webrtc::CreatePeerConnectionFactory(
-          &network_thread, rtc::Thread::Current(), rtc::Thread::Current(),
+          network_thread.get(), rtc::Thread::Current(), rtc::Thread::Current(),
           nullptr, nullptr, nullptr));
   std::unique_ptr<cricket::FakePortAllocator> port_allocator(
-      new cricket::FakePortAllocator(&network_thread, nullptr));
+      new cricket::FakePortAllocator(network_thread.get(), nullptr));
   cricket::FakePortAllocator* raw_port_allocator = port_allocator.get();
   PeerConnectionInterface::RTCConfiguration config;
   rtc::scoped_refptr<PeerConnectionInterface> pc(
@@ -3396,6 +3409,28 @@ TEST_F(PeerConnectionInterfaceTest, SetBitrateMaxNegativeFails) {
   PeerConnectionInterface::BitrateParameters bitrate;
   bitrate.max_bitrate_bps = rtc::Optional<int>(-1);
   EXPECT_FALSE(pc_->SetBitrate(bitrate).ok());
+}
+
+// ice_regather_interval_range requires WebRTC to be configured for continual
+// gathering already.
+TEST_F(PeerConnectionInterfaceTest,
+       SetIceRegatherIntervalRangeWithoutContinualGatheringFails) {
+  PeerConnectionInterface::RTCConfiguration config;
+  config.ice_regather_interval_range.emplace(1000, 2000);
+  config.continual_gathering_policy =
+      PeerConnectionInterface::ContinualGatheringPolicy::GATHER_ONCE;
+  CreatePeerConnectionExpectFail(config);
+}
+
+// Ensures that there is no error when ice_regather_interval_range is set with
+// continual gathering enabled.
+TEST_F(PeerConnectionInterfaceTest,
+       SetIceRegatherIntervalRangeWithContinualGathering) {
+  PeerConnectionInterface::RTCConfiguration config;
+  config.ice_regather_interval_range.emplace(1000, 2000);
+  config.continual_gathering_policy =
+      PeerConnectionInterface::ContinualGatheringPolicy::GATHER_CONTINUALLY;
+  CreatePeerConnection(config, nullptr);
 }
 
 // The current bitrate from Call's BitrateConfigMask is currently clamped by

@@ -17,11 +17,6 @@
 #include <vector>
 
 #include "webrtc/api/audio_codecs/audio_decoder.h"
-#include "webrtc/base/checks.h"
-#include "webrtc/base/logging.h"
-#include "webrtc/base/safe_conversions.h"
-#include "webrtc/base/sanitizer.h"
-#include "webrtc/base/trace_event.h"
 #include "webrtc/common_audio/signal_processing/include/signal_processing_library.h"
 #include "webrtc/modules/audio_coding/neteq/accelerate.h"
 #include "webrtc/modules/audio_coding/neteq/background_noise.h"
@@ -47,6 +42,11 @@
 #include "webrtc/modules/audio_coding/neteq/tick_timer.h"
 #include "webrtc/modules/audio_coding/neteq/timestamp_scaler.h"
 #include "webrtc/modules/include/module_common_types.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/logging.h"
+#include "webrtc/rtc_base/safe_conversions.h"
+#include "webrtc/rtc_base/sanitizer.h"
+#include "webrtc/rtc_base/trace_event.h"
 
 namespace webrtc {
 
@@ -200,6 +200,7 @@ int NetEqImpl::GetAudio(AudioFrame* audio_frame, bool* muted) {
   RTC_DCHECK_EQ(
       audio_frame->sample_rate_hz_,
       rtc::dchecked_cast<int>(audio_frame->samples_per_channel_ * 100));
+  RTC_DCHECK_EQ(*muted, audio_frame->muted());
   SetAudioFrameActivityAndType(vad_->enabled(), LastOutputType(),
                                last_vad_activity_, audio_frame);
   last_vad_activity_ = audio_frame->vad_activity_;
@@ -217,7 +218,7 @@ void NetEqImpl::SetCodecs(const std::map<int, SdpAudioFormat>& codecs) {
   const std::vector<int> changed_payload_types =
       decoder_database_->SetCodecs(codecs);
   for (const int pt : changed_payload_types) {
-    packet_buffer_->DiscardPacketsWithPayloadType(pt);
+    packet_buffer_->DiscardPacketsWithPayloadType(pt, &stats_);
   }
 }
 
@@ -268,7 +269,7 @@ int NetEqImpl::RemovePayloadType(uint8_t rtp_payload_type) {
   rtc::CritScope lock(&crit_sect_);
   int ret = decoder_database_->Remove(rtp_payload_type);
   if (ret == DecoderDatabase::kOK || ret == DecoderDatabase::kDecoderNotFound) {
-    packet_buffer_->DiscardPacketsWithPayloadType(rtp_payload_type);
+    packet_buffer_->DiscardPacketsWithPayloadType(rtp_payload_type, &stats_);
     return kOK;
   }
   return kFail;
@@ -830,6 +831,8 @@ int NetEqImpl::GetAudioInternal(AudioFrame* audio_frame, bool* muted) {
   // Check for muted state.
   if (enable_muted_state_ && expand_->Muted() && packet_buffer_->Empty()) {
     RTC_DCHECK_EQ(last_mode_, kModeExpand);
+    audio_frame->Reset();
+    RTC_DCHECK(audio_frame->muted());  // Reset() should mute the frame.
     playout_timestamp_ += static_cast<uint32_t>(output_size_samples_);
     audio_frame->sample_rate_hz_ = fs_hz_;
     audio_frame->samples_per_channel_ = output_size_samples_;
@@ -1063,7 +1066,8 @@ int NetEqImpl::GetDecision(Operations* operation,
   uint32_t end_timestamp = sync_buffer_->end_timestamp();
   if (!new_codec_) {
     const uint32_t five_seconds_samples = 5 * fs_hz_;
-    packet_buffer_->DiscardOldPackets(end_timestamp, five_seconds_samples);
+    packet_buffer_->DiscardOldPackets(end_timestamp, five_seconds_samples,
+                                      &stats_);
   }
   const Packet* packet = packet_buffer_->PeekNextPacket();
 
@@ -1084,12 +1088,12 @@ int NetEqImpl::GetDecision(Operations* operation,
            (end_timestamp >= packet->timestamp ||
             end_timestamp + generated_noise_samples > packet->timestamp)) {
       // Don't use this packet, discard it.
-      if (packet_buffer_->DiscardNextPacket() != PacketBuffer::kOK) {
+      if (packet_buffer_->DiscardNextPacket(&stats_) != PacketBuffer::kOK) {
         assert(false);  // Must be ok by design.
       }
       // Check buffer again.
       if (!new_codec_) {
-        packet_buffer_->DiscardOldPackets(end_timestamp, 5 * fs_hz_);
+        packet_buffer_->DiscardOldPackets(end_timestamp, 5 * fs_hz_, &stats_);
       }
       packet = packet_buffer_->PeekNextPacket();
     }
@@ -2003,7 +2007,7 @@ int NetEqImpl::ExtractPackets(size_t required_samples,
     // we could end up in the situation where we never decode anything, since
     // all incoming packets are considered too old but the buffer will also
     // never be flooded and flushed.
-    packet_buffer_->DiscardAllOldPackets(timestamp_);
+    packet_buffer_->DiscardAllOldPackets(timestamp_, &stats_);
   }
 
   return rtc::dchecked_cast<int>(extracted_samples);

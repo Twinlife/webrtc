@@ -12,8 +12,8 @@
 #define WEBRTC_PC_RTPTRANSPORT_H_
 
 #include "webrtc/api/ortc/rtptransportinterface.h"
-#include "webrtc/base/sigslot.h"
 #include "webrtc/pc/bundlefilter.h"
+#include "webrtc/rtc_base/sigslot.h"
 
 namespace rtc {
 
@@ -73,7 +73,7 @@ class RtpTransport : public RtpTransportInterface, public sigslot::has_slots<> {
   // TODO(zstein): Consider having two signals - RtcPacketReceived and
   // RtcpPacketReceived.
   // The first argument is true for RTCP packets and false for RTP packets.
-  sigslot::signal3<bool, rtc::CopyOnWriteBuffer&, const rtc::PacketTime&>
+  sigslot::signal3<bool, rtc::CopyOnWriteBuffer*, const rtc::PacketTime&>
       SignalPacketReceived;
 
  protected:

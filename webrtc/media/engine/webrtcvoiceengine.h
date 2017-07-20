@@ -18,12 +18,6 @@
 
 #include "webrtc/api/audio_codecs/audio_encoder_factory.h"
 #include "webrtc/api/rtpreceiverinterface.h"
-#include "webrtc/base/buffer.h"
-#include "webrtc/base/constructormagic.h"
-#include "webrtc/base/networkroute.h"
-#include "webrtc/base/scoped_ref_ptr.h"
-#include "webrtc/base/task_queue.h"
-#include "webrtc/base/thread_checker.h"
 #include "webrtc/call/audio_state.h"
 #include "webrtc/call/call.h"
 #include "webrtc/config.h"
@@ -33,6 +27,12 @@
 #include "webrtc/media/engine/webrtcvoe.h"
 #include "webrtc/modules/audio_processing/include/audio_processing.h"
 #include "webrtc/pc/channel.h"
+#include "webrtc/rtc_base/buffer.h"
+#include "webrtc/rtc_base/constructormagic.h"
+#include "webrtc/rtc_base/networkroute.h"
+#include "webrtc/rtc_base/scoped_ref_ptr.h"
+#include "webrtc/rtc_base/task_queue.h"
+#include "webrtc/rtc_base/thread_checker.h"
 
 namespace webrtc {
 namespace voe {
@@ -57,13 +57,15 @@ class WebRtcVoiceEngine final : public webrtc::TraceCallback  {
       webrtc::AudioDeviceModule* adm,
       const rtc::scoped_refptr<webrtc::AudioEncoderFactory>& encoder_factory,
       const rtc::scoped_refptr<webrtc::AudioDecoderFactory>& decoder_factory,
-      rtc::scoped_refptr<webrtc::AudioMixer> audio_mixer);
+      rtc::scoped_refptr<webrtc::AudioMixer> audio_mixer,
+      rtc::scoped_refptr<webrtc::AudioProcessing> audio_processing);
   // Dependency injection for testing.
   WebRtcVoiceEngine(
       webrtc::AudioDeviceModule* adm,
       const rtc::scoped_refptr<webrtc::AudioEncoderFactory>& encoder_factory,
       const rtc::scoped_refptr<webrtc::AudioDecoderFactory>& decoder_factory,
       rtc::scoped_refptr<webrtc::AudioMixer> audio_mixer,
+      rtc::scoped_refptr<webrtc::AudioProcessing> audio_processing,
       VoEWrapper* voe_wrapper);
   ~WebRtcVoiceEngine() override;
 
@@ -133,7 +135,7 @@ class WebRtcVoiceEngine final : public webrtc::TraceCallback  {
   rtc::scoped_refptr<webrtc::AudioDecoderFactory> decoder_factory_;
   rtc::scoped_refptr<webrtc::AudioMixer> audio_mixer_;
   // Reference to the APM, owned by VoE.
-  webrtc::AudioProcessing* apm_ = nullptr;
+  rtc::scoped_refptr<webrtc::AudioProcessing> apm_;
   // Reference to the TransmitMixer, owned by VoE.
   webrtc::voe::TransmitMixer* transmit_mixer_ = nullptr;
   // The primary instance of WebRtc VoiceEngine.

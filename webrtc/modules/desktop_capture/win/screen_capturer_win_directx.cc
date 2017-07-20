@@ -13,11 +13,11 @@
 #include <string>
 #include <utility>
 
-#include "webrtc/base/checks.h"
-#include "webrtc/base/logging.h"
-#include "webrtc/base/ptr_util.h"
-#include "webrtc/base/timeutils.h"
 #include "webrtc/modules/desktop_capture/desktop_frame.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/logging.h"
+#include "webrtc/rtc_base/ptr_util.h"
+#include "webrtc/rtc_base/timeutils.h"
 
 namespace webrtc {
 
@@ -34,6 +34,11 @@ bool ScreenCapturerWinDirectx::RetrieveD3dInfo(D3dInfo* info) {
   // Forwards SupportedFeatureLevels() function call to
   // DxgiDuplicatorController.
   return DxgiDuplicatorController::Instance()->RetrieveD3dInfo(info);
+}
+
+// static
+bool ScreenCapturerWinDirectx::IsCurrentSessionSupported() {
+  return DxgiDuplicatorController::IsCurrentSessionSupported();
 }
 
 ScreenCapturerWinDirectx::ScreenCapturerWinDirectx()
@@ -74,6 +79,12 @@ void ScreenCapturerWinDirectx::CaptureFrame() {
 
   using DuplicateResult = DxgiDuplicatorController::Result;
   switch (result) {
+    case DuplicateResult::UNSUPPORTED_SESSION: {
+      LOG(LS_ERROR) << "Current binary is running on a session not supported "
+                       "by DirectX screen capturer.";
+      callback_->OnCaptureResult(Result::ERROR_PERMANENT, nullptr);
+      break;
+    }
     case DuplicateResult::FRAME_PREPARE_FAILED: {
       LOG(LS_ERROR) << "Failed to allocate a new DesktopFrame.";
       // This usually means we do not have enough memory or SharedMemoryFactory

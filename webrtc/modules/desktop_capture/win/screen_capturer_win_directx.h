@@ -16,13 +16,13 @@
 #include <memory>
 #include <vector>
 
-#include "webrtc/base/scoped_ref_ptr.h"
-#include "webrtc/modules/desktop_capture/desktop_capturer.h"
 #include "webrtc/modules/desktop_capture/desktop_capture_options.h"
+#include "webrtc/modules/desktop_capture/desktop_capturer.h"
 #include "webrtc/modules/desktop_capture/desktop_region.h"
 #include "webrtc/modules/desktop_capture/screen_capture_frame_queue.h"
 #include "webrtc/modules/desktop_capture/win/dxgi_duplicator_controller.h"
 #include "webrtc/modules/desktop_capture/win/dxgi_frame.h"
+#include "webrtc/rtc_base/scoped_ref_ptr.h"
 
 namespace webrtc {
 
@@ -43,6 +43,13 @@ class ScreenCapturerWinDirectx : public DesktopCapturer {
   // restarting the hardware and software. Refer to https://goo.gl/OOCppq. So
   // consumers should not cache the result returned by this function.
   static bool RetrieveD3dInfo(D3dInfo* info);
+
+  // Whether current process is running in a Windows session which is supported
+  // by ScreenCapturerWinDirectx.
+  // Usually using ScreenCapturerWinDirectx in unsupported sessions will fail.
+  // But this behavior may vary on different Windows version. So consumers can
+  // always try IsSupported() function.
+  static bool IsCurrentSessionSupported();
 
   explicit ScreenCapturerWinDirectx();
 

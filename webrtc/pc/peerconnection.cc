@@ -19,12 +19,6 @@
 #include "webrtc/api/mediaconstraintsinterface.h"
 #include "webrtc/api/mediastreamproxy.h"
 #include "webrtc/api/mediastreamtrackproxy.h"
-#include "webrtc/base/bind.h"
-#include "webrtc/base/checks.h"
-#include "webrtc/base/logging.h"
-#include "webrtc/base/stringencode.h"
-#include "webrtc/base/stringutils.h"
-#include "webrtc/base/trace_event.h"
 #include "webrtc/call/call.h"
 #include "webrtc/logging/rtc_event_log/rtc_event_log.h"
 #include "webrtc/media/sctp/sctptransport.h"
@@ -39,6 +33,12 @@
 #include "webrtc/pc/streamcollection.h"
 #include "webrtc/pc/videocapturertracksource.h"
 #include "webrtc/pc/videotrack.h"
+#include "webrtc/rtc_base/bind.h"
+#include "webrtc/rtc_base/checks.h"
+#include "webrtc/rtc_base/logging.h"
+#include "webrtc/rtc_base/stringencode.h"
+#include "webrtc/rtc_base/stringutils.h"
+#include "webrtc/rtc_base/trace_event.h"
 #include "webrtc/system_wrappers/include/clock.h"
 #include "webrtc/system_wrappers/include/field_trial.h"
 
@@ -216,6 +216,13 @@ bool SafeSetError(webrtc::RTCErrorType type, webrtc::RTCError* error) {
   return type == webrtc::RTCErrorType::NONE;
 }
 
+bool SafeSetError(webrtc::RTCError error, webrtc::RTCError* error_out) {
+  if (error_out) {
+    *error_out = std::move(error);
+  }
+  return error.ok();
+}
+
 }  // namespace
 
 namespace webrtc {
@@ -223,11 +230,20 @@ namespace webrtc {
 bool PeerConnectionInterface::RTCConfiguration::operator==(
     const PeerConnectionInterface::RTCConfiguration& o) const {
   // This static_assert prevents us from accidentally breaking operator==.
+  // Note: Order matters! Fields must be ordered the same as RTCConfiguration.
   struct stuff_being_tested_for_equality {
-    IceTransportsType type;
     IceServers servers;
+    IceTransportsType type;
     BundlePolicy bundle_policy;
     RtcpMuxPolicy rtcp_mux_policy;
+    std::vector<rtc::scoped_refptr<rtc::RTCCertificate>> certificates;
+    int ice_candidate_pool_size;
+    bool disable_ipv6;
+    bool disable_ipv6_on_wifi;
+    bool enable_rtp_data_channel;
+    rtc::Optional<int> screencast_min_bitrate;
+    rtc::Optional<bool> combined_audio_video_bwe;
+    rtc::Optional<bool> enable_dtls_srtp;
     TcpCandidatePolicy tcp_candidate_policy;
     CandidateNetworkPolicy candidate_network_policy;
     int audio_jitter_buffer_max_packets;
@@ -235,22 +251,15 @@ bool PeerConnectionInterface::RTCConfiguration::operator==(
     int ice_connection_receiving_timeout;
     int ice_backup_candidate_pair_ping_interval;
     ContinualGatheringPolicy continual_gathering_policy;
-    std::vector<rtc::scoped_refptr<rtc::RTCCertificate>> certificates;
     bool prioritize_most_likely_ice_candidate_pairs;
     struct cricket::MediaConfig media_config;
-    bool disable_ipv6;
-    bool disable_ipv6_on_wifi;
-    bool enable_rtp_data_channel;
     bool enable_quic;
-    rtc::Optional<int> screencast_min_bitrate;
-    rtc::Optional<bool> combined_audio_video_bwe;
-    rtc::Optional<bool> enable_dtls_srtp;
-    int ice_candidate_pool_size;
     bool prune_turn_ports;
     bool presume_writable_when_fully_relayed;
     bool enable_ice_renomination;
     bool redetermine_role_on_ice_restart;
     rtc::Optional<int> ice_check_min_interval;
+    rtc::Optional<rtc::IntervalRange> ice_regather_interval_range;
   };
   static_assert(sizeof(stuff_being_tested_for_equality) == sizeof(*this),
                 "Did you add something to RTCConfiguration and forget to "
@@ -284,7 +293,8 @@ bool PeerConnectionInterface::RTCConfiguration::operator==(
              o.presume_writable_when_fully_relayed &&
          enable_ice_renomination == o.enable_ice_renomination &&
          redetermine_role_on_ice_restart == o.redetermine_role_on_ice_restart &&
-         ice_check_min_interval == o.ice_check_min_interval;
+         ice_check_min_interval == o.ice_check_min_interval &&
+         ice_regather_interval_range == o.ice_regather_interval_range;
 }
 
 bool PeerConnectionInterface::RTCConfiguration::operator!=(
@@ -441,6 +451,13 @@ bool PeerConnection::Initialize(
     std::unique_ptr<rtc::RTCCertificateGeneratorInterface> cert_generator,
     PeerConnectionObserver* observer) {
   TRACE_EVENT0("webrtc", "PeerConnection::Initialize");
+
+  RTCError config_error = ValidateConfiguration(configuration);
+  if (!config_error.ok()) {
+    LOG(LS_ERROR) << "Invalid configuration: " << config_error.message();
+    return false;
+  }
+
   if (!allocator) {
     LOG(LS_ERROR) << "PeerConnection initialized without a PortAllocator? "
                   << "This shouldn't happen if using PeerConnectionFactory.";
@@ -512,6 +529,17 @@ bool PeerConnection::Initialize(
 
   configuration_ = configuration;
   return true;
+}
+
+RTCError PeerConnection::ValidateConfiguration(
+    const RTCConfiguration& config) const {
+  if (config.ice_regather_interval_range &&
+      config.continual_gathering_policy == GATHER_ONCE) {
+    return RTCError(RTCErrorType::INVALID_PARAMETER,
+                    "ice_regather_interval_range specified but continual "
+                    "gathering policy is GATHER_ONCE");
+  }
+  return RTCError::OK();
 }
 
 rtc::scoped_refptr<StreamCollectionInterface>
@@ -1156,6 +1184,12 @@ bool PeerConnection::SetConfiguration(const RTCConfiguration& configuration,
   if (configuration != modified_config) {
     LOG(LS_ERROR) << "Modifying the configuration in an unsupported way.";
     return SafeSetError(RTCErrorType::INVALID_MODIFICATION, error);
+  }
+
+  // Validate the modified configuration.
+  RTCError validate_error = ValidateConfiguration(modified_config);
+  if (!validate_error.ok()) {
+    return SafeSetError(std::move(validate_error), error);
   }
 
   // Note that this isn't possible through chromium, since it's an unsigned

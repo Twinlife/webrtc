@@ -20,12 +20,6 @@
 
 #include "webrtc/api/call/audio_sink.h"
 #include "webrtc/api/rtpreceiverinterface.h"
-#include "webrtc/base/asyncinvoker.h"
-#include "webrtc/base/asyncudpsocket.h"
-#include "webrtc/base/criticalsection.h"
-#include "webrtc/base/network.h"
-#include "webrtc/base/sigslot.h"
-#include "webrtc/base/window.h"
 #include "webrtc/media/base/mediachannel.h"
 #include "webrtc/media/base/mediaengine.h"
 #include "webrtc/media/base/streamparams.h"
@@ -41,6 +35,12 @@
 #include "webrtc/pc/rtcpmuxfilter.h"
 #include "webrtc/pc/rtptransport.h"
 #include "webrtc/pc/srtpfilter.h"
+#include "webrtc/rtc_base/asyncinvoker.h"
+#include "webrtc/rtc_base/asyncudpsocket.h"
+#include "webrtc/rtc_base/criticalsection.h"
+#include "webrtc/rtc_base/network.h"
+#include "webrtc/rtc_base/sigslot.h"
+#include "webrtc/rtc_base/window.h"
 
 namespace webrtc {
 class AudioSinkInterface;
@@ -271,7 +271,7 @@ class BaseChannel
                     const rtc::PacketTime& packet_time);
   // TODO(zstein): packet can be const once the RtpTransport handles protection.
   virtual void OnPacketReceived(bool rtcp,
-                                rtc::CopyOnWriteBuffer& packet,
+                                rtc::CopyOnWriteBuffer* packet,
                                 const rtc::PacketTime& packet_time);
   void ProcessPacket(bool rtcp,
                      const rtc::CopyOnWriteBuffer& packet,
@@ -319,13 +319,18 @@ class BaseChannel
                                   ContentAction action,
                                   std::string* error_desc) = 0;
   bool SetRtpTransportParameters(const MediaContentDescription* content,
-                                 ContentAction action,
-                                 ContentSource src,
-                                 std::string* error_desc);
+      ContentAction action, ContentSource src,
+      const RtpHeaderExtensions& extensions, std::string* error_desc);
   bool SetRtpTransportParameters_n(const MediaContentDescription* content,
-                                   ContentAction action,
-                                   ContentSource src,
-                                   std::string* error_desc);
+      ContentAction action, ContentSource src,
+      const std::vector<int>& encrypted_extension_ids,
+      std::string* error_desc);
+
+  // Return a list of RTP header extensions with the non-encrypted extensions
+  // removed depending on the current crypto_options_ and only if both the
+  // non-encrypted and encrypted extension is present for the same URI.
+  RtpHeaderExtensions GetFilteredRtpHeaderExtensions(
+      const RtpHeaderExtensions& extensions);
 
   // Helper method to get RTP Absoulute SendTime extension header id if
   // present in remote supported extensions list.
@@ -338,6 +343,7 @@ class BaseChannel
   bool SetSrtp_n(const std::vector<CryptoParams>& params,
                  ContentAction action,
                  ContentSource src,
+                 const std::vector<int>& encrypted_extension_ids,
                  std::string* error_desc);
   bool SetRtcpMux_n(bool enable,
                     ContentAction action,
@@ -391,7 +397,7 @@ class BaseChannel
   // If non-null, "X_dtls_transport_" will always equal "X_packet_transport_".
   DtlsTransportInternal* rtp_dtls_transport_ = nullptr;
   DtlsTransportInternal* rtcp_dtls_transport_ = nullptr;
-  webrtc::RtpTransport rtp_transport_;
+  std::unique_ptr<webrtc::RtpTransport> rtp_transport_;
   std::vector<std::pair<rtc::Socket::Option, int> > socket_options_;
   std::vector<std::pair<rtc::Socket::Option, int> > rtcp_socket_options_;
   SrtpFilter srtp_filter_;
@@ -499,7 +505,7 @@ class VoiceChannel : public BaseChannel {
  private:
   // overrides from BaseChannel
   void OnPacketReceived(bool rtcp,
-                        rtc::CopyOnWriteBuffer& packet,
+                        rtc::CopyOnWriteBuffer* packet,
                         const rtc::PacketTime& packet_time) override;
   void UpdateMediaSendRecvState_w() override;
   const ContentInfo* GetFirstContent(const SessionDescription* sdesc) override;
