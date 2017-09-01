@@ -14,10 +14,12 @@
 #include <map>
 #include <string>
 
+#include "webrtc/call/video_receive_stream.h"
 #include "webrtc/common_types.h"
 #include "webrtc/common_video/include/frame_callback.h"
 #include "webrtc/modules/video_coding/include/video_coding_defines.h"
 #include "webrtc/rtc_base/criticalsection.h"
+#include "webrtc/rtc_base/moving_max_counter.h"
 #include "webrtc/rtc_base/rate_statistics.h"
 #include "webrtc/rtc_base/ratetracker.h"
 #include "webrtc/rtc_base/thread_annotations.h"
@@ -25,7 +27,6 @@
 #include "webrtc/video/report_block_stats.h"
 #include "webrtc/video/stats_counter.h"
 #include "webrtc/video/video_stream_decoder.h"
-#include "webrtc/video_receive_stream.h"
 
 namespace webrtc {
 
@@ -57,6 +58,9 @@ class ReceiveStatisticsProxy : public VCMReceiveStatisticsCallback,
 
   void OnPreDecode(const EncodedImage& encoded_image,
                    const CodecSpecificInfo* codec_specific_info);
+
+  // Indicates video stream has been paused (no incoming packets).
+  void OnStreamInactive();
 
   // Overrides VCMReceiveStatisticsCallback.
   void OnReceiveRatesUpdated(uint32_t bitRate, uint32_t frameRate) override;
@@ -152,6 +156,8 @@ class ReceiveStatisticsProxy : public VCMReceiveStatisticsCallback,
   int64_t e2e_delay_max_ms_screenshare_ GUARDED_BY(crit_);
   int64_t interframe_delay_max_ms_video_  GUARDED_BY(crit_);
   int64_t interframe_delay_max_ms_screenshare_  GUARDED_BY(crit_);
+  mutable rtc::MovingMaxCounter<int> interframe_delay_max_moving_
+      GUARDED_BY(crit_);
   MaxCounter freq_offset_counter_ GUARDED_BY(crit_);
   int64_t first_report_block_time_ms_ GUARDED_BY(crit_);
   ReportBlockStats report_block_stats_ GUARDED_BY(crit_);
@@ -160,7 +166,7 @@ class ReceiveStatisticsProxy : public VCMReceiveStatisticsCallback,
   int64_t avg_rtt_ms_ GUARDED_BY(crit_);
   mutable std::map<int64_t, size_t> frame_window_ GUARDED_BY(&crit_);
   VideoContentType last_content_type_ GUARDED_BY(&crit_);
-  rtc::Optional<int64_t> last_decoded_frame_time_ms_;
+  rtc::Optional<int64_t> last_decoded_frame_time_ms_ GUARDED_BY(&crit_);
   rtc::Optional<TimingFrameInfo> timing_frame_info_ GUARDED_BY(&crit_);
 };
 

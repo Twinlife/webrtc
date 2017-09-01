@@ -64,10 +64,10 @@ def CatFiles(file_list, output_file):
 
 
 def get_args_and_env():
-  if '--' not in sys.argv:
-    return sys.argv, os.environ
-
-  argv_index = sys.argv.index('--')
+  if '--' in sys.argv:
+    argv_index = sys.argv.index('--')
+  else:
+    argv_index = len(sys.argv)
 
   gtest_parallel_args = sys.argv[1:argv_index]
   executable_args = sys.argv[argv_index + 1:]
@@ -80,6 +80,10 @@ def get_args_and_env():
   # https://chromium.googlesource.com/external/github.com/catapult-project/catapult/+/HEAD/dashboard/docs/data-format.md
   parser.add_argument('--isolated-script-test-chartjson-output', type=str,
                       default=None)
+
+  # No-sandbox is a Chromium-specific flag, ignore it.
+  # TODO(oprypin): Remove (bugs.webrtc.org/8115)
+  parser.add_argument('--no-sandbox', action='store_true', default=False)
 
   # We have to do this, since --isolated-script-test-output is passed as an
   # argument to the executable by the swarming scripts, and we want to pass it

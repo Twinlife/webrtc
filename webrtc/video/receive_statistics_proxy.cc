@@ -17,7 +17,6 @@
 #include "webrtc/modules/video_coding/include/video_codec_interface.h"
 #include "webrtc/rtc_base/checks.h"
 #include "webrtc/rtc_base/logging.h"
-#include "webrtc/rtc_base/trace_event.h"
 #include "webrtc/system_wrappers/include/clock.h"
 #include "webrtc/system_wrappers/include/field_trial.h"
 #include "webrtc/system_wrappers/include/metrics.h"
@@ -43,6 +42,9 @@ const int kLowQpThresholdVp8 = 60;
 const int kHighQpThresholdVp8 = 70;
 const int kLowVarianceThreshold = 1;
 const int kHighVarianceThreshold = 2;
+
+// Some metrics are reported as a maximum over this period.
+const int kMovingMaxWindowMs = 10000;
 
 // How large window we use to calculate the framerate/bitrate.
 const int kRateStatisticsWindowSizeMs = 1000;
@@ -79,6 +81,7 @@ ReceiveStatisticsProxy::ReceiveStatisticsProxy(
       e2e_delay_max_ms_screenshare_(-1),
       interframe_delay_max_ms_video_(-1),
       interframe_delay_max_ms_screenshare_(-1),
+      interframe_delay_max_moving_(kMovingMaxWindowMs),
       freq_offset_counter_(clock, nullptr, kFreqOffsetProcessIntervalMs),
       first_report_block_time_ms_(-1),
       avg_rtt_ms_(0),
@@ -217,6 +220,11 @@ void ReceiveStatisticsProxy::UpdateHistograms() {
   if (interframe_delay_ms_screenshare != -1) {
     RTC_HISTOGRAM_COUNTS_10000("WebRTC.Video.Screenshare.InterframeDelayInMs",
                                interframe_delay_ms_screenshare);
+    RTC_DCHECK_GE(interframe_delay_max_ms_screenshare_,
+                  interframe_delay_ms_screenshare);
+    RTC_HISTOGRAM_COUNTS_10000(
+        "WebRTC.Video.Screenshare.InterframeDelayMaxInMs",
+        interframe_delay_max_ms_screenshare_);
   }
 
   int interframe_delay_ms_video =
@@ -224,23 +232,10 @@ void ReceiveStatisticsProxy::UpdateHistograms() {
   if (interframe_delay_ms_video != -1) {
     RTC_HISTOGRAM_COUNTS_10000("WebRTC.Video.InterframeDelayInMs",
                                interframe_delay_ms_video);
+    RTC_DCHECK_GE(interframe_delay_max_ms_video_, interframe_delay_ms_video);
+    RTC_HISTOGRAM_COUNTS_10000("WebRTC.Video.InterframeDelayMaxInMs",
+                               interframe_delay_max_ms_video_);
   }
-
-  int interframe_delay_max_ms_screenshare =
-      interframe_delay_max_ms_screenshare_;
-  if (interframe_delay_max_ms_screenshare != -1) {
-    RTC_HISTOGRAM_COUNTS_10000(
-        "WebRTC.Video.Screenshare.InterframeDelayMaxInMs",
-        interframe_delay_ms_screenshare);
-  }
-
-  int interframe_delay_max_ms_video = interframe_delay_max_ms_video_;
-  if (interframe_delay_max_ms_video != -1) {
-    RTC_HISTOGRAM_COUNTS_10000(
-        "WebRTC.Video.InterframeDelayMaxInMs",
-        interframe_delay_ms_video);
-  }
-
 
   StreamDataCounters rtp = stats_.rtp_stats;
   StreamDataCounters rtx;
@@ -403,6 +398,8 @@ VideoReceiveStream::Stats ReceiveStatisticsProxy::GetStats() const {
   stats_.decode_frame_rate = decode_fps_estimator_.Rate(now_ms).value_or(0);
   stats_.total_bitrate_bps =
       static_cast<int>(total_byte_tracker_.ComputeRate() * 8);
+  stats_.interframe_delay_max_ms =
+      interframe_delay_max_moving_.Max(now_ms).value_or(-1);
   return stats_;
 }
 
@@ -457,22 +454,6 @@ void ReceiveStatisticsProxy::OnFrameBufferTimingsUpdated(
   // Network delay (rtt/2) + target_delay_ms (jitter delay + decode time +
   // render delay).
   delay_counter_.Add(target_delay_ms + avg_rtt_ms_ / 2);
-  TRACE_EVENT_INSTANT2("webrtc_stats", "WebRTC.Video.DecodeTimeInMs",
-                       "decode_ms", decode_ms, "ssrc", stats_.ssrc);
-  TRACE_EVENT_INSTANT2("webrtc_stats", "WebRTC.Video.MaxDecodeTimeInMs",
-                       "max_decode_ms", max_decode_ms, "ssrc", stats_.ssrc);
-  TRACE_EVENT_INSTANT2("webrtc_stats", "WebRTC.Video.CurrentDelayInMs",
-                       "current_delay_ms", current_delay_ms,
-                       "ssrc", stats_.ssrc);
-  TRACE_EVENT_INSTANT2("webrtc_stats", "WebRTC.Video.TargetDelayInMs",
-                       "target_delay_ms", target_delay_ms,
-                       "ssrc", stats_.ssrc);
-  TRACE_EVENT_INSTANT2("webrtc_stats", "WebRTC.Video.JitterBufferDelayInMs",
-                       "jitter_buffer_ms", jitter_buffer_ms,
-                       "ssrc", stats_.ssrc);
-  TRACE_EVENT_INSTANT2("webrtc_stats", "WebRTC.Video.RenderDelayInMs",
-                       "render_delay_ms", render_delay_ms,
-                       "ssrc", stats_.ssrc);
 }
 
 void ReceiveStatisticsProxy::OnTimingFrameInfoUpdated(
@@ -508,10 +489,6 @@ void ReceiveStatisticsProxy::StatisticsUpdated(
 
   if (first_report_block_time_ms_ == -1)
     first_report_block_time_ms_ = clock_->TimeInMilliseconds();
-
-  TRACE_EVENT_INSTANT2("webrtc_stats", "WebRTC.Video.PacketsLost",
-                       "packets_lost", statistics.cumulative_lost,
-                       "ssrc", stats_.ssrc);
 }
 
 void ReceiveStatisticsProxy::CNameChanged(const char* cname, uint32_t ssrc) {
@@ -573,7 +550,7 @@ void ReceiveStatisticsProxy::OnDecodedFrame(rtc::Optional<uint8_t> qp,
   if (last_decoded_frame_time_ms_) {
     int64_t interframe_delay_ms = now - *last_decoded_frame_time_ms_;
     RTC_DCHECK_GE(interframe_delay_ms, 0);
-    stats_.interframe_delay_sum_ms += interframe_delay_ms;
+    interframe_delay_max_moving_.Add(interframe_delay_ms, now);
     if (last_content_type_ == VideoContentType::SCREENSHARE) {
       interframe_delay_counter_screenshare_.Add(interframe_delay_ms);
       if (interframe_delay_max_ms_screenshare_ < interframe_delay_ms) {
@@ -619,13 +596,6 @@ void ReceiveStatisticsProxy::OnRenderedFrame(const VideoFrame& frame) {
       }
     }
   }
-
-  TRACE_EVENT_INSTANT2("webrtc_stats", "WebRTC.Video.ReceivedWidthInPixels",
-                       "width", width, "ssrc", stats_.ssrc);
-  TRACE_EVENT_INSTANT2("webrtc_stats", "WebRTC.Video.ReceivedHeightInPixels",
-                       "height", height, "ssrc", stats_.ssrc);
-  TRACE_EVENT_INSTANT1("webrtc_stats", "WebRTC.Video.OnRenderedFrame",
-                       "ssrc", stats_.ssrc);
 }
 
 void ReceiveStatisticsProxy::OnSyncOffsetUpdated(int64_t sync_offset_ms,
@@ -682,6 +652,14 @@ void ReceiveStatisticsProxy::OnPreDecode(
     rtc::CritScope lock(&crit_);
     qp_sample_.Add(encoded_image.qp_);
   }
+}
+
+void ReceiveStatisticsProxy::OnStreamInactive() {
+  // TODO(sprang): Figure out any other state that should be reset.
+
+  rtc::CritScope lock(&crit_);
+  // Don't report inter-frame delay if stream was paused.
+  last_decoded_frame_time_ms_.reset();
 }
 
 void ReceiveStatisticsProxy::SampleCounter::Add(int sample) {

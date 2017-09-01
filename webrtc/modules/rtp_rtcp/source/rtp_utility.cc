@@ -22,11 +22,6 @@ RtpFeedback* NullObjectRtpFeedback() {
   return &null_rtp_feedback;
 }
 
-ReceiveStatistics* NullObjectReceiveStatistics() {
-  static NullReceiveStatistics null_receive_statistics;
-  return &null_receive_statistics;
-}
-
 namespace RtpUtility {
 
 enum {
@@ -482,6 +477,10 @@ void RtpHeaderParser::ParseOneByteExtensionHeader(
         case kRtpExtensionRepairedRtpStreamId: {
           header->extension.repaired_stream_id.Set(
               rtc::MakeArrayView(ptr, len + 1));
+          break;
+        }
+        case kRtpExtensionMid: {
+          header->extension.mid.Set(rtc::MakeArrayView(ptr, len + 1));
           break;
         }
         case kRtpExtensionNone:
