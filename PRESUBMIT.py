@@ -17,8 +17,6 @@ import sys
 CPPLINT_BLACKLIST = [
   'tools_webrtc',
   'webrtc/api/video_codecs/video_decoder.h',
-  'webrtc/api/video_codecs/video_encoder.h',
-  'webrtc/base',
   'webrtc/examples/objc',
   'webrtc/media',
   'webrtc/modules/audio_coding',
@@ -74,7 +72,6 @@ NATIVE_API_DIRS = (
 # These directories should not be used but are maintained only to avoid breaking
 # some legacy downstream code.
 LEGACY_API_DIRS = (
-  'webrtc/base',
   'webrtc/common_audio/include',
   'webrtc/modules/audio_coding/include',
   'webrtc/modules/audio_conference_mixer/include',
@@ -91,6 +88,7 @@ LEGACY_API_DIRS = (
   'webrtc/modules/video_coding/codecs/vp8/include',
   'webrtc/modules/video_coding/codecs/vp9/include',
   'webrtc/modules/video_coding/include',
+  'webrtc/rtc_base',
   'webrtc/system_wrappers/include',
   'webrtc/voice_engine/include',
 )
@@ -510,26 +508,6 @@ def _CheckUsageOfGoogleProtobufNamespace(input_api, output_api):
   return []
 
 
-def _CheckNoChangesToWebRTCBase(input_api, output_api):
-  """Checks that no changes refer to webrtc/base."""
-  problems = []
-
-  for f in input_api.AffectedFiles():
-    if os.path.join('webrtc', 'base') in f.LocalPath():
-      problems.append('    ' + f.LocalPath())
-      continue
-    for line_num, line in f.ChangedContents():
-      if 'webrtc/base' in line:
-        problems.append('    %s: %s' % (f.LocalPath(), line_num))
-
-  if problems:
-    return [output_api.PresubmitPromptWarning(
-        'webrtc/base is being moved to webrtc/rtc_base (See '
-        'bugs.webrtc.org/7634). Please refer to webrtc/rtc_base instead in the '
-        'following files:\n' + '\n'.join(problems))]
-  return []
-
-
 def _CommonChecks(input_api, output_api):
   """Checks common to both upload and commit."""
   results = []
@@ -598,7 +576,6 @@ def _CommonChecks(input_api, output_api):
   results.extend(_CheckUsageOfGoogleProtobufNamespace(input_api, output_api))
   results.extend(_CheckOrphanHeaders(input_api, output_api))
   results.extend(_CheckNewLineAtTheEndOfProtoFiles(input_api, output_api))
-  results.extend(_CheckNoChangesToWebRTCBase(input_api, output_api))
   return results
 
 
