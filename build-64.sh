@@ -1,5 +1,3 @@
-#build/linux/sysroot_scripts/install-sysroot.py --arch=amd64
-
 #!/bin/bash
 
 rm -rf out-64/Release
