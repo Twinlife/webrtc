@@ -2811,7 +2811,9 @@ void EndToEndTest::VerifyHistogramStats(bool use_rtx,
 
   std::string video_prefix =
       screenshare ? "WebRTC.Video.Screenshare." : "WebRTC.Video.";
-
+  // The content type extension is disabled in non screenshare test,
+  // therefore no slicing on simulcast id should be present.
+  std::string video_suffix = screenshare ? ".S0" : "";
   // Verify that stats have been updated once.
   EXPECT_EQ(2, metrics::NumSamples("WebRTC.Call.LifetimeInSeconds"));
   EXPECT_EQ(1, metrics::NumSamples(
@@ -2847,8 +2849,8 @@ void EndToEndTest::VerifyHistogramStats(bool use_rtx,
   EXPECT_EQ(1, metrics::NumSamples(video_prefix + "InputHeightInPixels"));
   EXPECT_EQ(1, metrics::NumSamples(video_prefix + "SentWidthInPixels"));
   EXPECT_EQ(1, metrics::NumSamples(video_prefix + "SentHeightInPixels"));
-  EXPECT_EQ(1, metrics::NumSamples("WebRTC.Video.ReceivedWidthInPixels"));
-  EXPECT_EQ(1, metrics::NumSamples("WebRTC.Video.ReceivedHeightInPixels"));
+  EXPECT_EQ(1, metrics::NumSamples(video_prefix + "ReceivedWidthInPixels"));
+  EXPECT_EQ(1, metrics::NumSamples(video_prefix + "ReceivedHeightInPixels"));
 
   EXPECT_EQ(1, metrics::NumEvents(video_prefix + "InputWidthInPixels",
                                   kDefaultWidth));
@@ -2858,9 +2860,9 @@ void EndToEndTest::VerifyHistogramStats(bool use_rtx,
       1, metrics::NumEvents(video_prefix + "SentWidthInPixels", kDefaultWidth));
   EXPECT_EQ(1, metrics::NumEvents(video_prefix + "SentHeightInPixels",
                                   kDefaultHeight));
-  EXPECT_EQ(1, metrics::NumEvents("WebRTC.Video.ReceivedWidthInPixels",
+  EXPECT_EQ(1, metrics::NumEvents(video_prefix + "ReceivedWidthInPixels",
                                   kDefaultWidth));
-  EXPECT_EQ(1, metrics::NumEvents("WebRTC.Video.ReceivedHeightInPixels",
+  EXPECT_EQ(1, metrics::NumEvents(video_prefix + "ReceivedHeightInPixels",
                                   kDefaultHeight));
 
   EXPECT_EQ(1, metrics::NumSamples(video_prefix + "InputFramesPerSecond"));
@@ -2873,10 +2875,14 @@ void EndToEndTest::VerifyHistogramStats(bool use_rtx,
   EXPECT_EQ(1, metrics::NumSamples("WebRTC.Video.CurrentDelayInMs"));
   EXPECT_EQ(1, metrics::NumSamples("WebRTC.Video.OnewayDelayInMs"));
 
-  EXPECT_EQ(1, metrics::NumSamples(video_prefix + "EndToEndDelayInMs"));
-  EXPECT_EQ(1, metrics::NumSamples(video_prefix + "EndToEndDelayMaxInMs"));
-  EXPECT_EQ(1, metrics::NumSamples(video_prefix + "InterframeDelayInMs"));
-  EXPECT_EQ(1, metrics::NumSamples(video_prefix + "InterframeDelayMaxInMs"));
+  EXPECT_EQ(1, metrics::NumSamples(video_prefix + "EndToEndDelayInMs" +
+                                   video_suffix));
+  EXPECT_EQ(1, metrics::NumSamples(video_prefix + "EndToEndDelayMaxInMs" +
+                                   video_suffix));
+  EXPECT_EQ(1, metrics::NumSamples(video_prefix + "InterframeDelayInMs" +
+                                   video_suffix));
+  EXPECT_EQ(1, metrics::NumSamples(video_prefix + "InterframeDelayMaxInMs" +
+                                   video_suffix));
 
   EXPECT_EQ(1, metrics::NumSamples("WebRTC.Video.RenderSqrtPixelsPerSecond"));
 
@@ -3623,7 +3629,7 @@ TEST_F(EndToEndTest, GetStats) {
   RunBaseTest(&test);
 }
 
-TEST_F(EndToEndTest, GetTimingFrameInfoReportsTimingFrames) {
+TEST_F(EndToEndTest, TimingFramesAreReported) {
   static const int kExtensionId = 5;
 
   class StatsObserver : public test::EndToEndTest {
@@ -3631,12 +3637,6 @@ TEST_F(EndToEndTest, GetTimingFrameInfoReportsTimingFrames) {
     StatsObserver() : EndToEndTest(kLongTimeoutMs) {}
 
    private:
-    std::string CompoundKey(const char* name, uint32_t ssrc) {
-      std::ostringstream oss;
-      oss << name << "_" << ssrc;
-      return oss.str();
-    }
-
     void ModifyVideoConfigs(
         VideoSendStream::Config* send_config,
         std::vector<VideoReceiveStream::Config>* receive_configs,
@@ -3660,13 +3660,13 @@ TEST_F(EndToEndTest, GetTimingFrameInfoReportsTimingFrames) {
     void PerformTest() override {
       // No frames reported initially.
       for (size_t i = 0; i < receive_streams_.size(); ++i) {
-        EXPECT_FALSE(receive_streams_[i]->GetAndResetTimingFrameInfo());
+        EXPECT_FALSE(receive_streams_[i]->GetStats().timing_frame_info);
       }
       // Wait for at least one timing frame to be sent with 100ms grace period.
       SleepMs(kDefaultTimingFramesDelayMs + 100);
       // Check that timing frames are reported for each stream.
       for (size_t i = 0; i < receive_streams_.size(); ++i) {
-        EXPECT_TRUE(receive_streams_[i]->GetAndResetTimingFrameInfo());
+        EXPECT_TRUE(receive_streams_[i]->GetStats().timing_frame_info);
       }
     }
 

@@ -87,6 +87,8 @@ class VideoReceiveStream {
     int width = 0;
     int height = 0;
 
+    VideoContentType content_type = VideoContentType::UNSPECIFIED;
+
     int sync_offset_ms = std::numeric_limits<int>::max();
 
     uint32_t ssrc = 0;
@@ -94,6 +96,10 @@ class VideoReceiveStream {
     StreamDataCounters rtp_stats;
     RtcpPacketTypeCounter rtcp_packet_type_counts;
     RtcpStatistics rtcp_stats;
+
+    // Timing frame info: all important timestamps for a full lifetime of a
+    // single 'timing frame'.
+    rtc::Optional<webrtc::TimingFrameInfo> timing_frame_info;
   };
 
   struct Config {
@@ -220,8 +226,6 @@ class VideoReceiveStream {
 
   // TODO(pbos): Add info on currently-received codec to Stats.
   virtual Stats GetStats() const = 0;
-
-  virtual rtc::Optional<TimingFrameInfo> GetAndResetTimingFrameInfo() = 0;
 
   // Takes ownership of the file, is responsible for closing it later.
   // Calling this method will close and finalize any current log.
