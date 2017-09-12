@@ -2387,13 +2387,15 @@ WebRtcVideoChannel::WebRtcVideoReceiveStream::GetVideoReceiverInfo(
 
   info.interframe_delay_max_ms = stats.interframe_delay_max_ms;
 
+  info.content_type = stats.content_type;
+
   info.codec_name = GetCodecNameFromPayloadType(stats.current_payload_type);
 
   info.firs_sent = stats.rtcp_packet_type_counts.fir_packets;
   info.plis_sent = stats.rtcp_packet_type_counts.pli_packets;
   info.nacks_sent = stats.rtcp_packet_type_counts.nack_packets;
 
-  info.timing_frame_info = stream_->GetAndResetTimingFrameInfo();
+  info.timing_frame_info = stats.timing_frame_info;
 
   if (log_stats)
     LOG(LS_INFO) << stats.ToString(rtc::TimeMillis());
