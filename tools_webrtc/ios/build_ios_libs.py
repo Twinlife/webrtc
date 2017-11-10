@@ -31,8 +31,11 @@ SDK_LIB_NAME = 'librtc_sdk_objc.a'
 SDK_FRAMEWORK_NAME = 'WebRTC.framework'
 
 DEFAULT_ARCHS = ENABLED_ARCHS = ['arm64', 'arm', 'x64', 'x86']
-IOS_DEPLOYMENT_TARGET = '8.0'
+IOS_DEPLOYMENT_TARGET = '9.0'
 LIBVPX_BUILD_VP9 = False
+
+sys.path.append(os.path.join(SCRIPT_DIR, '..', 'libs'))
+from generate_licenses import LicenseBuilder
 
 
 def _ParseArgs():
@@ -130,7 +133,7 @@ def BuildWebRTC(output_dir, target_arch, flavor, gn_target_name,
 
   # Strip debug symbols to reduce size.
   if static_only:
-    gn_target_path = os.path.join(output_dir, 'obj', 'webrtc', 'sdk',
+    gn_target_path = os.path.join(output_dir, 'obj', 'sdk',
                                   'lib%s.a' % gn_target_name)
     cmd = ['strip', '-S', gn_target_path, '-o',
            os.path.join(output_dir, 'lib%s.a' % gn_target_name)]
@@ -224,13 +227,13 @@ def main():
       _RunCommand(cmd)
 
     # Generate the license file.
-    license_script_path = os.path.join(SCRIPT_DIR, 'generate_licenses.py')
     ninja_dirs = [os.path.join(args.output_dir, arch + '_libs')
                   for arch in architectures]
-    gn_target_full_name = '//webrtc/sdk:' + gn_target_name
-    cmd = [sys.executable, license_script_path, gn_target_full_name,
-           os.path.join(args.output_dir, SDK_FRAMEWORK_NAME)] + ninja_dirs
-    _RunCommand(cmd)
+    gn_target_full_name = '//sdk:' + gn_target_name
+    builder = LicenseBuilder(ninja_dirs, [gn_target_full_name])
+    builder.GenerateLicenseText(
+        os.path.join(args.output_dir, SDK_FRAMEWORK_NAME))
+
 
     # Modify the version number.
     # Format should be <Branch cut MXX>.<Hotfix #>.<Rev #>.
