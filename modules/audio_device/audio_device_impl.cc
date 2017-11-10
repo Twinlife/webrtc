@@ -34,6 +34,10 @@
 #include "modules/audio_device/android/audio_track_jni.h"
 #include "modules/audio_device/android/opensles_player.h"
 #include "modules/audio_device/android/opensles_recorder.h"
+// --twinlife-- 170307
+#include "modules/audio_device/android/audio_streaming_jni.h"
+// --twinlife-- 170307
+
 #elif defined(WEBRTC_LINUX)
 #if defined(LINUX_ALSA)
 #include "audio_device_alsa_linux.h"
@@ -118,6 +122,12 @@ rtc::scoped_refptr<AudioDeviceModule> AudioDeviceModule::Create(
 AudioDeviceModuleImpl::AudioDeviceModuleImpl(const int32_t id,
                                              const AudioLayer audioLayer)
     : _ptrAudioDevice(NULL),
+      // --twinlife-- 170307
+#if defined(WEBRTC_ANDROID)
+      _ptrAudioStreamingDevice(NULL),
+      _ptrAudioDeviceCopy(NULL),
+#endif
+      // --twinlife-- 170307      
       _id(id),
       _platformAudioLayer(audioLayer),
       _platformType(kPlatformNotSupported),
@@ -245,6 +255,11 @@ int32_t AudioDeviceModuleImpl::CreatePlatformSpecificObjects() {
     // Invalid audio layer.
     ptrAudioDevice = nullptr;
   }
+  // --twinlife-- 170307
+  _ptrAudioStreamingDevice = new AudioDeviceTemplate<AudioStreamingJni, AudioStreamingJni>(
+        audioLayer, audio_manager);
+  _ptrAudioDeviceCopy = ptrAudioDevice;
+  // --twinlife-- 170307  
 // END #if defined(WEBRTC_ANDROID)
 
 // Create the *Linux* implementation of the Audio Device
@@ -343,6 +358,15 @@ int32_t AudioDeviceModuleImpl::AttachAudioBuffer() {
 
   _audioDeviceBuffer.SetId(_id);
   _ptrAudioDevice->AttachAudioBuffer(&_audioDeviceBuffer);
+
+  // --twinlife-- 170307
+#if defined(WEBRTC_ANDROID)
+  if (_ptrAudioStreamingDevice) {
+    _ptrAudioStreamingDevice->AttachAudioBuffer(&_audioDeviceBuffer);
+  }
+#endif
+  // --twinlife-- 170307
+
   return 0;
 }
 
@@ -352,6 +376,16 @@ int32_t AudioDeviceModuleImpl::AttachAudioBuffer() {
 
 AudioDeviceModuleImpl::~AudioDeviceModuleImpl() {
   LOG(INFO) << __FUNCTION__;
+
+  // --twinlife-- 170307
+#if defined(WEBRTC_ANDROID)
+  if (_ptrAudioStreamingDevice && _ptrAudioStreamingDevice != _ptrAudioDevice) {
+    delete _ptrAudioStreamingDevice;
+    _ptrAudioStreamingDevice = NULL;
+  }
+#endif
+  // --twinlife-- 170307
+  
   if (_ptrAudioDevice) {
     delete _ptrAudioDevice;
     _ptrAudioDevice = NULL;

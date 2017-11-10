@@ -19,8 +19,8 @@ if (!build_with_chromium) {
   group("default") {
     testonly = true
     deps = [
-      ":webrtc",
-      "examples",
+#      ":webrtc",
+#      "examples",
       "rtc_tools",
     ]
     if (rtc_include_tests) {
