@@ -1166,6 +1166,17 @@ int32_t AudioDeviceModuleImpl::InitPlayout() {
 int32_t AudioDeviceModuleImpl::InitRecording() {
   LOG(INFO) << __FUNCTION__;
   CHECK_INITIALIZED();
+  // --twinlife-- 170307
+#if defined(WEBRTC_ANDROID)
+  if (_ptrAudioStreamingDevice->IsAudioStreamingModeEnabled()) {
+    _ptrAudioDevice = _ptrAudioStreamingDevice;
+  } else {
+    if (_ptrAudioDevice == _ptrAudioStreamingDevice) {
+      _ptrAudioDevice = _ptrAudioDeviceCopy;
+    }
+  }
+#endif
+  // --twinlife-- 170307
   if (RecordingIsInitialized()) {
     return 0;
   }
@@ -1265,6 +1276,13 @@ int32_t AudioDeviceModuleImpl::StopRecording() {
   CHECK_INITIALIZED();
   int32_t result = _ptrAudioDevice->StopRecording();
   _audioDeviceBuffer.StopRecording();
+  // --twinlife-- 170307
+#if defined(WEBRTC_ANDROID)
+  if (_ptrAudioDevice != _ptrAudioDeviceCopy) {
+      _ptrAudioDevice = _ptrAudioDeviceCopy;
+  }
+#endif
+  // --twinlife-- 170307
   LOG(INFO) << "output: " << result;
   RTC_HISTOGRAM_BOOLEAN("WebRTC.Audio.StopRecordingSuccess",
                         static_cast<int>(result == 0));
