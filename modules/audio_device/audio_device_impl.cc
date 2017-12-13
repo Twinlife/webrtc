@@ -269,6 +269,13 @@ int32_t AudioDeviceModuleImpl::CreatePlatformSpecificObjects() {
 int32_t AudioDeviceModuleImpl::AttachAudioBuffer() {
   RTC_LOG(INFO) << __FUNCTION__;
   audio_device_->AttachAudioBuffer(&audio_device_buffer_);
+
+  // --twinlife-- 170307
+#if defined(WEBRTC_ANDROID)
+  secondary_audio_device_->AttachAudioBuffer(&audio_device_buffer_);
+#endif
+  // --twinlife-- 170307
+
   return 0;
 }
 
