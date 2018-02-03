@@ -36,6 +36,9 @@ struct ProxyInfo {
 
   ProxyInfo();
   ~ProxyInfo();
+  // --twinlife-- 180202
+  bool operator==(const ProxyInfo& o) const;
+  // --twinlife-- 180202
 };
 
 } // namespace rtc

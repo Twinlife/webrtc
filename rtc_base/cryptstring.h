@@ -58,7 +58,11 @@ class CryptString {
   void CopyRawTo(std::vector<unsigned char> * dest) const {
     return impl_->CopyRawTo(dest);
   }
-
+  // --twinlife-- 180202
+  bool operator==(const CryptString& o) const {
+    return impl_ == o.impl_;
+  }
+  // --twinlife-- 180202
  private:
   std::unique_ptr<const CryptStringImpl> impl_;
 };

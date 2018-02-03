@@ -21,4 +21,12 @@ ProxyInfo::ProxyInfo() : type(PROXY_NONE), autodetect(false) {
 }
 ProxyInfo::~ProxyInfo() = default;
 
+// --twinlife-- 180202
+bool ProxyInfo::operator==(const ProxyInfo& o) const {
+  return type == o.type && address == o.address && autoconfig_url == o.autoconfig_url &&
+    autodetect == o.autodetect && bypass_list == o.bypass_list && username == o.username &&
+    password == o.password;
+}
+// --twinlife-- 180202
+
 } // namespace rtc

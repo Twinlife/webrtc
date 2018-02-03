@@ -706,6 +706,9 @@ bool PeerConnectionInterface::RTCConfiguration::operator==(
     rtc::Optional<rtc::IntervalRange> ice_regather_interval_range;
     webrtc::TurnCustomizer* turn_customizer;
     SdpSemantics sdp_semantics;
+    // --twinlife-- 180202
+    rtc::ProxyInfo proxy_info;
+    // --twinlife-- 180202
   };
   static_assert(sizeof(stuff_being_tested_for_equality) == sizeof(*this),
                 "Did you add something to RTCConfiguration and forget to "
@@ -742,7 +745,10 @@ bool PeerConnectionInterface::RTCConfiguration::operator==(
          ice_check_min_interval == o.ice_check_min_interval &&
          ice_regather_interval_range == o.ice_regather_interval_range &&
          turn_customizer == o.turn_customizer &&
-         sdp_semantics == o.sdp_semantics;
+         sdp_semantics == o.sdp_semantics &&
+         // --twinlife-- 180202
+         proxy_info == o.proxy_info;
+         // --twinlife-- 180202
 }
 
 bool PeerConnectionInterface::RTCConfiguration::operator!=(

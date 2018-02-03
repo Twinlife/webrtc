@@ -509,7 +509,9 @@ class PeerConnectionInterface : public rtc::RefCountInterface {
     //
     // TODO(steveanton): Implement support for kUnifiedPlan.
     SdpSemantics sdp_semantics = SdpSemantics::kDefault;
-
+    // --twinlife-- 180202
+    rtc::ProxyInfo proxy_info;
+    // --twinlife-- 180202
     //
     // Don't forget to update operator== if adding something.
     //

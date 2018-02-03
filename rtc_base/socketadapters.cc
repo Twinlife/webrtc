@@ -26,6 +26,9 @@
 
 #include <algorithm>
 
+// --twinlife-- 180202
+#include "rtc_base/base64.h"
+// --twinlife-- 180202
 #include "rtc_base/bytebuffer.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/httpcommon.h"
@@ -369,6 +372,17 @@ void AsyncHttpsProxySocket::SendRequest() {
   ss << "CONNECT " << dest_.ToString() << " HTTP/1.0\r\n";
   ss << "User-Agent: " << agent_ << "\r\n";
   ss << "Host: " << dest_.HostAsURIString() << "\r\n";
+  // --twinlife-- 180202
+  if (!user_ .empty() && pass_.GetLength() != 0) {
+    size_t len = user_.size() + pass_.GetLength() + 2;
+    char * sensitive = new char[len];
+    size_t pos = strcpyn(sensitive, len, user_.data(), user_.size());
+    pos += strcpyn(sensitive + pos, len - pos, ":");
+    pass_.CopyTo(sensitive + pos, true);
+    ss << "Proxy-Authorization: Basic " << Base64::Encode(sensitive) << "\r\n";
+    delete [] sensitive;
+  }
+  // --twinlife-- 180202
   ss << "Content-Length: 0\r\n";
   ss << "Proxy-Connection: Keep-Alive\r\n";
   ss << headers_;

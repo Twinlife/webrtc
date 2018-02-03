@@ -424,6 +424,54 @@ void JavaToNativeRTCConfiguration(
   jfieldID j_native_turn_customizer_id =
       GetFieldID(jni, j_turn_customizer_class, "nativeTurnCustomizer", "J");
 
+  // --twinlife-- 180202
+  jfieldID j_proxy_address_id =
+      GetFieldID(jni, j_rtc_config_class, "proxyAddress", "Ljava/lang/String;");
+  jobject j_proxy_address = GetNullableObjectField(jni, j_rtc_config, j_proxy_address_id);
+  jfieldID j_proxy_port_id =
+      GetFieldID(jni, j_rtc_config_class, "proxyPort", "I");
+  int proxy_port = GetIntField(jni, j_rtc_config, j_proxy_port_id);
+  jfieldID j_proxy_username_id =
+      GetFieldID(jni, j_rtc_config_class, "proxyUsername", "Ljava/lang/String;");
+  jobject j_proxy_username = GetNullableObjectField(jni, j_rtc_config, j_proxy_username_id);
+  jfieldID j_proxy_password_id =
+    GetFieldID(jni, j_rtc_config_class, "proxyPassword", "Ljava/lang/String;");
+  jobject j_proxy_password = GetNullableObjectField(jni, j_rtc_config, j_proxy_password_id);
+
+  if (!IsNull(jni, j_proxy_address) && proxy_port != 0) {
+    const char *proxy_address = jni->GetStringUTFChars(static_cast<jstring>(j_proxy_address), NULL);
+    CHECK_EXCEPTION(jni) << "error during GetStringUTFChars";
+
+    rtc_config->proxy_info.type = rtc::PROXY_HTTPS;
+    rtc_config->proxy_info.address = rtc::SocketAddress(proxy_address, proxy_port);
+
+    if (!IsNull(jni, j_proxy_username) && !IsNull(jni, j_proxy_password)) {
+      const char *proxy_username = jni->GetStringUTFChars(static_cast<jstring>(j_proxy_username), NULL);
+      CHECK_EXCEPTION(jni) << "error during GetStringUTFChars";
+      const char *proxy_password = jni->GetStringUTFChars(static_cast<jstring>(j_proxy_password), NULL);
+      CHECK_EXCEPTION(jni) << "error during GetStringUTFChars";
+      rtc_config->proxy_info.username = proxy_username;
+      rtc::InsecureCryptStringImpl insecureCryptStringImpl;
+      insecureCryptStringImpl.password() = proxy_password;
+      rtc_config->proxy_info.password = rtc::CryptString(insecureCryptStringImpl);
+
+      if (proxy_username) {
+	jni->ReleaseStringUTFChars(static_cast<jstring>(j_proxy_username), proxy_username);
+	CHECK_EXCEPTION(jni) << "error during GetStringUTFChars";
+      }
+      if (proxy_password) {
+	jni->ReleaseStringUTFChars(static_cast<jstring>(j_proxy_password), proxy_password);
+	CHECK_EXCEPTION(jni) << "error during GetStringUTFChars";
+      }
+    }
+
+    if (proxy_address) {
+      jni->ReleaseStringUTFChars(static_cast<jstring>(j_proxy_address), proxy_address);
+      CHECK_EXCEPTION(jni) << "error during GetStringUTFChars";
+    }
+  }
+  // --twinlife-- 180202
+
   rtc_config->type = JavaToNativeIceTransportsType(jni, j_ice_transports_type);
   rtc_config->bundle_policy = JavaToNativeBundlePolicy(jni, j_bundle_policy);
   rtc_config->rtcp_mux_policy =

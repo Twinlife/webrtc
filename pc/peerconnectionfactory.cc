@@ -245,6 +245,11 @@ PeerConnectionFactory::CreatePeerConnection(
         default_network_manager_.get(), default_socket_factory_.get(),
         configuration.turn_customizer));
   }
+  // --twinlife-- 180202
+  if (configuration.proxy_info.type != rtc::PROXY_NONE) {
+    allocator->set_proxy("webrtc", configuration.proxy_info);
+  }
+  // --twinlife-- 180202
   network_thread_->Invoke<void>(
       RTC_FROM_HERE, rtc::Bind(&cricket::PortAllocator::SetNetworkIgnoreMask,
                                allocator.get(), options_.network_ignore_mask));
