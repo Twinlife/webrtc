@@ -19,9 +19,7 @@
 #include "common_audio/include/audio_util.h"
 #include "common_audio/signal_processing/include/signal_processing_library.h"
 #include "modules/audio_processing/aec/aec_core.h"
-#include "modules/audio_processing/aec3/echo_canceller3.h"
 #include "modules/audio_processing/agc/agc_manager_direct.h"
-#include "modules/audio_processing/agc2/gain_controller2.h"
 #include "modules/audio_processing/audio_buffer.h"
 #include "modules/audio_processing/beamformer/nonlinear_beamformer.h"
 #include "modules/audio_processing/common.h"
@@ -29,6 +27,8 @@
 #include "modules/audio_processing/echo_control_mobile_impl.h"
 #include "modules/audio_processing/gain_control_for_experimental_agc.h"
 #include "modules/audio_processing/gain_control_impl.h"
+#include "modules/audio_processing/gain_controller2.h"
+#include "modules/audio_processing/logging/apm_data_dumper.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/platform_file.h"
@@ -45,6 +45,7 @@
 #include "modules/audio_processing/transient/transient_suppressor.h"
 #include "modules/audio_processing/voice_detection_impl.h"
 #include "modules/include/module_common_types.h"
+#include "rtc_base/atomicops.h"
 #include "system_wrappers/include/file_wrapper.h"
 #include "system_wrappers/include/metrics.h"
 
@@ -172,8 +173,10 @@ webrtc::InternalAPMStreamsConfig ToStreamsConfig(
 static_assert(AudioProcessing::kNoError == 0, "kNoError must be zero");
 
 AudioProcessingImpl::ApmSubmoduleStates::ApmSubmoduleStates(
-    bool capture_post_processor_enabled)
-    : capture_post_processor_enabled_(capture_post_processor_enabled) {}
+    bool capture_post_processor_enabled,
+    bool render_pre_processor_enabled)
+    : capture_post_processor_enabled_(capture_post_processor_enabled),
+      render_pre_processor_enabled_(render_pre_processor_enabled) {}
 
 bool AudioProcessingImpl::ApmSubmoduleStates::Update(
     bool low_cut_filter_enabled,
@@ -264,6 +267,11 @@ bool AudioProcessingImpl::ApmSubmoduleStates::RenderMultiBandSubModulesActive()
          echo_controller_enabled_;
 }
 
+bool AudioProcessingImpl::ApmSubmoduleStates::RenderFullBandProcessingActive()
+    const {
+  return render_pre_processor_enabled_;
+}
+
 bool AudioProcessingImpl::ApmSubmoduleStates::RenderMultiBandProcessingActive()
     const {
 #if WEBRTC_INTELLIGIBILITY_ENHANCER
@@ -294,65 +302,99 @@ struct AudioProcessingImpl::ApmPublicSubmodules {
 
 struct AudioProcessingImpl::ApmPrivateSubmodules {
   ApmPrivateSubmodules(NonlinearBeamformer* beamformer,
-                       std::unique_ptr<PostProcessing> capture_post_processor)
+                       std::unique_ptr<CustomProcessing> capture_post_processor,
+                       std::unique_ptr<CustomProcessing> render_pre_processor,
+                       std::unique_ptr<EchoDetector> echo_detector)
       : beamformer(beamformer),
-        capture_post_processor(std::move(capture_post_processor)) {}
+        echo_detector(std::move(echo_detector)),
+        capture_post_processor(std::move(capture_post_processor)),
+        render_pre_processor(std::move(render_pre_processor)) {}
   // Accessed internally from capture or during initialization
   std::unique_ptr<NonlinearBeamformer> beamformer;
   std::unique_ptr<AgcManagerDirect> agc_manager;
   std::unique_ptr<GainController2> gain_controller2;
   std::unique_ptr<LowCutFilter> low_cut_filter;
   std::unique_ptr<LevelController> level_controller;
-  std::unique_ptr<ResidualEchoDetector> residual_echo_detector;
+  std::unique_ptr<EchoDetector> echo_detector;
   std::unique_ptr<EchoControl> echo_controller;
-  std::unique_ptr<PostProcessing> capture_post_processor;
+  std::unique_ptr<CustomProcessing> capture_post_processor;
+  std::unique_ptr<CustomProcessing> render_pre_processor;
 };
 
-AudioProcessing* AudioProcessing::Create() {
+AudioProcessingBuilder::AudioProcessingBuilder() = default;
+AudioProcessingBuilder::~AudioProcessingBuilder() = default;
+
+AudioProcessingBuilder& AudioProcessingBuilder::SetCapturePostProcessing(
+    std::unique_ptr<CustomProcessing> capture_post_processing) {
+  capture_post_processing_ = std::move(capture_post_processing);
+  return *this;
+}
+
+AudioProcessingBuilder& AudioProcessingBuilder::SetRenderPreProcessing(
+    std::unique_ptr<CustomProcessing> render_pre_processing) {
+  render_pre_processing_ = std::move(render_pre_processing);
+  return *this;
+}
+
+AudioProcessingBuilder& AudioProcessingBuilder::SetEchoControlFactory(
+    std::unique_ptr<EchoControlFactory> echo_control_factory) {
+  echo_control_factory_ = std::move(echo_control_factory);
+  return *this;
+}
+
+AudioProcessingBuilder& AudioProcessingBuilder::SetNonlinearBeamformer(
+    std::unique_ptr<NonlinearBeamformer> nonlinear_beamformer) {
+  nonlinear_beamformer_ = std::move(nonlinear_beamformer);
+  return *this;
+}
+
+AudioProcessingBuilder& AudioProcessingBuilder::SetEchoDetector(
+    std::unique_ptr<EchoDetector> echo_detector) {
+  echo_detector_ = std::move(echo_detector);
+  return *this;
+}
+
+AudioProcessing* AudioProcessingBuilder::Create() {
   webrtc::Config config;
-  return Create(config, nullptr, nullptr, nullptr);
+  return Create(config);
 }
 
-AudioProcessing* AudioProcessing::Create(const webrtc::Config& config) {
-  return Create(config, nullptr, nullptr, nullptr);
-}
-
-AudioProcessing* AudioProcessing::Create(const webrtc::Config& config,
-                                         NonlinearBeamformer* beamformer) {
-  return Create(config, nullptr, nullptr, beamformer);
-}
-
-AudioProcessing* AudioProcessing::Create(
-    const webrtc::Config& config,
-    std::unique_ptr<PostProcessing> capture_post_processor,
-    std::unique_ptr<EchoControlFactory> echo_control_factory,
-    NonlinearBeamformer* beamformer) {
+AudioProcessing* AudioProcessingBuilder::Create(const webrtc::Config& config) {
   AudioProcessingImpl* apm = new rtc::RefCountedObject<AudioProcessingImpl>(
-      config, std::move(capture_post_processor),
-      std::move(echo_control_factory), beamformer);
-  if (apm->Initialize() != kNoError) {
+      config, std::move(capture_post_processing_),
+      std::move(render_pre_processing_), std::move(echo_control_factory_),
+      std::move(echo_detector_), nonlinear_beamformer_.release());
+  if (apm->Initialize() != AudioProcessing::kNoError) {
     delete apm;
     apm = nullptr;
   }
-
   return apm;
 }
 
 AudioProcessingImpl::AudioProcessingImpl(const webrtc::Config& config)
-    : AudioProcessingImpl(config, nullptr, nullptr, nullptr) {}
+    : AudioProcessingImpl(config, nullptr, nullptr, nullptr, nullptr, nullptr) {
+}
+
+int AudioProcessingImpl::instance_count_ = 0;
 
 AudioProcessingImpl::AudioProcessingImpl(
     const webrtc::Config& config,
-    std::unique_ptr<PostProcessing> capture_post_processor,
+    std::unique_ptr<CustomProcessing> capture_post_processor,
+    std::unique_ptr<CustomProcessing> render_pre_processor,
     std::unique_ptr<EchoControlFactory> echo_control_factory,
+    std::unique_ptr<EchoDetector> echo_detector,
     NonlinearBeamformer* beamformer)
-    : high_pass_filter_impl_(new HighPassFilterImpl(this)),
+    : data_dumper_(
+          new ApmDataDumper(rtc::AtomicOps::Increment(&instance_count_))),
+      high_pass_filter_impl_(new HighPassFilterImpl(this)),
       echo_control_factory_(std::move(echo_control_factory)),
-      submodule_states_(!!capture_post_processor),
+      submodule_states_(!!capture_post_processor, !!render_pre_processor),
       public_submodules_(new ApmPublicSubmodules()),
       private_submodules_(
           new ApmPrivateSubmodules(beamformer,
-                                   std::move(capture_post_processor))),
+                                   std::move(capture_post_processor),
+                                   std::move(render_pre_processor),
+                                   std::move(echo_detector))),
       constants_(config.Get<ExperimentalAgc>().startup_min_volume,
                  config.Get<ExperimentalAgc>().clipped_level_min,
 #if defined(WEBRTC_ANDROID) || defined(WEBRTC_IOS)
@@ -392,8 +434,11 @@ AudioProcessingImpl::AudioProcessingImpl(
     public_submodules_->gain_control_for_experimental_agc.reset(
         new GainControlForExperimentalAgc(
             public_submodules_->gain_control.get(), &crit_capture_));
-    private_submodules_->residual_echo_detector.reset(
-        new ResidualEchoDetector());
+
+    // If no echo detector is injected, use the ResidualEchoDetector.
+    if (!private_submodules_->echo_detector) {
+      private_submodules_->echo_detector.reset(new ResidualEchoDetector());
+    }
 
     // TODO(peah): Move this creation to happen only when the level controller
     // is enabled.
@@ -404,7 +449,9 @@ AudioProcessingImpl::AudioProcessingImpl(
     private_submodules_->gain_controller2.reset(new GainController2());
 
     RTC_LOG(LS_INFO) << "Capture post processor activated: "
-                     << !!private_submodules_->capture_post_processor;
+                     << !!private_submodules_->capture_post_processor
+                     << "\nRender pre processor activated: "
+                     << !!private_submodules_->render_pre_processor;
   }
 
   SetExtraOptions(config);
@@ -560,6 +607,7 @@ int AudioProcessingImpl::InitializeLocked() {
   InitializeEchoController();
   InitializeGainController2();
   InitializePostProcessor();
+  InitializePreProcessor();
 
   if (aec_dump_) {
     aec_dump_->WriteInitMessage(ToStreamsConfig(formats_.api_format));
@@ -660,11 +708,10 @@ void AudioProcessingImpl::ApplyConfig(const AudioProcessing::Config& config) {
 
   bool config_ok = LevelController::Validate(config_.level_controller);
   if (!config_ok) {
-    RTC_LOG(LS_ERROR) << "AudioProcessing module config error" << std::endl
-                      << "level_controller: "
+    RTC_LOG(LS_ERROR) << "AudioProcessing module config error\n"
+                         "level_controller: "
                       << LevelController::ToString(config_.level_controller)
-                      << std::endl
-                      << "Reverting to default parameter set";
+                      << "\nReverting to default parameter set";
     config_.level_controller = AudioProcessing::Config::LevelController();
   }
 
@@ -692,25 +739,12 @@ void AudioProcessingImpl::ApplyConfig(const AudioProcessing::Config& config) {
   RTC_LOG(LS_INFO) << "Highpass filter activated: "
                    << config_.high_pass_filter.enabled;
 
-  // Deprecated way of activating AEC3.
-  // TODO(gustaf): Remove when possible.
-  if (config.echo_canceller3.enabled && !echo_control_factory_) {
-    capture_nonlocked_.echo_controller_enabled =
-        config_.echo_canceller3.enabled;
-    echo_control_factory_ =
-        std::unique_ptr<EchoControlFactory>(new EchoCanceller3Factory());
-    InitializeEchoController();
-    RTC_LOG(LS_INFO) << "Echo canceller 3 activated: "
-                     << capture_nonlocked_.echo_controller_enabled;
-  }
-
   config_ok = GainController2::Validate(config_.gain_controller2);
   if (!config_ok) {
-    RTC_LOG(LS_ERROR) << "AudioProcessing module config error" << std::endl
-                      << "Gain Controller 2: "
+    RTC_LOG(LS_ERROR) << "AudioProcessing module config error\n"
+                         "Gain Controller 2: "
                       << GainController2::ToString(config_.gain_controller2)
-                      << std::endl
-                      << "Reverting to default parameter set";
+                      << "\nReverting to default parameter set";
     config_.gain_controller2 = AudioProcessing::Config::GainController2();
   }
   InitializeGainController2();
@@ -1055,7 +1089,8 @@ void AudioProcessingImpl::EmptyQueuedRenderAudio() {
   }
 
   while (red_render_signal_queue_->Remove(&red_capture_queue_buffer_)) {
-    private_submodules_->residual_echo_detector->AnalyzeRenderAudio(
+    RTC_DCHECK(private_submodules_->echo_detector);
+    private_submodules_->echo_detector->AnalyzeRenderAudio(
         red_capture_queue_buffer_);
   }
 }
@@ -1207,6 +1242,8 @@ int AudioProcessingImpl::ProcessCaptureStreamLocked() {
   }
 
   if (private_submodules_->echo_controller) {
+    data_dumper_->DumpRaw("stream_delay", stream_delay_ms());
+
     private_submodules_->echo_controller->ProcessCapture(
         capture_buffer, capture_.echo_path_gain_change);
   } else {
@@ -1225,7 +1262,7 @@ int AudioProcessingImpl::ProcessCaptureStreamLocked() {
     int gain_db = public_submodules_->gain_control->is_enabled() ?
                   public_submodules_->gain_control->compression_gain_db() :
                   0;
-    float gain = std::pow(10.f, gain_db / 20.f);
+    float gain = DbToRatio(gain_db);
     gain *= capture_nonlocked_.level_controller_enabled ?
             private_submodules_->level_controller->GetLastGain() :
             1.f;
@@ -1271,7 +1308,8 @@ int AudioProcessingImpl::ProcessCaptureStreamLocked() {
   }
 
   if (config_.residual_echo_detector.enabled) {
-    private_submodules_->residual_echo_detector->AnalyzeCaptureAudio(
+    RTC_DCHECK(private_submodules_->echo_detector);
+    private_submodules_->echo_detector->AnalyzeCaptureAudio(
         rtc::ArrayView<const float>(capture_buffer->channels_f()[0],
                                     capture_buffer->num_frames()));
   }
@@ -1345,7 +1383,8 @@ int AudioProcessingImpl::ProcessReverseStream(const float* const* src,
   TRACE_EVENT0("webrtc", "AudioProcessing::ProcessReverseStream_StreamConfig");
   rtc::CritScope cs(&crit_render_);
   RETURN_ON_ERR(AnalyzeReverseStreamLocked(src, input_config, output_config));
-  if (submodule_states_.RenderMultiBandProcessingActive()) {
+  if (submodule_states_.RenderMultiBandProcessingActive() ||
+      submodule_states_.RenderFullBandProcessingActive()) {
     render_.render_audio->CopyTo(formats_.api_format.reverse_output_stream(),
                                  dest);
   } else if (formats_.api_format.reverse_input_stream() !=
@@ -1386,7 +1425,7 @@ int AudioProcessingImpl::AnalyzeReverseStreamLocked(
     const size_t num_channels =
         formats_.api_format.reverse_input_stream().num_channels();
     aec_dump_->WriteRenderStreamMessage(
-        FloatAudioFrame(src, num_channels, channel_size));
+        AudioFrameView<const float>(src, num_channels, channel_size));
   }
   render_.render_audio->CopyFrom(src,
                                  formats_.api_format.reverse_input_stream());
@@ -1434,7 +1473,8 @@ int AudioProcessingImpl::ProcessReverseStream(AudioFrame* frame) {
   render_.render_audio->DeinterleaveFrom(frame);
   RETURN_ON_ERR(ProcessRenderStreamLocked());
   render_.render_audio->InterleaveTo(
-      frame, submodule_states_.RenderMultiBandProcessingActive());
+      frame, submodule_states_.RenderMultiBandProcessingActive() ||
+                 submodule_states_.RenderFullBandProcessingActive());
   return kNoError;
 }
 
@@ -1442,6 +1482,10 @@ int AudioProcessingImpl::ProcessRenderStreamLocked() {
   AudioBuffer* render_buffer = render_.render_audio.get();  // For brevity.
 
   QueueNonbandedRenderAudio(render_buffer);
+
+  if (private_submodules_->render_pre_processor) {
+    private_submodules_->render_pre_processor->Process(render_buffer);
+  }
 
   if (submodule_states_.RenderMultiBandSubModulesActive() &&
       SampleRateSupportsMultiBand(
@@ -1592,11 +1636,11 @@ AudioProcessing::AudioProcessingStatistics AudioProcessingImpl::GetStatistics()
   }
   {
     rtc::CritScope cs_capture(&crit_capture_);
-    stats.residual_echo_likelihood =
-        private_submodules_->residual_echo_detector->echo_likelihood();
+    RTC_DCHECK(private_submodules_->echo_detector);
+    auto ed_metrics = private_submodules_->echo_detector->GetMetrics();
+    stats.residual_echo_likelihood = ed_metrics.echo_likelihood;
     stats.residual_echo_likelihood_recent_max =
-        private_submodules_->residual_echo_detector
-            ->echo_likelihood_recent_max();
+        ed_metrics.echo_likelihood_recent_max;
   }
   public_submodules_->echo_cancellation->GetDelayMetrics(
       &stats.delay_median, &stats.delay_standard_deviation,
@@ -1633,11 +1677,11 @@ AudioProcessingStats AudioProcessingImpl::GetStatistics(
     }
     if (config_.residual_echo_detector.enabled) {
       rtc::CritScope cs_capture(&crit_capture_);
-      stats.residual_echo_likelihood = rtc::Optional<double>(
-          private_submodules_->residual_echo_detector->echo_likelihood());
+      RTC_DCHECK(private_submodules_->echo_detector);
+      auto ed_metrics = private_submodules_->echo_detector->GetMetrics();
+      stats.residual_echo_likelihood = ed_metrics.echo_likelihood;
       stats.residual_echo_likelihood_recent_max =
-          rtc::Optional<double>(private_submodules_->residual_echo_detector
-                                    ->echo_likelihood_recent_max());
+          ed_metrics.echo_likelihood_recent_max;
     }
     int delay_median, delay_std;
     float fraction_poor_delays;
@@ -1782,13 +1826,23 @@ void AudioProcessingImpl::InitializeLevelController() {
 }
 
 void AudioProcessingImpl::InitializeResidualEchoDetector() {
-  private_submodules_->residual_echo_detector->Initialize();
+  RTC_DCHECK(private_submodules_->echo_detector);
+  private_submodules_->echo_detector->Initialize(proc_sample_rate_hz(),
+                                                 num_proc_channels());
 }
 
 void AudioProcessingImpl::InitializePostProcessor() {
   if (private_submodules_->capture_post_processor) {
     private_submodules_->capture_post_processor->Initialize(
         proc_sample_rate_hz(), num_proc_channels());
+  }
+}
+
+void AudioProcessingImpl::InitializePreProcessor() {
+  if (private_submodules_->render_pre_processor) {
+    private_submodules_->render_pre_processor->Initialize(
+        formats_.render_processing_format.sample_rate_hz(),
+        formats_.render_processing_format.num_channels());
   }
 }
 
@@ -1939,7 +1993,7 @@ void AudioProcessingImpl::RecordUnprocessedCaptureStream(
   const size_t channel_size = formats_.api_format.input_stream().num_frames();
   const size_t num_channels = formats_.api_format.input_stream().num_channels();
   aec_dump_->AddCaptureStreamInput(
-      FloatAudioFrame(src, num_channels, channel_size));
+      AudioFrameView<const float>(src, num_channels, channel_size));
   RecordAudioProcessingState();
 }
 
@@ -1959,8 +2013,8 @@ void AudioProcessingImpl::RecordProcessedCaptureStream(
   const size_t channel_size = formats_.api_format.output_stream().num_frames();
   const size_t num_channels =
       formats_.api_format.output_stream().num_channels();
-  aec_dump_->AddCaptureStreamOutput(
-      FloatAudioFrame(processed_capture_stream, num_channels, channel_size));
+  aec_dump_->AddCaptureStreamOutput(AudioFrameView<const float>(
+      processed_capture_stream, num_channels, channel_size));
   aec_dump_->WriteCaptureStreamMessage();
 }
 

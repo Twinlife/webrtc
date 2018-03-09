@@ -39,6 +39,7 @@ config("rtc_base_all_dependent_config") {
   if (is_ios) {
     libs = [
       "CFNetwork.framework",
+      "Foundation.framework",
       "Security.framework",
       "SystemConfiguration.framework",
       "UIKit.framework",
@@ -64,6 +65,7 @@ if (!rtc_build_ssl) {
 }
 
 source_set("protobuf_utils") {
+  visibility = [ "*" ]
   sources = [
     "protobuf_utils.h",
   ]
@@ -81,6 +83,7 @@ source_set("compile_assert_c") {
 }
 
 rtc_source_set("rtc_base_approved") {
+  visibility = [ "*" ]
   public_deps = [
     ":rtc_base_approved_generic",
   ]
@@ -89,20 +92,84 @@ rtc_source_set("rtc_base_approved") {
   }
 }
 
+rtc_source_set("checks") {
+  sources = [
+    "checks.cc",
+    "checks.h",
+  ]
+  deps = [
+    ":safe_compare",
+    "..:typedefs",
+  ]
+}
+
+rtc_source_set("rate_limiter") {
+  sources = [
+    "rate_limiter.cc",
+    "rate_limiter.h",
+  ]
+  deps = [
+    ":rtc_base_approved",
+    "../system_wrappers",
+  ]
+}
+
+rtc_source_set("sanitizer") {
+  sources = [
+    "sanitizer.h",
+  ]
+}
+
+rtc_source_set("safe_compare") {
+  sources = [
+    "numerics/safe_compare.h",
+  ]
+  deps = [
+    ":type_traits",
+  ]
+}
+
+rtc_source_set("stringutils") {
+  sources = [
+    "strings/string_builder.h",
+    "stringutils.cc",
+    "stringutils.h",
+  ]
+  deps = [
+    ":checks",
+  ]
+}
+
+rtc_source_set("type_traits") {
+  sources = [
+    "type_traits.h",
+  ]
+}
+
+rtc_source_set("deprecation") {
+  sources = [
+    "deprecation.h",
+  ]
+}
+
 # The subset of rtc_base approved for use outside of libjingle.
 rtc_source_set("rtc_base_approved_generic") {
   visibility = [
     ":rtc_base_approved",
     ":rtc_base_approved_objc",
+    ":weak_ptr_unittests",
   ]
 
-  # TODO(kjellander): Remove (bugs.webrtc.org/7480)
-  # Enabling GN check triggers a cyclic dependency caused by rate_limiter.cc:
-  #   :rtc_base_approved -> ../system_wrappers -> :rtc_base_approved
-  check_includes = false
+  cflags = []
   defines = []
   libs = []
-  deps = []
+  deps = [
+    ":checks",
+    ":safe_compare",
+    ":stringutils",
+    ":type_traits",
+    "../:typedefs",
+  ]
 
   sources = [
     "arraysize.h",
@@ -121,14 +188,11 @@ rtc_source_set("rtc_base_approved_generic") {
     "bytebuffer.cc",
     "bytebuffer.h",
     "byteorder.h",
-    "checks.cc",
-    "checks.h",
     "constructormagic.h",
     "copyonwritebuffer.cc",
     "copyonwritebuffer.h",
     "criticalsection.cc",
     "criticalsection.h",
-    "deprecation.h",
     "event_tracer.cc",
     "event_tracer.h",
     "file.cc",
@@ -144,7 +208,6 @@ rtc_source_set("rtc_base_approved_generic") {
     "numerics/histogram_percentile_counter.h",
     "numerics/mod_ops.h",
     "numerics/moving_max_counter.h",
-    "numerics/safe_compare.h",
     "numerics/safe_conversions.h",
     "numerics/safe_conversions_impl.h",
     "numerics/safe_minmax.h",
@@ -155,14 +218,13 @@ rtc_source_set("rtc_base_approved_generic") {
     "platform_file.h",
     "platform_thread.cc",
     "platform_thread.h",
+    "platform_thread_types.cc",
     "platform_thread_types.h",
     "ptr_util.h",
     "race_checker.cc",
     "race_checker.h",
     "random.cc",
     "random.h",
-    "rate_limiter.cc",
-    "rate_limiter.h",
     "rate_statistics.cc",
     "rate_statistics.h",
     "ratetracker.cc",
@@ -170,15 +232,12 @@ rtc_source_set("rtc_base_approved_generic") {
     "refcount.h",
     "refcountedobject.h",
     "refcounter.h",
-    "sanitizer.h",
     "scoped_ref_ptr.h",
     "string_to_number.cc",
     "string_to_number.h",
     "stringencode.cc",
     "stringencode.h",
     "stringize_macros.h",
-    "stringutils.cc",
-    "stringutils.h",
     "swap_queue.h",
     "template_util.h",
     "thread_annotations.h",
@@ -190,10 +249,13 @@ rtc_source_set("rtc_base_approved_generic") {
     "timeutils.cc",
     "timeutils.h",
     "trace_event.h",
-    "type_traits.h",
   ]
 
-  deps += [ "..:webrtc_common" ]
+  deps += [
+    "..:webrtc_common",
+    "../api:array_view",
+    "../api:optional",
+  ]
 
   if (is_android) {
     libs += [ "log" ]
@@ -223,6 +285,10 @@ rtc_source_set("rtc_base_approved_generic") {
       "logging.cc",
       "logging.h",
     ]
+
+    # logging.h needs the deprecation header while downstream projects are
+    # removing code that depends on logging implementation details.
+    deps += [ ":deprecation" ]
   }
   if (is_component_build && is_win) {
     # Copy the VS runtime DLLs into the isolate so that they don't have to be
@@ -320,6 +386,7 @@ if (is_mac && !build_with_chromium) {
 }
 
 rtc_source_set("rtc_task_queue") {
+  visibility = [ "*" ]
   deps = [
     ":rtc_base_approved",
   ]
@@ -348,7 +415,9 @@ rtc_source_set("rtc_task_queue_api") {
 }
 
 rtc_source_set("rtc_task_queue_impl") {
+  visibility = [ "*" ]
   deps = [
+    ":checks",
     ":rtc_base_approved",
     ":rtc_task_queue_api",
   ]
@@ -384,6 +453,7 @@ rtc_static_library("sequenced_task_checker") {
     "sequenced_task_checker_impl.h",
   ]
   deps = [
+    ":checks",
     ":rtc_base_approved",
     ":rtc_task_queue",
   ]
@@ -409,7 +479,9 @@ rtc_static_library("rtc_numerics") {
     "numerics/sequence_number_util.h",
   ]
   deps = [
+    ":checks",
     ":rtc_base_approved",
+    ":safe_compare",
     "../api:optional",
   ]
 }
@@ -431,6 +503,7 @@ rtc_source_set("rtc_json") {
     "json.cc",
     "json.h",
   ]
+  all_dependent_configs = [ "//third_party/jsoncpp:jsoncpp_config" ]
   if (rtc_build_json) {
     public_deps = [
       "//third_party/jsoncpp",
@@ -445,9 +518,11 @@ rtc_source_set("rtc_json") {
 }
 
 rtc_static_library("rtc_base") {
-  public_deps = [
-    ":rtc_base_generic",
-  ]
+  visibility = [ "*" ]
+  public_deps = []
+  if (!build_with_mozilla) {
+    public_deps += [ ":rtc_base_generic" ]
+  }
   if (is_win) {
     sources = [
       "noop.cc",
@@ -479,7 +554,10 @@ rtc_static_library("rtc_base_generic") {
   libs = []
   defines = []
   deps = [
+    ":checks",
+    ":stringutils",
     "..:webrtc_common",
+    "../api:array_view",
     "../api:optional",
   ]
   public_deps = [
@@ -507,6 +585,7 @@ rtc_static_library("rtc_base_generic") {
     "crc32.h",
     "cryptstring.cc",
     "cryptstring.h",
+    "dscp.h",
     "filerotatingstream.cc",
     "filerotatingstream.h",
     "fileutils.cc",
@@ -514,13 +593,12 @@ rtc_static_library("rtc_base_generic") {
     "gunit_prod.h",
     "helpers.cc",
     "helpers.h",
-    "httpbase.cc",
-    "httpbase.h",
     "httpcommon-inl.h",
     "httpcommon.cc",
     "httpcommon.h",
     "ipaddress.cc",
     "ipaddress.h",
+    "keep_ref_until_done.h",
     "messagedigest.cc",
     "messagedigest.h",
     "messagehandler.cc",
@@ -536,6 +614,7 @@ rtc_static_library("rtc_base_generic") {
     "network_constants.h",
     "networkmonitor.cc",
     "networkmonitor.h",
+    "networkroute.h",
     "nullsocketserver.cc",
     "nullsocketserver.h",
     "openssl.h",
@@ -585,6 +664,8 @@ rtc_static_library("rtc_base_generic") {
     "stream.h",
     "thread.cc",
     "thread.h",
+    "zero_memory.cc",
+    "zero_memory.h",
   ]
 
   visibility = [
@@ -619,7 +700,6 @@ rtc_static_library("rtc_base_generic") {
       "sslroots.h",
       "transformadapter.cc",
       "transformadapter.h",
-      "window.h",
     ]
 
     if (is_win) {
@@ -654,7 +734,7 @@ rtc_static_library("rtc_base_generic") {
     sources += [ "macifaddrs_converter.cc" ]
   }
 
-  if (use_x11) {
+  if (rtc_use_x11) {
     libs += [
       "dl",
       "rt",
@@ -689,7 +769,6 @@ rtc_static_library("rtc_base_generic") {
       "win32.h",
       "win32filesystem.cc",
       "win32filesystem.h",
-      "win32securityerrors.cc",
       "win32window.cc",
       "win32window.h",
     ]
@@ -726,6 +805,7 @@ rtc_static_library("rtc_base_generic") {
 }
 
 rtc_source_set("gtest_prod") {
+  visibility = [ "*" ]
   sources = [
     "gtest_prod_util.h",
   ]
@@ -759,13 +839,12 @@ rtc_source_set("rtc_base_tests_utils") {
     "fakesslidentity.h",
     "firewallsocketserver.cc",
     "firewallsocketserver.h",
+    "gunit.cc",
     "gunit.h",
+    "httpbase.cc",
+    "httpbase.h",
     "httpserver.cc",
     "httpserver.h",
-    "md5.cc",
-    "md5.h",
-    "md5digest.cc",
-    "md5digest.h",
     "memory_usage.cc",
     "memory_usage.h",
     "natserver.cc",
@@ -777,10 +856,6 @@ rtc_source_set("rtc_base_tests_utils") {
     "proxyserver.cc",
     "proxyserver.h",
     "refcount.h",
-    "sha1.cc",
-    "sha1.h",
-    "sha1digest.cc",
-    "sha1digest.h",
     "sigslottester.h",
     "sigslottester.h.pump",
     "testbase64.h",
@@ -797,13 +872,30 @@ rtc_source_set("rtc_base_tests_utils") {
   configs += [ ":rtc_base_tests_utils_warnings_config" ]
   public_configs = [ ":rtc_base_tests_utils_exported_config" ]
   deps = [
+    ":checks",
     ":rtc_base",
+    ":stringutils",
     "../test:field_trial",
     "../test:test_support",
+    "system:fallthrough",
   ]
   public_deps = [
-    "//testing/gmock",
     "//testing/gtest",
+  ]
+}
+
+rtc_source_set("rtc_task_queue_for_test") {
+  visibility = [ "*" ]
+  testonly = true
+
+  sources = [
+    "task_queue_for_test.cc",
+    "task_queue_for_test.h",
+  ]
+  deps = [
+    ":checks",
+    ":rtc_base_approved",
+    ":rtc_task_queue",
   ]
 }
 
@@ -818,12 +910,12 @@ if (rtc_include_tests) {
       ":rtc_base",
       ":rtc_base_approved",
       ":rtc_base_tests_utils",
+      "../system_wrappers:field_trial_default",
       "../test:field_trial",
       "../test:test_support",
     ]
 
     public_deps = [
-      "//testing/gmock",
       "//testing/gtest",
     ]
   }
@@ -841,6 +933,7 @@ if (rtc_include_tests) {
       "socketaddress_unittest.cc",
     ]
     deps = [
+      ":checks",
       ":rtc_base",
       ":rtc_base_tests_main",
       ":rtc_base_tests_utils",
@@ -874,7 +967,6 @@ if (rtc_include_tests) {
       "file_unittest.cc",
       "function_view_unittest.cc",
       "logging_unittest.cc",
-      "md5digest_unittest.cc",
       "numerics/histogram_percentile_counter_unittest.cc",
       "numerics/mod_ops_unittest.cc",
       "numerics/moving_max_counter_unittest.cc",
@@ -891,6 +983,7 @@ if (rtc_include_tests) {
       "string_to_number_unittest.cc",
       "stringencode_unittest.cc",
       "stringize_macros_unittest.cc",
+      "strings/string_builder_unittest.cc",
       "stringutils_unittest.cc",
       "swap_queue_unittest.cc",
       "thread_annotations_unittest.cc",
@@ -900,11 +993,15 @@ if (rtc_include_tests) {
       "virtualsocket_unittest.cc",
     ]
     deps = [
+      ":checks",
+      ":rate_limiter",
       ":rtc_base",
       ":rtc_base_approved",
       ":rtc_base_tests_main",
       ":rtc_base_tests_utils",
       ":rtc_task_queue",
+      ":safe_compare",
+      ":stringutils",
       "../api:array_view",
       "../system_wrappers:system_wrappers",
       "../test:test_support",
@@ -912,6 +1009,7 @@ if (rtc_include_tests) {
   }
 
   rtc_source_set("rtc_task_queue_unittests") {
+    visibility = [ "*" ]
     testonly = true
 
     sources = [
@@ -922,6 +1020,7 @@ if (rtc_include_tests) {
       ":rtc_base_tests_main",
       ":rtc_base_tests_utils",
       ":rtc_task_queue",
+      ":rtc_task_queue_for_test",
       "../test:test_support",
     ]
   }
@@ -933,6 +1032,7 @@ if (rtc_include_tests) {
       "sequenced_task_checker_unittest.cc",
     ]
     deps = [
+      ":checks",
       ":rtc_base_approved",
       ":rtc_base_tests_main",
       ":rtc_task_queue",
@@ -948,6 +1048,7 @@ if (rtc_include_tests) {
       "weak_ptr_unittest.cc",
     ]
     deps = [
+      ":rtc_base_approved_generic",
       ":rtc_base_tests_main",
       ":rtc_base_tests_utils",
       ":rtc_task_queue",
@@ -1001,13 +1102,13 @@ if (rtc_include_tests) {
       "rollingaccumulator_unittest.cc",
       "rtccertificate_unittest.cc",
       "rtccertificategenerator_unittest.cc",
-      "sha1digest_unittest.cc",
       "signalthread_unittest.cc",
       "sigslot_unittest.cc",
       "sigslottester_unittest.cc",
       "stream_unittest.cc",
       "testclient_unittest.cc",
       "thread_unittest.cc",
+      "zero_memory_unittest.cc",
     ]
     if (is_win) {
       sources += [
@@ -1024,8 +1125,11 @@ if (rtc_include_tests) {
       ]
     }
     deps = [
+      ":checks",
       ":rtc_base_tests_main",
       ":rtc_base_tests_utils",
+      ":stringutils",
+      "../api:array_view",
       "../api:optional",
       "../test:test_support",
     ]

@@ -239,7 +239,8 @@ class RtcpSenderTest : public ::testing::Test {
 
     rtp_rtcp_impl_.reset(new ModuleRtpRtcpImpl(configuration));
     rtcp_sender_.reset(new RTCPSender(false, &clock_, receive_statistics_.get(),
-                                      nullptr, nullptr, &test_transport_));
+                                      nullptr, nullptr, &test_transport_,
+                                      configuration.rtcp_interval_config));
     rtcp_sender_->SetSSRC(kSenderSsrc);
     rtcp_sender_->SetRemoteSSRC(kRemoteSsrc);
     rtcp_sender_->SetTimestampOffset(kStartRtpTimestamp);
@@ -309,7 +310,8 @@ TEST_F(RtcpSenderTest, SendSr) {
 
 TEST_F(RtcpSenderTest, DoNotSendSrBeforeRtp) {
   rtcp_sender_.reset(new RTCPSender(false, &clock_, receive_statistics_.get(),
-                                    nullptr, nullptr, &test_transport_));
+                                    nullptr, nullptr, &test_transport_,
+                                    RtcpIntervalConfig{}));
   rtcp_sender_->SetSSRC(kSenderSsrc);
   rtcp_sender_->SetRemoteSSRC(kRemoteSsrc);
   rtcp_sender_->SetRTCPStatus(RtcpMode::kReducedSize);
@@ -327,7 +329,8 @@ TEST_F(RtcpSenderTest, DoNotSendSrBeforeRtp) {
 
 TEST_F(RtcpSenderTest, DoNotSendCompundBeforeRtp) {
   rtcp_sender_.reset(new RTCPSender(false, &clock_, receive_statistics_.get(),
-                                    nullptr, nullptr, &test_transport_));
+                                    nullptr, nullptr, &test_transport_,
+                                    RtcpIntervalConfig{}));
   rtcp_sender_->SetSSRC(kSenderSsrc);
   rtcp_sender_->SetRemoteSSRC(kRemoteSsrc);
   rtcp_sender_->SetRTCPStatus(RtcpMode::kCompound);
@@ -358,7 +361,7 @@ TEST_F(RtcpSenderTest, SendRrWithOneReportBlock) {
   const rtcp::ReportBlock& rb = parser()->receiver_report()->report_blocks()[0];
   EXPECT_EQ(kRemoteSsrc, rb.source_ssrc());
   EXPECT_EQ(0U, rb.fraction_lost());
-  EXPECT_EQ(0U, rb.cumulative_lost());
+  EXPECT_EQ(0, rb.cumulative_lost_signed());
   EXPECT_EQ(kSeqNum, rb.extended_high_seq_num());
 }
 
@@ -654,7 +657,8 @@ TEST_F(RtcpSenderTest, TestNoXrRrtrSentIfNotEnabled) {
 TEST_F(RtcpSenderTest, TestRegisterRtcpPacketTypeObserver) {
   RtcpPacketTypeCounterObserverImpl observer;
   rtcp_sender_.reset(new RTCPSender(false, &clock_, receive_statistics_.get(),
-                                    &observer, nullptr, &test_transport_));
+                                    &observer, nullptr, &test_transport_,
+                                    RtcpIntervalConfig{}));
   rtcp_sender_->SetRemoteSSRC(kRemoteSsrc);
   rtcp_sender_->SetRTCPStatus(RtcpMode::kReducedSize);
   EXPECT_EQ(0, rtcp_sender_->SendRTCP(feedback_state(), kRtcpPli));
@@ -775,7 +779,8 @@ TEST_F(RtcpSenderTest, ByeMustBeLast) {
 
   // Re-configure rtcp_sender_ with mock_transport_
   rtcp_sender_.reset(new RTCPSender(false, &clock_, receive_statistics_.get(),
-                                    nullptr, nullptr, &mock_transport));
+                                    nullptr, nullptr, &mock_transport,
+                                    RtcpIntervalConfig{}));
   rtcp_sender_->SetSSRC(kSenderSsrc);
   rtcp_sender_->SetRemoteSSRC(kRemoteSsrc);
   rtcp_sender_->SetTimestampOffset(kStartRtpTimestamp);

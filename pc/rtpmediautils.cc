@@ -50,4 +50,33 @@ RtpTransceiverDirection RtpTransceiverDirectionReversed(
   return direction;
 }
 
+RtpTransceiverDirection RtpTransceiverDirectionWithSendSet(
+    RtpTransceiverDirection direction,
+    bool send) {
+  return RtpTransceiverDirectionFromSendRecv(
+      send, RtpTransceiverDirectionHasRecv(direction));
+}
+
+RtpTransceiverDirection RtpTransceiverDirectionWithRecvSet(
+    RtpTransceiverDirection direction,
+    bool recv) {
+  return RtpTransceiverDirectionFromSendRecv(
+      RtpTransceiverDirectionHasSend(direction), recv);
+}
+
+const char* RtpTransceiverDirectionToString(RtpTransceiverDirection direction) {
+  switch (direction) {
+    case RtpTransceiverDirection::kSendRecv:
+      return "kSendRecv";
+    case RtpTransceiverDirection::kSendOnly:
+      return "kSendOnly";
+    case RtpTransceiverDirection::kRecvOnly:
+      return "kRecvOnly";
+    case RtpTransceiverDirection::kInactive:
+      return "kInactive";
+  }
+  RTC_NOTREACHED();
+  return "";
+}
+
 }  // namespace webrtc

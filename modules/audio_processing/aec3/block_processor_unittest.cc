@@ -35,15 +35,17 @@ using testing::_;
 
 // Verifies that the basic BlockProcessor functionality works and that the API
 // methods are callable.
-void RunBasicSetupAndApiCallTest(int sample_rate_hz) {
+void RunBasicSetupAndApiCallTest(int sample_rate_hz, int num_iterations) {
   std::unique_ptr<BlockProcessor> block_processor(
       BlockProcessor::Create(EchoCanceller3Config(), sample_rate_hz));
   std::vector<std::vector<float>> block(NumBandsForRate(sample_rate_hz),
-                                        std::vector<float>(kBlockSize, 0.f));
+                                        std::vector<float>(kBlockSize, 1000.f));
 
-  block_processor->BufferRender(block);
-  block_processor->ProcessCapture(false, false, &block);
-  block_processor->UpdateEchoLeakageStatus(false);
+  for (int k = 0; k < num_iterations; ++k) {
+    block_processor->BufferRender(block);
+    block_processor->ProcessCapture(false, false, &block);
+    block_processor->UpdateEchoLeakageStatus(false);
+  }
 }
 
 #if RTC_DCHECK_IS_ON && GTEST_HAS_DEATH_TEST && !defined(WEBRTC_ANDROID)
@@ -115,10 +117,7 @@ TEST(BlockProcessor, DISABLED_DelayControllerIntegration) {
             new StrictMock<webrtc::test::MockRenderDelayBuffer>(rate));
     EXPECT_CALL(*render_delay_buffer_mock, Insert(_))
         .Times(kNumBlocks)
-        .WillRepeatedly(Return(true));
-    EXPECT_CALL(*render_delay_buffer_mock, IsBlockAvailable())
-        .Times(kNumBlocks)
-        .WillRepeatedly(Return(true));
+        .WillRepeatedly(Return(RenderDelayBuffer::BufferingEvent::kNone));
     EXPECT_CALL(*render_delay_buffer_mock, SetDelay(kDelayInBlocks))
         .Times(AtLeast(1));
     EXPECT_CALL(*render_delay_buffer_mock, MaxDelay()).WillOnce(Return(30));
@@ -160,19 +159,14 @@ TEST(BlockProcessor, DISABLED_SubmoduleIntegration) {
 
     EXPECT_CALL(*render_delay_buffer_mock, Insert(_))
         .Times(kNumBlocks - 1)
-        .WillRepeatedly(Return(true));
-    EXPECT_CALL(*render_delay_buffer_mock, IsBlockAvailable())
-        .Times(kNumBlocks)
-        .WillRepeatedly(Return(true));
-    EXPECT_CALL(*render_delay_buffer_mock, UpdateBuffers()).Times(kNumBlocks);
+        .WillRepeatedly(Return(RenderDelayBuffer::BufferingEvent::kNone));
+    EXPECT_CALL(*render_delay_buffer_mock, PrepareCaptureProcessing())
+        .Times(kNumBlocks);
     EXPECT_CALL(*render_delay_buffer_mock, SetDelay(9)).Times(AtLeast(1));
     EXPECT_CALL(*render_delay_buffer_mock, Delay())
         .Times(kNumBlocks)
         .WillRepeatedly(Return(0));
     EXPECT_CALL(*render_delay_controller_mock, GetDelay(_, _))
-        .Times(kNumBlocks)
-        .WillRepeatedly(Return(9));
-    EXPECT_CALL(*render_delay_controller_mock, AlignmentHeadroomSamples())
         .Times(kNumBlocks);
     EXPECT_CALL(*echo_remover_mock, ProcessCapture(_, _, _, _, _))
         .Times(kNumBlocks);
@@ -201,8 +195,12 @@ TEST(BlockProcessor, DISABLED_SubmoduleIntegration) {
 TEST(BlockProcessor, BasicSetupAndApiCalls) {
   for (auto rate : {8000, 16000, 32000, 48000}) {
     SCOPED_TRACE(ProduceDebugText(rate));
-    RunBasicSetupAndApiCallTest(rate);
+    RunBasicSetupAndApiCallTest(rate, 1);
   }
+}
+
+TEST(BlockProcessor, TestLongerCall) {
+  RunBasicSetupAndApiCallTest(16000, 20 * kNumBlocksPerSecond);
 }
 
 #if RTC_DCHECK_IS_ON && GTEST_HAS_DEATH_TEST && !defined(WEBRTC_ANDROID)

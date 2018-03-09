@@ -26,16 +26,18 @@
 #include "modules/audio_coding/neteq/tools/audio_loop.h"
 #include "modules/audio_coding/neteq/tools/rtp_file_source.h"
 #include "modules/include/module_common_types.h"
-#include "rtc_base/flags.h"
 #include "rtc_base/ignore_wundef.h"
+#include "rtc_base/messagedigest.h"
 #include "rtc_base/numerics/safe_conversions.h"
 #include "rtc_base/protobuf_utils.h"
-#include "rtc_base/sha1digest.h"
 #include "rtc_base/stringencode.h"
 #include "test/field_trial.h"
 #include "test/gtest.h"
 #include "test/testsupport/fileutils.h"
 #include "typedefs.h"  // NOLINT(build/include)
+
+// This must come after test/gtest.h
+#include "rtc_base/flags.h"  // NOLINT(build/include)
 
 #ifdef WEBRTC_NETEQ_UNITTEST_BITEXACT
 RTC_PUSH_IGNORING_WUNDEF()
@@ -174,9 +176,9 @@ class ResultSink {
   std::unique_ptr<rtc::MessageDigest> digest_;
 };
 
-ResultSink::ResultSink(const std::string &output_file)
+ResultSink::ResultSink(const std::string& output_file)
     : output_fp_(nullptr),
-      digest_(new rtc::Sha1Digest()) {
+      digest_(rtc::MessageDigestFactory::Create(rtc::DIGEST_SHA_1)) {
   if (!output_file.empty()) {
     output_fp_ = fopen(output_file.c_str(), "wb");
     EXPECT_TRUE(output_fp_ != NULL);
@@ -527,20 +529,6 @@ TEST_F(NetEqDecodingTest, MAYBE_TestOpusBitExactness) {
                    FLAG_gen_ref);
 }
 
-// This test fixture is identical to NetEqDecodingTest, except that it enables
-// the WebRTC-NetEqOpusDtxDelayFix field trial.
-// TODO(bugs.webrtc.org/8488): When the field trial is over and the feature is
-// default enabled, remove this fixture class and let the
-// TestOpusDtxBitExactness test build directly on NetEqDecodingTest.
-class NetEqDecodingTestWithOpusDtxFieldTrial : public NetEqDecodingTest {
- public:
-  NetEqDecodingTestWithOpusDtxFieldTrial()
-      : override_field_trials_("WebRTC-NetEqOpusDtxDelayFix/Enabled/") {}
-
- private:
-  test::ScopedFieldTrials override_field_trials_;
-};
-
 #if !defined(WEBRTC_IOS) &&                                         \
     defined(WEBRTC_NETEQ_UNITTEST_BITEXACT) &&                      \
     defined(WEBRTC_CODEC_OPUS)
@@ -548,7 +536,7 @@ class NetEqDecodingTestWithOpusDtxFieldTrial : public NetEqDecodingTest {
 #else
 #define MAYBE_TestOpusDtxBitExactness DISABLED_TestOpusDtxBitExactness
 #endif
-TEST_F(NetEqDecodingTestWithOpusDtxFieldTrial, MAYBE_TestOpusDtxBitExactness) {
+TEST_F(NetEqDecodingTest, MAYBE_TestOpusDtxBitExactness) {
   const std::string input_rtp_file =
       webrtc::test::ResourcePath("audio_coding/neteq_opus_dtx", "rtp");
 

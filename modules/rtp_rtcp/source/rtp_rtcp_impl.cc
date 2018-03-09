@@ -84,7 +84,8 @@ ModuleRtpRtcpImpl::ModuleRtpRtcpImpl(const Configuration& configuration)
                    configuration.receive_statistics,
                    configuration.rtcp_packet_type_counter_observer,
                    configuration.event_log,
-                   configuration.outgoing_transport),
+                   configuration.outgoing_transport,
+                   configuration.rtcp_interval_config),
       rtcp_receiver_(configuration.clock,
                      configuration.receiver_only,
                      configuration.rtcp_packet_type_counter_observer,
@@ -111,20 +112,18 @@ ModuleRtpRtcpImpl::ModuleRtpRtcpImpl(const Configuration& configuration)
       rtt_ms_(0) {
   if (!configuration.receiver_only) {
     rtp_sender_.reset(new RTPSender(
-        configuration.audio,
-        configuration.clock,
-        configuration.outgoing_transport,
-        configuration.paced_sender,
+        configuration.audio, configuration.clock,
+        configuration.outgoing_transport, configuration.paced_sender,
         configuration.flexfec_sender,
         configuration.transport_sequence_number_allocator,
         configuration.transport_feedback_callback,
         configuration.send_bitrate_observer,
         configuration.send_frame_count_observer,
-        configuration.send_side_delay_observer,
-        configuration.event_log,
+        configuration.send_side_delay_observer, configuration.event_log,
         configuration.send_packet_observer,
         configuration.retransmission_rate_limiter,
-        configuration.overhead_observer));
+        configuration.overhead_observer,
+        configuration.populate_network2_timestamp));
     // Make sure rtcp sender use same timestamp offset as rtp sender.
     rtcp_sender_.SetTimestampOffset(rtp_sender_->TimestampOffset());
 
@@ -140,6 +139,8 @@ ModuleRtpRtcpImpl::ModuleRtpRtcpImpl(const Configuration& configuration)
   const size_t kTcpOverIpv4HeaderSize = 40;
   SetMaxRtpPacketSize(IP_PACKET_SIZE - kTcpOverIpv4HeaderSize);
 }
+
+ModuleRtpRtcpImpl::~ModuleRtpRtcpImpl() = default;
 
 // Returns the number of milliseconds until the module want a worker thread
 // to call Process.
@@ -629,9 +630,9 @@ int32_t ModuleRtpRtcpImpl::RemoteRTCPStat(
 }
 
 // (REMB) Receiver Estimated Max Bitrate.
-void ModuleRtpRtcpImpl::SetRemb(uint32_t bitrate_bps,
-                                const std::vector<uint32_t>& ssrcs) {
-  rtcp_sender_.SetRemb(bitrate_bps, ssrcs);
+void ModuleRtpRtcpImpl::SetRemb(int64_t bitrate_bps,
+                                std::vector<uint32_t> ssrcs) {
+  rtcp_sender_.SetRemb(bitrate_bps, std::move(ssrcs));
 }
 
 void ModuleRtpRtcpImpl::UnsetRemb() {
@@ -884,9 +885,9 @@ std::vector<rtcp::TmmbItem> ModuleRtpRtcpImpl::BoundingSet(bool* tmmbr_owner) {
 
 int64_t ModuleRtpRtcpImpl::RtcpReportInterval() {
   if (audio_)
-    return RTCP_INTERVAL_AUDIO_MS;
+    return rtcp_sender_.RtcpAudioReportInverval();
   else
-    return RTCP_INTERVAL_VIDEO_MS;
+    return rtcp_sender_.RtcpVideoReportInverval();
 }
 
 void ModuleRtpRtcpImpl::SetRtcpReceiverSsrcs(uint32_t main_ssrc) {
@@ -903,6 +904,8 @@ void ModuleRtpRtcpImpl::SetRtcpReceiverSsrcs(uint32_t main_ssrc) {
 void ModuleRtpRtcpImpl::set_rtt_ms(int64_t rtt_ms) {
   rtc::CritScope cs(&critical_section_rtt_);
   rtt_ms_ = rtt_ms;
+  if (rtp_sender_)
+    rtp_sender_->SetRtt(rtt_ms);
 }
 
 int64_t ModuleRtpRtcpImpl::rtt_ms() const {

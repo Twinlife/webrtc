@@ -81,6 +81,7 @@ void CopyCodecSpecific(const CodecSpecificInfo* info, RTPVideoHeader* rtp) {
       rtp->codecHeader.H264.packetization_mode =
           info->codecSpecific.H264.packetization_mode;
       return;
+    case kVideoCodecMultiplex:
     case kVideoCodecGeneric:
       rtp->codec = kRtpVideoGeneric;
       rtp->simulcastIdx = info->codecSpecific.generic.simulcast_idx;
@@ -150,11 +151,22 @@ void PayloadRouter::SetActive(bool active) {
   rtc::CritScope lock(&crit_);
   if (active_ == active)
     return;
-  active_ = active;
+  const std::vector<bool> active_modules(rtp_modules_.size(), active);
+  SetActiveModules(active_modules);
+}
 
-  for (auto& module : rtp_modules_) {
-    module->SetSendingStatus(active_);
-    module->SetSendingMediaStatus(active_);
+void PayloadRouter::SetActiveModules(const std::vector<bool> active_modules) {
+  rtc::CritScope lock(&crit_);
+  RTC_DCHECK_EQ(rtp_modules_.size(), active_modules.size());
+  active_ = false;
+  for (size_t i = 0; i < active_modules.size(); ++i) {
+    if (active_modules[i]) {
+      active_ = true;
+    }
+    // Sends a kRtcpByeCode when going from true to false.
+    rtp_modules_[i]->SetSendingStatus(active_modules[i]);
+    // If set to false this module won't send media.
+    rtp_modules_[i]->SetSendingMediaStatus(active_modules[i]);
   }
 }
 
@@ -216,6 +228,10 @@ EncodedImageCallback::Result PayloadRouter::OnEncodedImage(
     params_[stream_index].Set(&rtp_video_header);
   }
   uint32_t frame_id;
+  if (!rtp_modules_[stream_index]->Sending()) {
+    // The payload router could be active but this module isn't sending.
+    return Result(Result::ERROR_SEND_FAILED);
+  }
   bool send_result = rtp_modules_[stream_index]->SendOutgoingData(
       encoded_image._frameType, payload_type_, encoded_image._timeStamp,
       encoded_image.capture_time_ms_, encoded_image._buffer,
@@ -238,8 +254,11 @@ void PayloadRouter::OnBitrateAllocationUpdated(
       // rtp stream, moving over the temporal layer allocation.
       for (size_t si = 0; si < rtp_modules_.size(); ++si) {
         // Don't send empty TargetBitrate messages on streams not being relayed.
-        if (!bitrate.IsSpatialLayerUsed(si))
-          break;
+        if (!bitrate.IsSpatialLayerUsed(si)) {
+          // The next spatial layer could be used if the current one is
+          // inactive.
+          continue;
+        }
 
         BitrateAllocation layer_bitrate;
         for (int tl = 0; tl < kMaxTemporalStreams; ++tl) {

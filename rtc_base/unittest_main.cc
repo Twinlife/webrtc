@@ -19,6 +19,7 @@
 #include "rtc_base/logging.h"
 #include "rtc_base/ssladapter.h"
 #include "rtc_base/sslstreamadapter.h"
+#include "system_wrappers/include/field_trial_default.h"
 #include "test/field_trial.h"
 #include "test/testsupport/fileutils.h"
 
@@ -67,7 +68,7 @@ int TestCrtReportHandler(int report_type, char* msg, int* retval) {
 }
 #endif  // WEBRTC_WIN
 
-int main(int argc, char** argv) {
+int main(int argc, char* argv[]) {
   testing::InitGoogleTest(&argc, argv);
   rtc::FlagList::SetFlagsFromCommandLine(&argc, argv, false);
   if (FLAG_help) {
@@ -76,7 +77,10 @@ int main(int argc, char** argv) {
   }
 
   webrtc::test::SetExecutablePath(argv[0]);
-  webrtc::test::InitFieldTrialsFromString(FLAG_force_fieldtrials);
+  webrtc::test::ValidateFieldTrialsStringOrDie(FLAG_force_fieldtrials);
+  // InitFieldTrialsFromString stores the char*, so the char array must outlive
+  // the application.
+  webrtc::field_trial::InitFieldTrialsFromString(FLAG_force_fieldtrials);
 
 #if defined(WEBRTC_WIN)
   if (!FLAG_default_error_handlers) {
@@ -109,7 +113,7 @@ int main(int argc, char** argv) {
   rtc::SSLStreamAdapter::enable_time_callback_for_testing();
 
 #if defined(WEBRTC_IOS)
-  rtc::test::InitTestSuite(RUN_ALL_TESTS, argc, argv);
+  rtc::test::InitTestSuite(RUN_ALL_TESTS, argc, argv, false);
   rtc::test::RunTestsFromIOSApp();
 #endif
   const int res = RUN_ALL_TESTS();

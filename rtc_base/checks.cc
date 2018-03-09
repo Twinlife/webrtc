@@ -11,15 +11,9 @@
 // Most of this was borrowed (with minor modifications) from V8's and Chromium's
 // src/base/logging.cc.
 
-// Use the C++ version to provide __GLIBCXX__.
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
-
-#if defined(__GLIBCXX__) && !defined(__UCLIBC__)
-#include <cxxabi.h>
-#include <execinfo.h>
-#endif
 
 #if defined(WEBRTC_ANDROID)
 #define RTC_LOG_TAG_ANDROID "rtc"
@@ -30,8 +24,16 @@
 #include <windows.h>
 #endif
 
+#if defined(WEBRTC_WIN)
+#define LAST_SYSTEM_ERROR (::GetLastError())
+#elif defined(__native_client__) && __native_client__
+#define LAST_SYSTEM_ERROR (0)
+#elif defined(WEBRTC_POSIX)
+#include <errno.h>
+#define LAST_SYSTEM_ERROR (errno)
+#endif  // WEBRTC_WIN
+
 #include "rtc_base/checks.h"
-#include "rtc_base/logging.h"
 
 #if defined(_MSC_VER)
 // Warning C4722: destructor never returns, potential memory leak.
@@ -40,6 +42,7 @@
 #endif
 
 namespace rtc {
+namespace {
 
 void VPrintError(const char* format, va_list args) {
 #if defined(WEBRTC_ANDROID)
@@ -49,6 +52,11 @@ void VPrintError(const char* format, va_list args) {
 #endif
 }
 
+#if defined(__GNUC__)
+void PrintError(const char* format, ...)
+    __attribute__((__format__(__printf__, 1, 2)));
+#endif
+
 void PrintError(const char* format, ...) {
   va_list args;
   va_start(args, format);
@@ -56,39 +64,7 @@ void PrintError(const char* format, ...) {
   va_end(args);
 }
 
-// TODO(ajm): This works on Mac (although the parsing fails) but I don't seem
-// to get usable symbols on Linux. This is copied from V8. Chromium has a more
-// advanced stace trace system; also more difficult to copy.
-void DumpBacktrace() {
-#if defined(__GLIBCXX__) && !defined(__UCLIBC__)
-  void* trace[100];
-  int size = backtrace(trace, sizeof(trace) / sizeof(*trace));
-  char** symbols = backtrace_symbols(trace, size);
-  PrintError("\n==== C stack trace ===============================\n\n");
-  if (size == 0) {
-    PrintError("(empty)\n");
-  } else if (symbols == nullptr) {
-    PrintError("(no symbols)\n");
-  } else {
-    for (int i = 1; i < size; ++i) {
-      char mangled[201];
-      if (sscanf(symbols[i], "%*[^(]%*[(]%200[^)+]", mangled) == 1) {  // NOLINT
-        PrintError("%2d: ", i);
-        int status;
-        size_t length;
-        char* demangled =
-            abi::__cxa_demangle(mangled, nullptr, &length, &status);
-        PrintError("%s\n", demangled != nullptr ? demangled : mangled);
-        free(demangled);
-      } else {
-        // If parsing failed, at least print the unparsed symbol.
-        PrintError("%s\n", symbols[i]);
-      }
-    }
-  }
-  free(symbols);
-#endif
-}
+}  // namespace
 
 FatalMessage::FatalMessage(const char* file, int line) {
   Init(file, line);
@@ -104,8 +80,7 @@ NO_RETURN FatalMessage::~FatalMessage() {
   fflush(stdout);
   fflush(stderr);
   stream_ << std::endl << "#" << std::endl;
-  PrintError(stream_.str().c_str());
-  DumpBacktrace();
+  PrintError("%s", stream_.str().c_str());
   fflush(stderr);
   abort();
 }
@@ -115,7 +90,7 @@ void FatalMessage::Init(const char* file, int line) {
           << std::endl
           << "#" << std::endl
           << "# Fatal error in " << file << ", line " << line << std::endl
-          << "# last system error: " << RTC_LAST_SYSTEM_ERROR << std::endl
+          << "# last system error: " << LAST_SYSTEM_ERROR << std::endl
           << "# ";
 }
 

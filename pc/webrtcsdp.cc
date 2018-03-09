@@ -44,7 +44,6 @@
 using cricket::AudioContentDescription;
 using cricket::Candidate;
 using cricket::Candidates;
-using cricket::ContentDescription;
 using cricket::ContentInfo;
 using cricket::CryptoParams;
 using cricket::DataContentDescription;
@@ -69,6 +68,7 @@ using cricket::kCodecParamAssociatedPayloadType;
 using cricket::MediaContentDescription;
 using cricket::MediaType;
 using cricket::RtpHeaderExtensions;
+using cricket::MediaProtocolType;
 using cricket::SsrcGroup;
 using cricket::StreamParams;
 using cricket::StreamParamsVec;
@@ -232,14 +232,14 @@ static void BuildMediaDescription(const ContentInfo* content_info,
                                   const TransportInfo* transport_info,
                                   const MediaType media_type,
                                   const std::vector<Candidate>& candidates,
-                                  bool unified_plan_sdp,
+                                  int msid_signaling,
                                   std::string* message);
 static void BuildSctpContentAttributes(std::string* message,
                                        int sctp_port,
                                        bool use_sctpmap);
 static void BuildRtpContentAttributes(const MediaContentDescription* media_desc,
                                       const MediaType media_type,
-                                      bool unified_plan_sdp,
+                                      int msid_signaling,
                                       std::string* message);
 static void BuildRtpMap(const MediaContentDescription* media_desc,
                         const MediaType media_type,
@@ -280,12 +280,14 @@ static bool ParseContent(const std::string& message,
                          size_t* pos,
                          std::string* content_name,
                          bool* bundle_only,
+                         int* msid_signaling,
                          MediaContentDescription* media_desc,
                          TransportDescription* transport,
                          std::vector<JsepIceCandidate*>* candidates,
                          SdpParseError* error);
 static bool ParseSsrcAttribute(const std::string& line,
                                SsrcInfoVec* ssrc_infos,
+                               int* msid_signaling,
                                SdpParseError* error);
 static bool ParseSsrcGroupAttribute(const std::string& line,
                                     SsrcGroupVec* ssrc_groups,
@@ -601,7 +603,7 @@ void CreateTracksFromSsrcInfos(const SsrcInfoVec& ssrc_infos,
       track_id = ssrc_info->label;
     } else if (ssrc_info->stream_id.empty() && !msid_stream_id.empty()) {
       // If there's no msid in the SSRC attributes, but there's a global one
-      // (from a=msid), use that. This is the case with unified plan SDP.
+      // (from a=msid), use that. This is the case with Unified Plan SDP.
       stream_id = msid_stream_id;
       track_id = msid_track_id;
     } else {
@@ -639,13 +641,9 @@ void CreateTracksFromSsrcInfos(const SsrcInfoVec& ssrc_infos,
 
 void GetMediaStreamLabels(const ContentInfo* content,
                           std::set<std::string>* labels) {
-  const MediaContentDescription* media_desc =
-      static_cast<const MediaContentDescription*>(
-          content->description);
-  const cricket::StreamParamsVec& streams =  media_desc->streams();
-  for (cricket::StreamParamsVec::const_iterator it = streams.begin();
-       it != streams.end(); ++it) {
-    labels->insert(it->sync_label);
+  for (const StreamParams& stream_params :
+       content->media_description()->streams()) {
+    labels->insert(stream_params.sync_label);
   }
 }
 
@@ -761,8 +759,7 @@ static bool IsValidPort(int port) {
   return port >= 0 && port <= 65535;
 }
 
-std::string SdpSerialize(const JsepSessionDescription& jdesc,
-                         bool unified_plan_sdp) {
+std::string SdpSerialize(const JsepSessionDescription& jdesc) {
   const cricket::SessionDescription* desc = jdesc.description();
   if (!desc) {
     return "";
@@ -829,12 +826,11 @@ std::string SdpSerialize(const JsepSessionDescription& jdesc,
   int mline_index = -1;
   for (cricket::ContentInfos::const_iterator it = desc->contents().begin();
        it != desc->contents().end(); ++it) {
-    const MediaContentDescription* mdesc =
-      static_cast<const MediaContentDescription*>(it->description);
+    const MediaContentDescription* mdesc = it->media_description();
     std::vector<Candidate> candidates;
     GetCandidatesByMindex(jdesc, ++mline_index, &candidates);
     BuildMediaDescription(&*it, desc->GetTransportInfoByName(it->name),
-                          mdesc->type(), candidates, unified_plan_sdp,
+                          mdesc->type(), candidates, desc->msid_signaling(),
                           &message);
   }
   return message;
@@ -1204,7 +1200,7 @@ void BuildMediaDescription(const ContentInfo* content_info,
                            const TransportInfo* transport_info,
                            const MediaType media_type,
                            const std::vector<Candidate>& candidates,
-                           bool unified_plan_sdp,
+                           int msid_signaling,
                            std::string* message) {
   RTC_DCHECK(message != NULL);
   if (content_info == NULL || message == NULL) {
@@ -1215,10 +1211,8 @@ void BuildMediaDescription(const ContentInfo* content_info,
   // http://google-styleguide.googlecode.com/svn/
   // trunk/cppguide.xml?showone=Streams#Streams
   std::ostringstream os;
-  const MediaContentDescription* media_desc =
-      static_cast<const MediaContentDescription*>(
-          content_info->description);
-  RTC_DCHECK(media_desc != NULL);
+  const MediaContentDescription* media_desc = content_info->media_description();
+  RTC_DCHECK(media_desc);
 
   int sctp_port = cricket::kSctpDefaultPort;
 
@@ -1237,8 +1231,7 @@ void BuildMediaDescription(const ContentInfo* content_info,
 
   std::string fmt;
   if (media_type == cricket::MEDIA_TYPE_VIDEO) {
-    const VideoContentDescription* video_desc =
-        static_cast<const VideoContentDescription*>(media_desc);
+    const VideoContentDescription* video_desc = media_desc->as_video();
     for (std::vector<cricket::VideoCodec>::const_iterator it =
              video_desc->codecs().begin();
          it != video_desc->codecs().end(); ++it) {
@@ -1246,8 +1239,7 @@ void BuildMediaDescription(const ContentInfo* content_info,
       fmt.append(rtc::ToString<int>(it->id));
     }
   } else if (media_type == cricket::MEDIA_TYPE_AUDIO) {
-    const AudioContentDescription* audio_desc =
-        static_cast<const AudioContentDescription*>(media_desc);
+    const AudioContentDescription* audio_desc = media_desc->as_audio();
     for (std::vector<cricket::AudioCodec>::const_iterator it =
              audio_desc->codecs().begin();
          it != audio_desc->codecs().end(); ++it) {
@@ -1255,8 +1247,7 @@ void BuildMediaDescription(const ContentInfo* content_info,
       fmt.append(rtc::ToString<int>(it->id));
     }
   } else if (media_type == cricket::MEDIA_TYPE_DATA) {
-    const DataContentDescription* data_desc =
-          static_cast<const DataContentDescription*>(media_desc);
+    const DataContentDescription* data_desc = media_desc->as_data();
     if (IsDtlsSctp(media_desc->protocol())) {
       fmt.append(" ");
 
@@ -1411,13 +1402,11 @@ void BuildMediaDescription(const ContentInfo* content_info,
   AddLine(os.str(), message);
 
   if (IsDtlsSctp(media_desc->protocol())) {
-    const DataContentDescription* data_desc =
-        static_cast<const DataContentDescription*>(media_desc);
+    const DataContentDescription* data_desc = media_desc->as_data();
     bool use_sctpmap = data_desc->use_sctpmap();
     BuildSctpContentAttributes(message, sctp_port, use_sctpmap);
   } else if (IsRtp(media_desc->protocol())) {
-    BuildRtpContentAttributes(media_desc, media_type, unified_plan_sdp,
-                              message);
+    BuildRtpContentAttributes(media_desc, media_type, msid_signaling, message);
   }
 }
 
@@ -1442,10 +1431,9 @@ void BuildSctpContentAttributes(std::string* message,
   AddLine(os.str(), message);
 }
 
-// If unified_plan_sdp is true, will use "a=msid".
 void BuildRtpContentAttributes(const MediaContentDescription* media_desc,
                                const MediaType media_type,
-                               bool unified_plan_sdp,
+                               int msid_signaling,
                                std::string* message) {
   std::ostringstream os;
   // RFC 5285
@@ -1466,35 +1454,36 @@ void BuildRtpContentAttributes(const MediaContentDescription* media_desc,
   // RFC 3264
   // a=sendrecv || a=sendonly || a=sendrecv || a=inactive
   switch (media_desc->direction()) {
-    case cricket::MD_INACTIVE:
+    case RtpTransceiverDirection::kInactive:
       InitAttrLine(kAttributeInactive, &os);
       break;
-    case cricket::MD_SENDONLY:
+    case RtpTransceiverDirection::kSendOnly:
       InitAttrLine(kAttributeSendOnly, &os);
       break;
-    case cricket::MD_RECVONLY:
+    case RtpTransceiverDirection::kRecvOnly:
       InitAttrLine(kAttributeRecvOnly, &os);
       break;
-    case cricket::MD_SENDRECV:
+    case RtpTransceiverDirection::kSendRecv:
     default:
       InitAttrLine(kAttributeSendRecv, &os);
       break;
   }
   AddLine(os.str(), message);
 
-  // draft-ietf-mmusic-msid-11
+  // Specified in https://tools.ietf.org/html/draft-ietf-mmusic-msid-16
   // a=msid:<stream id> <track id>
-  if (unified_plan_sdp && !media_desc->streams().empty()) {
-    if (media_desc->streams().size() > 1u) {
-      RTC_LOG(LS_WARNING)
-          << "Trying to serialize unified plan SDP with more than "
-          << "one track in a media section. Omitting 'a=msid'.";
-    } else {
-      auto track = media_desc->streams().begin();
-      const std::string& stream_id = track->sync_label;
+  if (msid_signaling & cricket::kMsidSignalingMediaSection) {
+    const StreamParamsVec& streams = media_desc->streams();
+    if (streams.size() == 1u) {
+      const StreamParams& track = streams[0];
+      const std::string& stream_id = track.sync_label;
       InitAttrLine(kAttributeMsid, &os);
-      os << kSdpDelimiterColon << stream_id << kSdpDelimiterSpace << track->id;
+      os << kSdpDelimiterColon << stream_id << kSdpDelimiterSpace << track.id;
       AddLine(os.str(), message);
+    } else if (streams.size() > 1u) {
+      RTC_LOG(LS_WARNING)
+          << "Trying to serialize Unified Plan SDP with more than "
+             "one track in a media section. Omitting 'a=msid'.";
     }
   }
 
@@ -1569,25 +1558,27 @@ void BuildRtpContentAttributes(const MediaContentDescription* media_desc,
       AddSsrcLine(ssrc, kSsrcAttributeCname,
                   track->cname, message);
 
-      // draft-alvestrand-mmusic-msid-00
-      // a=ssrc:<ssrc-id> msid:identifier [appdata]
-      // The appdata consists of the "id" attribute of a MediaStreamTrack,
-      // which corresponds to the "id" attribute of StreamParams.
-      const std::string& stream_id = track->sync_label;
-      InitAttrLine(kAttributeSsrc, &os);
-      os << kSdpDelimiterColon << ssrc << kSdpDelimiterSpace
-         << kSsrcAttributeMsid << kSdpDelimiterColon << stream_id
-         << kSdpDelimiterSpace << track->id;
-      AddLine(os.str(), message);
+      if (msid_signaling & cricket::kMsidSignalingSsrcAttribute) {
+        // draft-alvestrand-mmusic-msid-00
+        // a=ssrc:<ssrc-id> msid:identifier [appdata]
+        // The appdata consists of the "id" attribute of a MediaStreamTrack,
+        // which corresponds to the "id" attribute of StreamParams.
+        const std::string& stream_id = track->sync_label;
+        InitAttrLine(kAttributeSsrc, &os);
+        os << kSdpDelimiterColon << ssrc << kSdpDelimiterSpace
+           << kSsrcAttributeMsid << kSdpDelimiterColon << stream_id
+           << kSdpDelimiterSpace << track->id;
+        AddLine(os.str(), message);
 
-      // TODO(ronghuawu): Remove below code which is for backward
-      // compatibility.
-      // draft-alvestrand-rtcweb-mid-01
-      // a=ssrc:<ssrc-id> mslabel:<value>
-      // The label isn't yet defined.
-      // a=ssrc:<ssrc-id> label:<value>
-      AddSsrcLine(ssrc, kSsrcAttributeMslabel, track->sync_label, message);
-      AddSsrcLine(ssrc, kSSrcAttributeLabel, track->id, message);
+        // TODO(ronghuawu): Remove below code which is for backward
+        // compatibility.
+        // draft-alvestrand-rtcweb-mid-01
+        // a=ssrc:<ssrc-id> mslabel:<value>
+        // The label isn't yet defined.
+        // a=ssrc:<ssrc-id> label:<value>
+        AddSsrcLine(ssrc, kSsrcAttributeMslabel, track->sync_label, message);
+        AddSsrcLine(ssrc, kSSrcAttributeLabel, track->id, message);
+      }
     }
   }
 }
@@ -1734,8 +1725,7 @@ void BuildRtpMap(const MediaContentDescription* media_desc,
   RTC_DCHECK(media_desc != NULL);
   std::ostringstream os;
   if (media_type == cricket::MEDIA_TYPE_VIDEO) {
-    const VideoContentDescription* video_desc =
-        static_cast<const VideoContentDescription*>(media_desc);
+    const VideoContentDescription* video_desc = media_desc->as_video();
     for (std::vector<cricket::VideoCodec>::const_iterator it =
              video_desc->codecs().begin();
          it != video_desc->codecs().end(); ++it) {
@@ -1752,8 +1742,7 @@ void BuildRtpMap(const MediaContentDescription* media_desc,
       AddFmtpLine(*it, message);
     }
   } else if (media_type == cricket::MEDIA_TYPE_AUDIO) {
-    const AudioContentDescription* audio_desc =
-        static_cast<const AudioContentDescription*>(media_desc);
+    const AudioContentDescription* audio_desc = media_desc->as_audio();
     std::vector<int> ptimes;
     std::vector<int> maxptimes;
     int max_minptime = 0;
@@ -1802,8 +1791,7 @@ void BuildRtpMap(const MediaContentDescription* media_desc,
       AddAttributeLine(kCodecParamPTime, ptime, message);
     }
   } else if (media_type == cricket::MEDIA_TYPE_DATA) {
-    const DataContentDescription* data_desc =
-        static_cast<const DataContentDescription*>(media_desc);
+    const DataContentDescription* data_desc = media_desc->as_data();
     for (std::vector<cricket::DataCodec>::const_iterator it =
          data_desc->codecs().begin();
          it != data_desc->codecs().end(); ++it) {
@@ -2308,6 +2296,7 @@ static C* ParseContentDescription(const std::string& message,
                                   size_t* pos,
                                   std::string* content_name,
                                   bool* bundle_only,
+                                  int* msid_signaling,
                                   TransportDescription* transport,
                                   std::vector<JsepIceCandidate*>* candidates,
                                   webrtc::SdpParseError* error) {
@@ -2327,8 +2316,8 @@ static C* ParseContentDescription(const std::string& message,
       break;
   }
   if (!ParseContent(message, media_type, mline_index, protocol, payload_types,
-                    pos, content_name, bundle_only, media_desc, transport,
-                    candidates, error)) {
+                    pos, content_name, bundle_only, msid_signaling, media_desc,
+                    transport, candidates, error)) {
     delete media_desc;
     return nullptr;
   }
@@ -2362,6 +2351,7 @@ bool ParseMediaDescription(const std::string& message,
   RTC_DCHECK(desc != NULL);
   std::string line;
   int mline_index = -1;
+  int msid_signaling = 0;
 
   // Zero or more media descriptions
   // RFC 4566
@@ -2419,22 +2409,23 @@ bool ParseMediaDescription(const std::string& message,
     std::unique_ptr<MediaContentDescription> content;
     std::string content_name;
     bool bundle_only = false;
+    int section_msid_signaling = 0;
     if (HasAttribute(line, kMediaTypeVideo)) {
       content.reset(ParseContentDescription<VideoContentDescription>(
           message, cricket::MEDIA_TYPE_VIDEO, mline_index, protocol,
-          payload_types, pos, &content_name, &bundle_only, &transport,
-          candidates, error));
+          payload_types, pos, &content_name, &bundle_only,
+          &section_msid_signaling, &transport, candidates, error));
     } else if (HasAttribute(line, kMediaTypeAudio)) {
       content.reset(ParseContentDescription<AudioContentDescription>(
           message, cricket::MEDIA_TYPE_AUDIO, mline_index, protocol,
-          payload_types, pos, &content_name, &bundle_only, &transport,
-          candidates, error));
+          payload_types, pos, &content_name, &bundle_only,
+          &section_msid_signaling, &transport, candidates, error));
     } else if (HasAttribute(line, kMediaTypeData)) {
       DataContentDescription* data_desc =
           ParseContentDescription<DataContentDescription>(
               message, cricket::MEDIA_TYPE_DATA, mline_index, protocol,
-              payload_types, pos, &content_name, &bundle_only, &transport,
-              candidates, error);
+              payload_types, pos, &content_name, &bundle_only,
+              &section_msid_signaling, &transport, candidates, error);
       content.reset(data_desc);
 
       if (data_desc && IsDtlsSctp(protocol)) {
@@ -2456,6 +2447,8 @@ bool ParseMediaDescription(const std::string& message,
       return false;
     }
 
+    msid_signaling |= section_msid_signaling;
+
     bool content_rejected = false;
     // A port of 0 is not interpreted as a rejected m= section when it's
     // used along with a=bundle-only.
@@ -2466,8 +2459,8 @@ bool ParseMediaDescription(const std::string& message,
         bundle_only = false;
         RTC_LOG(LS_WARNING)
             << "a=bundle-only attribute observed with a nonzero "
-            << "port; this usage is unspecified so the attribute is being "
-            << "ignored.";
+               "port; this usage is unspecified so the attribute is being "
+               "ignored.";
       }
     } else {
       // If not using bundle-only, interpret port 0 in the normal way; the m=
@@ -2500,8 +2493,8 @@ bool ParseMediaDescription(const std::string& message,
     content->set_connection_address(address);
 
     desc->AddContent(content_name,
-                     IsDtlsSctp(protocol) ? cricket::NS_JINGLE_DRAFT_SCTP
-                                          : cricket::NS_JINGLE_RTP,
+                     IsDtlsSctp(protocol) ? MediaProtocolType::kSctp
+                                          : MediaProtocolType::kRtp,
                      content_rejected, bundle_only, content.release());
     // Create TransportInfo with the media level "ice-pwd" and "ice-ufrag".
     TransportInfo transport_info(content_name, transport);
@@ -2513,6 +2506,8 @@ bool ParseMediaDescription(const std::string& message,
       return ParseFailed("", description.str(), error);
     }
   }
+
+  desc->set_msid_signaling(msid_signaling);
 
   size_t end_of_message = message.size();
   if (mline_index == -1 && *pos != end_of_message) {
@@ -2679,6 +2674,7 @@ bool ParseContent(const std::string& message,
                   size_t* pos,
                   std::string* content_name,
                   bool* bundle_only,
+                  int* msid_signaling,
                   MediaContentDescription* media_desc,
                   TransportDescription* transport,
                   std::vector<JsepIceCandidate*>* candidates,
@@ -2688,8 +2684,7 @@ bool ParseContent(const std::string& message,
   RTC_DCHECK(transport != NULL);
 
   if (media_type == cricket::MEDIA_TYPE_AUDIO) {
-    MaybeCreateStaticPayloadAudioCodecs(
-        payload_types, static_cast<AudioContentDescription*>(media_desc));
+    MaybeCreateStaticPayloadAudioCodecs(payload_types, media_desc->as_audio());
   }
 
   // The media level "ice-ufrag" and "ice-pwd".
@@ -2838,8 +2833,7 @@ bool ParseContent(const std::string& message,
       if (!ParseSctpPort(line, &sctp_port, error)) {
         return false;
       }
-      if (!AddSctpDataCodec(static_cast<DataContentDescription*>(media_desc),
-                            sctp_port)) {
+      if (!AddSctpDataCodec(media_desc->as_data(), sctp_port)) {
         return false;
       }
     } else if (IsRtp(protocol)) {
@@ -2855,7 +2849,7 @@ bool ParseContent(const std::string& message,
           return false;
         }
       } else if (HasAttribute(line, kAttributeSsrc)) {
-        if (!ParseSsrcAttribute(line, &ssrc_infos, error)) {
+        if (!ParseSsrcAttribute(line, &ssrc_infos, msid_signaling, error)) {
           return false;
         }
       } else if (HasAttribute(line, kAttributeCrypto)) {
@@ -2880,13 +2874,13 @@ bool ParseContent(const std::string& message,
           return false;
         }
       } else if (HasAttribute(line, kAttributeSendOnly)) {
-        media_desc->set_direction(cricket::MD_SENDONLY);
+        media_desc->set_direction(RtpTransceiverDirection::kSendOnly);
       } else if (HasAttribute(line, kAttributeRecvOnly)) {
-        media_desc->set_direction(cricket::MD_RECVONLY);
+        media_desc->set_direction(RtpTransceiverDirection::kRecvOnly);
       } else if (HasAttribute(line, kAttributeInactive)) {
-        media_desc->set_direction(cricket::MD_INACTIVE);
+        media_desc->set_direction(RtpTransceiverDirection::kInactive);
       } else if (HasAttribute(line, kAttributeSendRecv)) {
-        media_desc->set_direction(cricket::MD_SENDRECV);
+        media_desc->set_direction(RtpTransceiverDirection::kSendRecv);
       } else if (HasAttribute(line, kAttributeExtmap)) {
         RtpExtension extmap;
         if (!ParseExtmap(line, &extmap, error)) {
@@ -2907,6 +2901,7 @@ bool ParseContent(const std::string& message,
         if (!ParseMsidAttribute(line, &stream_id, &track_id, error)) {
           return false;
         }
+        *msid_signaling |= cricket::kMsidSignalingMediaSection;
       }
     } else {
       // Only parse lines that we are interested of.
@@ -2942,8 +2937,7 @@ bool ParseContent(const std::string& message,
   }
 
   if (media_type == cricket::MEDIA_TYPE_AUDIO) {
-    AudioContentDescription* audio_desc =
-        static_cast<AudioContentDescription*>(media_desc);
+    AudioContentDescription* audio_desc = media_desc->as_audio();
     UpdateFromWildcardCodecs(audio_desc);
 
     // Verify audio codec ensures that no audio codec has been populated with
@@ -2956,8 +2950,7 @@ bool ParseContent(const std::string& message,
   }
 
   if (media_type == cricket::MEDIA_TYPE_VIDEO) {
-    VideoContentDescription* video_desc =
-        static_cast<VideoContentDescription*>(media_desc);
+    VideoContentDescription* video_desc = media_desc->as_video();
     UpdateFromWildcardCodecs(video_desc);
     // Verify video codec ensures that no video codec has been populated with
     // only rtcp-fb.
@@ -2981,7 +2974,9 @@ bool ParseContent(const std::string& message,
   return true;
 }
 
-bool ParseSsrcAttribute(const std::string& line, SsrcInfoVec* ssrc_infos,
+bool ParseSsrcAttribute(const std::string& line,
+                        SsrcInfoVec* ssrc_infos,
+                        int* msid_signaling,
                         SdpParseError* error) {
   RTC_DCHECK(ssrc_infos != NULL);
   // RFC 5576
@@ -3047,6 +3042,7 @@ bool ParseSsrcAttribute(const std::string& line, SsrcInfoVec* ssrc_infos,
     if (fields.size() == 2) {
       ssrc_info->track_id = fields[1];
     }
+    *msid_signaling |= cricket::kMsidSignalingSsrcAttribute;
   } else if (attribute == kSsrcAttributeMslabel) {
     // draft-alvestrand-rtcweb-mid-01
     // mslabel:<value>
@@ -3180,7 +3176,8 @@ bool ParseRtpmapAttribute(const std::string& line,
   if (std::find(payload_types.begin(), payload_types.end(), payload_type) ==
       payload_types.end()) {
     RTC_LOG(LS_WARNING) << "Ignore rtpmap line that did not appear in the "
-                        << "<fmt> of the m-line: " << line;
+                           "<fmt> of the m-line: "
+                        << line;
     return true;
   }
   const std::string& encoder = fields[1];
@@ -3200,8 +3197,7 @@ bool ParseRtpmapAttribute(const std::string& line,
     return false;
   }
   if (media_type == cricket::MEDIA_TYPE_VIDEO) {
-    VideoContentDescription* video_desc =
-        static_cast<VideoContentDescription*>(media_desc);
+    VideoContentDescription* video_desc = media_desc->as_video();
     UpdateCodec(payload_type, encoding_name,
                 video_desc);
   } else if (media_type == cricket::MEDIA_TYPE_AUDIO) {
@@ -3216,13 +3212,11 @@ bool ParseRtpmapAttribute(const std::string& line,
         return false;
       }
     }
-    AudioContentDescription* audio_desc =
-        static_cast<AudioContentDescription*>(media_desc);
+    AudioContentDescription* audio_desc = media_desc->as_audio();
     UpdateCodec(payload_type, encoding_name, clock_rate, 0, channels,
                 audio_desc);
   } else if (media_type == cricket::MEDIA_TYPE_DATA) {
-    DataContentDescription* data_desc =
-        static_cast<DataContentDescription*>(media_desc);
+    DataContentDescription* data_desc = media_desc->as_data();
     data_desc->AddCodec(cricket::DataCodec(payload_type, encoding_name));
   }
   return true;

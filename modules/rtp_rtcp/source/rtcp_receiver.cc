@@ -52,6 +52,8 @@ using rtcp::ReportBlock;
 // The number of RTCP time intervals needed to trigger a timeout.
 const int kRrTimeoutIntervals = 3;
 
+const int64_t kTmmbrTimeoutIntervalMs = 5 * 5000;
+
 const int64_t kMaxWarningLogIntervalMs = 10000;
 const int64_t kRtcpMinFrameLengthMs = 17;
 
@@ -461,7 +463,8 @@ void RTCPReceiver::HandleReportBlock(const ReportBlock& report_block,
   report_block_info->report_block.sender_ssrc = remote_ssrc;
   report_block_info->report_block.source_ssrc = report_block.source_ssrc();
   report_block_info->report_block.fraction_lost = report_block.fraction_lost();
-  report_block_info->report_block.packets_lost = report_block.cumulative_lost();
+  report_block_info->report_block.packets_lost =
+      report_block.cumulative_lost_signed();
   if (report_block.extended_high_seq_num() >
       report_block_info->report_block.extended_highest_sequence_number) {
     // We have successfully delivered new RTP packets to the remote side after
@@ -501,12 +504,12 @@ void RTCPReceiver::HandleReportBlock(const ReportBlock& report_block,
     report_block_info->last_rtt_ms = rtt_ms;
     report_block_info->sum_rtt_ms += rtt_ms;
     ++report_block_info->num_rtts;
+
+    packet_information->rtt_ms = rtt_ms;
   }
 
   TRACE_COUNTER_ID1(TRACE_DISABLED_BY_DEFAULT("webrtc_rtp"), "RR_RTT",
                     report_block.source_ssrc(), rtt_ms);
-
-  packet_information->rtt_ms = rtt_ms;
   packet_information->report_blocks.push_back(report_block_info->report_block);
 }
 
@@ -566,8 +569,7 @@ bool RTCPReceiver::UpdateTmmbrTimers() {
   rtc::CritScope lock(&rtcp_receiver_lock_);
 
   int64_t now_ms = clock_->TimeInMilliseconds();
-  // Use audio define since we don't know what interval the remote peer use.
-  int64_t timeout_ms = now_ms - 5 * RTCP_INTERVAL_AUDIO_MS;
+  int64_t timeout_ms = now_ms - kTmmbrTimeoutIntervalMs;
 
   if (oldest_tmmbr_info_ms_ >= timeout_ms)
     return false;
@@ -1031,8 +1033,7 @@ std::vector<rtcp::TmmbItem> RTCPReceiver::TmmbrReceived() {
   std::vector<rtcp::TmmbItem> candidates;
 
   int64_t now_ms = clock_->TimeInMilliseconds();
-  // Use audio define since we don't know what interval the remote peer use.
-  int64_t timeout_ms = now_ms - 5 * RTCP_INTERVAL_AUDIO_MS;
+  int64_t timeout_ms = now_ms - kTmmbrTimeoutIntervalMs;
 
   for (auto& kv : tmmbr_infos_) {
     for (auto it = kv.second.tmmbr.begin(); it != kv.second.tmmbr.end();) {

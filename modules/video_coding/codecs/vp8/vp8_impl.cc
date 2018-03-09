@@ -16,10 +16,6 @@
 #include <algorithm>
 #include <string>
 
-// NOTE(ajm): Path provided by gyp.
-#include "libyuv/convert.h"  // NOLINT
-#include "libyuv/scale.h"    // NOLINT
-
 #include "common_types.h"  // NOLINT(build/include)
 #include "common_video/libyuv/include/webrtc_libyuv.h"
 #include "modules/include/module_common_types.h"
@@ -37,12 +33,19 @@
 #include "system_wrappers/include/clock.h"
 #include "system_wrappers/include/field_trial.h"
 #include "system_wrappers/include/metrics.h"
+#include "third_party/libyuv/include/libyuv/convert.h"
+#include "third_party/libyuv/include/libyuv/scale.h"
 
 namespace webrtc {
 namespace {
 
 const char kVp8PostProcArmFieldTrial[] = "WebRTC-VP8-Postproc-Config-Arm";
 const char kVp8GfBoostFieldTrial[] = "WebRTC-VP8-GfBoost";
+
+// QP is obtained from VP8-bitstream for HW, so the QP corresponds to the
+// bitstream range of [0, 127] and not the user-level range of [0,63].
+static const int kLowVp8QpThreshold = 29;
+static const int kHighVp8QpThreshold = 95;
 
 const int kTokenPartitions = VP8_ONE_TOKENPARTITION;
 enum { kVp8ErrorPropagationTh = 30 };
@@ -117,15 +120,6 @@ bool ValidSimulcastTemporalLayers(const VideoCodec& codec, int num_streams) {
   return true;
 }
 
-int NumStreamsDisabled(const std::vector<bool>& streams) {
-  int num_disabled = 0;
-  for (bool stream : streams) {
-    if (!stream)
-      ++num_disabled;
-  }
-  return num_disabled;
-}
-
 bool GetGfBoostPercentageFromFieldTrialGroup(int* boost_percentage) {
   std::string group = webrtc::field_trial::FindFullName(kVp8GfBoostFieldTrial);
   if (group.empty())
@@ -159,6 +153,55 @@ void GetPostProcParamsFromFieldTrialGroup(
     return;
 
   *deblock_params = params;
+}
+
+static_assert(
+    VP8_TS_MAX_PERIODICITY == VPX_TS_MAX_PERIODICITY,
+    "VP8_TS_MAX_PERIODICITY must be kept in sync with the constant in libvpx.");
+static_assert(
+    VP8_TS_MAX_LAYERS == VPX_TS_MAX_LAYERS,
+    "VP8_TS_MAX_LAYERS must be kept in sync with the constant in libvpx.");
+
+static Vp8EncoderConfig GetEncoderConfig(vpx_codec_enc_cfg* vpx_config) {
+  Vp8EncoderConfig config;
+
+  config.ts_number_layers = vpx_config->ts_number_layers;
+  memcpy(config.ts_target_bitrate, vpx_config->ts_target_bitrate,
+         sizeof(unsigned int) * VP8_TS_MAX_LAYERS);
+  memcpy(config.ts_rate_decimator, vpx_config->ts_rate_decimator,
+         sizeof(unsigned int) * VP8_TS_MAX_LAYERS);
+  config.ts_periodicity = vpx_config->ts_periodicity;
+  memcpy(config.ts_layer_id, vpx_config->ts_layer_id,
+         sizeof(unsigned int) * VP8_TS_MAX_PERIODICITY);
+  config.rc_target_bitrate = vpx_config->rc_target_bitrate;
+  config.rc_min_quantizer = vpx_config->rc_min_quantizer;
+  config.rc_max_quantizer = vpx_config->rc_max_quantizer;
+
+  return config;
+}
+
+static void FillInEncoderConfig(vpx_codec_enc_cfg* vpx_config,
+                                const Vp8EncoderConfig& config) {
+  vpx_config->ts_number_layers = config.ts_number_layers;
+  memcpy(vpx_config->ts_target_bitrate, config.ts_target_bitrate,
+         sizeof(unsigned int) * VP8_TS_MAX_LAYERS);
+  memcpy(vpx_config->ts_rate_decimator, config.ts_rate_decimator,
+         sizeof(unsigned int) * VP8_TS_MAX_LAYERS);
+  vpx_config->ts_periodicity = config.ts_periodicity;
+  memcpy(vpx_config->ts_layer_id, config.ts_layer_id,
+         sizeof(unsigned int) * VP8_TS_MAX_PERIODICITY);
+  vpx_config->rc_target_bitrate = config.rc_target_bitrate;
+  vpx_config->rc_min_quantizer = config.rc_min_quantizer;
+  vpx_config->rc_max_quantizer = config.rc_max_quantizer;
+}
+
+bool UpdateVpxConfiguration(TemporalLayers* temporal_layers,
+                            vpx_codec_enc_cfg_t* cfg) {
+  Vp8EncoderConfig config = GetEncoderConfig(cfg);
+  const bool res = temporal_layers->UpdateConfiguration(&config);
+  if (res)
+    FillInEncoderConfig(cfg, config);
+  return res;
 }
 
 }  // namespace
@@ -309,7 +352,9 @@ int VP8EncoderImpl::SetRateAllocation(const BitrateAllocation& bitrate,
       SetStreamState(send_stream, stream_idx);
 
     configurations_[i].rc_target_bitrate = target_bitrate_kbps;
-    temporal_layers_[stream_idx]->UpdateConfiguration(&configurations_[i]);
+
+    UpdateVpxConfiguration(temporal_layers_[stream_idx].get(),
+                           &configurations_[i]);
 
     if (vpx_codec_enc_config_set(&encoders_[i], &configurations_[i])) {
       return WEBRTC_VIDEO_CODEC_ERROR;
@@ -541,7 +586,9 @@ int VP8EncoderImpl::InitEncode(const VideoCodec* inst,
   configurations_[0].rc_target_bitrate = stream_bitrates[stream_idx];
   temporal_layers_[stream_idx]->OnRatesUpdated(
       stream_bitrates[stream_idx], inst->maxBitrate, inst->maxFramerate);
-  temporal_layers_[stream_idx]->UpdateConfiguration(&configurations_[0]);
+  UpdateVpxConfiguration(temporal_layers_[stream_idx].get(),
+                         &configurations_[0]);
+
   --stream_idx;
   for (size_t i = 1; i < encoders_.size(); ++i, --stream_idx) {
     memcpy(&configurations_[i], &configurations_[0],
@@ -563,7 +610,8 @@ int VP8EncoderImpl::InitEncode(const VideoCodec* inst,
     configurations_[i].rc_target_bitrate = stream_bitrates[stream_idx];
     temporal_layers_[stream_idx]->OnRatesUpdated(
         stream_bitrates[stream_idx], inst->maxBitrate, inst->maxFramerate);
-    temporal_layers_[stream_idx]->UpdateConfiguration(&configurations_[i]);
+    UpdateVpxConfiguration(temporal_layers_[stream_idx].get(),
+                           &configurations_[i]);
   }
 
   return InitAndSetControlSettings();
@@ -808,7 +856,8 @@ int VP8EncoderImpl::Encode(const VideoFrame& frame,
     // the next update.
     vpx_codec_enc_cfg_t temp_config;
     memcpy(&temp_config, &configurations_[i], sizeof(vpx_codec_enc_cfg_t));
-    if (temporal_layers_[stream_idx]->UpdateConfiguration(&temp_config)) {
+    if (UpdateVpxConfiguration(temporal_layers_[stream_idx].get(),
+                               &temp_config)) {
       if (vpx_codec_enc_config_set(&encoders_[i], &temp_config))
         return WEBRTC_VIDEO_CODEC_ERROR;
     }
@@ -876,9 +925,6 @@ void VP8EncoderImpl::PopulateCodecSpecific(
 int VP8EncoderImpl::GetEncodedPartitions(
     const TemporalLayers::FrameConfig tl_configs[],
     const VideoFrame& input_image) {
-  int bw_resolutions_disabled =
-      (encoders_.size() > 1) ? NumStreamsDisabled(send_stream_) : -1;
-
   int stream_idx = static_cast<int>(encoders_.size()) - 1;
   int result = WEBRTC_VIDEO_CODEC_OK;
   for (size_t encoder_idx = 0; encoder_idx < encoders_.size();
@@ -951,9 +997,6 @@ int VP8EncoderImpl::GetEncodedPartitions(
             codec_.simulcastStream[stream_idx].height;
         encoded_images_[encoder_idx]._encodedWidth =
             codec_.simulcastStream[stream_idx].width;
-        // Report once per frame (lowest stream always sent).
-        encoded_images_[encoder_idx].adapt_reason_.bw_resolutions_disabled =
-            (stream_idx == 0) ? bw_resolutions_disabled : -1;
         int qp_128 = -1;
         vpx_codec_control(&encoders_[encoder_idx], VP8E_GET_LAST_QUANTIZER,
                           &qp_128);
@@ -972,7 +1015,9 @@ VideoEncoder::ScalingSettings VP8EncoderImpl::GetScalingSettings() const {
   const bool enable_scaling = encoders_.size() == 1 &&
                               configurations_[0].rc_dropframe_thresh > 0 &&
                               codec_.VP8().automaticResizeOn;
-  return VideoEncoder::ScalingSettings(enable_scaling);
+  return enable_scaling ? VideoEncoder::ScalingSettings(kLowVp8QpThreshold,
+                                                        kHighVp8QpThreshold)
+                        : VideoEncoder::ScalingSettings::kOff;
 }
 
 int VP8EncoderImpl::SetChannelParameters(uint32_t packetLoss, int64_t rtt) {

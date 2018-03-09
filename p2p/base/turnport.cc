@@ -12,6 +12,8 @@
 
 #include <algorithm>
 #include <functional>
+#include <utility>
+#include <vector>
 
 #include "api/optional.h"
 #include "p2p/base/common.h"
@@ -521,7 +523,11 @@ Connection* TurnPort::CreateConnection(const Candidate& remote_candidate,
             remote_candidate.address().family()) {
       // Create an entry, if needed, so we can get our permissions set up
       // correctly.
-      CreateOrRefreshEntry(remote_candidate.address());
+      if (CreateOrRefreshEntry(remote_candidate.address(),
+                               next_channel_number_)) {
+        // An entry was created.
+        next_channel_number_++;
+      }
       ProxyConnection* conn =
           new ProxyConnection(this, index, remote_candidate);
       AddOrReplaceConnection(conn);
@@ -594,6 +600,11 @@ int TurnPort::SendTo(const void* data, size_t size,
   return static_cast<int>(size);
 }
 
+bool TurnPort::CanHandleIncomingPacketsFrom(
+    const rtc::SocketAddress& addr) const {
+  return server_address_.address == addr;
+}
+
 bool TurnPort::HandleIncomingPacket(rtc::AsyncPacketSocket* socket,
                                     const char* data, size_t size,
                                     const rtc::SocketAddress& remote_addr,
@@ -634,7 +645,6 @@ bool TurnPort::HandleIncomingPacket(rtc::AsyncPacketSocket* socket,
   if (IsTurnChannelData(msg_type)) {
     HandleChannelData(msg_type, data, size, packet_time);
     return true;
-
   }
 
   if (msg_type == TURN_DATA_INDICATION) {
@@ -966,15 +976,32 @@ void TurnPort::DispatchPacket(const char* data, size_t size,
   }
 }
 
-bool TurnPort::ScheduleRefresh(int lifetime) {
-  // Lifetime is in seconds; we schedule a refresh for one minute less.
+bool TurnPort::ScheduleRefresh(uint32_t lifetime) {
+  // Lifetime is in seconds, delay is in milliseconds.
+  int delay = 1 * 60 * 1000;
+
+  // Cutoff lifetime bigger than 1h.
+  constexpr uint32_t max_lifetime = 60 * 60;
+
   if (lifetime < 2 * 60) {
-    LOG_J(LS_WARNING, this) << "Received response with lifetime that was "
-                            << "too short, lifetime=" << lifetime;
-    return false;
+    // The RFC does not mention a lower limit on lifetime.
+    // So if server sends a value less than 2 minutes, we schedule a refresh
+    // for half lifetime.
+    LOG_J(LS_WARNING, this) << "Received response with short lifetime="
+                            << lifetime << " seconds.";
+    delay = (lifetime * 1000) / 2;
+  } else if (lifetime > max_lifetime) {
+    // Make 1 hour largest delay, and then sce
+    // we schedule a refresh for one minute less than max lifetime.
+    LOG_J(LS_WARNING, this) << "Received response with long lifetime="
+                            << lifetime << " seconds.";
+    delay = (max_lifetime - 60) * 1000;
+  } else {
+    // Normal case,
+    // we schedule a refresh for one minute less than requested lifetime.
+    delay = (lifetime - 60) * 1000;
   }
 
-  int delay = (lifetime - 60) * 1000;
   SendRequest(new TurnRefreshRequest(this), delay);
   LOG_J(LS_INFO, this) << "Scheduled refresh in " << delay << "ms.";
   return true;
@@ -1038,29 +1065,25 @@ void TurnPort::ResetNonce() {
   realm_.clear();
 }
 
-static bool MatchesIP(TurnEntry* e, rtc::IPAddress ipaddr) {
-  return e->address().ipaddr() == ipaddr;
-}
 bool TurnPort::HasPermission(const rtc::IPAddress& ipaddr) const {
   return (std::find_if(entries_.begin(), entries_.end(),
-      std::bind2nd(std::ptr_fun(MatchesIP), ipaddr)) != entries_.end());
+                       [&ipaddr](const TurnEntry* e) {
+                         return e->address().ipaddr() == ipaddr;
+                       }) != entries_.end());
 }
 
-static bool MatchesAddress(TurnEntry* e, rtc::SocketAddress addr) {
-  return e->address() == addr;
-}
 TurnEntry* TurnPort::FindEntry(const rtc::SocketAddress& addr) const {
-  EntryList::const_iterator it = std::find_if(entries_.begin(), entries_.end(),
-      std::bind2nd(std::ptr_fun(MatchesAddress), addr));
+  auto it = std::find_if(
+      entries_.begin(), entries_.end(),
+      [&addr](const TurnEntry* e) { return e->address() == addr; });
   return (it != entries_.end()) ? *it : NULL;
 }
 
-static bool MatchesChannelId(TurnEntry* e, int id) {
-  return e->channel_id() == id;
-}
 TurnEntry* TurnPort::FindEntry(int channel_id) const {
-  EntryList::const_iterator it = std::find_if(entries_.begin(), entries_.end(),
-      std::bind2nd(std::ptr_fun(MatchesChannelId), channel_id));
+  auto it = std::find_if(entries_.begin(), entries_.end(),
+                         [&channel_id](const TurnEntry* e) {
+                           return e->channel_id() == channel_id;
+                         });
   return (it != entries_.end()) ? *it : NULL;
 }
 
@@ -1069,11 +1092,13 @@ bool TurnPort::EntryExists(TurnEntry* e) {
   return it != entries_.end();
 }
 
-void TurnPort::CreateOrRefreshEntry(const rtc::SocketAddress& addr) {
+bool TurnPort::CreateOrRefreshEntry(const rtc::SocketAddress& addr,
+                                    int channel_number) {
   TurnEntry* entry = FindEntry(addr);
   if (entry == nullptr) {
-    entry = new TurnEntry(this, next_channel_number_++, addr);
+    entry = new TurnEntry(this, channel_number, addr);
     entries_.push_back(entry);
+    return true;
   } else {
     if (entry->destruction_timestamp()) {
       // Destruction should have only been scheduled (indicated by
@@ -1091,6 +1116,7 @@ void TurnPort::CreateOrRefreshEntry(const rtc::SocketAddress& addr) {
       RTC_DCHECK(GetConnection(addr));
     }
   }
+  return false;
 }
 
 void TurnPort::DestroyEntry(TurnEntry* entry) {
@@ -1320,7 +1346,6 @@ void TurnAllocateRequest::OnAuthChallenge(StunMessage* response, int code) {
 }
 
 void TurnAllocateRequest::OnTryAlternate(StunMessage* response, int code) {
-
   // According to RFC 5389 section 11, there are use cases where
   // authentication of response is not possible, we're not validating
   // message integrity.

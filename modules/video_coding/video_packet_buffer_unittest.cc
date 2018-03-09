@@ -54,14 +54,16 @@ class TestPacketBuffer : public ::testing::Test,
   enum IsFirst { kFirst, kNotFirst };
   enum IsLast { kLast, kNotLast };
 
-  bool Insert(uint16_t seq_num,           // packet sequence number
-              IsKeyFrame keyframe,        // is keyframe
-              IsFirst first,              // is first packet of frame
-              IsLast last,                // is last packet of frame
-              int data_size = 0,          // size of data
-              uint8_t* data = nullptr) {  // data pointer
+  bool Insert(uint16_t seq_num,             // packet sequence number
+              IsKeyFrame keyframe,          // is keyframe
+              IsFirst first,                // is first packet of frame
+              IsLast last,                  // is last packet of frame
+              int data_size = 0,            // size of data
+              uint8_t* data = nullptr,      // data pointer
+              uint32_t timestamp = 123u) {  // rtp timestamp
     VCMPacket packet;
     packet.codec = kVideoCodecGeneric;
+    packet.timestamp = timestamp;
     packet.seqNum = seq_num;
     packet.frameType =
         keyframe == kKeyFrame ? kVideoFrameKey : kVideoFrameDelta;
@@ -193,6 +195,64 @@ TEST_F(TestPacketBuffer, FrameSize) {
 
   ASSERT_EQ(1UL, frames_from_callback_.size());
   EXPECT_EQ(20UL, frames_from_callback_.begin()->second->size());
+}
+
+TEST_F(TestPacketBuffer, CountsUniqueFrames) {
+  const uint16_t seq_num = Rand();
+
+  ASSERT_EQ(0, packet_buffer_->GetUniqueFramesSeen());
+
+  EXPECT_TRUE(Insert(seq_num, kKeyFrame, kFirst, kNotLast, 0, nullptr, 100));
+  ASSERT_EQ(1, packet_buffer_->GetUniqueFramesSeen());
+  // Still the same frame.
+  EXPECT_TRUE(
+      Insert(seq_num + 1, kKeyFrame, kNotFirst, kLast, 0, nullptr, 100));
+  ASSERT_EQ(1, packet_buffer_->GetUniqueFramesSeen());
+
+  // Second frame.
+  EXPECT_TRUE(
+      Insert(seq_num + 2, kKeyFrame, kFirst, kNotLast, 0, nullptr, 200));
+  ASSERT_EQ(2, packet_buffer_->GetUniqueFramesSeen());
+  EXPECT_TRUE(
+      Insert(seq_num + 3, kKeyFrame, kNotFirst, kLast, 0, nullptr, 200));
+  ASSERT_EQ(2, packet_buffer_->GetUniqueFramesSeen());
+
+  // Old packet.
+  EXPECT_TRUE(
+      Insert(seq_num + 1, kKeyFrame, kNotFirst, kLast, 0, nullptr, 100));
+  ASSERT_EQ(2, packet_buffer_->GetUniqueFramesSeen());
+
+  // Missing middle packet.
+  EXPECT_TRUE(
+      Insert(seq_num + 4, kKeyFrame, kFirst, kNotLast, 0, nullptr, 300));
+  EXPECT_TRUE(
+      Insert(seq_num + 6, kKeyFrame, kNotFirst, kLast, 0, nullptr, 300));
+  ASSERT_EQ(3, packet_buffer_->GetUniqueFramesSeen());
+}
+
+TEST_F(TestPacketBuffer, HasHistoryOfUniqueFrames) {
+  const int kNumFrames = 1500;
+  const int kRequiredHistoryLength = 1000;
+  const uint16_t seq_num = Rand();
+  const uint32_t timestamp = 0xFFFFFFF0;  // Large enough to cause wrap-around.
+
+  for (int i = 0; i < kNumFrames; ++i) {
+    EXPECT_TRUE(Insert(seq_num + i, kKeyFrame, kFirst, kNotLast, 0, nullptr,
+                       timestamp + 10 * i));
+  }
+  ASSERT_EQ(kNumFrames, packet_buffer_->GetUniqueFramesSeen());
+
+  // Old packets within history should not affect number of seen unique frames.
+  for (int i = kNumFrames - kRequiredHistoryLength; i < kNumFrames; ++i) {
+    EXPECT_TRUE(Insert(seq_num + i, kKeyFrame, kFirst, kNotLast, 0, nullptr,
+                       timestamp + 10 * i));
+  }
+  ASSERT_EQ(kNumFrames, packet_buffer_->GetUniqueFramesSeen());
+
+  // Very old packets should be treated as unique.
+  EXPECT_TRUE(
+      Insert(seq_num, kKeyFrame, kFirst, kNotLast, 0, nullptr, timestamp));
+  ASSERT_EQ(kNumFrames + 1, packet_buffer_->GetUniqueFramesSeen());
 }
 
 TEST_F(TestPacketBuffer, ExpandBuffer) {
@@ -488,6 +548,16 @@ class TestPacketBufferH264Parameterized
 INSTANTIATE_TEST_CASE_P(SpsPpsIdrIsKeyframe,
                         TestPacketBufferH264Parameterized,
                         ::testing::Values(false, true));
+
+TEST_P(TestPacketBufferH264Parameterized, DontRemoveMissingPacketOnClearTo) {
+  EXPECT_TRUE(InsertH264(0, kKeyFrame, kFirst, kLast, 0));
+  EXPECT_TRUE(InsertH264(2, kDeltaFrame, kFirst, kNotLast, 2));
+  packet_buffer_->ClearTo(0);
+  EXPECT_TRUE(InsertH264(3, kDeltaFrame, kNotFirst, kLast, 2));
+
+  ASSERT_EQ(1UL, frames_from_callback_.size());
+  CheckFrame(0);
+}
 
 TEST_P(TestPacketBufferH264Parameterized, GetBitstreamOneFrameFullBuffer) {
   uint8_t* data_arr[kStartSize];

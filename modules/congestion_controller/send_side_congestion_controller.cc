@@ -11,6 +11,7 @@
 #include "modules/congestion_controller/include/send_side_congestion_controller.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <memory>
 #include <vector>
 
@@ -22,11 +23,13 @@
 #include "rtc_base/checks.h"
 #include "rtc_base/format_macros.h"
 #include "rtc_base/logging.h"
+#include "rtc_base/numerics/safe_conversions.h"
 #include "rtc_base/ptr_util.h"
 #include "rtc_base/rate_limiter.h"
 #include "rtc_base/socket.h"
 #include "rtc_base/timeutils.h"
 #include "system_wrappers/include/field_trial.h"
+#include "system_wrappers/include/runtime_enabled_features.h"
 
 namespace webrtc {
 namespace {
@@ -92,6 +95,13 @@ void SortPacketFeedbackVector(
   std::sort(input->begin(), input->end(), PacketFeedbackComparator());
 }
 
+bool IsPacerPushbackExperimentEnabled() {
+  return webrtc::field_trial::IsEnabled(kPacerPushbackExperiment) || (
+      !webrtc::field_trial::IsDisabled(kPacerPushbackExperiment) &&
+      webrtc::runtime_enabled_features::IsFeatureEnabled(
+          webrtc::runtime_enabled_features::kDualStreamModeFeatureName));
+}
+
 }  // namespace
 
 SendSideCongestionController::SendSideCongestionController(
@@ -122,8 +132,10 @@ SendSideCongestionController::SendSideCongestionController(
       in_cwnd_experiment_(CwndExperimentEnabled()),
       accepted_queue_ms_(kDefaultAcceptedQueueMs),
       was_in_alr_(false),
-      pacer_pushback_experiment_(
-          webrtc::field_trial::IsEnabled(kPacerPushbackExperiment)) {
+      send_side_bwe_with_overhead_(
+          webrtc::field_trial::IsEnabled("WebRTC-SendSideBwe-WithOverhead")),
+      transport_overhead_bytes_per_packet_(0),
+      pacer_pushback_experiment_(IsPacerPushbackExperimentEnabled()) {
   delay_based_bwe_->SetMinBitrate(min_bitrate_bps_);
   if (in_cwnd_experiment_ &&
       !ReadCwndExperimentParameter(&accepted_queue_ms_)) {
@@ -257,8 +269,8 @@ void SendSideCongestionController::SignalNetworkState(NetworkState state) {
 
 void SendSideCongestionController::SetTransportOverhead(
     size_t transport_overhead_bytes_per_packet) {
-  transport_feedback_adapter_.SetTransportOverhead(
-      transport_overhead_bytes_per_packet);
+  rtc::CritScope cs(&bwe_lock_);
+  transport_overhead_bytes_per_packet_ = transport_overhead_bytes_per_packet;
 }
 
 void SendSideCongestionController::OnSentPacket(
@@ -308,6 +320,10 @@ void SendSideCongestionController::AddPacket(
     uint16_t sequence_number,
     size_t length,
     const PacedPacketInfo& pacing_info) {
+  if (send_side_bwe_with_overhead_) {
+    rtc::CritScope cs(&bwe_lock_);
+    length += transport_overhead_bytes_per_packet_;
+  }
   transport_feedback_adapter_.AddPacket(ssrc, sequence_number, length,
                                         pacing_info);
 }

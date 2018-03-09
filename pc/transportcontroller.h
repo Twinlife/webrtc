@@ -18,8 +18,11 @@
 
 #include "api/candidate.h"
 #include "p2p/base/dtlstransport.h"
-#include "p2p/base/jseptransport.h"
 #include "p2p/base/p2ptransportchannel.h"
+#include "pc/dtlssrtptransport.h"
+#include "pc/jseptransport.h"
+#include "pc/rtptransport.h"
+#include "pc/srtptransport.h"
 #include "rtc_base/asyncinvoker.h"
 #include "rtc_base/constructormagic.h"
 #include "rtc_base/refcountedobject.h"
@@ -33,6 +36,7 @@ class PacketTransportInternal;
 
 namespace webrtc {
 class MetricsObserverInterface;
+class RtcEventLog;
 }  // namespace webrtc
 
 namespace cricket {
@@ -50,7 +54,8 @@ class TransportController : public sigslot::has_slots<>,
                       rtc::Thread* network_thread,
                       PortAllocator* port_allocator,
                       bool redetermine_role_on_ice_restart,
-                      const rtc::CryptoOptions& crypto_options);
+                      const rtc::CryptoOptions& crypto_options,
+                      webrtc::RtcEventLog* event_log = nullptr);
 
   virtual ~TransportController();
 
@@ -86,17 +91,18 @@ class TransportController : public sigslot::has_slots<>,
   bool GetLocalCertificate(
       const std::string& transport_name,
       rtc::scoped_refptr<rtc::RTCCertificate>* certificate) const;
-  // Caller owns returned certificate. This method mainly exists for stats
-  // reporting.
-  std::unique_ptr<rtc::SSLCertificate> GetRemoteSSLCertificate(
+  // Caller owns returned certificate chain. This method mainly exists for
+  // stats reporting.
+  std::unique_ptr<rtc::SSLCertChain> GetRemoteSSLCertChain(
       const std::string& transport_name) const;
+
   bool SetLocalTransportDescription(const std::string& transport_name,
                                     const TransportDescription& tdesc,
-                                    ContentAction action,
+                                    webrtc::SdpType type,
                                     std::string* err);
   bool SetRemoteTransportDescription(const std::string& transport_name,
                                      const TransportDescription& tdesc,
-                                     ContentAction action,
+                                     webrtc::SdpType type,
                                      std::string* err);
   // Start gathering candidates for any new transports, or transports doing an
   // ICE restart.
@@ -126,6 +132,20 @@ class TransportController : public sigslot::has_slots<>,
                                     int component);
   virtual void DestroyDtlsTransport_n(const std::string& transport_name,
                                       int component);
+
+  // Create an SrtpTransport/DtlsSrtpTransport if it doesn't exist.
+  // Otherwise, increments a reference count and returns the existing one.
+  // These methods are not currently used but the plan is to transition
+  // PeerConnection and BaseChannel to use them instead of CreateDtlsTransport.
+  webrtc::SrtpTransport* CreateSdesTransport(const std::string& transport_name,
+                                             bool rtcp_mux_enabled);
+  webrtc::DtlsSrtpTransport* CreateDtlsSrtpTransport(
+      const std::string& transport_name,
+      bool rtcp_mux_enabled);
+
+  // Destroy an RTP level transport which can be an RtpTransport, an
+  // SrtpTransport or a DtlsSrtpTransport.
+  void DestroyTransport(const std::string& transport_name);
 
   // TODO(deadbeef): Remove all for_testing methods!
   const rtc::scoped_refptr<rtc::RTCCertificate>& certificate_for_testing()
@@ -180,6 +200,24 @@ class TransportController : public sigslot::has_slots<>,
   class ChannelPair;
   typedef rtc::RefCountedObject<ChannelPair> RefCountedChannel;
 
+  // Wrapper for RtpTransport that keeps a reference count.
+  // When using SDES, |srtp_transport| is non-null, |dtls_srtp_transport| is
+  // null and |rtp_transport.get()| == |srtp_transport|,
+  // When using DTLS-SRTP, |dtls_srtp_transport| is non-null, |srtp_transport|
+  // is null and |rtp_transport.get()| == |dtls_srtp_transport|,
+  // When using unencrypted RTP, only |rtp_transport| is non-null.
+  struct RtpTransportWrapper {
+    // |rtp_transport| is always non-null.
+    std::unique_ptr<webrtc::RtpTransportInternal> rtp_transport;
+    webrtc::SrtpTransport* srtp_transport = nullptr;
+    webrtc::DtlsSrtpTransport* dtls_srtp_transport = nullptr;
+  };
+
+  typedef rtc::RefCountedObject<RtpTransportWrapper> RefCountedRtpTransport;
+
+  const RefCountedRtpTransport* FindRtpTransport(
+      const std::string& transport_name);
+
   // Helper functions to get a channel or transport, or iterator to it (in case
   // it needs to be erased).
   std::vector<RefCountedChannel*>::iterator GetChannelIterator_n(
@@ -209,15 +247,13 @@ class TransportController : public sigslot::has_slots<>,
   bool GetLocalCertificate_n(
       const std::string& transport_name,
       rtc::scoped_refptr<rtc::RTCCertificate>* certificate) const;
-  std::unique_ptr<rtc::SSLCertificate> GetRemoteSSLCertificate_n(
-      const std::string& transport_name) const;
   bool SetLocalTransportDescription_n(const std::string& transport_name,
                                       const TransportDescription& tdesc,
-                                      ContentAction action,
+                                      webrtc::SdpType type,
                                       std::string* err);
   bool SetRemoteTransportDescription_n(const std::string& transport_name,
                                        const TransportDescription& tdesc,
-                                       ContentAction action,
+                                       webrtc::SdpType type,
                                        std::string* err);
   void MaybeStartGathering_n();
   bool AddRemoteCandidates_n(const std::string& transport_name,
@@ -251,6 +287,8 @@ class TransportController : public sigslot::has_slots<>,
   std::map<std::string, std::unique_ptr<JsepTransport>> transports_;
   std::vector<RefCountedChannel*> channels_;
 
+  std::map<std::string, RefCountedRtpTransport*> rtp_transports_;
+
   // Aggregate state for TransportChannelImpls.
   IceConnectionState connection_state_ = kIceConnectionConnecting;
   bool receiving_ = false;
@@ -266,6 +304,8 @@ class TransportController : public sigslot::has_slots<>,
   rtc::AsyncInvoker invoker_;
 
   webrtc::MetricsObserverInterface* metrics_observer_ = nullptr;
+
+  webrtc::RtcEventLog* event_log_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(TransportController);
 };

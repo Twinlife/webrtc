@@ -515,6 +515,7 @@ class RTCStatsReportVerifier {
       verifier.TestMemberIsUndefined(media_stream_track.frames_per_second);
       if (*media_stream_track.remote_source) {
         verifier.TestMemberIsUndefined(media_stream_track.frames_sent);
+        verifier.TestMemberIsUndefined(media_stream_track.huge_frames_sent);
         verifier.TestMemberIsNonNegative<uint32_t>(
             media_stream_track.frames_received);
         verifier.TestMemberIsNonNegative<uint32_t>(
@@ -524,6 +525,8 @@ class RTCStatsReportVerifier {
       } else {
         verifier.TestMemberIsNonNegative<uint32_t>(
             media_stream_track.frames_sent);
+        verifier.TestMemberIsNonNegative<uint32_t>(
+            media_stream_track.huge_frames_sent);
         verifier.TestMemberIsUndefined(media_stream_track.frames_received);
         verifier.TestMemberIsUndefined(media_stream_track.frames_decoded);
         verifier.TestMemberIsUndefined(media_stream_track.frames_dropped);
@@ -546,6 +549,7 @@ class RTCStatsReportVerifier {
       verifier.TestMemberIsUndefined(media_stream_track.frame_height);
       verifier.TestMemberIsUndefined(media_stream_track.frames_per_second);
       verifier.TestMemberIsUndefined(media_stream_track.frames_sent);
+      verifier.TestMemberIsUndefined(media_stream_track.huge_frames_sent);
       verifier.TestMemberIsUndefined(media_stream_track.frames_received);
       verifier.TestMemberIsUndefined(media_stream_track.frames_decoded);
       verifier.TestMemberIsUndefined(media_stream_track.frames_dropped);
@@ -633,7 +637,9 @@ class RTCStatsReportVerifier {
     }
     verifier.TestMemberIsNonNegative<uint32_t>(inbound_stream.packets_received);
     verifier.TestMemberIsNonNegative<uint64_t>(inbound_stream.bytes_received);
-    verifier.TestMemberIsNonNegative<uint32_t>(inbound_stream.packets_lost);
+    // packets_lost is defined as signed, but this should never happen in
+    // this test. See RFC 3550.
+    verifier.TestMemberIsNonNegative<int32_t>(inbound_stream.packets_lost);
     if (inbound_stream.media_type.is_defined() &&
         *inbound_stream.media_type == "video") {
       verifier.TestMemberIsUndefined(inbound_stream.jitter);

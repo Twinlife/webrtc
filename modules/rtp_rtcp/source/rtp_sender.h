@@ -60,7 +60,8 @@ class RTPSender {
             RtcEventLog* event_log,
             SendPacketObserver* send_packet_observer,
             RateLimiter* nack_rate_limiter,
-            OverheadObserver* overhead_observer);
+            OverheadObserver* overhead_observer,
+            bool populate_network2_timestamp);
 
   ~RTPSender();
 
@@ -205,6 +206,8 @@ class RTPSender {
   int64_t LastTimestampTimeMs() const;
   void SendKeepAlive(uint8_t payload_type);
 
+  void SetRtt(int64_t rtt_ms);
+
  protected:
   int32_t CheckPayloadType(int8_t payload_type, RtpVideoCodecTypes* video_type);
 
@@ -326,6 +329,7 @@ class RTPSender {
 
   RateLimiter* const retransmission_rate_limiter_;
   OverheadObserver* overhead_observer_;
+  const bool populate_network2_timestamp_;
 
   const bool send_side_bwe_with_overhead_;
 

@@ -9,11 +9,20 @@
  */
 
 #include "api/mediastreaminterface.h"
+#include "rtc_base/checks.h"
+#include "rtc_base/logging.h"
 
 namespace webrtc {
 
 const char MediaStreamTrackInterface::kVideoKind[] = "video";
 const char MediaStreamTrackInterface::kAudioKind[] = "audio";
+
+void AudioProcessorInterface::GetStats(AudioProcessorStats* /*stats*/) {
+  RTC_NOTREACHED() << "Old-style GetStats() is called but it has no "
+                   << "implementation.";
+  RTC_LOG(LS_ERROR) << "Old-style GetStats() is called but it has no "
+                    << "implementation.";
+}
 
 // TODO(ivoc): Remove this when the function becomes pure virtual.
 AudioProcessorInterface::AudioProcessorStatistics
@@ -34,6 +43,19 @@ AudioProcessorInterface::GetStats(bool /*has_remote_tracks*/) {
   new_stats.apm_statistics.residual_echo_likelihood_recent_max =
       stats.residual_echo_likelihood_recent_max;
   return new_stats;
+}
+
+VideoTrackInterface::ContentHint VideoTrackInterface::content_hint() const {
+  return ContentHint::kNone;
+}
+
+bool AudioTrackInterface::GetSignalLevel(int* level) {
+  return false;
+}
+
+rtc::scoped_refptr<AudioProcessorInterface>
+AudioTrackInterface::GetAudioProcessor() {
+  return nullptr;
 }
 
 }  // namespace webrtc

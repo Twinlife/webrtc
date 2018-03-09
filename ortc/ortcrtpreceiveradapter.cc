@@ -150,20 +150,30 @@ void OrtcRtpReceiverAdapter::MaybeRecreateInternalReceiver() {
   }
   internal_receiver_ = nullptr;
   switch (kind_) {
-    case cricket::MEDIA_TYPE_AUDIO:
-      internal_receiver_ =
-          new AudioRtpReceiver(rtc::CreateRandomUuid(), {}, ssrc,
-                               rtp_transport_controller_->voice_channel());
+    case cricket::MEDIA_TYPE_AUDIO: {
+      auto* audio_receiver =
+          new AudioRtpReceiver(rtp_transport_controller_->worker_thread(),
+                               rtc::CreateRandomUuid(), {});
+      auto* voice_channel = rtp_transport_controller_->voice_channel();
+      RTC_DCHECK(voice_channel);
+      audio_receiver->SetVoiceMediaChannel(voice_channel->media_channel());
+      internal_receiver_ = audio_receiver;
       break;
-    case cricket::MEDIA_TYPE_VIDEO:
-      internal_receiver_ =
-          new VideoRtpReceiver(rtc::CreateRandomUuid(), {},
-                               rtp_transport_controller_->worker_thread(), ssrc,
-                               rtp_transport_controller_->video_channel());
+    }
+    case cricket::MEDIA_TYPE_VIDEO: {
+      auto* video_receiver =
+          new VideoRtpReceiver(rtp_transport_controller_->worker_thread(),
+                               rtc::CreateRandomUuid(), {});
+      auto* video_channel = rtp_transport_controller_->video_channel();
+      RTC_DCHECK(video_channel);
+      video_receiver->SetVideoMediaChannel(video_channel->media_channel());
+      internal_receiver_ = video_receiver;
       break;
+    }
     case cricket::MEDIA_TYPE_DATA:
       RTC_NOTREACHED();
   }
+  internal_receiver_->SetupMediaChannel(ssrc);
 }
 
 }  // namespace webrtc

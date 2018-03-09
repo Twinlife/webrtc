@@ -39,16 +39,12 @@
 namespace webrtc {
 
 class NackModule;
-class PacedSender;
 class PacketRouter;
 class ProcessThread;
 class ReceiveStatistics;
 class ReceiveStatisticsProxy;
-class RemoteNtpTimeEstimator;
 class RtcpRttStats;
-class RtpHeaderParser;
 class RtpPacketReceived;
-class RTPPayloadRegistry;
 class RtpReceiver;
 class Transport;
 class UlpfecReceiver;
@@ -101,6 +97,9 @@ class RtpVideoStreamReceiver : public RtpData,
 
   void SignalNetworkState(NetworkState state);
 
+  // Returns number of different frames seen in the packet buffer.
+  int GetUniqueFramesSeen() const;
+
   // Implements RtpPacketSinkInterface.
   void OnRtpPacket(const RtpPacketReceived& packet) override;
 
@@ -136,7 +135,7 @@ class RtpVideoStreamReceiver : public RtpData,
 
   // Implements OnCompleteFrameCallback.
   void OnCompleteFrame(
-      std::unique_ptr<video_coding::FrameObject> frame) override;
+      std::unique_ptr<video_coding::EncodedFrame> frame) override;
 
   void OnRttUpdate(int64_t avg_rtt_ms, int64_t max_rtt_ms) override;
 

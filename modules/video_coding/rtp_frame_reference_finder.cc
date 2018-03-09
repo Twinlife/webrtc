@@ -17,6 +17,7 @@
 #include "modules/video_coding/packet_buffer.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
+#include "rtc_base/system/fallthrough.h"
 
 namespace webrtc {
 namespace video_coding {
@@ -71,7 +72,7 @@ void RtpFrameReferenceFinder::RetryStashedFrames() {
         case kHandOff:
           complete_frame = true;
           frame_callback_->OnCompleteFrame(std::move(*frame_it));
-          FALLTHROUGH();
+          RTC_FALLTHROUGH();
         case kDrop:
           frame_it = stashed_frames_.erase(frame_it);
       }
@@ -98,6 +99,7 @@ RtpFrameReferenceFinder::ManageFrameInternal(RtpFrameObject* frame) {
     case kVideoCodecUnknown:
     case kVideoCodecH264:
     case kVideoCodecI420:
+    case kVideoCodecMultiplex:
     case kVideoCodecGeneric:
       return ManageFrameGeneric(frame, kNoPictureId);
   }
@@ -290,7 +292,7 @@ RtpFrameReferenceFinder::FrameDecision RtpFrameReferenceFinder::ManageFrameVp8(
   if (frame->frame_type() == kVideoFrameKey) {
     frame->num_references = 0;
     layer_info_[codec_header.tl0PicIdx].fill(-1);
-    UpdateLayerInfoVp8(frame);
+    UpdateLayerInfoVp8(frame, codec_header);
     return kHandOff;
   }
 
@@ -312,7 +314,7 @@ RtpFrameReferenceFinder::FrameDecision RtpFrameReferenceFinder::ManageFrameVp8(
             .first;
     frame->num_references = 1;
     frame->references[0] = layer_info_it->second[0];
-    UpdateLayerInfoVp8(frame);
+    UpdateLayerInfoVp8(frame, codec_header);
     return kHandOff;
   }
 
@@ -321,7 +323,7 @@ RtpFrameReferenceFinder::FrameDecision RtpFrameReferenceFinder::ManageFrameVp8(
     frame->num_references = 1;
     frame->references[0] = layer_info_it->second[0];
 
-    UpdateLayerInfoVp8(frame);
+    UpdateLayerInfoVp8(frame, codec_header);
     return kHandOff;
   }
 
@@ -365,14 +367,13 @@ RtpFrameReferenceFinder::FrameDecision RtpFrameReferenceFinder::ManageFrameVp8(
     frame->references[layer] = layer_info_it->second[layer];
   }
 
-  UpdateLayerInfoVp8(frame);
+  UpdateLayerInfoVp8(frame, codec_header);
   return kHandOff;
 }
 
-void RtpFrameReferenceFinder::UpdateLayerInfoVp8(RtpFrameObject* frame) {
-  rtc::Optional<RTPVideoTypeHeader> rtp_codec_header = frame->GetCodecHeader();
-  RTC_DCHECK(rtp_codec_header);
-  const RTPVideoHeaderVP8& codec_header = rtp_codec_header->VP8;
+void RtpFrameReferenceFinder::UpdateLayerInfoVp8(
+    RtpFrameObject* frame,
+    const RTPVideoHeaderVP8& codec_header) {
   uint8_t tl0_pic_idx = codec_header.tl0PicIdx;
   uint8_t temporal_index = codec_header.temporalIdx;
   auto layer_info_it = layer_info_.find(tl0_pic_idx);
@@ -553,6 +554,7 @@ bool RtpFrameReferenceFinder::MissingRequiredFrameVp9(uint16_t picture_id,
 void RtpFrameReferenceFinder::FrameReceivedVp9(uint16_t picture_id,
                                                GofInfo* info) {
   int last_picture_id = info->last_picture_id;
+  size_t gof_size = std::min(info->gof->num_frames_in_gof, kMaxVp9FramesInGof);
 
   // If there is a gap, find which temporal layer the missing frames
   // belong to and add the frame as missing for that temporal layer.
@@ -560,22 +562,38 @@ void RtpFrameReferenceFinder::FrameReceivedVp9(uint16_t picture_id,
   if (AheadOf<uint16_t, kPicIdLength>(picture_id, last_picture_id)) {
     size_t diff = ForwardDiff<uint16_t, kPicIdLength>(info->gof->pid_start,
                                                       last_picture_id);
-    size_t gof_idx = diff % info->gof->num_frames_in_gof;
+    size_t gof_idx = diff % gof_size;
 
     last_picture_id = Add<kPicIdLength>(last_picture_id, 1);
     while (last_picture_id != picture_id) {
-      ++gof_idx;
-      RTC_DCHECK_NE(0ul, gof_idx % info->gof->num_frames_in_gof);
+      gof_idx = (gof_idx  + 1) % gof_size;
+      RTC_CHECK(gof_idx < kMaxVp9FramesInGof);
+
       size_t temporal_idx = info->gof->temporal_idx[gof_idx];
+      if (temporal_idx >= kMaxTemporalLayers) {
+        RTC_LOG(LS_WARNING) << "At most " << kMaxTemporalLayers << " temporal "
+                            << "layers are supported.";
+        return;
+      }
+
       missing_frames_for_layer_[temporal_idx].insert(last_picture_id);
       last_picture_id = Add<kPicIdLength>(last_picture_id, 1);
     }
+
     info->last_picture_id = last_picture_id;
   } else {
     size_t diff =
         ForwardDiff<uint16_t, kPicIdLength>(info->gof->pid_start, picture_id);
-    size_t gof_idx = diff % info->gof->num_frames_in_gof;
+    size_t gof_idx = diff % gof_size;
+    RTC_CHECK(gof_idx < kMaxVp9FramesInGof);
+
     size_t temporal_idx = info->gof->temporal_idx[gof_idx];
+    if (temporal_idx >= kMaxTemporalLayers) {
+      RTC_LOG(LS_WARNING) << "At most " << kMaxTemporalLayers << " temporal "
+                          << "layers are supported.";
+      return;
+    }
+
     missing_frames_for_layer_[temporal_idx].erase(picture_id);
   }
 }

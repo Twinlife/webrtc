@@ -47,12 +47,18 @@ const int64_t kNanosecondsPerSecond = 1000000000;
 @synthesize captureSession = _captureSession;
 
 - (instancetype)initWithDelegate:(__weak id<RTCVideoCapturerDelegate>)delegate {
+  return [self initWithDelegate:delegate captureSession:[[AVCaptureSession alloc] init]];
+}
+
+// This initializer is used for testing.
+- (instancetype)initWithDelegate:(__weak id<RTCVideoCapturerDelegate>)delegate
+                  captureSession:(AVCaptureSession *)captureSession {
   if (self = [super initWithDelegate:delegate]) {
     // Create the capture session and all relevant inputs and outputs. We need
     // to do this in init because the application may want the capture session
     // before we start the capturer for e.g. AVCapturePreviewLayer. All objects
     // created here are retained until dealloc and never recreated.
-    if (![self setupCaptureSession]) {
+    if (![self setupCaptureSession:captureSession]) {
       return nil;
     }
     NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
@@ -116,6 +122,17 @@ const int64_t kNanosecondsPerSecond = 1000000000;
 - (void)startCaptureWithDevice:(AVCaptureDevice *)device
                         format:(AVCaptureDeviceFormat *)format
                            fps:(NSInteger)fps {
+  [self startCaptureWithDevice:device format:format fps:fps completionHandler:nil];
+}
+
+- (void)stopCapture {
+  [self stopCaptureWithCompletionHandler:nil];
+}
+
+- (void)startCaptureWithDevice:(AVCaptureDevice *)device
+                        format:(AVCaptureDeviceFormat *)format
+                           fps:(NSInteger)fps
+             completionHandler:(nullable void (^)(NSError *))completionHandler {
   _willBeRunning = YES;
   [RTCDispatcher
       dispatchAsyncOnType:RTCDispatcherTypeCaptureSession
@@ -132,6 +149,10 @@ const int64_t kNanosecondsPerSecond = 1000000000;
                       if (![_currentDevice lockForConfiguration:&error]) {
                         RTCLogError(
                             @"Failed to lock device %@. Error: %@", _currentDevice, error.userInfo);
+                        if (completionHandler) {
+                          completionHandler(error);
+                        }
+                        _willBeRunning = NO;
                         return;
                       }
                       [self reconfigureCaptureSessionInput];
@@ -141,10 +162,13 @@ const int64_t kNanosecondsPerSecond = 1000000000;
                       [_captureSession startRunning];
                       [_currentDevice unlockForConfiguration];
                       _isRunning = YES;
+                      if (completionHandler) {
+                        completionHandler(nil);
+                      }
                     }];
 }
 
-- (void)stopCapture {
+- (void)stopCaptureWithCompletionHandler:(nullable void (^)(void))completionHandler {
   _willBeRunning = NO;
   [RTCDispatcher
       dispatchAsyncOnType:RTCDispatcherTypeCaptureSession
@@ -160,6 +184,9 @@ const int64_t kNanosecondsPerSecond = 1000000000;
                       [[UIDevice currentDevice] endGeneratingDeviceOrientationNotifications];
 #endif
                       _isRunning = NO;
+                      if (completionHandler) {
+                        completionHandler();
+                      }
                     }];
 }
 
@@ -248,25 +275,22 @@ const int64_t kNanosecondsPerSecond = 1000000000;
 
 - (void)handleCaptureSessionInterruption:(NSNotification *)notification {
   NSString *reasonString = nil;
-#if defined(__IPHONE_9_0) && defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && \
-    __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_9_0
-  if ([UIDevice isIOS9OrLater]) {
-    NSNumber *reason = notification.userInfo[AVCaptureSessionInterruptionReasonKey];
-    if (reason) {
-      switch (reason.intValue) {
-        case AVCaptureSessionInterruptionReasonVideoDeviceNotAvailableInBackground:
-          reasonString = @"VideoDeviceNotAvailableInBackground";
-          break;
-        case AVCaptureSessionInterruptionReasonAudioDeviceInUseByAnotherClient:
-          reasonString = @"AudioDeviceInUseByAnotherClient";
-          break;
-        case AVCaptureSessionInterruptionReasonVideoDeviceInUseByAnotherClient:
-          reasonString = @"VideoDeviceInUseByAnotherClient";
-          break;
-        case AVCaptureSessionInterruptionReasonVideoDeviceNotAvailableWithMultipleForegroundApps:
-          reasonString = @"VideoDeviceNotAvailableWithMultipleForegroundApps";
-          break;
-      }
+#if TARGET_OS_IPHONE
+  NSNumber *reason = notification.userInfo[AVCaptureSessionInterruptionReasonKey];
+  if (reason) {
+    switch (reason.intValue) {
+      case AVCaptureSessionInterruptionReasonVideoDeviceNotAvailableInBackground:
+        reasonString = @"VideoDeviceNotAvailableInBackground";
+        break;
+      case AVCaptureSessionInterruptionReasonAudioDeviceInUseByAnotherClient:
+        reasonString = @"AudioDeviceInUseByAnotherClient";
+        break;
+      case AVCaptureSessionInterruptionReasonVideoDeviceInUseByAnotherClient:
+        reasonString = @"VideoDeviceInUseByAnotherClient";
+        break;
+      case AVCaptureSessionInterruptionReasonVideoDeviceNotAvailableWithMultipleForegroundApps:
+        reasonString = @"VideoDeviceNotAvailableWithMultipleForegroundApps";
+        break;
     }
   }
 #endif
@@ -355,16 +379,16 @@ const int64_t kNanosecondsPerSecond = 1000000000;
 - (dispatch_queue_t)frameQueue {
   if (!_frameQueue) {
     _frameQueue =
-        dispatch_queue_create("org.webrtc.avfoundationvideocapturer.video", DISPATCH_QUEUE_SERIAL);
+        dispatch_queue_create("org.webrtc.cameravideocapturer.video", DISPATCH_QUEUE_SERIAL);
     dispatch_set_target_queue(_frameQueue,
                               dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0));
   }
   return _frameQueue;
 }
 
-- (BOOL)setupCaptureSession {
+- (BOOL)setupCaptureSession:(AVCaptureSession *)captureSession {
   NSAssert(_captureSession == nil, @"Setup capture session called twice.");
-  _captureSession = [[AVCaptureSession alloc] init];
+  _captureSession = captureSession;
 #if defined(WEBRTC_IOS)
   _captureSession.sessionPreset = AVCaptureSessionPresetInputPriority;
   _captureSession.usesApplicationAudioSession = NO;

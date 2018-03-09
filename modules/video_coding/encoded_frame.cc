@@ -8,10 +8,7 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "modules/video_coding/include/video_coding_defines.h"
 #include "modules/video_coding/encoded_frame.h"
-#include "modules/video_coding/generic_encoder.h"
-#include "modules/video_coding/jitter_buffer_common.h"
 
 namespace webrtc {
 
@@ -193,7 +190,8 @@ void VCMEncodedFrame::CopyCodecSpecific(const RTPVideoHeader* header) {
         _codecSpecificInfo.codecType = kVideoCodecH264;
         break;
       }
-      default: {
+      case kRtpVideoNone:
+      case kRtpVideoGeneric: {
         _codecSpecificInfo.codecType = kVideoCodecUnknown;
         break;
       }

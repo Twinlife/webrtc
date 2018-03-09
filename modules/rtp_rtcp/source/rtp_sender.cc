@@ -96,7 +96,8 @@ RTPSender::RTPSender(
     RtcEventLog* event_log,
     SendPacketObserver* send_packet_observer,
     RateLimiter* retransmission_rate_limiter,
-    OverheadObserver* overhead_observer)
+    OverheadObserver* overhead_observer,
+    bool populate_network2_timestamp)
     : clock_(clock),
       // TODO(holmer): Remove this conversion?
       clock_delta_ms_(clock_->TimeInMilliseconds() - rtc::TimeMillis()),
@@ -139,6 +140,7 @@ RTPSender::RTPSender(
       rtp_overhead_bytes_per_packet_(0),
       retransmission_rate_limiter_(retransmission_rate_limiter),
       overhead_observer_(overhead_observer),
+      populate_network2_timestamp_(populate_network2_timestamp),
       send_side_bwe_with_overhead_(
           webrtc::field_trial::IsEnabled("WebRTC-SendSideBwe-WithOverhead")) {
   // This random initialization is not intended to be cryptographic strong.
@@ -767,14 +769,21 @@ bool RTPSender::PrepareAndSendPacket(std::unique_ptr<RtpPacketToSend> packet,
   packet_to_send->SetExtension<AbsoluteSendTime>(
       AbsoluteSendTime::MsTo24Bits(now_ms));
 
-  if (packet_to_send->HasExtension<VideoTimingExtension>())
-    packet_to_send->set_pacer_exit_time_ms(now_ms);
+  if (packet_to_send->HasExtension<VideoTimingExtension>()) {
+    if (populate_network2_timestamp_) {
+      packet_to_send->set_network2_time_ms(now_ms);
+    } else {
+      packet_to_send->set_pacer_exit_time_ms(now_ms);
+    }
+  }
 
   PacketOptions options;
   if (UpdateTransportSequenceNumber(packet_to_send, &options.packet_id)) {
     AddPacketToTransportFeedback(options.packet_id, *packet_to_send,
                                  pacing_info);
   }
+  options.application_data.assign(packet_to_send->application_data().begin(),
+                                  packet_to_send->application_data().end());
 
   if (!is_retransmit && !send_over_rtx) {
     UpdateDelayStatistics(packet->capture_time_ms(), now_ms);
@@ -857,8 +866,6 @@ bool RTPSender::SendToNetwork(std::unique_ptr<RtpPacketToSend> packet,
   if (packet->capture_time_ms() > 0) {
     packet->SetExtension<TransmissionOffset>(
         kTimestampTicksPerMs * (now_ms - packet->capture_time_ms()));
-    if (packet->HasExtension<VideoTimingExtension>())
-      packet->set_pacer_exit_time_ms(now_ms);
   }
   packet->SetExtension<AbsoluteSendTime>(AbsoluteSendTime::MsTo24Bits(now_ms));
 
@@ -909,6 +916,8 @@ bool RTPSender::SendToNetwork(std::unique_ptr<RtpPacketToSend> packet,
     AddPacketToTransportFeedback(options.packet_id, *packet.get(),
                                  PacedPacketInfo());
   }
+  options.application_data.assign(packet->application_data().begin(),
+                                  packet->application_data().end());
 
   UpdateDelayStatistics(packet->capture_time_ms(), now_ms);
   UpdateOnSendPacket(options.packet_id, packet->capture_time_ms(),
@@ -927,10 +936,7 @@ bool RTPSender::SendToNetwork(std::unique_ptr<RtpPacketToSend> packet,
   // To support retransmissions, we store the media packet as sent in the
   // packet history (even if send failed).
   if (storage == kAllowRetransmission) {
-    // TODO(brandtr): Uncomment the DCHECK line below when |ssrc_| cannot
-    // change after the first packet has been sent. For more details, see
-    // https://bugs.chromium.org/p/webrtc/issues/detail?id=6887.
-    // RTC_DCHECK_EQ(ssrc, SSRC());
+    RTC_DCHECK_EQ(ssrc, SSRC());
     packet_history_.PutRtpPacket(std::move(packet), storage, true);
   }
 
@@ -1209,6 +1215,9 @@ std::unique_ptr<RtpPacketToSend> RTPSender::BuildRtxPacket(
   auto payload = packet.payload();
   memcpy(rtx_payload + kRtxHeaderSize, payload.data(), payload.size());
 
+  // Add original application data.
+  rtx_packet->set_application_data(packet.application_data());
+
   return rtx_packet;
 }
 
@@ -1318,4 +1327,8 @@ void RTPSender::SendKeepAlive(uint8_t payload_type) {
                 RtpPacketSender::Priority::kLowPriority);
 }
 
+void RTPSender::SetRtt(int64_t rtt_ms) {
+  packet_history_.SetRtt(rtt_ms);
+  flexfec_packet_history_.SetRtt(rtt_ms);
+}
 }  // namespace webrtc

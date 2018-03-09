@@ -105,9 +105,9 @@ class MockNoiseSuppression : public NoiseSuppression {
   MOCK_METHOD0(NoiseEstimate, std::vector<float>());
 };
 
-class MockPostProcessing : public PostProcessing {
+class MockCustomProcessing : public CustomProcessing {
  public:
-  virtual ~MockPostProcessing() {}
+  virtual ~MockCustomProcessing() {}
   MOCK_METHOD2(Initialize, void(int sample_rate_hz, int num_channels));
   MOCK_METHOD1(Process, void(AudioBuffer* audio));
   MOCK_CONST_METHOD0(ToString, std::string());
@@ -136,7 +136,7 @@ class MockVoiceDetection : public VoiceDetection {
   MOCK_CONST_METHOD0(frame_size_ms, int());
 };
 
-class MockAudioProcessing : public AudioProcessing {
+class MockAudioProcessing : public testing::NiceMock<AudioProcessing> {
  public:
   MockAudioProcessing()
       : echo_cancellation_(new testing::NiceMock<MockEchoCancellation>()),

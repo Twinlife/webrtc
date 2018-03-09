@@ -12,8 +12,6 @@
 
 #include <algorithm>
 
-// NOTE(ajm): Path provided by gyp.
-#include "libyuv/scale.h"  // NOLINT
 
 #include "api/video/i420_buffer.h"
 #include "api/video_codecs/video_encoder_factory.h"
@@ -22,6 +20,7 @@
 #include "modules/video_coding/codecs/vp8/simulcast_rate_allocator.h"
 #include "rtc_base/checks.h"
 #include "system_wrappers/include/clock.h"
+#include "third_party/libyuv/include/libyuv/scale.h"
 
 namespace {
 
@@ -138,23 +137,10 @@ namespace webrtc {
 SimulcastEncoderAdapter::SimulcastEncoderAdapter(VideoEncoderFactory* factory)
     : inited_(0),
       factory_(factory),
-      cricket_factory_(nullptr),
       encoded_complete_callback_(nullptr),
       implementation_name_("SimulcastEncoderAdapter") {
-  // The adapter is typically created on the worker thread, but operated on
-  // the encoder task queue.
-  encoder_queue_.Detach();
+  RTC_DCHECK(factory_);
 
-  memset(&codec_, 0, sizeof(webrtc::VideoCodec));
-}
-
-SimulcastEncoderAdapter::SimulcastEncoderAdapter(
-    cricket::WebRtcVideoEncoderFactory* factory)
-    : inited_(0),
-      factory_(nullptr),
-      cricket_factory_(factory),
-      encoded_complete_callback_(nullptr),
-      implementation_name_("SimulcastEncoderAdapter") {
   // The adapter is typically created on the worker thread, but operated on
   // the encoder task queue.
   encoder_queue_.Detach();
@@ -261,9 +247,7 @@ int SimulcastEncoderAdapter::InitEncode(const VideoCodec* inst,
       encoder = std::move(stored_encoders_.top());
       stored_encoders_.pop();
     } else {
-      encoder = factory_ ? factory_->CreateVideoEncoder(SdpVideoFormat("VP8"))
-                         : CreateScopedVideoEncoder(cricket_factory_,
-                                                    cricket::VideoCodec("VP8"));
+      encoder = factory_->CreateVideoEncoder(SdpVideoFormat("VP8"));
     }
 
     ret = encoder->InitEncode(&stream_codec, number_of_cores, max_payload_size);
@@ -551,7 +535,7 @@ VideoEncoder::ScalingSettings SimulcastEncoderAdapter::GetScalingSettings()
   // RTC_DCHECK_CALLED_SEQUENTIALLY(&encoder_queue_);
   // Turn off quality scaling for simulcast.
   if (!Initialized() || NumberOfStreams(codec_) != 1) {
-    return VideoEncoder::ScalingSettings(false);
+    return VideoEncoder::ScalingSettings::kOff;
   }
   return streaminfos_[0].encoder->GetScalingSettings();
 }

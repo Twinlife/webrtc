@@ -42,7 +42,7 @@ namespace rtcp {
 class TransportFeedback;
 }
 
-class RtpRtcp : public Module {
+class RtpRtcp : public Module, public RtcpFeedbackSenderInterface {
  public:
   struct Configuration {
     Configuration();
@@ -94,6 +94,10 @@ class RtpRtcp : public Module {
     RateLimiter* retransmission_rate_limiter = nullptr;
     OverheadObserver* overhead_observer = nullptr;
     RtpKeepAliveConfig keepalive_config;
+    RtcpIntervalConfig rtcp_interval_config;
+
+    // Update network2 instead of pacer_exit field of video timing extension.
+    bool populate_network2_timestamp = false;
 
    private:
     RTC_DISALLOW_COPY_AND_ASSIGN(Configuration);
@@ -165,7 +169,7 @@ class RtpRtcp : public Module {
   virtual RtpState GetRtxState() const = 0;
 
   // Returns SSRC.
-  virtual uint32_t SSRC() const = 0;
+  uint32_t SSRC() const override = 0;
 
   // Sets SSRC, default is a random number.
   virtual void SetSSRC(uint32_t ssrc) = 0;
@@ -341,10 +345,9 @@ class RtpRtcp : public Module {
 
   // (REMB) Receiver Estimated Max Bitrate.
   // Schedules sending REMB on next and following sender/receiver reports.
-  virtual void SetRemb(uint32_t bitrate_bps,
-                       const std::vector<uint32_t>& ssrcs) = 0;
+  void SetRemb(int64_t bitrate_bps, std::vector<uint32_t> ssrcs) override = 0;
   // Stops sending REMB on next and following sender/receiver reports.
-  virtual void UnsetRemb() = 0;
+  void UnsetRemb() override = 0;
 
   // (TMMBR) Temporary Max Media Bit Rate
   virtual bool TMMBR() const = 0;
@@ -392,7 +395,7 @@ class RtpRtcp : public Module {
       RtcpStatisticsCallback* callback) = 0;
   virtual RtcpStatisticsCallback* GetRtcpStatisticsCallback() = 0;
   // BWE feedback packets.
-  virtual bool SendFeedbackPacket(const rtcp::TransportFeedback& packet) = 0;
+  bool SendFeedbackPacket(const rtcp::TransportFeedback& packet) override = 0;
 
   virtual void SetVideoBitrateAllocation(const BitrateAllocation& bitrate) = 0;
 

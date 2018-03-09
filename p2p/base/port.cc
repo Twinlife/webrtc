@@ -13,6 +13,7 @@
 #include <math.h>
 
 #include <algorithm>
+#include <utility>
 #include <vector>
 
 #include "p2p/base/common.h"
@@ -59,6 +60,60 @@ inline bool TooLongWithoutResponse(
 
   auto first = pings_since_last_response[0];
   return now > (first.sent_time + maximum_time);
+}
+
+// Helper methods for converting string values of log description fields to
+// enum.
+webrtc::IceCandidateType GetCandidateTypeByString(const std::string& type) {
+  if (type == cricket::LOCAL_PORT_TYPE) {
+    return webrtc::IceCandidateType::kLocal;
+  } else if (type == cricket::STUN_PORT_TYPE) {
+    return webrtc::IceCandidateType::kStun;
+  } else if (type == cricket::PRFLX_PORT_TYPE) {
+    return webrtc::IceCandidateType::kPrflx;
+  } else if (type == cricket::RELAY_PORT_TYPE) {
+    return webrtc::IceCandidateType::kRelay;
+  }
+  return webrtc::IceCandidateType::kUnknown;
+}
+
+webrtc::IceCandidatePairProtocol GetProtocolByString(
+    const std::string& protocol) {
+  if (protocol == cricket::UDP_PROTOCOL_NAME) {
+    return webrtc::IceCandidatePairProtocol::kUdp;
+  } else if (protocol == cricket::TCP_PROTOCOL_NAME) {
+    return webrtc::IceCandidatePairProtocol::kTcp;
+  } else if (protocol == cricket::SSLTCP_PROTOCOL_NAME) {
+    return webrtc::IceCandidatePairProtocol::kSsltcp;
+  } else if (protocol == cricket::TLS_PROTOCOL_NAME) {
+    return webrtc::IceCandidatePairProtocol::kTls;
+  }
+  return webrtc::IceCandidatePairProtocol::kUnknown;
+}
+
+webrtc::IceCandidatePairAddressFamily GetAddressFamilyByInt(
+    int address_family) {
+  if (address_family == AF_INET) {
+    return webrtc::IceCandidatePairAddressFamily::kIpv4;
+  } else if (address_family == AF_INET6) {
+    return webrtc::IceCandidatePairAddressFamily::kIpv6;
+  }
+  return webrtc::IceCandidatePairAddressFamily::kUnknown;
+}
+
+webrtc::IceCandidateNetworkType ConvertNetworkType(rtc::AdapterType type) {
+  if (type == rtc::ADAPTER_TYPE_ETHERNET) {
+    return webrtc::IceCandidateNetworkType::kEthernet;
+  } else if (type == rtc::ADAPTER_TYPE_LOOPBACK) {
+    return webrtc::IceCandidateNetworkType::kLoopback;
+  } else if (type == rtc::ADAPTER_TYPE_WIFI) {
+    return webrtc::IceCandidateNetworkType::kWifi;
+  } else if (type == rtc::ADAPTER_TYPE_VPN) {
+    return webrtc::IceCandidateNetworkType::kVpn;
+  } else if (type == rtc::ADAPTER_TYPE_CELLULAR) {
+    return webrtc::IceCandidateNetworkType::kCellular;
+  }
+  return webrtc::IceCandidateNetworkType::kUnknown;
 }
 
 // We will restrict RTT estimates (when used for determining state) to be
@@ -137,6 +192,44 @@ static std::string ComputeFoundation(const std::string& type,
   ost << type << base_address.ipaddr().ToString() << protocol << relay_protocol;
   return rtc::ToString<uint32_t>(rtc::ComputeCrc32(ost.str()));
 }
+
+CandidateStats::CandidateStats() = default;
+
+CandidateStats::CandidateStats(const CandidateStats&) = default;
+
+CandidateStats::CandidateStats(Candidate candidate) {
+  this->candidate = candidate;
+}
+
+CandidateStats::~CandidateStats() = default;
+
+ConnectionInfo::ConnectionInfo()
+    : best_connection(false),
+      writable(false),
+      receiving(false),
+      timeout(false),
+      new_connection(false),
+      rtt(0),
+      sent_total_bytes(0),
+      sent_bytes_second(0),
+      sent_discarded_packets(0),
+      sent_total_packets(0),
+      sent_ping_requests_total(0),
+      sent_ping_requests_before_first_response(0),
+      sent_ping_responses(0),
+      recv_total_bytes(0),
+      recv_bytes_second(0),
+      recv_ping_requests(0),
+      recv_ping_responses(0),
+      key(nullptr),
+      state(IceCandidatePairState::WAITING),
+      priority(0),
+      nominated(false),
+      total_round_trip_time_ms(0) {}
+
+ConnectionInfo::ConnectionInfo(const ConnectionInfo&) = default;
+
+ConnectionInfo::~ConnectionInfo() = default;
 
 Port::Port(rtc::Thread* thread,
            const std::string& type,
@@ -620,6 +713,10 @@ bool Port::HandleIncomingPacket(rtc::AsyncPacketSocket* socket,
   return false;
 }
 
+bool Port::CanHandleIncomingPacketsFrom(const rtc::SocketAddress&) const {
+  return false;
+}
+
 void Port::SendBindingResponse(StunMessage* request,
                                const rtc::SocketAddress& addr) {
   RTC_DCHECK(request->type() == STUN_BINDING_REQUEST);
@@ -680,6 +777,8 @@ void Port::SendBindingResponse(StunMessage* request,
         << ", id=" << rtc::hex_encode(response.transaction_id());
 
     conn->stats_.sent_ping_responses++;
+    conn->LogCandidatePairEvent(
+        webrtc::IceCandidatePairEventType::kCheckResponseSent);
   }
 }
 
@@ -943,6 +1042,7 @@ Connection::Connection(Port* port,
   // TODO(mallinath) - Start connections from STATE_FROZEN.
   // Wire up to send stun packets
   requests_.SignalSendPacket.connect(this, &Connection::OnSendStunPacket);
+  hash_ = static_cast<uint32_t>(std::hash<std::string>{}(ToString()));
   LOG_J(LS_INFO, this) << "Connection created";
 }
 
@@ -1017,8 +1117,7 @@ void Connection::set_connected(bool value) {
   bool old_value = connected_;
   connected_ = value;
   if (value != old_value) {
-    LOG_J(LS_VERBOSE, this) << "set_connected from: " << old_value << " to "
-                            << value;
+    LOG_J(LS_VERBOSE, this) << "Change connected_ to " << value;
     SignalStateChange(this);
   }
 }
@@ -1084,7 +1183,6 @@ void Connection::OnReadPacket(
           port_->SendBindingErrorResponse(msg.get(), addr,
                                           STUN_ERROR_UNAUTHORIZED,
                                           STUN_ERROR_REASON_UNAUTHORIZED);
-
         }
         break;
 
@@ -1128,6 +1226,7 @@ void Connection::HandleBindingRequest(IceMessage* msg) {
   }
 
   stats_.recv_ping_requests++;
+  LogCandidatePairEvent(webrtc::IceCandidatePairEventType::kCheckReceived);
 
   // This is a validated stun request from remote peer.
   port_->SendBindingResponse(msg, remote_addr);
@@ -1197,6 +1296,7 @@ void Connection::Destroy() {
   // AutoSocketServerThread::~AutoSocketServerThread.
   LOG_J(LS_VERBOSE, this) << "Connection destroyed";
   port_->thread()->Post(RTC_FROM_HERE, this, MSG_DELETE);
+  LogCandidatePairEvent(webrtc::IceCandidatePairEventType::kDestroyed);
 }
 
 void Connection::FailAndDestroy() {
@@ -1330,8 +1430,7 @@ void Connection::ReceivedPingResponse(int rtt, const std::string& request_id) {
   }
 
   total_round_trip_time_ms_ += rtt;
-  current_round_trip_time_ms_ = rtc::Optional<uint32_t>(
-      static_cast<uint32_t>(rtt));
+  current_round_trip_time_ms_ = static_cast<uint32_t>(rtt);
 
   pings_since_last_response_.clear();
   last_ping_response_received_ = rtc::TimeMillis();
@@ -1339,7 +1438,7 @@ void Connection::ReceivedPingResponse(int rtt, const std::string& request_id) {
   set_write_state(STATE_WRITABLE);
   set_state(IceCandidatePairState::SUCCEEDED);
   if (rtt_samples_ > 0) {
-    rtt_ = (RTT_RATIO * rtt_ + rtt) / (RTT_RATIO + 1);
+    rtt_ = rtc::GetNextMovingAverage(rtt_, rtt, RTT_RATIO);
   } else {
     rtt_ = rtt;
   }
@@ -1436,6 +1535,37 @@ std::string Connection::ToSensitiveString() const {
   return ToString();
 }
 
+const webrtc::IceCandidatePairDescription& Connection::ToLogDescription() {
+  if (log_description_.has_value()) {
+    return log_description_.value();
+  }
+  const Candidate& local = local_candidate();
+  const Candidate& remote = remote_candidate();
+  const rtc::Network* network = port()->Network();
+  log_description_ = webrtc::IceCandidatePairDescription();
+  log_description_->local_candidate_type =
+      GetCandidateTypeByString(local.type());
+  log_description_->local_relay_protocol =
+      GetProtocolByString(local.relay_protocol());
+  log_description_->local_network_type = ConvertNetworkType(network->type());
+  log_description_->local_address_family =
+      GetAddressFamilyByInt(local.address().family());
+  log_description_->remote_candidate_type =
+      GetCandidateTypeByString(remote.type());
+  log_description_->remote_address_family =
+      GetAddressFamilyByInt(remote.address().family());
+  log_description_->candidate_pair_protocol =
+      GetProtocolByString(local.protocol());
+  return log_description_.value();
+}
+
+void Connection::LogCandidatePairEvent(webrtc::IceCandidatePairEventType type) {
+  if (ice_event_log_ == nullptr) {
+    return;
+  }
+  ice_event_log_->LogCandidatePairEvent(type, hash(), ToLogDescription());
+}
+
 void Connection::OnConnectionRequestResponse(ConnectionRequest* request,
                                              StunMessage* response) {
   // Log at LS_INFO if we receive a ping response on an unwritable
@@ -1459,6 +1589,8 @@ void Connection::OnConnectionRequestResponse(ConnectionRequest* request,
   packet_loss_estimator_.ReceivedResponse(request->id(), time_received);
 
   stats_.recv_ping_responses++;
+  LogCandidatePairEvent(
+      webrtc::IceCandidatePairEventType::kCheckResponseReceived);
 
   MaybeUpdateLocalCandidate(request, response);
 }
@@ -1503,6 +1635,7 @@ void Connection::OnConnectionRequestSent(ConnectionRequest* request) {
                     << ", use_candidate=" << use_candidate_attr()
                     << ", nomination=" << nomination();
   stats_.sent_ping_requests_total++;
+  LogCandidatePairEvent(webrtc::IceCandidatePairEventType::kCheckSent);
   if (stats_.recv_ping_responses == 0) {
     stats_.sent_ping_requests_before_first_response++;
   }

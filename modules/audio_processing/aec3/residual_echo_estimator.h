@@ -16,10 +16,10 @@
 #include <vector>
 
 #include "api/array_view.h"
+#include "api/audio/echo_canceller3_config.h"
 #include "modules/audio_processing/aec3/aec3_common.h"
 #include "modules/audio_processing/aec3/aec_state.h"
 #include "modules/audio_processing/aec3/render_buffer.h"
-#include "modules/audio_processing/include/audio_processing.h"
 #include "rtc_base/constructormagic.h"
 
 namespace webrtc {
@@ -52,7 +52,6 @@ class ResidualEchoEstimator {
                          bool saturated_echo,
                          bool bounded_erl,
                          bool transparent_mode,
-                         bool initial_state,
                          const std::array<float, kFftLengthBy2Plus1>& X2,
                          const std::array<float, kFftLengthBy2Plus1>& Y2,
                          std::array<float, kFftLengthBy2Plus1>* R2);
@@ -64,16 +63,14 @@ class ResidualEchoEstimator {
                      size_t delay,
                      float reverb_decay_factor,
                      std::array<float, kFftLengthBy2Plus1>* R2);
-
+  const EchoCanceller3Config config_;
   std::array<float, kFftLengthBy2Plus1> R2_old_;
   std::array<int, kFftLengthBy2Plus1> R2_hold_counter_;
   std::array<float, kFftLengthBy2Plus1> R2_reverb_;
   int S2_old_index_ = 0;
-  std::array<std::array<float, kFftLengthBy2Plus1>, kAdaptiveFilterLength>
-      S2_old_;
+  std::vector<std::array<float, kFftLengthBy2Plus1>> S2_old_;
   std::array<float, kFftLengthBy2Plus1> X2_noise_floor_;
   std::array<int, kFftLengthBy2Plus1> X2_noise_floor_counter_;
-  const EchoCanceller3Config config_;
 
   RTC_DISALLOW_IMPLICIT_CONSTRUCTORS(ResidualEchoEstimator);
 };

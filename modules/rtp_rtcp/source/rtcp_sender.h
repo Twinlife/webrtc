@@ -80,7 +80,8 @@ class RTCPSender {
              ReceiveStatisticsProvider* receive_statistics,
              RtcpPacketTypeCounterObserver* packet_type_counter_observer,
              RtcEventLog* event_log,
-             Transport* outgoing_transport);
+             Transport* outgoing_transport,
+             RtcpIntervalConfig interval_config);
   virtual ~RTCPSender();
 
   RtcpMode Status() const;
@@ -120,7 +121,7 @@ class RTCPSender {
                            int32_t nackSize = 0,
                            const uint16_t* nackList = 0);
 
-  void SetRemb(uint32_t bitrate, const std::vector<uint32_t>& ssrcs);
+  void SetRemb(int64_t bitrate_bps, std::vector<uint32_t> ssrcs);
 
   void UnsetRemb();
 
@@ -147,6 +148,9 @@ class RTCPSender {
   void SetTargetBitrate(unsigned int target_bitrate);
   void SetVideoBitrateAllocation(const BitrateAllocation& bitrate);
   bool SendFeedbackPacket(const rtcp::TransportFeedback& packet);
+
+  int64_t RtcpAudioReportInverval() const;
+  int64_t RtcpVideoReportInverval() const;
 
  private:
   class RtcpContext;
@@ -194,6 +198,8 @@ class RTCPSender {
   RtcEventLog* const event_log_;
   Transport* const transport_;
 
+  const RtcpIntervalConfig interval_config_;
+
   rtc::CriticalSection critical_section_rtcp_sender_;
   bool using_nack_ RTC_GUARDED_BY(critical_section_rtcp_sender_);
   bool sending_ RTC_GUARDED_BY(critical_section_rtcp_sender_);
@@ -221,7 +227,7 @@ class RTCPSender {
   uint8_t sequence_number_fir_ RTC_GUARDED_BY(critical_section_rtcp_sender_);
 
   // REMB
-  uint32_t remb_bitrate_ RTC_GUARDED_BY(critical_section_rtcp_sender_);
+  int64_t remb_bitrate_ RTC_GUARDED_BY(critical_section_rtcp_sender_);
   std::vector<uint32_t> remb_ssrcs_
       RTC_GUARDED_BY(critical_section_rtcp_sender_);
 

@@ -10,6 +10,8 @@
 
 #include "rtc_base/platform_file.h"
 
+#include "rtc_base/stringutils.h"
+
 #if defined(WEBRTC_WIN)
 #include <io.h>
 #else
@@ -61,7 +63,7 @@ FILE* FdopenPlatformFileForWriting(PlatformFile file) {
 }
 
 bool ClosePlatformFile(PlatformFile file) {
-  return close(file);
+  return close(file) == 0;
 }
 
 bool RemoveFile(const std::string& path) {

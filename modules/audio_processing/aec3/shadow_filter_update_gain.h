@@ -11,6 +11,7 @@
 #ifndef MODULES_AUDIO_PROCESSING_AEC3_SHADOW_FILTER_UPDATE_GAIN_H_
 #define MODULES_AUDIO_PROCESSING_AEC3_SHADOW_FILTER_UPDATE_GAIN_H_
 
+#include "api/audio/echo_canceller3_config.h"
 #include "modules/audio_processing/aec3/aec3_common.h"
 #include "modules/audio_processing/aec3/render_buffer.h"
 #include "modules/audio_processing/aec3/render_signal_analyzer.h"
@@ -21,18 +22,28 @@ namespace webrtc {
 // Provides functionality for computing the fixed gain for the shadow filter.
 class ShadowFilterUpdateGain {
  public:
+  explicit ShadowFilterUpdateGain(
+      const EchoCanceller3Config::Filter::ShadowConfiguration& config);
+
   // Takes action in the case of a known echo path change.
   void HandleEchoPathChange();
 
   // Computes the gain.
-  void Compute(const RenderBuffer& render_buffer,
+  void Compute(const std::array<float, kFftLengthBy2Plus1>& render_power,
                const RenderSignalAnalyzer& render_signal_analyzer,
                const FftData& E_shadow,
                size_t size_partitions,
                bool saturated_capture_signal,
                FftData* G);
 
+  // Sets a new config.
+  void SetConfig(
+      const EchoCanceller3Config::Filter::ShadowConfiguration& config) {
+    config_ = config;
+  }
+
  private:
+  EchoCanceller3Config::Filter::ShadowConfiguration config_;
   // TODO(peah): Check whether this counter should instead be initialized to a
   // large value.
   size_t poor_signal_excitation_counter_ = 0;

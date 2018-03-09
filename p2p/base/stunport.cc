@@ -10,6 +10,9 @@
 
 #include "p2p/base/stunport.h"
 
+#include <utility>
+#include <vector>
+
 #include "p2p/base/common.h"
 #include "p2p/base/portallocator.h"
 #include "p2p/base/stun.h"
@@ -21,7 +24,7 @@
 
 namespace cricket {
 
-// TODO: Move these to a common place (used in relayport too)
+// TODO(?): Move these to a common place (used in relayport too)
 const int KEEPALIVE_DELAY = 10 * 1000;  // 10 seconds - sort timeouts
 const int RETRY_TIMEOUT = 50 * 1000;    // 50 seconds
 
@@ -49,7 +52,7 @@ class StunBindingRequest : public StunRequest {
       RTC_LOG(LS_ERROR) << "Binding address has bad family";
     } else {
       rtc::SocketAddress addr(addr_attr->ipaddr(), addr_attr->port());
-      port_->OnStunBindingRequestSucceeded(server_addr_, addr);
+      port_->OnStunBindingRequestSucceeded(this->Elapsed(), server_addr_, addr);
     }
 
     // The keep-alive requests will be stopped after its lifetime has passed.
@@ -314,6 +317,14 @@ ProtocolType UDPPort::GetProtocol() const {
   return PROTO_UDP;
 }
 
+void UDPPort::GetStunStats(rtc::Optional<StunStats>* stats) {
+  *stats = stats_;
+}
+
+void UDPPort::set_stun_keepalive_delay(const rtc::Optional<int>& delay) {
+  stun_keepalive_delay_ = delay.value_or(KEEPALIVE_DELAY);
+}
+
 void UDPPort::OnLocalAddressReady(rtc::AsyncPacketSocket* socket,
                                   const rtc::SocketAddress& address) {
   // When adapter enumeration is disabled and binding to the any address, the
@@ -443,6 +454,7 @@ bool UDPPort::MaybeSetDefaultLocalAddress(rtc::SocketAddress* addr) const {
 }
 
 void UDPPort::OnStunBindingRequestSucceeded(
+    int rtt_ms,
     const rtc::SocketAddress& stun_server_addr,
     const rtc::SocketAddress& stun_reflected_addr) {
   if (bind_request_succeeded_servers_.find(stun_server_addr) !=
@@ -451,13 +463,17 @@ void UDPPort::OnStunBindingRequestSucceeded(
   }
   bind_request_succeeded_servers_.insert(stun_server_addr);
 
+  RTC_DCHECK(stats_.stun_binding_responses_received <
+             stats_.stun_binding_requests_sent);
+  stats_.stun_binding_responses_received++;
+  stats_.stun_binding_rtt_ms_total += rtt_ms;
+  stats_.stun_binding_rtt_ms_squared_total += rtt_ms * rtt_ms;
   // If socket is shared and |stun_reflected_addr| is equal to local socket
   // address, or if the same address has been added by another STUN server,
   // then discarding the stun address.
   // For STUN, related address is the local socket address.
   if ((!SharedSocket() || stun_reflected_addr != socket_->GetLocalAddress()) &&
       !HasCandidateWithAddress(stun_reflected_addr)) {
-
     rtc::SocketAddress related_address = socket_->GetLocalAddress();
     // If we can't stamp the related address correctly, empty it to avoid leak.
     if (!MaybeSetDefaultLocalAddress(&related_address)) {
@@ -510,12 +526,14 @@ void UDPPort::MaybeSetPortCompleteOrError() {
   }
 }
 
-// TODO: merge this with SendTo above.
+// TODO(?): merge this with SendTo above.
 void UDPPort::OnSendPacket(const void* data, size_t size, StunRequest* req) {
   StunBindingRequest* sreq = static_cast<StunBindingRequest*>(req);
   rtc::PacketOptions options(DefaultDscpValue());
-  if (socket_->SendTo(data, size, sreq->server_addr(), options) < 0)
-    RTC_PLOG(LERROR, socket_->GetError()) << "sendto";
+  if (socket_->SendTo(data, size, sreq->server_addr(), options) < 0) {
+    RTC_LOG_ERR_EX(LERROR, socket_->GetError()) << "sendto";
+  }
+  stats_.stun_binding_requests_sent++;
 }
 
 bool UDPPort::HasCandidateWithAddress(const rtc::SocketAddress& addr) const {

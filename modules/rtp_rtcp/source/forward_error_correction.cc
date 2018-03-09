@@ -165,6 +165,9 @@ int ForwardErrorCorrection::EncodeFec(const PacketList& media_packets,
   // Adapt packet masks to missing media packets.
   int num_mask_bits = InsertZerosInPacketMasks(media_packets, num_fec_packets);
   if (num_mask_bits < 0) {
+    RTC_LOG(LS_INFO) << "Due to sequence number gaps, cannot protect media "
+                        "packets with a single block of FEC packets.";
+    fec_packets->clear();
     return -1;
   }
   packet_mask_size_ = internal::PacketMaskSize(num_mask_bits);
@@ -652,7 +655,7 @@ void ForwardErrorCorrection::AttemptRecovery(
         continue;
       }
 
-      auto recovered_packet_ptr = recovered_packet.get();
+      auto* recovered_packet_ptr = recovered_packet.get();
       // Add recovered packet to the list of recovered packets and update any
       // FEC packets covering this packet with a pointer to the data.
       // TODO(holmer): Consider replacing this with a binary search for the

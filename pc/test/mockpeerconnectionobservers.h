@@ -14,6 +14,7 @@
 #ifndef PC_TEST_MOCKPEERCONNECTIONOBSERVERS_H_
 #define PC_TEST_MOCKPEERCONNECTIONOBSERVERS_H_
 
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -31,12 +32,29 @@ class MockPeerConnectionObserver : public PeerConnectionObserver {
  public:
   struct AddTrackEvent {
     explicit AddTrackEvent(
-        rtc::scoped_refptr<RtpReceiverInterface> receiver,
-        std::vector<rtc::scoped_refptr<MediaStreamInterface>> streams)
-        : receiver(std::move(receiver)), streams(std::move(streams)) {}
+        rtc::scoped_refptr<RtpReceiverInterface> event_receiver,
+        std::vector<rtc::scoped_refptr<MediaStreamInterface>> event_streams)
+        : receiver(std::move(event_receiver)),
+          streams(std::move(event_streams)) {
+      for (auto stream : streams) {
+        std::vector<rtc::scoped_refptr<MediaStreamTrackInterface>> tracks;
+        for (auto audio_track : stream->GetAudioTracks()) {
+          tracks.push_back(audio_track);
+        }
+        for (auto video_track : stream->GetVideoTracks()) {
+          tracks.push_back(video_track);
+        }
+        snapshotted_stream_tracks[stream] = tracks;
+      }
+    }
 
     rtc::scoped_refptr<RtpReceiverInterface> receiver;
     std::vector<rtc::scoped_refptr<MediaStreamInterface>> streams;
+    // This map records the tracks present in each stream at the time the
+    // OnAddTrack callback was issued.
+    std::map<rtc::scoped_refptr<MediaStreamInterface>,
+             std::vector<rtc::scoped_refptr<MediaStreamTrackInterface>>>
+        snapshotted_stream_tracks;
   };
 
   MockPeerConnectionObserver() : remote_streams_(StreamCollection::Create()) {}
@@ -114,6 +132,11 @@ class MockPeerConnectionObserver : public PeerConnectionObserver {
     add_track_events_.push_back(AddTrackEvent(receiver, streams));
   }
 
+  void OnTrack(
+      rtc::scoped_refptr<RtpTransceiverInterface> transceiver) override {
+    on_track_transceivers_.push_back(transceiver);
+  }
+
   void OnRemoveTrack(
       rtc::scoped_refptr<RtpReceiverInterface> receiver) override {
     remove_track_events_.push_back(receiver);
@@ -125,6 +148,23 @@ class MockPeerConnectionObserver : public PeerConnectionObserver {
       receivers.push_back(event.receiver);
     }
     return receivers;
+  }
+
+  int CountAddTrackEventsForStream(const std::string& stream_label) {
+    int found_tracks = 0;
+    for (const AddTrackEvent& event : add_track_events_) {
+      bool has_stream_label = false;
+      for (auto stream : event.streams) {
+        if (stream->label() == stream_label) {
+          has_stream_label = true;
+          break;
+        }
+      }
+      if (has_stream_label) {
+        ++found_tracks;
+      }
+    }
+    return found_tracks;
   }
 
   // Returns the label of the last added stream.
@@ -158,6 +198,9 @@ class MockPeerConnectionObserver : public PeerConnectionObserver {
     return candidates;
   }
 
+  bool negotiation_needed() const { return renegotiation_needed_; }
+  void clear_negotiation_needed() { renegotiation_needed_ = false; }
+
   rtc::scoped_refptr<PeerConnectionInterface> pc_;
   PeerConnectionInterface::SignalingState state_;
   std::vector<std::unique_ptr<IceCandidateInterface>> candidates_;
@@ -171,6 +214,8 @@ class MockPeerConnectionObserver : public PeerConnectionObserver {
   std::string last_added_track_label_;
   std::vector<AddTrackEvent> add_track_events_;
   std::vector<rtc::scoped_refptr<RtpReceiverInterface>> remove_track_events_;
+  std::vector<rtc::scoped_refptr<RtpTransceiverInterface>>
+      on_track_transceivers_;
   int num_candidates_removed_ = 0;
 
  private:

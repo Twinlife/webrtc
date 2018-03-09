@@ -18,6 +18,7 @@
 
 #include "api/audio_codecs/audio_decoder.h"
 #include "api/optional.h"
+#include "api/rtp_headers.h"
 #include "common_types.h"  // NOLINT(build/include)
 #include "modules/audio_coding/neteq/neteq_decoder_enum.h"
 #include "rtc_base/constructormagic.h"
@@ -68,6 +69,8 @@ struct NetEqLifetimeStatistics {
   uint64_t concealed_samples = 0;
   uint64_t concealment_events = 0;
   uint64_t jitter_buffer_delay_ms = 0;
+  // Below stat is not part of the spec.
+  uint64_t voice_concealed_samples = 0;
 };
 
 enum NetEqPlayoutMode {

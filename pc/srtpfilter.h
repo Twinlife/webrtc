@@ -18,8 +18,9 @@
 #include <vector>
 
 #include "api/cryptoparams.h"
+#include "api/jsep.h"
 #include "api/optional.h"
-#include "p2p/base/sessiondescription.h"
+#include "pc/sessiondescription.h"
 #include "rtc_base/basictypes.h"
 #include "rtc_base/buffer.h"
 #include "rtc_base/constructormagic.h"
@@ -53,6 +54,13 @@ class SrtpFilter {
 
   // Whether the filter is active (i.e. crypto has been properly negotiated).
   bool IsActive() const;
+
+  // Handle the offer/answer negotiation of the crypto parameters internally.
+  // TODO(zhihuang): Make SetOffer/ProvisionalAnswer/Answer private as helper
+  // methods once start using Process.
+  bool Process(const std::vector<CryptoParams>& cryptos,
+               webrtc::SdpType type,
+               ContentSource source);
 
   // Indicates which crypto algorithms and keys were contained in the offer.
   // offer_params should contain a list of available parameters to use, or none,
