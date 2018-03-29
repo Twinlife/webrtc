@@ -192,6 +192,12 @@ void AsyncTCPSocketBase::OnReadEvent(AsyncSocket* socket) {
       // to the user.
       RTC_LOG(LS_ERROR) << "TCP accept failed with error "
                         << socket_->GetError();
+      // --twinlife-- 180329
+      // The accept() can fail after the application is put in background and wakes up a long time after
+      // saying that the socket is not connected.  When this happens, we loop indefinately on the accept socket.
+      // Since we lost the network, force a close of the socket here and it will be removed.
+      socket->Close();
+      // --twinlife-- 180329
       return;
     }
 
