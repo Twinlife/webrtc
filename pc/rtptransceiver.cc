@@ -16,10 +16,6 @@
 
 namespace webrtc {
 
-std::ostream& operator<<(std::ostream& os, RtpTransceiverDirection direction) {
-  return os << RtpTransceiverDirectionToString(direction);
-}
-
 RtpTransceiver::RtpTransceiver(cricket::MediaType media_type)
     : unified_plan_(false), media_type_(media_type) {
   RTC_DCHECK(media_type == cricket::MEDIA_TYPE_AUDIO ||
@@ -42,52 +38,45 @@ RtpTransceiver::~RtpTransceiver() {
   Stop();
 }
 
-void RtpTransceiver::SetChannel(cricket::BaseChannel* channel) {
+void RtpTransceiver::SetChannel(cricket::ChannelInterface* channel) {
+  // Cannot set a non-null channel on a stopped transceiver.
+  if (stopped_ && channel) {
+    return;
+  }
+
   if (channel) {
     RTC_DCHECK_EQ(media_type(), channel->media_type());
   }
 
   if (channel_) {
-    channel_->SignalFirstPacketReceived.disconnect(this);
+    channel_->SignalFirstPacketReceived().disconnect(this);
   }
 
   channel_ = channel;
 
   if (channel_) {
-    channel_->SignalFirstPacketReceived.connect(
+    channel_->SignalFirstPacketReceived().connect(
         this, &RtpTransceiver::OnFirstPacketReceived);
   }
 
   for (auto sender : senders_) {
-    if (media_type() == cricket::MEDIA_TYPE_AUDIO) {
-      auto* voice_channel = static_cast<cricket::VoiceChannel*>(channel);
-      sender->internal()->SetVoiceMediaChannel(
-          voice_channel ? voice_channel->media_channel() : nullptr);
-    } else {
-      auto* video_channel = static_cast<cricket::VideoChannel*>(channel);
-      sender->internal()->SetVideoMediaChannel(
-          video_channel ? video_channel->media_channel() : nullptr);
-    }
+    sender->internal()->SetMediaChannel(channel_ ? channel_->media_channel()
+                                                 : nullptr);
   }
 
   for (auto receiver : receivers_) {
-    if (!channel) {
+    if (!channel_) {
       receiver->internal()->Stop();
     }
-    if (media_type() == cricket::MEDIA_TYPE_AUDIO) {
-      auto* voice_channel = static_cast<cricket::VoiceChannel*>(channel);
-      receiver->internal()->SetVoiceMediaChannel(
-          voice_channel ? voice_channel->media_channel() : nullptr);
-    } else {
-      auto* video_channel = static_cast<cricket::VideoChannel*>(channel);
-      receiver->internal()->SetVideoMediaChannel(
-          video_channel ? video_channel->media_channel() : nullptr);
-    }
+
+    receiver->internal()->SetMediaChannel(channel_ ? channel_->media_channel()
+                                                   : nullptr);
   }
 }
 
 void RtpTransceiver::AddSender(
     rtc::scoped_refptr<RtpSenderProxyWithInternal<RtpSenderInternal>> sender) {
+  RTC_DCHECK(!stopped_);
   RTC_DCHECK(!unified_plan_);
   RTC_DCHECK(sender);
   RTC_DCHECK_EQ(media_type(), sender->media_type());
@@ -113,6 +102,7 @@ bool RtpTransceiver::RemoveSender(RtpSenderInterface* sender) {
 void RtpTransceiver::AddReceiver(
     rtc::scoped_refptr<RtpReceiverProxyWithInternal<RtpReceiverInternal>>
         receiver) {
+  RTC_DCHECK(!stopped_);
   RTC_DCHECK(!unified_plan_);
   RTC_DCHECK(receiver);
   RTC_DCHECK_EQ(media_type(), receiver->media_type());
@@ -152,11 +142,11 @@ cricket::MediaType RtpTransceiver::media_type() const {
   return media_type_;
 }
 
-rtc::Optional<std::string> RtpTransceiver::mid() const {
+absl::optional<std::string> RtpTransceiver::mid() const {
   return mid_;
 }
 
-void RtpTransceiver::OnFirstPacketReceived(cricket::BaseChannel* channel) {
+void RtpTransceiver::OnFirstPacketReceived(cricket::ChannelInterface*) {
   for (auto receiver : receivers_) {
     receiver->internal()->NotifyFirstPacketReceived();
   }
@@ -175,10 +165,21 @@ rtc::scoped_refptr<RtpReceiverInterface> RtpTransceiver::receiver() const {
 }
 
 void RtpTransceiver::set_current_direction(RtpTransceiverDirection direction) {
+  RTC_LOG(LS_INFO) << "Changing transceiver (MID=" << mid_.value_or("<not set>")
+                   << ") current direction from "
+                   << (current_direction_ ? RtpTransceiverDirectionToString(
+                                                *current_direction_)
+                                          : "<not set>")
+                   << " to " << RtpTransceiverDirectionToString(direction)
+                   << ".";
   current_direction_ = direction;
   if (RtpTransceiverDirectionHasSend(*current_direction_)) {
     has_ever_been_used_to_send_ = true;
   }
+}
+
+void RtpTransceiver::set_fired_direction(RtpTransceiverDirection direction) {
+  fired_direction_ = direction;
 }
 
 bool RtpTransceiver::stopped() const {
@@ -200,9 +201,14 @@ void RtpTransceiver::SetDirection(RtpTransceiverDirection new_direction) {
   SignalNegotiationNeeded();
 }
 
-rtc::Optional<RtpTransceiverDirection> RtpTransceiver::current_direction()
+absl::optional<RtpTransceiverDirection> RtpTransceiver::current_direction()
     const {
   return current_direction_;
+}
+
+absl::optional<RtpTransceiverDirection> RtpTransceiver::fired_direction()
+    const {
+  return fired_direction_;
 }
 
 void RtpTransceiver::Stop() {
@@ -213,7 +219,7 @@ void RtpTransceiver::Stop() {
     receiver->internal()->Stop();
   }
   stopped_ = true;
-  current_direction_ = rtc::nullopt;
+  current_direction_ = absl::nullopt;
 }
 
 void RtpTransceiver::SetCodecPreferences(

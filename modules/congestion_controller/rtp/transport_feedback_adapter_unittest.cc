@@ -27,6 +27,7 @@ using ::testing::_;
 using ::testing::Invoke;
 
 namespace webrtc {
+namespace webrtc_cc {
 
 namespace {
 const PacedPacketInfo kPacingInfo0(0, 5, 2000);
@@ -34,7 +35,7 @@ const PacedPacketInfo kPacingInfo1(1, 8, 4000);
 const PacedPacketInfo kPacingInfo2(2, 14, 7000);
 const PacedPacketInfo kPacingInfo3(3, 20, 10000);
 const PacedPacketInfo kPacingInfo4(4, 22, 10000);
-}
+}  // namespace
 
 namespace test {
 
@@ -68,8 +69,9 @@ class TransportFeedbackAdapterTest : public ::testing::Test {
     adapter_->AddPacket(kSsrc, packet_feedback.sequence_number,
                         packet_feedback.payload_size,
                         packet_feedback.pacing_info);
-    adapter_->OnSentPacket(packet_feedback.sequence_number,
-                           packet_feedback.send_time_ms);
+    adapter_->ProcessSentPacket(rtc::SentPacket(packet_feedback.sequence_number,
+                                                packet_feedback.send_time_ms,
+                                                rtc::PacketInfo()));
   }
 
   static constexpr uint32_t kSsrc = 8492;
@@ -85,8 +87,7 @@ TEST_F(TransportFeedbackAdapterTest, ObserverSanity) {
   const std::vector<PacketFeedback> packets = {
       PacketFeedback(100, 200, 0, 1000, kPacingInfo0),
       PacketFeedback(110, 210, 1, 2000, kPacingInfo0),
-      PacketFeedback(120, 220, 2, 3000, kPacingInfo0)
-  };
+      PacketFeedback(120, 220, 2, 3000, kPacingInfo0)};
 
   rtcp::TransportFeedback feedback;
   feedback.SetBase(packets[0].sequence_number,
@@ -100,7 +101,7 @@ TEST_F(TransportFeedbackAdapterTest, ObserverSanity) {
   }
 
   EXPECT_CALL(mock, OnPacketFeedbackVector(_)).Times(1);
-  adapter_->OnTransportFeedback(feedback);
+  adapter_->ProcessTransportFeedback(feedback);
 
   adapter_->DeRegisterPacketFeedbackObserver(&mock);
 
@@ -115,7 +116,7 @@ TEST_F(TransportFeedbackAdapterTest, ObserverSanity) {
   EXPECT_TRUE(feedback.AddReceivedPacket(new_packet.sequence_number,
                                          new_packet.arrival_time_ms * 1000));
   EXPECT_CALL(mock, OnPacketFeedbackVector(_)).Times(0);
-  adapter_->OnTransportFeedback(second_feedback);
+  adapter_->ProcessTransportFeedback(second_feedback);
 }
 
 #if RTC_DCHECK_IS_ON && GTEST_HAS_DEATH_TEST && !defined(WEBRTC_ANDROID)
@@ -156,7 +157,7 @@ TEST_F(TransportFeedbackAdapterTest, AdaptsFeedbackAndPopulatesSendTimes) {
 
   feedback.Build();
 
-  adapter_->OnTransportFeedback(feedback);
+  adapter_->ProcessTransportFeedback(feedback);
   ComparePacketFeedbackVectors(packets, adapter_->GetTransportFeedbackVector());
 }
 
@@ -168,8 +169,7 @@ TEST_F(TransportFeedbackAdapterTest, FeedbackVectorReportsUnreceived) {
       PacketFeedback(130, 230, 3, 1500, kPacingInfo0),
       PacketFeedback(140, 240, 4, 1500, kPacingInfo0),
       PacketFeedback(150, 250, 5, 1500, kPacingInfo0),
-      PacketFeedback(160, 260, 6, 1500, kPacingInfo0)
-  };
+      PacketFeedback(160, 260, 6, 1500, kPacingInfo0)};
 
   for (const PacketFeedback& packet : sent_packets)
     OnSentPacket(packet);
@@ -177,8 +177,7 @@ TEST_F(TransportFeedbackAdapterTest, FeedbackVectorReportsUnreceived) {
   // Note: Important to include the last packet, as only unreceived packets in
   // between received packets can be inferred.
   std::vector<PacketFeedback> received_packets = {
-    sent_packets[0], sent_packets[2], sent_packets[6]
-  };
+      sent_packets[0], sent_packets[2], sent_packets[6]};
 
   rtcp::TransportFeedback feedback;
   feedback.SetBase(received_packets[0].sequence_number,
@@ -191,7 +190,7 @@ TEST_F(TransportFeedbackAdapterTest, FeedbackVectorReportsUnreceived) {
 
   feedback.Build();
 
-  adapter_->OnTransportFeedback(feedback);
+  adapter_->ProcessTransportFeedback(feedback);
   ComparePacketFeedbackVectors(sent_packets,
                                adapter_->GetTransportFeedbackVector());
 }
@@ -235,7 +234,7 @@ TEST_F(TransportFeedbackAdapterTest, HandlesDroppedPackets) {
     expected_packets[i].pacing_info = PacedPacketInfo();
   }
 
-  adapter_->OnTransportFeedback(feedback);
+  adapter_->ProcessTransportFeedback(feedback);
   ComparePacketFeedbackVectors(expected_packets,
                                adapter_->GetTransportFeedbackVector());
 }
@@ -271,7 +270,7 @@ TEST_F(TransportFeedbackAdapterTest, SendTimeWrapsBothWays) {
     std::vector<PacketFeedback> expected_packets;
     expected_packets.push_back(packets[i]);
 
-    adapter_->OnTransportFeedback(*feedback.get());
+    adapter_->ProcessTransportFeedback(*feedback.get());
     ComparePacketFeedbackVectors(expected_packets,
                                  adapter_->GetTransportFeedbackVector());
   }
@@ -300,7 +299,7 @@ TEST_F(TransportFeedbackAdapterTest, HandlesArrivalReordering) {
   // Adapter keeps the packets ordered by sequence number (which is itself
   // assigned by the order of transmission). Reordering by some other criteria,
   // eg. arrival time, is up to the observers.
-  adapter_->OnTransportFeedback(feedback);
+  adapter_->ProcessTransportFeedback(feedback);
   ComparePacketFeedbackVectors(packets, adapter_->GetTransportFeedbackVector());
 }
 
@@ -364,7 +363,7 @@ TEST_F(TransportFeedbackAdapterTest, TimestampDeltas) {
   std::vector<PacketFeedback> received_feedback;
 
   EXPECT_TRUE(feedback.get() != nullptr);
-  adapter_->OnTransportFeedback(*feedback.get());
+  adapter_->ProcessTransportFeedback(*feedback.get());
   ComparePacketFeedbackVectors(sent_packets,
                                adapter_->GetTransportFeedbackVector());
 
@@ -379,7 +378,7 @@ TEST_F(TransportFeedbackAdapterTest, TimestampDeltas) {
       rtcp::TransportFeedback::ParseFrom(raw_packet.data(), raw_packet.size());
 
   EXPECT_TRUE(feedback.get() != nullptr);
-  adapter_->OnTransportFeedback(*feedback.get());
+  adapter_->ProcessTransportFeedback(*feedback.get());
   {
     std::vector<PacketFeedback> expected_packets;
     expected_packets.push_back(packet_feedback);
@@ -388,4 +387,5 @@ TEST_F(TransportFeedbackAdapterTest, TimestampDeltas) {
   }
 }
 }  // namespace test
+}  // namespace webrtc_cc
 }  // namespace webrtc

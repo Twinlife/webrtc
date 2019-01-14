@@ -10,9 +10,13 @@
 
 package org.webrtc;
 
+import javax.annotation.Nullable;
+
 /** Java wrapper for a C++ MediaStreamTrackInterface. */
-@JNINamespace("webrtc::jni")
 public class MediaStreamTrack {
+  public static final String AUDIO_TRACK_KIND = "audio";
+  public static final String VIDEO_TRACK_KIND = "video";
+
   /** Tracks MediaStreamTrackInterface.TrackState */
   public enum State {
     LIVE,
@@ -51,34 +55,70 @@ public class MediaStreamTrack {
     }
   }
 
-  final long nativeTrack;
+  /** Factory method to create an AudioTrack or VideoTrack subclass. */
+  static @Nullable MediaStreamTrack createMediaStreamTrack(long nativeTrack) {
+    if (nativeTrack == 0) {
+      return null;
+    }
+    String trackKind = nativeGetKind(nativeTrack);
+    if (trackKind.equals(AUDIO_TRACK_KIND)) {
+      return new AudioTrack(nativeTrack);
+    } else if (trackKind.equals(VIDEO_TRACK_KIND)) {
+      return new VideoTrack(nativeTrack);
+    } else {
+      return null;
+    }
+  }
+
+  private long nativeTrack;
 
   public MediaStreamTrack(long nativeTrack) {
+    if (nativeTrack == 0) {
+      throw new IllegalArgumentException("nativeTrack may not be null");
+    }
     this.nativeTrack = nativeTrack;
   }
 
   public String id() {
+    checkMediaStreamTrackExists();
     return nativeGetId(nativeTrack);
   }
 
   public String kind() {
+    checkMediaStreamTrackExists();
     return nativeGetKind(nativeTrack);
   }
 
   public boolean enabled() {
+    checkMediaStreamTrackExists();
     return nativeGetEnabled(nativeTrack);
   }
 
   public boolean setEnabled(boolean enable) {
+    checkMediaStreamTrackExists();
     return nativeSetEnabled(nativeTrack, enable);
   }
 
   public State state() {
+    checkMediaStreamTrackExists();
     return nativeGetState(nativeTrack);
   }
 
   public void dispose() {
+    checkMediaStreamTrackExists();
     JniCommon.nativeReleaseRef(nativeTrack);
+    nativeTrack = 0;
+  }
+
+  long getNativeMediaStreamTrack() {
+    checkMediaStreamTrackExists();
+    return nativeTrack;
+  }
+
+  private void checkMediaStreamTrackExists() {
+    if (nativeTrack == 0) {
+      throw new IllegalStateException("MediaStreamTrack has been disposed.");
+    }
   }
 
   private static native String nativeGetId(long track);
