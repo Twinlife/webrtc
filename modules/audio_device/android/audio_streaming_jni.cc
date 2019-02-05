@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2015-2017 twinlife SA.
+ *  Copyright (c) 2015-2019 twinlife SA.
  *
  *  All Rights Reserved.
  *  
@@ -256,7 +256,6 @@ void AudioStreamingJni::OnDataIsRecorded(int length) {
   // |playDelayMs| parameter only. Components like the AEC only sees the sum
   // of |playDelayMs| and |recDelayMs|, hence the distributions does not matter.
   audio_device_buffer_->SetVQEData(total_delay_in_milliseconds_,
-                                   0,   // recDelayMs
                                    0);  // clockDrift
   if (audio_device_buffer_->DeliverRecordedData() == -1) {
     ALOGE("AudioDeviceBuffer::DeliverRecordedData failed!");

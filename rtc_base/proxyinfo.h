@@ -17,13 +17,8 @@
 
 namespace rtc {
 
-enum ProxyType {
-  PROXY_NONE,
-  PROXY_HTTPS,
-  PROXY_SOCKS5,
-  PROXY_UNKNOWN
-};
-const char * ProxyToString(ProxyType proxy);
+enum ProxyType { PROXY_NONE, PROXY_HTTPS, PROXY_SOCKS5, PROXY_UNKNOWN };
+const char* ProxyToString(ProxyType proxy);
 
 struct ProxyInfo {
   ProxyType type;
@@ -35,12 +30,15 @@ struct ProxyInfo {
   CryptString password;
 
   ProxyInfo();
+  // --twinlife-- 190102
+  ProxyInfo(const ProxyInfo& proxyInfo);
+  // --twinlife-- 190102
   ~ProxyInfo();
   // --twinlife-- 180202
-  bool operator==(const ProxyInfo& o) const;
+  bool operator==(const ProxyInfo& proxyInfo) const;
   // --twinlife-- 180202
 };
 
-} // namespace rtc
+}  // namespace rtc
 
-#endif // RTC_BASE_PROXYINFO_H_
+#endif  // RTC_BASE_PROXYINFO_H_

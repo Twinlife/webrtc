@@ -12,21 +12,29 @@
 
 namespace rtc {
 
-const char * ProxyToString(ProxyType proxy) {
-  const char * const PROXY_NAMES[] = { "none", "https", "socks5", "unknown" };
+const char* ProxyToString(ProxyType proxy) {
+  const char* const PROXY_NAMES[] = {"none", "https", "socks5", "unknown"};
   return PROXY_NAMES[proxy];
 }
 
-ProxyInfo::ProxyInfo() : type(PROXY_NONE), autodetect(false) {
-}
+ProxyInfo::ProxyInfo() : type(PROXY_NONE), autodetect(false) {}
+// --twinlife-- 190102
+  ProxyInfo::ProxyInfo(const ProxyInfo& proxyInfo) :
+    type(proxyInfo.type), address(proxyInfo.address),
+    autoconfig_url(proxyInfo.autoconfig_url), autodetect(proxyInfo.autodetect),
+    bypass_list(proxyInfo.bypass_list), username(proxyInfo.username),
+    password(proxyInfo.password) {}
+// --twinlife-- 190102
 ProxyInfo::~ProxyInfo() = default;
 
 // --twinlife-- 180202
-bool ProxyInfo::operator==(const ProxyInfo& o) const {
-  return type == o.type && address == o.address && autoconfig_url == o.autoconfig_url &&
-    autodetect == o.autodetect && bypass_list == o.bypass_list && username == o.username &&
-    password == o.password;
+bool ProxyInfo::operator==(const ProxyInfo& proxyInfo) const {
+  return type == proxyInfo.type && address == proxyInfo.address &&
+    autoconfig_url == proxyInfo.autoconfig_url &&
+    autodetect == proxyInfo.autodetect &&
+    bypass_list == proxyInfo.bypass_list && username == proxyInfo.username &&
+    password == proxyInfo.password;
 }
 // --twinlife-- 180202
 
-} // namespace rtc
+}  // namespace rtc
