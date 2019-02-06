@@ -11,6 +11,8 @@
 package org.webrtc;
 
 import android.content.Context;
+import android.hardware.Camera;
+import android.os.Build;
 import android.os.Handler;
 import android.os.SystemClock;
 import android.view.Surface;
@@ -125,9 +127,13 @@ class Camera1Session implements CameraSession {
       parameters.setPreviewFormat(captureFormat.imageFormat);
     }
 
-    if (parameters.isVideoStabilizationSupported()) {
-      parameters.setVideoStabilization(true);
+    // -twinlife- 161118
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH_MR1) {
+      if (parameters.isVideoStabilizationSupported()) {
+        parameters.setVideoStabilization(true);
+      }
     }
+    // -twinlife- 161118    
     if (focusModes.contains(android.hardware.Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO)) {
       parameters.setFocusMode(android.hardware.Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO);
     }
@@ -179,6 +185,29 @@ class Camera1Session implements CameraSession {
     startCapturing();
   }
 
+  // -twinlife- 161118
+  @Override
+  public boolean isZoomSupported() {
+    Logging.d(TAG, "isZoomSupported");
+    if (camera != null) {
+      camera.getParameters().isZoomSupported();
+    }
+    return false;
+  }
+  // -twinlife- 161118
+
+  // -twinlife- 161118
+  @Override
+  public void setZoom(final int progress) {
+    Logging.d(TAG, "setZoom");
+    if (camera != null) {
+      Camera.Parameters parameters = camera.getParameters();
+      parameters.setZoom(parameters.getMaxZoom() * progress / 100);
+      camera.setParameters(parameters);
+    }
+  }
+  // -twinlife- 161118
+    
   @Override
   public void stop() {
     Logging.d(TAG, "Stop camera1 session on camera " + cameraId);

@@ -33,12 +33,6 @@ interface CameraSession {
     void onFrameCaptured(CameraSession session, VideoFrame frame);
   }
 
-  /**
-   * Stops the capture. Waits until no more calls to capture observer will be made.
-   * If waitCameraStop is true, also waits for the camera to stop.
-   */
-  void stop();
-
   // -twinlife- 161118
   boolean isZoomSupported();
   // -twinlife- 161118
@@ -46,6 +40,12 @@ interface CameraSession {
   // -twinlife- 161118
   void setZoom(final int progress);
   // -twinlife- 161118
+
+  /**
+   * Stops the capture. Waits until no more calls to capture observer will be made.
+   * If waitCameraStop is true, also waits for the camera to stop.
+   */
+  void stop();
 
   static int getDeviceOrientation(Context context) {
     final WindowManager wm = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);

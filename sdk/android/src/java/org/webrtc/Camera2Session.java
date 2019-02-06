@@ -357,6 +357,21 @@ class Camera2Session implements CameraSession {
     }
   }
 
+  // -twinlife- 161118
+  @Override
+  public boolean isZoomSupported() {
+    Logging.d(TAG, "isZoomSupported");
+    return false;
+  }
+  // -twinlife- 161118
+
+  // -twinlife- 161118
+  @Override
+  public void setZoom(final int progress) {
+    Logging.d(TAG, "setZoom");
+  }
+  // -twinlife- 161118
+
   @Override
   public void stop() {
     Logging.d(TAG, "Stop camera2 session on camera " + cameraId);

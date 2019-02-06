@@ -14,6 +14,7 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import java.util.Arrays;
+import java.util.concurrent.Exchanger;
 import javax.annotation.Nullable;
 
 @SuppressWarnings("deprecation")
@@ -341,6 +342,39 @@ abstract class CameraCapturer implements CameraVideoCapturer {
     return false;
   }
 
+  // -twinlife- 161118
+  @Override
+  public boolean isZoomSupported() {
+    Logging.d(TAG, "isZoomSupported");
+    final Exchanger<Boolean> result = new Exchanger<>();
+    cameraThreadHandler.post(new Runnable() {
+      @Override
+      public void run() {
+        boolean lResult = isZoomSupportedInternal();
+	exchange(result, lResult);
+      }
+    });
+    try {
+      return result.exchange(true);
+    } catch (InterruptedException exception) {
+      return false;
+    }
+  }
+  // -twinlife- 161118
+
+  // -twinlife- 161118
+  @Override
+  public void setZoom(final int progress) {
+    Logging.d(TAG, "isZoomSupported");
+    cameraThreadHandler.post(new Runnable() {
+      @Override
+      public void run() {
+        setZoomInternal(progress);
+      }
+    });
+  }
+  // -twinlife- 161118
+
   public void printStackTrace() {
     Thread cameraThread = null;
     if (cameraThreadHandler != null) {
@@ -416,6 +450,37 @@ abstract class CameraCapturer implements CameraVideoCapturer {
     }
     Logging.d(TAG, "switchCamera done");
   }
+
+  // -twinlife- 161118
+  private boolean isZoomSupportedInternal() {
+    Logging.d(TAG, "isZoomSupported internal");
+
+    if (currentSession != null) {
+      return currentSession.isZoomSupported();
+    }
+    return false;
+  }
+  // -twinlife- 161118
+
+  // -twinlife- 161118
+  private void setZoomInternal(int progress) {
+    Logging.d(TAG, "setZoom internal");
+
+    if (currentSession != null) {
+      currentSession.setZoom(progress);
+    }
+  }
+  // -twinlife- 161118
+
+  // -twinlife- 161118
+  private static <T> T exchange(Exchanger<T> exchanger, T value) {
+    try {
+      return exchanger.exchange(value);
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+  }
+  // -twinlife- 161118
 
   private void checkIsOnCameraThread() {
     if (Thread.currentThread() != cameraThreadHandler.getLooper().getThread()) {
