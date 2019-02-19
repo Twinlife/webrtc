@@ -125,12 +125,16 @@ class MediaCodecVideoDecoderFactory implements VideoDecoderFactory {
       if (!MediaCodecUtils.codecSupportsType(info, type)) {
         return false;
       }
-      // Check for a supported color format.
-      if (MediaCodecUtils.selectColorFormat(
-              MediaCodecUtils.DECODER_COLOR_FORMATS, info.getCapabilitiesForType(type.mimeType()))
-          == null) {
-        return false;
-      }
+      try {      
+        // Check for a supported color format.
+	  if (MediaCodecUtils.selectColorFormat(
+                MediaCodecUtils.DECODER_COLOR_FORMATS, info.getCapabilitiesForType(type.mimeType()))
+            == null) {
+          return false;
+	  }
+      } catch (IllegalArgumentException exception) {
+	return false;
+      }	  
       return isWhitelisted(name) && !isBlacklisted(name);
     }
 
