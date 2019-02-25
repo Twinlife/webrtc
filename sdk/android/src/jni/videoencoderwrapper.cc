@@ -282,10 +282,14 @@ void VideoEncoderWrapper::OnEncodedFrame(JNIEnv* jni,
     }
   };
 
-  encoder_queue_->PostTask(
-      Lambda{this, std::move(buffer_copy), qp, encoded_width, encoded_height,
-             capture_time_ns, frame_type, rotation, complete_frame,
-             &frame_extra_infos_, callback_});
+  // -twinlife- 190225
+  if (encoder_queue_) {
+    encoder_queue_->PostTask(
+        Lambda{this, std::move(buffer_copy), qp, encoded_width, encoded_height,
+               capture_time_ns, frame_type, rotation, complete_frame,
+               &frame_extra_infos_, callback_});
+  }
+  // -twinlife- 190225
 }
 
 int32_t VideoEncoderWrapper::HandleReturnCode(JNIEnv* jni,
