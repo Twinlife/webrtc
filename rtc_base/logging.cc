@@ -30,19 +30,21 @@ static const int kMaxLogLineSize = 1024 - 60;
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+
 #include <algorithm>
 #include <cstdarg>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "rtc_base/checks.h"
-#include "rtc_base/criticalsection.h"
+#include "rtc_base/critical_section.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/platform_thread_types.h"
-#include "rtc_base/stringencode.h"
+#include "rtc_base/string_encode.h"
+#include "rtc_base/string_utils.h"
 #include "rtc_base/strings/string_builder.h"
-#include "rtc_base/stringutils.h"
 #include "rtc_base/thread_annotations.h"
-#include "rtc_base/timeutils.h"
+#include "rtc_base/time_utils.h"
 
 namespace rtc {
 namespace {
@@ -66,7 +68,7 @@ const char* FilenameFromPath(const char* file) {
 }
 
 // Global lock for log subsystem, only needed to serialize access to streams_.
-CriticalSection g_log_crit;
+ABSL_CONST_INIT GlobalLock g_log_crit;
 }  // namespace
 
 // Inefficient default implementation, override is recommended.
@@ -156,13 +158,6 @@ LogMessage::LogMessage(const char* file,
         break;
       }
 #endif  // WEBRTC_WIN
-#if defined(WEBRTC_MAC) && !defined(WEBRTC_IOS)
-      case ERRCTX_OSSTATUS: {
-        std::string desc(DescriptionFromOSStatus(err));
-        tmp << " " << (desc.empty() ? "Unknown error" : desc.c_str());
-        break;
-      }
-#endif  // WEBRTC_MAC && !defined(WEBRTC_IOS)
       default:
         break;
     }
@@ -205,7 +200,7 @@ LogMessage::~LogMessage() {
 #endif
   }
 
-  CritScope cs(&g_log_crit);
+  GlobalLockScope cs(&g_log_crit);
   for (auto& kv : streams_) {
     if (severity_ >= kv.second) {
 #if defined(WEBRTC_ANDROID)
@@ -254,7 +249,7 @@ void LogMessage::LogTimestamps(bool on) {
 
 void LogMessage::LogToDebug(LoggingSeverity min_sev) {
   g_dbg_sev = min_sev;
-  CritScope cs(&g_log_crit);
+  GlobalLockScope cs(&g_log_crit);
   UpdateMinLogSeverity();
 }
 
@@ -263,7 +258,7 @@ void LogMessage::SetLogToStderr(bool log_to_stderr) {
 }
 
 int LogMessage::GetLogToStream(LogSink* stream) {
-  CritScope cs(&g_log_crit);
+  GlobalLockScope cs(&g_log_crit);
   LoggingSeverity sev = LS_NONE;
   for (auto& kv : streams_) {
     if (!stream || stream == kv.first) {
@@ -274,13 +269,13 @@ int LogMessage::GetLogToStream(LogSink* stream) {
 }
 
 void LogMessage::AddLogToStream(LogSink* stream, LoggingSeverity min_sev) {
-  CritScope cs(&g_log_crit);
+  GlobalLockScope cs(&g_log_crit);
   streams_.push_back(std::make_pair(stream, min_sev));
   UpdateMinLogSeverity();
 }
 
 void LogMessage::RemoveLogToStream(LogSink* stream) {
-  CritScope cs(&g_log_crit);
+  GlobalLockScope cs(&g_log_crit);
   for (StreamList::iterator it = streams_.begin(); it != streams_.end(); ++it) {
     if (stream == it->first) {
       streams_.erase(it);
@@ -308,8 +303,6 @@ void LogMessage::ConfigureLogging(const char* params) {
       LogThreads();
 
       // Logging levels
-    } else if (token == "sensitive") {
-      current_level = LS_SENSITIVE;
     } else if (token == "verbose") {
       current_level = LS_VERBOSE;
     } else if (token == "info") {
@@ -327,7 +320,7 @@ void LogMessage::ConfigureLogging(const char* params) {
     }
   }
 
-#if defined(WEBRTC_WIN)
+#if defined(WEBRTC_WIN) && !defined(WINUWP)
   if ((LS_NONE != debug_level) && !::IsDebuggerPresent()) {
     // First, attempt to attach to our parent's console... so if you invoke
     // from the command line, we'll see the output there.  Otherwise, create
@@ -336,7 +329,7 @@ void LogMessage::ConfigureLogging(const char* params) {
     if (!AttachConsole(ATTACH_PARENT_PROCESS))
       ::AllocConsole();
   }
-#endif  // WEBRTC_WIN
+#endif  // defined(WEBRTC_WIN) && !defined(WINUWP)
 
   LogToDebug(debug_level);
 }
@@ -402,13 +395,6 @@ void LogMessage::OutputToDebug(const std::string& str,
   // from the shell.
   int prio;
   switch (severity) {
-    case LS_SENSITIVE:
-      __android_log_write(ANDROID_LOG_INFO, tag, "SENSITIVE");
-      if (log_to_stderr) {
-        fprintf(stderr, "SENSITIVE");
-        fflush(stderr);
-      }
-      return;
     case LS_VERBOSE:
       prio = ANDROID_LOG_VERBOSE;
       break;
@@ -458,7 +444,7 @@ bool LogMessage::IsNoop(LoggingSeverity severity) {
   // TODO(tommi): We're grabbing this lock for every LogMessage instance that
   // is going to be logged. This introduces unnecessary synchronization for
   // a feature that's mostly used for testing.
-  CritScope cs(&g_log_crit);
+  GlobalLockScope cs(&g_log_crit);
   if (streams_.size() > 0)
     return false;
 
@@ -540,9 +526,11 @@ void Log(const LogArgType* fmt, ...) {
       case LogArgType::kLongDouble:
         log_message.stream() << va_arg(args, long double);
         break;
-      case LogArgType::kCharP:
-        log_message.stream() << va_arg(args, const char*);
+      case LogArgType::kCharP: {
+        const char* s = va_arg(args, const char*);
+        log_message.stream() << (s ? s : "(null)");
         break;
+      }
       case LogArgType::kStdString:
         log_message.stream() << *va_arg(args, const std::string*);
         break;

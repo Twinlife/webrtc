@@ -11,9 +11,12 @@
 #ifndef API_TRANSPORT_NETWORK_CONTROL_H_
 #define API_TRANSPORT_NETWORK_CONTROL_H_
 #include <stdint.h>
+
 #include <memory>
 
+#include "api/rtc_event_log/rtc_event_log.h"
 #include "api/transport/network_types.h"
+#include "api/transport/webrtc_key_value_config.h"
 
 namespace webrtc {
 
@@ -23,6 +26,9 @@ class TargetTransferRateObserver {
   // Called to indicate target transfer rate as well as giving information about
   // the current estimate of network parameters.
   virtual void OnTargetTransferRate(TargetTransferRate) = 0;
+  // Called to provide updates to the expected target rate in case it changes
+  // before the first call to OnTargetTransferRate.
+  virtual void OnStartRateUpdate(DataRate) {}
 };
 
 // Configuration sent to factory create function. The parameters here are
@@ -36,6 +42,12 @@ struct NetworkControllerConfig {
   // Initial stream specific configuration, these are changed at any later time
   // by calls to OnStreamsConfig.
   StreamsConfig stream_based_config;
+
+  // Optional override of configuration of WebRTC internals. Using nullptr here
+  // indicates that the field trial API will be used.
+  const WebRtcKeyValueConfig* key_value_config = nullptr;
+  // Optional override of event log.
+  RtcEventLog* event_log = nullptr;
 };
 
 // NetworkControllerInterface is implemented by network controllers. A network
@@ -60,6 +72,8 @@ class NetworkControllerInterface {
   virtual NetworkControlUpdate OnRoundTripTimeUpdate(RoundTripTimeUpdate) = 0;
   // Called when a packet is sent on the network.
   virtual NetworkControlUpdate OnSentPacket(SentPacket) = 0;
+  // Called when a packet is received from the remote client.
+  virtual NetworkControlUpdate OnReceivedPacket(ReceivedPacket) = 0;
   // Called when the stream specific configuration has been updated.
   virtual NetworkControlUpdate OnStreamsConfig(StreamsConfig) = 0;
   // Called when target transfer rate constraints has been changed.
@@ -70,6 +84,8 @@ class NetworkControllerInterface {
   // Called with per packet feedback regarding receive time.
   virtual NetworkControlUpdate OnTransportPacketsFeedback(
       TransportPacketsFeedback) = 0;
+  // Called with network state estimate updates.
+  virtual NetworkControlUpdate OnNetworkStateEstimate(NetworkStateEstimate) = 0;
 };
 
 // NetworkControllerFactoryInterface is an interface for creating a network
@@ -85,6 +101,28 @@ class NetworkControllerFactoryInterface {
   // Returns the interval by which the network controller expects
   // OnProcessInterval calls.
   virtual TimeDelta GetProcessInterval() const = 0;
+};
+
+// Under development, subject to change without notice.
+class NetworkStateEstimator {
+ public:
+  // Gets the current best estimate according to the estimator.
+  virtual absl::optional<NetworkStateEstimate> GetCurrentEstimate() = 0;
+  // Called with per packet feedback regarding receive time.
+  // Used when the NetworkStateEstimator runs in the sending endpoint.
+  virtual void OnTransportPacketsFeedback(const TransportPacketsFeedback&) = 0;
+  // Called with per packet feedback regarding receive time.
+  // Used when the NetworkStateEstimator runs in the receiving endpoint.
+  virtual void OnReceivedPacket(const PacketResult&) {}
+  // Called when the receiving or sending endpoint changes address.
+  virtual void OnRouteChange(const NetworkRouteChange&) = 0;
+  virtual ~NetworkStateEstimator() = default;
+};
+class NetworkStateEstimatorFactory {
+ public:
+  virtual std::unique_ptr<NetworkStateEstimator> Create(
+      const WebRtcKeyValueConfig* key_value_config) = 0;
+  virtual ~NetworkStateEstimatorFactory() = default;
 };
 }  // namespace webrtc
 

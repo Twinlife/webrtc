@@ -267,7 +267,6 @@ NetworkControlUpdate BbrNetworkController::CreateRateUpdate(
 
   TargetTransferRate target_rate_msg;
   target_rate_msg.network_estimate.at_time = at_time;
-  target_rate_msg.network_estimate.bandwidth = bandwidth;
   target_rate_msg.network_estimate.round_trip_time = rtt;
 
   // TODO(srte): Fill in field below with proper value.
@@ -323,8 +322,6 @@ NetworkControlUpdate BbrNetworkController::OnProcessInterval(
 }
 
 NetworkControlUpdate BbrNetworkController::OnStreamsConfig(StreamsConfig msg) {
-  // TODO(srte): Handle unacknowledged rate allocation.
-  RTC_DCHECK(msg.unacknowledged_rate_allocation.IsZero());
   return NetworkControlUpdate();
 }
 
@@ -497,6 +494,16 @@ NetworkControlUpdate BbrNetworkController::OnRoundTripTimeUpdate(
 }
 NetworkControlUpdate BbrNetworkController::OnTransportLossReport(
     TransportLossReport msg) {
+  return NetworkControlUpdate();
+}
+
+NetworkControlUpdate BbrNetworkController::OnReceivedPacket(
+    ReceivedPacket msg) {
+  return NetworkControlUpdate();
+}
+
+NetworkControlUpdate BbrNetworkController::OnNetworkStateEstimate(
+    NetworkStateEstimate msg) {
   return NetworkControlUpdate();
 }
 

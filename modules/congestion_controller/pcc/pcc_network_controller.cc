@@ -8,10 +8,13 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include "modules/congestion_controller/pcc/pcc_network_controller.h"
+
 #include <algorithm>
 
-#include "absl/memory/memory.h"
-#include "modules/congestion_controller/pcc/pcc_network_controller.h"
+#include "absl/types/optional.h"
+#include "api/units/data_size.h"
+#include "rtc_base/checks.h"
 
 namespace webrtc {
 namespace pcc {
@@ -98,9 +101,9 @@ NetworkControlUpdate PccNetworkController::CreateRateUpdate(
 
   // Set up target rate to encoder.
   TargetTransferRate target_rate_msg;
+  target_rate_msg.at_time = at_time;
   target_rate_msg.network_estimate.at_time = at_time;
   target_rate_msg.network_estimate.round_trip_time = rtt_tracker_.GetRtt();
-  target_rate_msg.network_estimate.bandwidth = bandwidth_estimate_;
   // TODO(koloskova): Add correct estimate.
   target_rate_msg.network_estimate.loss_rate_ratio = 0;
   target_rate_msg.network_estimate.bwe_period =
@@ -371,8 +374,16 @@ NetworkControlUpdate PccNetworkController::OnTransportLossReport(
 }
 
 NetworkControlUpdate PccNetworkController::OnStreamsConfig(StreamsConfig msg) {
-  // TODO(srte): Handle unacknowledged rate allocation.
-  RTC_DCHECK(msg.unacknowledged_rate_allocation.IsZero());
+  return NetworkControlUpdate();
+}
+
+NetworkControlUpdate PccNetworkController::OnReceivedPacket(
+    ReceivedPacket msg) {
+  return NetworkControlUpdate();
+}
+
+NetworkControlUpdate PccNetworkController::OnNetworkStateEstimate(
+    NetworkStateEstimate msg) {
   return NetworkControlUpdate();
 }
 

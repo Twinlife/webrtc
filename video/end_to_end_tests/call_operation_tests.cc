@@ -8,6 +8,7 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include <memory>
 #include "api/test/simulated_network.h"
 #include "call/fake_network_pipe.h"
 #include "call/simulated_network.h"
@@ -20,23 +21,9 @@
 
 namespace webrtc {
 
-class CallOperationEndToEndTest
-    : public test::CallTest,
-      public testing::WithParamInterface<std::string> {
- public:
-  CallOperationEndToEndTest() : field_trial_(GetParam()) {}
+class CallOperationEndToEndTest : public test::CallTest {};
 
- private:
-  test::ScopedFieldTrials field_trial_;
-};
-
-INSTANTIATE_TEST_CASE_P(
-    FieldTrials,
-    CallOperationEndToEndTest,
-    ::testing::Values("WebRTC-TaskQueueCongestionControl/Enabled/",
-                      "WebRTC-TaskQueueCongestionControl/Disabled/"));
-
-TEST_P(CallOperationEndToEndTest, ReceiverCanBeStartedTwice) {
+TEST_F(CallOperationEndToEndTest, ReceiverCanBeStartedTwice) {
   CreateCalls();
 
   test::NullTransport transport;
@@ -51,7 +38,7 @@ TEST_P(CallOperationEndToEndTest, ReceiverCanBeStartedTwice) {
   DestroyStreams();
 }
 
-TEST_P(CallOperationEndToEndTest, ReceiverCanBeStoppedTwice) {
+TEST_F(CallOperationEndToEndTest, ReceiverCanBeStoppedTwice) {
   CreateCalls();
 
   test::NullTransport transport;
@@ -66,7 +53,7 @@ TEST_P(CallOperationEndToEndTest, ReceiverCanBeStoppedTwice) {
   DestroyStreams();
 }
 
-TEST_P(CallOperationEndToEndTest, ReceiverCanBeStoppedAndRestarted) {
+TEST_F(CallOperationEndToEndTest, ReceiverCanBeStoppedAndRestarted) {
   CreateCalls();
 
   test::NullTransport transport;
@@ -82,7 +69,7 @@ TEST_P(CallOperationEndToEndTest, ReceiverCanBeStoppedAndRestarted) {
   DestroyStreams();
 }
 
-TEST_P(CallOperationEndToEndTest, RendersSingleDelayedFrame) {
+TEST_F(CallOperationEndToEndTest, RendersSingleDelayedFrame) {
   static const int kWidth = 320;
   static const int kHeight = 240;
   // This constant is chosen to be higher than the timeout in the video_render
@@ -110,17 +97,17 @@ TEST_P(CallOperationEndToEndTest, RendersSingleDelayedFrame) {
                         &receiver_transport]() {
     CreateCalls();
 
-    sender_transport = absl::make_unique<test::DirectTransport>(
+    sender_transport = std::make_unique<test::DirectTransport>(
         &task_queue_,
-        absl::make_unique<FakeNetworkPipe>(Clock::GetRealTimeClock(),
-                                           absl::make_unique<SimulatedNetwork>(
-                                               BuiltInNetworkBehaviorConfig())),
+        std::make_unique<FakeNetworkPipe>(
+            Clock::GetRealTimeClock(),
+            std::make_unique<SimulatedNetwork>(BuiltInNetworkBehaviorConfig())),
         sender_call_.get(), payload_type_map_);
-    receiver_transport = absl::make_unique<test::DirectTransport>(
+    receiver_transport = std::make_unique<test::DirectTransport>(
         &task_queue_,
-        absl::make_unique<FakeNetworkPipe>(Clock::GetRealTimeClock(),
-                                           absl::make_unique<SimulatedNetwork>(
-                                               BuiltInNetworkBehaviorConfig())),
+        std::make_unique<FakeNetworkPipe>(
+            Clock::GetRealTimeClock(),
+            std::make_unique<SimulatedNetwork>(BuiltInNetworkBehaviorConfig())),
         receiver_call_.get(), payload_type_map_);
     sender_transport->SetReceiver(receiver_call_->Receiver());
     receiver_transport->SetReceiver(sender_call_->Receiver());
@@ -156,7 +143,7 @@ TEST_P(CallOperationEndToEndTest, RendersSingleDelayedFrame) {
   });
 }
 
-TEST_P(CallOperationEndToEndTest, TransmitsFirstFrame) {
+TEST_F(CallOperationEndToEndTest, TransmitsFirstFrame) {
   class Renderer : public rtc::VideoSinkInterface<VideoFrame> {
    public:
     void OnFrame(const VideoFrame& video_frame) override { event_.Set(); }
@@ -176,17 +163,17 @@ TEST_P(CallOperationEndToEndTest, TransmitsFirstFrame) {
                         &sender_transport, &receiver_transport]() {
     CreateCalls();
 
-    sender_transport = absl::make_unique<test::DirectTransport>(
+    sender_transport = std::make_unique<test::DirectTransport>(
         &task_queue_,
-        absl::make_unique<FakeNetworkPipe>(Clock::GetRealTimeClock(),
-                                           absl::make_unique<SimulatedNetwork>(
-                                               BuiltInNetworkBehaviorConfig())),
+        std::make_unique<FakeNetworkPipe>(
+            Clock::GetRealTimeClock(),
+            std::make_unique<SimulatedNetwork>(BuiltInNetworkBehaviorConfig())),
         sender_call_.get(), payload_type_map_);
-    receiver_transport = absl::make_unique<test::DirectTransport>(
+    receiver_transport = std::make_unique<test::DirectTransport>(
         &task_queue_,
-        absl::make_unique<FakeNetworkPipe>(Clock::GetRealTimeClock(),
-                                           absl::make_unique<SimulatedNetwork>(
-                                               BuiltInNetworkBehaviorConfig())),
+        std::make_unique<FakeNetworkPipe>(
+            Clock::GetRealTimeClock(),
+            std::make_unique<SimulatedNetwork>(BuiltInNetworkBehaviorConfig())),
         receiver_call_.get(), payload_type_map_);
     sender_transport->SetReceiver(receiver_call_->Receiver());
     receiver_transport->SetReceiver(sender_call_->Receiver());
