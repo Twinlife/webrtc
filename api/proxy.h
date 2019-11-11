@@ -53,11 +53,20 @@
 #define API_PROXY_H_
 
 #include <memory>
+#include <string>
 #include <utility>
 
+#include "api/scoped_refptr.h"
 #include "rtc_base/event.h"
-#include "rtc_base/refcountedobject.h"
+#include "rtc_base/message_handler.h"
+#include "rtc_base/message_queue.h"
+#include "rtc_base/ref_counted_object.h"
+#include "rtc_base/system/rtc_export.h"
 #include "rtc_base/thread.h"
+
+namespace rtc {
+class Location;
+}
 
 namespace webrtc {
 
@@ -132,8 +141,8 @@ class ReturnType<void> {
 
 namespace internal {
 
-class SynchronousMethodCall : public rtc::MessageData,
-                              public rtc::MessageHandler {
+class RTC_EXPORT SynchronousMethodCall : public rtc::MessageData,
+                                         public rtc::MessageHandler {
  public:
   explicit SynchronousMethodCall(rtc::MessageHandler* proxy);
   ~SynchronousMethodCall() override;

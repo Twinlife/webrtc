@@ -111,24 +111,24 @@ AudioStreamingJni::AudioStreamingJni(AudioManager* audio_manager)
           "<init>", "(J)V", PointerTojlong(this))));
   // Detach from this thread since we want to use the checker to verify calls
   // from the Java based audio thread.
-  thread_checker_java_.DetachFromThread();
+  thread_checker_java_.Detach();
 }
 
 AudioStreamingJni::~AudioStreamingJni() {
   ALOGD("~dtor%s", GetThreadInfo().c_str());
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   Terminate();
 }
 
 int32_t AudioStreamingJni::Init() {
   ALOGD("Init%s", GetThreadInfo().c_str()); 
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   return 0;
 }
 
 int32_t AudioStreamingJni::Terminate() {
   ALOGD("Terminate%s", GetThreadInfo().c_str());
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   StopRecording();
   return 0;
 }
@@ -140,7 +140,7 @@ bool AudioStreamingJni::IsAudioStreamingModeEnabled() {
 
 int32_t AudioStreamingJni::InitRecording() {
   ALOGD("InitRecording%s", GetThreadInfo().c_str());
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   RTC_DCHECK(!initialized_);
   RTC_DCHECK(!recording_);
   int frames_per_buffer = j_audio_streaming_->InitRecording(
@@ -161,7 +161,7 @@ int32_t AudioStreamingJni::InitRecording() {
 
 int32_t AudioStreamingJni::StartRecording() {
   ALOGD("StartRecording%s", GetThreadInfo().c_str());
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   RTC_DCHECK(initialized_);
   RTC_DCHECK(!recording_);
   if (!j_audio_streaming_->StartRecording()) {
@@ -174,7 +174,7 @@ int32_t AudioStreamingJni::StartRecording() {
 
 int32_t AudioStreamingJni::StopRecording() {
   ALOGD("StopRecording%s", GetThreadInfo().c_str());
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   if (!initialized_ || !recording_) {
     return 0;
   }
@@ -185,7 +185,7 @@ int32_t AudioStreamingJni::StopRecording() {
   // If we don't detach here, we will hit a RTC_DCHECK in OnDataIsRecorded()
   // next time StartRecording() is called since it will create a new Java
   // thread.
-  thread_checker_java_.DetachFromThread();
+  thread_checker_java_.Detach();
   initialized_ = false;
   recording_ = false;
   direct_buffer_address_= nullptr;
@@ -194,13 +194,13 @@ int32_t AudioStreamingJni::StopRecording() {
 
 void AudioStreamingJni::AttachAudioBuffer(AudioDeviceBuffer* audioBuffer) {
   ALOGD("AttachAudioBuffer");
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   audio_device_buffer_ = audioBuffer;
 }
 
 int32_t AudioStreamingJni::EnableBuiltInAEC(bool enable) {
   ALOGD("EnableBuiltInAEC%s", GetThreadInfo().c_str());
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   return -1;
 }
 
@@ -212,7 +212,7 @@ int32_t AudioStreamingJni::EnableBuiltInAGC(bool enable) {
 
 int32_t AudioStreamingJni::EnableBuiltInNS(bool enable) {
   ALOGD("EnableBuiltInNS%s", GetThreadInfo().c_str());
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   return -1;
 }
 
@@ -226,7 +226,7 @@ void JNICALL AudioStreamingJni::CacheDirectBufferAddress(
 void AudioStreamingJni::OnCacheDirectBufferAddress(
     JNIEnv* env, jobject byte_buffer) {
   ALOGD("OnCacheDirectBufferAddress");
-  RTC_DCHECK(thread_checker_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_.IsCurrent());
   RTC_DCHECK(!direct_buffer_address_);
   direct_buffer_address_ =
       env->GetDirectBufferAddress(byte_buffer);
@@ -245,7 +245,7 @@ void JNICALL AudioStreamingJni::DataIsRecorded(
 // This method is called on a high-priority thread from Java. The name of
 // the thread is 'AudioStreamingThread'.
 void AudioStreamingJni::OnDataIsRecorded(int length) {
-  RTC_DCHECK(thread_checker_java_.CalledOnValidThread());
+  RTC_DCHECK(thread_checker_java_.IsCurrent());
   if (!audio_device_buffer_) {
     ALOGE("AttachAudioBuffer has not been called!");
     return;

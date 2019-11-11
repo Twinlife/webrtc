@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2015-2017 twinlife SA.
+ *  Copyright (c) 2015-2019 twinlife SA.
  *
  *  All Rights Reserved.
  *  
@@ -129,7 +129,7 @@ class AudioStreamingJni {
 
   // Calls AttachCurrentThread() if this thread is not attached at construction.
   // Also ensures that DetachCurrentThread() is called at destruction.
-  AttachCurrentThreadIfNeeded attach_thread_if_needed_;
+  JvmThreadConnector attach_thread_if_needed_;
 
   // Wraps the JNI interface pointer and methods associated with it.
   std::unique_ptr<JNIEnvironment> j_environment_;
