@@ -1548,6 +1548,15 @@ bool PhysicalSocketServer::WaitSelect(int cmsWait, bool process_io) {
         // "select"ing a file descriptor that is equal to or larger than
         // FD_SETSIZE will result in undefined behavior.
         RTC_DCHECK_LT(fd, FD_SETSIZE);
+	// --twinlife-- 2020-01-10
+	// File descriptor is too big for select, ignore it to avoid crashing.
+	// At the same time, close that descriptor, there is nothing we can do with it.
+	if (fd >= FD_SETSIZE) {
+	  RTC_LOG(WARNING) << "Closing fd out of range: " << fd;
+	  close(fd);
+	  continue;
+	}
+	// --twinlife-- 2020-01-10
         if (fd > fdmax)
           fdmax = fd;
 
@@ -1590,6 +1599,14 @@ bool PhysicalSocketServer::WaitSelect(int cmsWait, bool process_io) {
         Dispatcher* pdispatcher = dispatcher_by_key_.at(key);
 
         int fd = pdispatcher->GetDescriptor();
+	// --twinlife-- 2020-01-10
+	// Descriptor is too big for select() and was closed before the select.
+	// Trigger some read/write actions so that we detect and handle the close through error handling.
+	if (fd >= FD_SETSIZE) {
+	  ProcessEvents(pdispatcher, true, true, false);
+	  continue;
+	}
+	// --twinlife-- 2020-01-10
 
         bool readable = FD_ISSET(fd, &fdsRead);
         if (readable) {
