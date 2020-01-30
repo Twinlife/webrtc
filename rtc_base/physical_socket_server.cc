@@ -1550,10 +1550,10 @@ bool PhysicalSocketServer::WaitSelect(int cmsWait, bool process_io) {
         RTC_DCHECK_LT(fd, FD_SETSIZE);
 	// --twinlife-- 2020-01-10
 	// File descriptor is too big for select, ignore it to avoid crashing.
-	// At the same time, close that descriptor, there is nothing we can do with it.
+	// We can't close it because we may get an exception due to iOS guards.
+	// We rely on P2P connection timeouts to cleanup these descriptors that we cannot use.
 	if (fd >= FD_SETSIZE) {
-	  RTC_LOG(WARNING) << "Closing fd out of range: " << fd;
-	  close(fd);
+	  RTC_LOG(WARNING) << "Ignoring fd out of range: " << fd;
 	  continue;
 	}
 	// --twinlife-- 2020-01-10
@@ -1600,10 +1600,8 @@ bool PhysicalSocketServer::WaitSelect(int cmsWait, bool process_io) {
 
         int fd = pdispatcher->GetDescriptor();
 	// --twinlife-- 2020-01-10
-	// Descriptor is too big for select() and was closed before the select.
-	// Trigger some read/write actions so that we detect and handle the close through error handling.
+	// Descriptor is too big for select() and was ignored.
 	if (fd >= FD_SETSIZE) {
-	  ProcessEvents(pdispatcher, true, true, false);
 	  continue;
 	}
 	// --twinlife-- 2020-01-10
