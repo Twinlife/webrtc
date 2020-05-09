@@ -22,7 +22,6 @@
 #include "api/crypto/frame_encryptor_interface.h"
 #include "api/function_view.h"
 #include "api/rtc_event_log/rtc_event_log.h"
-#include "api/transport/media/media_transport_config.h"
 #include "audio/audio_state.h"
 #include "audio/channel_send.h"
 #include "audio/conversion.h"
@@ -33,6 +32,7 @@
 #include "logging/rtc_event_log/rtc_stream_config.h"
 #include "modules/audio_coding/codecs/cng/audio_encoder_cng.h"
 #include "modules/audio_processing/include/audio_processing.h"
+#include "modules/rtp_rtcp/source/rtp_header_extensions.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/event.h"
 #include "rtc_base/logging.h"
@@ -42,10 +42,6 @@
 
 namespace webrtc {
 namespace {
-// TODO(eladalon): Subsequent CL will make these values experiment-dependent.
-constexpr size_t kPacketLossTrackerMaxWindowSizeMs = 15000;
-constexpr size_t kPacketLossRateMinNumAckedPackets = 50;
-constexpr size_t kRecoverablePacketLossRateMinNumAckedPairs = 40;
 
 void UpdateEventLogStreamConfig(RtcEventLog* event_log,
                                 const AudioSendStream::Config& config,
@@ -118,13 +114,10 @@ AudioSendStream::AudioSendStream(
                       rtp_transport,
                       bitrate_allocator,
                       event_log,
-                      rtcp_rtt_stats,
                       suspended_rtp_state,
                       voe::CreateChannelSend(clock,
                                              task_queue_factory,
                                              module_process_thread,
-                                             config.media_transport_config,
-                                             /*overhead_observer=*/this,
                                              config.send_transport,
                                              rtcp_rtt_stats,
                                              event_log,
@@ -132,7 +125,8 @@ AudioSendStream::AudioSendStream(
                                              config.crypto_options,
                                              config.rtp.extmap_allow_mixed,
                                              config.rtcp_report_interval_ms,
-                                             config.rtp.ssrc)) {}
+                                             config.rtp.ssrc,
+                                             config.frame_transformer)) {}
 
 AudioSendStream::AudioSendStream(
     Clock* clock,
@@ -142,7 +136,6 @@ AudioSendStream::AudioSendStream(
     RtpTransportControllerSendInterface* rtp_transport,
     BitrateAllocatorInterface* bitrate_allocator,
     RtcEventLog* event_log,
-    RtcpRttStats* rtcp_rtt_stats,
     const absl::optional<RtpState>& suspended_rtp_state,
     std::unique_ptr<voe::ChannelSendInterface> channel_send)
     : clock_(clock),
@@ -154,56 +147,34 @@ AudioSendStream::AudioSendStream(
           !field_trial::IsDisabled("WebRTC-Audio-AlrProbing")),
       send_side_bwe_with_overhead_(
           field_trial::IsEnabled("WebRTC-SendSideBwe-WithOverhead")),
-      config_(Config(/*send_transport=*/nullptr, MediaTransportConfig())),
+      config_(Config(/*send_transport=*/nullptr)),
       audio_state_(audio_state),
       channel_send_(std::move(channel_send)),
       event_log_(event_log),
       use_legacy_overhead_calculation_(
-          !field_trial::IsDisabled("WebRTC-Audio-LegacyOverhead")),
+          field_trial::IsEnabled("WebRTC-Audio-LegacyOverhead")),
       bitrate_allocator_(bitrate_allocator),
       rtp_transport_(rtp_transport),
-      packet_loss_tracker_(kPacketLossTrackerMaxWindowSizeMs,
-                           kPacketLossRateMinNumAckedPackets,
-                           kRecoverablePacketLossRateMinNumAckedPairs),
-      rtp_rtcp_module_(nullptr),
+      rtp_rtcp_module_(channel_send_->GetRtpRtcp()),
       suspended_rtp_state_(suspended_rtp_state) {
   RTC_LOG(LS_INFO) << "AudioSendStream: " << config.rtp.ssrc;
   RTC_DCHECK(worker_queue_);
   RTC_DCHECK(audio_state_);
   RTC_DCHECK(channel_send_);
   RTC_DCHECK(bitrate_allocator_);
-  // Currently we require the rtp transport even when media transport is used.
   RTC_DCHECK(rtp_transport);
 
-  // TODO(nisse): Eventually, we should have only media_transport. But for the
-  // time being, we can have either. When media transport is injected, there
-  // should be no rtp_transport, and below check should be strengthened to XOR
-  // (either rtp_transport or media_transport but not both).
-  RTC_DCHECK(rtp_transport || config.media_transport_config.media_transport);
-  if (config.media_transport_config.media_transport) {
-    // TODO(sukhanov): Currently media transport audio overhead is considered
-    // constant, we will not get overhead_observer calls when using
-    // media_transport. In the future when we introduce RTP media transport we
-    // should make audio overhead interface consistent and work for both RTP and
-    // non-RTP implementations.
-    audio_overhead_per_packet_bytes_ =
-        config.media_transport_config.media_transport->GetAudioPacketOverhead();
-  }
-  rtp_rtcp_module_ = channel_send_->GetRtpRtcp();
   RTC_DCHECK(rtp_rtcp_module_);
 
   ConfigureStream(config, true);
 
   pacer_thread_checker_.Detach();
-  // Signal congestion controller this object is ready for OnPacket* callbacks.
-  rtp_transport_->RegisterPacketFeedbackObserver(this);
 }
 
 AudioSendStream::~AudioSendStream() {
   RTC_DCHECK(worker_thread_checker_.IsCurrent());
   RTC_LOG(LS_INFO) << "~AudioSendStream: " << config_.rtp.ssrc;
   RTC_DCHECK(!sending_);
-  rtp_transport_->DeRegisterPacketFeedbackObserver(this);
   channel_send_->ResetSenderCongestionControlObjects();
   // Blocking call to synchronize state with worker queue to ensure that there
   // are no pending tasks left that keeps references to audio.
@@ -239,6 +210,8 @@ AudioSendStream::ExtensionIds AudioSendStream::FindExtensionIds(
       ids.rid = extension.id;
     } else if (extension.uri == RtpExtension::kRepairedRidUri) {
       ids.repaired_rid = extension.id;
+    } else if (extension.uri == RtpExtension::kAbsoluteCaptureTimeUri) {
+      ids.abs_capture_time = extension.id;
     }
   }
   return ids;
@@ -258,8 +231,6 @@ void AudioSendStream::ConfigureStream(
 
   const auto& old_config = config_;
 
-  config_cs_.Enter();
-
   // Configuration parameters which cannot be changed.
   RTC_DCHECK(first_time ||
              old_config.send_transport == new_config.send_transport);
@@ -277,14 +248,18 @@ void AudioSendStream::ConfigureStream(
   }
 
   if (first_time ||
+      new_config.frame_transformer != old_config.frame_transformer) {
+    channel_send_->SetEncoderToPacketizerFrameTransformer(
+        new_config.frame_transformer);
+  }
+
+  if (first_time ||
       new_config.rtp.extmap_allow_mixed != old_config.rtp.extmap_allow_mixed) {
-    channel_send_->SetExtmapAllowMixed(new_config.rtp.extmap_allow_mixed);
+    rtp_rtcp_module_->SetExtmapAllowMixed(new_config.rtp.extmap_allow_mixed);
   }
 
   const ExtensionIds old_ids = FindExtensionIds(old_config.rtp.extensions);
   const ExtensionIds new_ids = FindExtensionIds(new_config.rtp.extensions);
-
-  config_cs_.Leave();
 
   // Audio level indication
   if (first_time || new_ids.audio_level != old_ids.audio_level) {
@@ -293,7 +268,7 @@ void AudioSendStream::ConfigureStream(
   }
 
   if (first_time || new_ids.abs_send_time != old_ids.abs_send_time) {
-    channel_send_->GetRtpRtcp()->DeregisterSendRtpHeaderExtension(
+    rtp_rtcp_module_->DeregisterSendRtpHeaderExtension(
         kRtpExtensionAbsoluteSendTime);
     if (new_ids.abs_send_time) {
       rtp_rtcp_module_->RegisterRtpHeaderExtension(AbsoluteSendTime::kUri,
@@ -313,8 +288,8 @@ void AudioSendStream::ConfigureStream(
 
     if (audio_send_side_bwe_ && !allocate_audio_without_feedback_ &&
         new_ids.transport_sequence_number != 0) {
-      channel_send_->EnableSendTransportSequenceNumber(
-          new_ids.transport_sequence_number);
+      rtp_rtcp_module_->RegisterRtpHeaderExtension(
+          TransportSequenceNumber::kUri, new_ids.transport_sequence_number);
       // Probing in application limited region is only used in combination with
       // send side congestion control, wich depends on feedback packets which
       // requires transport sequence numbers to be enabled.
@@ -328,31 +303,66 @@ void AudioSendStream::ConfigureStream(
     channel_send_->RegisterSenderCongestionControlObjects(rtp_transport_,
                                                           bandwidth_observer);
   }
-  config_cs_.Enter();
   // MID RTP header extension.
   if ((first_time || new_ids.mid != old_ids.mid ||
        new_config.rtp.mid != old_config.rtp.mid) &&
       new_ids.mid != 0 && !new_config.rtp.mid.empty()) {
-    channel_send_->SetMid(new_config.rtp.mid, new_ids.mid);
+    rtp_rtcp_module_->RegisterRtpHeaderExtension(RtpMid::kUri, new_ids.mid);
+    rtp_rtcp_module_->SetMid(new_config.rtp.mid);
   }
 
   // RID RTP header extension
   if ((first_time || new_ids.rid != old_ids.rid ||
        new_ids.repaired_rid != old_ids.repaired_rid ||
        new_config.rtp.rid != old_config.rtp.rid)) {
-    channel_send_->SetRid(new_config.rtp.rid, new_ids.rid,
-                          new_ids.repaired_rid);
+    if (new_ids.rid != 0 || new_ids.repaired_rid != 0) {
+      if (new_config.rtp.rid.empty()) {
+        rtp_rtcp_module_->DeregisterSendRtpHeaderExtension(RtpStreamId::kUri);
+      } else if (new_ids.repaired_rid != 0) {
+        rtp_rtcp_module_->RegisterRtpHeaderExtension(RtpStreamId::kUri,
+                                                     new_ids.repaired_rid);
+      } else {
+        rtp_rtcp_module_->RegisterRtpHeaderExtension(RtpStreamId::kUri,
+                                                     new_ids.rid);
+      }
+    }
+    rtp_rtcp_module_->SetRid(new_config.rtp.rid);
+  }
+
+  if (first_time || new_ids.abs_capture_time != old_ids.abs_capture_time) {
+    rtp_rtcp_module_->DeregisterSendRtpHeaderExtension(
+        kRtpExtensionAbsoluteCaptureTime);
+    if (new_ids.abs_capture_time) {
+      rtp_rtcp_module_->RegisterRtpHeaderExtension(
+          AbsoluteCaptureTimeExtension::kUri, new_ids.abs_capture_time);
+    }
   }
 
   if (!ReconfigureSendCodec(new_config)) {
     RTC_LOG(LS_ERROR) << "Failed to set up send codec state.";
   }
 
+  // Set currently known overhead (used in ANA, opus only).
+  {
+    rtc::CritScope cs(&overhead_per_packet_lock_);
+    UpdateOverheadForEncoder();
+  }
+
+  channel_send_->CallEncoder([this](AudioEncoder* encoder) {
+    if (!encoder) {
+      return;
+    }
+    worker_queue_->PostTask(
+        [this, length_range = encoder->GetFrameLengthRange()] {
+          RTC_DCHECK_RUN_ON(worker_queue_);
+          frame_length_range_ = length_range;
+        });
+  });
+
   if (sending_) {
     ReconfigureBitrateObserver(new_config);
   }
   config_ = new_config;
-  config_cs_.Leave();
 }
 
 void AudioSendStream::Start() {
@@ -364,6 +374,8 @@ void AudioSendStream::Start() {
       config_.max_bitrate_bps != -1 &&
       (allocate_audio_without_feedback_ || TransportSeqNumId(config_) != 0)) {
     rtp_transport_->AccountForAudioPacketsInPacedSender(true);
+    if (send_side_bwe_with_overhead_)
+      rtp_transport_->IncludeOverheadInPacedSender();
     rtp_rtcp_module_->SetAsPartOfAllocation(true);
     rtc::Event thread_sync_event;
     worker_queue_->PostTask([&] {
@@ -481,9 +493,11 @@ webrtc::AudioSendStream::Stats AudioSendStream::GetStats(
 
   stats.typing_noise_detected = audio_state()->typing_noise_detected();
   stats.ana_statistics = channel_send_->GetANAStatistics();
-  RTC_DCHECK(audio_state_->audio_processing());
-  stats.apm_statistics =
-      audio_state_->audio_processing()->GetStatistics(has_remote_tracks);
+
+  AudioProcessing* ap = audio_state_->audio_processing();
+  if (ap) {
+    stats.apm_statistics = ap->GetStatistics(has_remote_tracks);
+  }
 
   stats.report_block_datas = std::move(call_stats.report_block_datas);
 
@@ -496,15 +510,23 @@ void AudioSendStream::DeliverRtcp(const uint8_t* packet, size_t length) {
   // thread. Then this check can be enabled.
   // RTC_DCHECK(!worker_thread_checker_.IsCurrent());
   channel_send_->ReceivedRTCPPacket(packet, length);
+  worker_queue_->PostTask([&]() {
+    // Poll if overhead has changed, which it can do if ack triggers us to stop
+    // sending mid/rid.
+    rtc::CritScope cs(&overhead_per_packet_lock_);
+    UpdateOverheadForEncoder();
+  });
 }
 
 uint32_t AudioSendStream::OnBitrateUpdated(BitrateAllocationUpdate update) {
   RTC_DCHECK_RUN_ON(worker_queue_);
+
   // Pick a target bitrate between the constraints. Overrules the allocator if
   // it 1) allocated a bitrate of zero to disable the stream or 2) allocated a
   // higher than max to allow for e.g. extra FEC.
   auto constraints = GetMinMaxBitrateConstraints();
   update.target_bitrate.Clamp(constraints.min, constraints.max);
+  update.stable_target_bitrate.Clamp(constraints.min, constraints.max);
 
   channel_send_->OnBitrateAllocation(update);
 
@@ -513,57 +535,11 @@ uint32_t AudioSendStream::OnBitrateUpdated(BitrateAllocationUpdate update) {
   return 0;
 }
 
-void AudioSendStream::OnPacketAdded(uint32_t ssrc, uint16_t seq_num) {
-  RTC_DCHECK(pacer_thread_checker_.IsCurrent());
-  // Only packets that belong to this stream are of interest.
-  bool same_ssrc;
-  {
-    rtc::CritScope lock(&config_cs_);
-    same_ssrc = ssrc == config_.rtp.ssrc;
-  }
-  if (same_ssrc) {
-    rtc::CritScope lock(&packet_loss_tracker_cs_);
-    // TODO(eladalon): This function call could potentially reset the window,
-    // setting both PLR and RPLR to unknown. Consider (during upcoming
-    // refactoring) passing an indication of such an event.
-    packet_loss_tracker_.OnPacketAdded(seq_num, clock_->TimeInMilliseconds());
-  }
-}
-
-void AudioSendStream::OnPacketFeedbackVector(
-    const std::vector<PacketFeedback>& packet_feedback_vector) {
-  RTC_DCHECK(worker_thread_checker_.IsCurrent());
-  absl::optional<float> plr;
-  absl::optional<float> rplr;
-  {
-    rtc::CritScope lock(&packet_loss_tracker_cs_);
-    packet_loss_tracker_.OnPacketFeedbackVector(packet_feedback_vector);
-    plr = packet_loss_tracker_.GetPacketLossRate();
-    rplr = packet_loss_tracker_.GetRecoverablePacketLossRate();
-  }
-  // TODO(eladalon): If R/PLR go back to unknown, no indication is given that
-  // the previously sent value is no longer relevant. This will be taken care
-  // of with some refactoring which is now being done.
-  if (plr) {
-    channel_send_->OnTwccBasedUplinkPacketLossRate(*plr);
-  }
-  if (rplr) {
-    channel_send_->OnRecoverableUplinkPacketLossRate(*rplr);
-  }
-}
-
 void AudioSendStream::SetTransportOverhead(
     int transport_overhead_per_packet_bytes) {
   RTC_DCHECK(worker_thread_checker_.IsCurrent());
   rtc::CritScope cs(&overhead_per_packet_lock_);
   transport_overhead_per_packet_bytes_ = transport_overhead_per_packet_bytes;
-  UpdateOverheadForEncoder();
-}
-
-void AudioSendStream::OnOverheadChanged(
-    size_t overhead_bytes_per_packet_bytes) {
-  rtc::CritScope cs(&overhead_per_packet_lock_);
-  audio_overhead_per_packet_bytes_ = overhead_bytes_per_packet_bytes;
   UpdateOverheadForEncoder();
 }
 
@@ -575,7 +551,7 @@ void AudioSendStream::UpdateOverheadForEncoder() {
   channel_send_->CallEncoder([&](AudioEncoder* encoder) {
     encoder->OnReceivedOverhead(overhead_per_packet_bytes);
   });
-  worker_queue_->PostTask([this, overhead_per_packet_bytes] {
+  auto update_task = [this, overhead_per_packet_bytes] {
     RTC_DCHECK_RUN_ON(worker_queue_);
     if (total_packet_overhead_bytes_ != overhead_per_packet_bytes) {
       total_packet_overhead_bytes_ = overhead_per_packet_bytes;
@@ -583,7 +559,12 @@ void AudioSendStream::UpdateOverheadForEncoder() {
         ConfigureBitrateObserver();
       }
     }
-  });
+  };
+  if (worker_queue_->IsCurrent()) {
+    update_task();
+  } else {
+    worker_queue_->PostTask(update_task);
+  }
 }
 
 size_t AudioSendStream::TestOnlyGetPerPacketOverheadBytes() const {
@@ -593,7 +574,7 @@ size_t AudioSendStream::TestOnlyGetPerPacketOverheadBytes() const {
 
 size_t AudioSendStream::GetPerPacketOverheadBytes() const {
   return transport_overhead_per_packet_bytes_ +
-         audio_overhead_per_packet_bytes_;
+         rtp_rtcp_module_->ExpectedPerPacketOverhead();
 }
 
 RtpState AudioSendStream::GetRtpState() const {
@@ -658,7 +639,8 @@ bool AudioSendStream::SetupSendCodec(const Config& new_config) {
       RTC_DLOG(LS_INFO) << "Audio network adaptor enabled on SSRC "
                         << new_config.rtp.ssrc;
     } else {
-      RTC_NOTREACHED();
+      RTC_DLOG(LS_INFO) << "Failed to enable Audio network adaptor on SSRC "
+                        << new_config.rtp.ssrc;
     }
   }
 
@@ -679,15 +661,11 @@ bool AudioSendStream::SetupSendCodec(const Config& new_config) {
   // If overhead changes later, it will be updated in UpdateOverheadForEncoder.
   {
     rtc::CritScope cs(&overhead_per_packet_lock_);
-    if (GetPerPacketOverheadBytes() > 0) {
-      encoder->OnReceivedOverhead(GetPerPacketOverheadBytes());
+    size_t overhead = GetPerPacketOverheadBytes();
+    if (overhead > 0) {
+      encoder->OnReceivedOverhead(overhead);
     }
   }
-  worker_queue_->PostTask(
-      [this, length_range = encoder->GetFrameLengthRange()] {
-        RTC_DCHECK_RUN_ON(worker_queue_);
-        frame_length_range_ = length_range;
-      });
 
   StoreEncoderProperties(encoder->SampleRateHz(), encoder->NumChannels());
   channel_send_->SetEncoder(new_config.send_codec_spec->payload_type,
@@ -737,12 +715,6 @@ bool AudioSendStream::ReconfigureSendCodec(const Config& new_config) {
   ReconfigureANA(new_config);
   ReconfigureCNG(new_config);
 
-  // Set currently known overhead (used in ANA, opus only).
-  {
-    rtc::CritScope cs(&overhead_per_packet_lock_);
-    UpdateOverheadForEncoder();
-  }
-
   return true;
 }
 
@@ -758,7 +730,8 @@ void AudioSendStream::ReconfigureANA(const Config& new_config) {
         RTC_DLOG(LS_INFO) << "Audio network adaptor enabled on SSRC "
                           << new_config.rtp.ssrc;
       } else {
-        RTC_NOTREACHED();
+        RTC_DLOG(LS_INFO) << "Failed to enable Audio network adaptor on SSRC "
+                          << new_config.rtp.ssrc;
       }
     });
   } else {
@@ -819,17 +792,20 @@ void AudioSendStream::ReconfigureBitrateObserver(
       config_.max_bitrate_bps == new_config.max_bitrate_bps &&
       config_.bitrate_priority == new_config.bitrate_priority &&
       (TransportSeqNumId(config_) == TransportSeqNumId(new_config) ||
-       !audio_send_side_bwe_)) {
+       !audio_send_side_bwe_) &&
+      config_.audio_network_adaptor_config ==
+          new_config.audio_network_adaptor_config) {
     return;
   }
 
   if (!new_config.has_dscp && new_config.min_bitrate_bps != -1 &&
       new_config.max_bitrate_bps != -1 && TransportSeqNumId(new_config) != 0) {
     rtp_transport_->AccountForAudioPacketsInPacedSender(true);
+    if (send_side_bwe_with_overhead_)
+      rtp_transport_->IncludeOverheadInPacedSender();
     rtc::Event thread_sync_event;
     worker_queue_->PostTask([&] {
       RTC_DCHECK_RUN_ON(worker_queue_);
-      registered_with_allocator_ = true;
       // We may get a callback immediately as the observer is registered, so
       // make
       // sure the bitrate limits in config_ are up-to-date.
@@ -859,16 +835,16 @@ void AudioSendStream::ConfigureBitrateObserver() {
     if (use_legacy_overhead_calculation_) {
       // OverheadPerPacket = Ipv4(20B) + UDP(8B) + SRTP(10B) + RTP(12)
       constexpr int kOverheadPerPacket = 20 + 8 + 10 + 12;
-      const TimeDelta kMinPacketDuration = TimeDelta::ms(20);
+      const TimeDelta kMinPacketDuration = TimeDelta::Millis(20);
       DataRate max_overhead =
-          DataSize::bytes(kOverheadPerPacket) / kMinPacketDuration;
+          DataSize::Bytes(kOverheadPerPacket) / kMinPacketDuration;
       priority_bitrate += max_overhead;
     } else {
       RTC_DCHECK(frame_length_range_);
-      const DataSize kOverheadPerPacket =
-          DataSize::bytes(total_packet_overhead_bytes_);
-      DataRate max_overhead = kOverheadPerPacket / frame_length_range_->first;
-      priority_bitrate += max_overhead;
+      const DataSize overhead_per_packet =
+          DataSize::Bytes(total_packet_overhead_bytes_);
+      DataRate min_overhead = overhead_per_packet / frame_length_range_->second;
+      priority_bitrate += min_overhead;
     }
   }
   if (allocation_settings_.priority_bitrate_raw)
@@ -881,6 +857,7 @@ void AudioSendStream::ConfigureBitrateObserver() {
           priority_bitrate.bps(), true,
           allocation_settings_.bitrate_priority.value_or(
               config_.bitrate_priority)});
+  registered_with_allocator_ = true;
 }
 
 void AudioSendStream::RemoveBitrateObserver() {
@@ -898,8 +875,8 @@ void AudioSendStream::RemoveBitrateObserver() {
 AudioSendStream::TargetAudioBitrateConstraints
 AudioSendStream::GetMinMaxBitrateConstraints() const {
   TargetAudioBitrateConstraints constraints{
-      DataRate::bps(config_.min_bitrate_bps),
-      DataRate::bps(config_.max_bitrate_bps)};
+      DataRate::BitsPerSec(config_.min_bitrate_bps),
+      DataRate::BitsPerSec(config_.max_bitrate_bps)};
 
   // If bitrates were explicitly overriden via field trial, use those values.
   if (allocation_settings_.min_bitrate)
@@ -913,16 +890,16 @@ AudioSendStream::GetMinMaxBitrateConstraints() const {
   if (send_side_bwe_with_overhead_) {
     if (use_legacy_overhead_calculation_) {
       // OverheadPerPacket = Ipv4(20B) + UDP(8B) + SRTP(10B) + RTP(12)
-      const DataSize kOverheadPerPacket = DataSize::bytes(20 + 8 + 10 + 12);
+      const DataSize kOverheadPerPacket = DataSize::Bytes(20 + 8 + 10 + 12);
       const TimeDelta kMaxFrameLength =
-          TimeDelta::ms(60);  // Based on Opus spec
+          TimeDelta::Millis(60);  // Based on Opus spec
       const DataRate kMinOverhead = kOverheadPerPacket / kMaxFrameLength;
       constraints.min += kMinOverhead;
       constraints.max += kMinOverhead;
     } else {
       RTC_DCHECK(frame_length_range_);
       const DataSize kOverheadPerPacket =
-          DataSize::bytes(total_packet_overhead_bytes_);
+          DataSize::Bytes(total_packet_overhead_bytes_);
       constraints.min += kOverheadPerPacket / frame_length_range_->second;
       constraints.max += kOverheadPerPacket / frame_length_range_->first;
     }

@@ -128,8 +128,8 @@ public class EglRenderer implements VideoSink {
   // paused.
   private long minRenderPeriodNs;
 
-  // EGL and GL resources for drawing YUV/OES textures. After initilization, these are only accessed
-  // from the render thread.
+  // EGL and GL resources for drawing YUV/OES textures. After initialization, these are only
+  // accessed from the render thread.
   @Nullable private EglBase eglBase;
   private final VideoFrameDrawer frameDrawer;
   @Nullable private RendererCommon.GlDrawer drawer;
@@ -290,7 +290,9 @@ public class EglRenderer implements VideoSink {
       // Release EGL and GL resources on render thread.
       renderThreadHandler.postAtFrontOfQueue(() -> {
         // Detach current shader program.
-        GLES20.glUseProgram(/* program= */ 0);
+        synchronized (EglBase.lock) {
+          GLES20.glUseProgram(/* program= */ 0);
+        }
         if (drawer != null) {
           drawer.release();
           drawer = null;
@@ -755,7 +757,7 @@ public class EglRenderer implements VideoSink {
     final long currentTimeNs = System.nanoTime();
     synchronized (statisticsLock) {
       final long elapsedTimeNs = currentTimeNs - statisticsStartTimeNs;
-      if (elapsedTimeNs <= 0) {
+      if (elapsedTimeNs <= 0 || (minRenderPeriodNs == Long.MAX_VALUE && framesReceived == 0)) {
         return;
       }
       final float renderFps = framesRendered * TimeUnit.SECONDS.toNanos(1) / (float) elapsedTimeNs;

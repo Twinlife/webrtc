@@ -19,9 +19,10 @@
 #include "absl/strings/match.h"
 #include "api/audio/audio_frame.h"
 #include "api/audio_codecs/audio_decoder.h"
+#include "api/neteq/neteq.h"
 #include "modules/audio_coding/acm2/acm_resampler.h"
 #include "modules/audio_coding/acm2/call_statistics.h"
-#include "modules/audio_coding/neteq/include/neteq.h"
+#include "modules/audio_coding/neteq/default_neteq_factory.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/numerics/safe_conversions.h"
@@ -32,11 +33,27 @@ namespace webrtc {
 
 namespace acm2 {
 
+namespace {
+
+std::unique_ptr<NetEq> CreateNetEq(
+    NetEqFactory* neteq_factory,
+    const NetEq::Config& config,
+    Clock* clock,
+    const rtc::scoped_refptr<AudioDecoderFactory>& decoder_factory) {
+  if (neteq_factory) {
+    return neteq_factory->CreateNetEq(config, decoder_factory, clock);
+  }
+  return DefaultNetEqFactory().CreateNetEq(config, decoder_factory, clock);
+}
+
+}  // namespace
+
 AcmReceiver::AcmReceiver(const AudioCodingModule::Config& config)
     : last_audio_buffer_(new int16_t[AudioFrame::kMaxDataSizeSamples]),
-      neteq_(NetEq::Create(config.neteq_config,
-                           config.clock,
-                           config.decoder_factory)),
+      neteq_(CreateNetEq(config.neteq_factory,
+                         config.neteq_config,
+                         config.clock,
+                         config.decoder_factory)),
       clock_(config.clock),
       resampled_last_output_frame_(true) {
   RTC_DCHECK(clock_);
@@ -255,6 +272,8 @@ void AcmReceiver::GetNetworkStatistics(NetworkStatistics* acm_stat) const {
       neteq_lifetime_stat.silent_concealed_samples;
   acm_stat->concealmentEvents = neteq_lifetime_stat.concealment_events;
   acm_stat->jitterBufferDelayMs = neteq_lifetime_stat.jitter_buffer_delay_ms;
+  acm_stat->jitterBufferTargetDelayMs =
+      neteq_lifetime_stat.jitter_buffer_target_delay_ms;
   acm_stat->jitterBufferEmittedCount =
       neteq_lifetime_stat.jitter_buffer_emitted_count;
   acm_stat->delayedPacketOutageSamples =

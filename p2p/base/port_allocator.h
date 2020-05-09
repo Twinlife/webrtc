@@ -149,7 +149,7 @@ struct RelayCredentials {
 typedef std::vector<ProtocolAddress> PortList;
 // TODO(deadbeef): Rename to TurnServerConfig.
 struct RTC_EXPORT RelayServerConfig {
-  explicit RelayServerConfig(RelayType type);
+  RelayServerConfig();
   RelayServerConfig(const rtc::SocketAddress& address,
                     const std::string& username,
                     const std::string& password,
@@ -170,12 +170,11 @@ struct RTC_EXPORT RelayServerConfig {
   ~RelayServerConfig();
 
   bool operator==(const RelayServerConfig& o) const {
-    return type == o.type && ports == o.ports && credentials == o.credentials &&
+    return ports == o.ports && credentials == o.credentials &&
            priority == o.priority;
   }
   bool operator!=(const RelayServerConfig& o) const { return !(*this == o); }
 
-  RelayType type;
   PortList ports;
   RelayCredentials credentials;
   int priority = 0;
@@ -241,8 +240,6 @@ class RTC_EXPORT PortAllocatorSession : public sigslot::has_slots<> {
   // network. Only if all networks of an interface have no connection, the
   // implementation should start re-gathering on all networks of that interface.
   virtual void RegatherOnFailedNetworks() {}
-  // Re-gathers candidates on all networks.
-  virtual void RegatherOnAllNetworks() {}
   // Get candidate-level stats from all candidates on the ready ports and return
   // the stats to the given list.
   virtual void GetCandidateStatsFromReadyPorts(

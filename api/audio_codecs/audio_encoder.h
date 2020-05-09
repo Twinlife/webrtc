@@ -210,10 +210,7 @@ class AudioEncoder {
   virtual void OnReceivedUplinkPacketLossFraction(
       float uplink_packet_loss_fraction);
 
-  // Provides 1st-order-FEC-recoverable uplink packet loss rate to this encoder
-  // to allow it to adapt.
-  // |uplink_recoverable_packet_loss_fraction| is in the range [0.0, 1.0].
-  virtual void OnReceivedUplinkRecoverablePacketLossFraction(
+  RTC_DEPRECATED virtual void OnReceivedUplinkRecoverablePacketLossFraction(
       float uplink_recoverable_packet_loss_fraction);
 
   // Provides target audio bitrate to this encoder to allow it to adapt.
@@ -247,7 +244,7 @@ class AudioEncoder {
   // information. This is used to calculated the full bitrate range, including
   // overhead.
   virtual absl::optional<std::pair<TimeDelta, TimeDelta>> GetFrameLengthRange()
-      const;
+      const = 0;
 
  protected:
   // Subclasses implement this to perform the actual encoding. Called by

@@ -58,7 +58,7 @@ TEST(RtcpTransceiverTest, SendsRtcpOnTaskQueueWhenCreatedOffTaskQueue) {
   TaskQueueForTest queue("rtcp");
   RtcpTransceiverConfig config;
   config.outgoing_transport = &outgoing_transport;
-  config.task_queue = &queue;
+  config.task_queue = queue.Get();
   EXPECT_CALL(outgoing_transport, SendRtcp(_, _))
       .WillRepeatedly(InvokeWithoutArgs([&] {
         EXPECT_TRUE(queue.IsCurrent());
@@ -75,7 +75,7 @@ TEST(RtcpTransceiverTest, SendsRtcpOnTaskQueueWhenCreatedOnTaskQueue) {
   TaskQueueForTest queue("rtcp");
   RtcpTransceiverConfig config;
   config.outgoing_transport = &outgoing_transport;
-  config.task_queue = &queue;
+  config.task_queue = queue.Get();
   EXPECT_CALL(outgoing_transport, SendRtcp(_, _))
       .WillRepeatedly(InvokeWithoutArgs([&] {
         EXPECT_TRUE(queue.IsCurrent());
@@ -95,7 +95,7 @@ TEST(RtcpTransceiverTest, CanBeDestroyedOnTaskQueue) {
   TaskQueueForTest queue("rtcp");
   RtcpTransceiverConfig config;
   config.outgoing_transport = &outgoing_transport;
-  config.task_queue = &queue;
+  config.task_queue = queue.Get();
   auto rtcp_transceiver = std::make_unique<RtcpTransceiver>(config);
 
   queue.PostTask([&] {
@@ -111,7 +111,7 @@ TEST(RtcpTransceiverTest, CanBeDestroyedWithoutBlocking) {
   NiceMock<MockTransport> outgoing_transport;
   RtcpTransceiverConfig config;
   config.outgoing_transport = &outgoing_transport;
-  config.task_queue = &queue;
+  config.task_queue = queue.Get();
   auto* rtcp_transceiver = new RtcpTransceiver(config);
   rtcp_transceiver->SendCompoundPacket();
 
@@ -132,7 +132,7 @@ TEST(RtcpTransceiverTest, MaySendPacketsAfterDestructor) {  // i.e. Be careful!
   TaskQueueForTest queue("rtcp");
   RtcpTransceiverConfig config;
   config.outgoing_transport = &outgoing_transport;
-  config.task_queue = &queue;
+  config.task_queue = queue.Get();
   auto* rtcp_transceiver = new RtcpTransceiver(config);
 
   rtc::Event heavy_task;
@@ -163,7 +163,7 @@ TEST(RtcpTransceiverTest, DoesntPostToRtcpObserverAfterCallToRemove) {
   TaskQueueForTest queue("rtcp");
   RtcpTransceiverConfig config;
   config.outgoing_transport = &null_transport;
-  config.task_queue = &queue;
+  config.task_queue = queue.Get();
   RtcpTransceiver rtcp_transceiver(config);
   rtc::Event observer_deleted;
 
@@ -190,7 +190,7 @@ TEST(RtcpTransceiverTest, RemoveMediaReceiverRtcpObserverIsNonBlocking) {
   TaskQueueForTest queue("rtcp");
   RtcpTransceiverConfig config;
   config.outgoing_transport = &null_transport;
-  config.task_queue = &queue;
+  config.task_queue = queue.Get();
   RtcpTransceiver rtcp_transceiver(config);
   auto observer = std::make_unique<MockMediaReceiverRtcpObserver>();
   rtcp_transceiver.AddMediaReceiverRtcpObserver(kRemoteSsrc, observer.get());
@@ -214,7 +214,7 @@ TEST(RtcpTransceiverTest, CanCallSendCompoundPacketFromAnyThread) {
   TaskQueueForTest queue("rtcp");
   RtcpTransceiverConfig config;
   config.outgoing_transport = &outgoing_transport;
-  config.task_queue = &queue;
+  config.task_queue = queue.Get();
 
   EXPECT_CALL(outgoing_transport, SendRtcp(_, _))
       // If test is slow, a periodic task may send an extra packet.
@@ -243,7 +243,7 @@ TEST(RtcpTransceiverTest, DoesntSendPacketsAfterStopCallback) {
   TaskQueueForTest queue("rtcp");
   RtcpTransceiverConfig config;
   config.outgoing_transport = &outgoing_transport;
-  config.task_queue = &queue;
+  config.task_queue = queue.Get();
   config.schedule_periodic_compound_packets = true;
 
   auto rtcp_transceiver = std::make_unique<RtcpTransceiver>(config);
@@ -265,7 +265,7 @@ TEST(RtcpTransceiverTest, SendsCombinedRtcpPacketOnTaskQueue) {
   RtcpTransceiverConfig config;
   config.feedback_ssrc = kSenderSsrc;
   config.outgoing_transport = &outgoing_transport;
-  config.task_queue = &queue;
+  config.task_queue = queue.Get();
   config.schedule_periodic_compound_packets = false;
   RtcpTransceiver rtcp_transceiver(config);
 
@@ -291,6 +291,45 @@ TEST(RtcpTransceiverTest, SendsCombinedRtcpPacketOnTaskQueue) {
   packets.push_back(std::move(remote_estimate));
 
   rtcp_transceiver.SendCombinedRtcpPacket(std::move(packets));
+  WaitPostedTasks(&queue);
+}
+
+TEST(RtcpTransceiverTest, SendFrameIntraRequestDefaultsToNewRequest) {
+  static constexpr uint32_t kSenderSsrc = 12345;
+
+  MockTransport outgoing_transport;
+  TaskQueueForTest queue("rtcp");
+  RtcpTransceiverConfig config;
+  config.feedback_ssrc = kSenderSsrc;
+  config.outgoing_transport = &outgoing_transport;
+  config.task_queue = queue.Get();
+  config.schedule_periodic_compound_packets = false;
+  RtcpTransceiver rtcp_transceiver(config);
+
+  uint8_t first_seq_nr;
+  EXPECT_CALL(outgoing_transport, SendRtcp)
+      .WillOnce([&](const uint8_t* buffer, size_t size) {
+        EXPECT_TRUE(queue.IsCurrent());
+        RtcpPacketParser rtcp_parser;
+        rtcp_parser.Parse(buffer, size);
+        EXPECT_EQ(rtcp_parser.fir()->requests()[0].ssrc, kSenderSsrc);
+        first_seq_nr = rtcp_parser.fir()->requests()[0].seq_nr;
+        return true;
+      })
+      .WillOnce([&](const uint8_t* buffer, size_t size) {
+        EXPECT_TRUE(queue.IsCurrent());
+        RtcpPacketParser rtcp_parser;
+        rtcp_parser.Parse(buffer, size);
+        EXPECT_EQ(rtcp_parser.fir()->requests()[0].ssrc, kSenderSsrc);
+        EXPECT_EQ(rtcp_parser.fir()->requests()[0].seq_nr, first_seq_nr + 1);
+        return true;
+      });
+
+  // Send 2 FIR packets because the sequence numbers are incremented after,
+  // sending. One wouldn't be able to differentiate the new_request.
+  rtcp_transceiver.SendFullIntraRequest({kSenderSsrc});
+  rtcp_transceiver.SendFullIntraRequest({kSenderSsrc});
+
   WaitPostedTasks(&queue);
 }
 

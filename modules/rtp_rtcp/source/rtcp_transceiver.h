@@ -16,10 +16,10 @@
 #include <string>
 #include <vector>
 
+#include "api/task_queue/task_queue_base.h"
 #include "modules/rtp_rtcp/source/rtcp_transceiver_config.h"
 #include "modules/rtp_rtcp/source/rtcp_transceiver_impl.h"
 #include "rtc_base/copy_on_write_buffer.h"
-#include "rtc_base/task_queue.h"
 
 namespace webrtc {
 //
@@ -67,7 +67,8 @@ class RtcpTransceiver : public RtcpFeedbackSenderInterface {
   void SendCompoundPacket();
 
   // (REMB) Receiver Estimated Max Bitrate.
-  // Includes REMB in following compound packets.
+  // Includes REMB in following compound packets and sends a REMB message
+  // immediately if 'RtcpTransceiverConfig::send_remb_on_change' is set.
   void SetRemb(int64_t bitrate_bps, std::vector<uint32_t> ssrcs) override;
   // Stops sending REMB in following compound packets.
   void UnsetRemb() override;
@@ -85,10 +86,14 @@ class RtcpTransceiver : public RtcpFeedbackSenderInterface {
   // using PLI, https://tools.ietf.org/html/rfc4585#section-6.3.1.1
   void SendPictureLossIndication(uint32_t ssrc);
   // using FIR, https://tools.ietf.org/html/rfc5104#section-4.3.1.2
+  // Use the SendFullIntraRequest(ssrcs, true) instead.
   void SendFullIntraRequest(std::vector<uint32_t> ssrcs);
+  // If new_request is true then requested sequence no. will increase for each
+  // requested ssrc.
+  void SendFullIntraRequest(std::vector<uint32_t> ssrcs, bool new_request);
 
  private:
-  rtc::TaskQueue* const task_queue_;
+  TaskQueueBase* const task_queue_;
   std::unique_ptr<RtcpTransceiverImpl> rtcp_transceiver_;
 };
 

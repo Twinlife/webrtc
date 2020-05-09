@@ -107,7 +107,9 @@ class AecState {
   }
 
   // Returns whether the transparent mode is active
-  bool TransparentMode() const { return transparent_state_.Active(); }
+  bool TransparentMode() const {
+    return transparent_mode_activated_ && transparent_state_.Active();
+  }
 
   // Takes appropriate action at an echo path change.
   void HandleEchoPathChange(const EchoPathVariability& echo_path_variability);
@@ -127,8 +129,7 @@ class AecState {
   }
 
   // Updates the aec state.
-  // TODO(bugs.webrtc.org/10913): Handle multi-channel adaptive filter response.
-  // TODO(bugs.webrtc.org/10913): Compute multi-channel ERL, ERLE, and reverb.
+  // TODO(bugs.webrtc.org/10913): Compute multi-channel ERL.
   void Update(
       const absl::optional<DelayEstimate>& external_delay,
       rtc::ArrayView<const std::vector<std::array<float, kFftLengthBy2Plus1>>>
@@ -136,7 +137,7 @@ class AecState {
       rtc::ArrayView<const std::vector<float>>
           adaptive_filter_impulse_responses,
       const RenderBuffer& render_buffer,
-      rtc::ArrayView<const std::array<float, kFftLengthBy2Plus1>> E2_main,
+      rtc::ArrayView<const std::array<float, kFftLengthBy2Plus1>> E2_refined,
       rtc::ArrayView<const std::array<float, kFftLengthBy2Plus1>> Y2,
       rtc::ArrayView<const SubtractorOutput> subtractor_output);
 
@@ -150,6 +151,11 @@ class AecState {
   static int instance_count_;
   std::unique_ptr<ApmDataDumper> data_dumper_;
   const EchoCanceller3Config config_;
+  const size_t num_capture_channels_;
+  const bool transparent_mode_activated_;
+  const bool deactivate_initial_state_reset_at_echo_path_change_;
+  const bool full_reset_at_echo_path_change_;
+  const bool subtractor_analyzer_reset_at_echo_path_change_;
 
   // Class for controlling the transition from the intial state, which in turn
   // controls when the filter parameters for the initial state should be used.
@@ -314,7 +320,7 @@ class AecState {
   EchoAudibility echo_audibility_;
   ReverbModelEstimator reverb_model_estimator_;
   ReverbModel avg_render_reverb_;
-  std::vector<SubtractorOutputAnalyzer> subtractor_output_analyzers_;
+  SubtractorOutputAnalyzer subtractor_output_analyzer_;
 };
 
 }  // namespace webrtc

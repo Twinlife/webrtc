@@ -534,7 +534,6 @@ void RtpHeaderParser::ParseOneByteExtensionHeader(
           break;
         }
         case kRtpExtensionGenericFrameDescriptor00:
-        case kRtpExtensionGenericFrameDescriptor01:
         case kRtpExtensionGenericFrameDescriptor02:
           RTC_LOG(WARNING)
               << "RtpGenericFrameDescriptor unsupported by rtp header parser.";
@@ -542,6 +541,10 @@ void RtpHeaderParser::ParseOneByteExtensionHeader(
         case kRtpExtensionColorSpace:
           RTC_LOG(WARNING)
               << "RtpExtensionColorSpace unsupported by rtp header parser.";
+          break;
+        case kRtpExtensionInbandComfortNoise:
+          RTC_LOG(WARNING) << "Inband comfort noise extension unsupported by "
+                              "rtp header parser.";
           break;
         case kRtpExtensionNone:
         case kRtpExtensionNumberOfExtensions: {

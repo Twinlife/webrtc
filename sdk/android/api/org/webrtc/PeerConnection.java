@@ -382,7 +382,11 @@ public class PeerConnection {
     CELLULAR(1 << 2),
     VPN(1 << 3),
     LOOPBACK(1 << 4),
-    ADAPTER_TYPE_ANY(1 << 5);
+    ADAPTER_TYPE_ANY(1 << 5),
+    CELLULAR_2G(1 << 6),
+    CELLULAR_3G(1 << 7),
+    CELLULAR_4G(1 << 8),
+    CELLULAR_5G(1 << 9);
 
     public final Integer bitMask;
     private AdapterType(Integer bitMask) {
@@ -395,6 +399,7 @@ public class PeerConnection {
       }
     }
 
+    @Nullable
     @CalledByNative("AdapterType")
     static AdapterType fromNativeIndex(int nativeIndex) {
       return BY_BITMASK.get(nativeIndex);
@@ -412,27 +417,6 @@ public class PeerConnection {
     NO_PRUNE, // Do not prune turn port.
     PRUNE_BASED_ON_PRIORITY, // Prune turn port based the priority on the same network
     KEEP_FIRST_READY // Keep the first ready port and prune the rest on the same network.
-  }
-
-  /** Java version of rtc::IntervalRange */
-  public static class IntervalRange {
-    private final int min;
-    private final int max;
-
-    public IntervalRange(int min, int max) {
-      this.min = min;
-      this.max = max;
-    }
-
-    @CalledByNative("IntervalRange")
-    public int getMin() {
-      return min;
-    }
-
-    @CalledByNative("IntervalRange")
-    public int getMax() {
-      return max;
-    }
   }
 
   /**
@@ -524,7 +508,6 @@ public class PeerConnection {
     //
     // Can be set to Integer.MAX_VALUE to effectively disable the limit.
     public int maxIPv6Networks;
-    @Nullable public IntervalRange iceRegatherIntervalRange;
 
     // These values will be overridden by MediaStream constraints if deprecated constraints-based
     // create peerconnection interface is used.
@@ -547,6 +530,11 @@ public class PeerConnection {
     // Actively reset the SRTP parameters whenever the DTLS transports underneath are reset for
     // every offer/answer negotiation.This is only intended to be a workaround for crbug.com/835958
     public boolean activeResetSrtpParams;
+
+    // Whether this client is allowed to switch encoding codec mid-stream. This is a workaround for
+    // a WebRTC bug where the receiver could get confussed if a codec switch happened mid-call.
+    // Null indicates no change to currently configured value.
+    @Nullable public Boolean allowCodecSwitching;
 
     /*
      * Experimental flag that enables a use of media transport. If this is true, the media transport
@@ -603,7 +591,6 @@ public class PeerConnection {
       stunCandidateKeepaliveIntervalMs = null;
       disableIPv6OnWifi = false;
       maxIPv6Networks = 5;
-      iceRegatherIntervalRange = null;
       disableIpv6 = false;
       enableDscp = false;
       enableCpuOveruseDetection = true;
@@ -619,6 +606,7 @@ public class PeerConnection {
       useMediaTransportForDataChannels = false;
       cryptoOptions = null;
       turnLoggingId = null;
+      allowCodecSwitching = null;
     }
 
     @CalledByNative("RTCConfiguration")
@@ -760,12 +748,6 @@ public class PeerConnection {
 
     @Nullable
     @CalledByNative("RTCConfiguration")
-    IntervalRange getIceRegatherIntervalRange() {
-      return iceRegatherIntervalRange;
-    }
-
-    @Nullable
-    @CalledByNative("RTCConfiguration")
     TurnCustomizer getTurnCustomizer() {
       return turnCustomizer;
     }
@@ -826,6 +808,12 @@ public class PeerConnection {
     @CalledByNative("RTCConfiguration")
     boolean getActiveResetSrtpParams() {
       return activeResetSrtpParams;
+    }
+
+    @Nullable
+    @CalledByNative("RTCConfiguration")
+    Boolean getAllowCodecSwitching() {
+      return allowCodecSwitching;
     }
 
     @CalledByNative("RTCConfiguration")

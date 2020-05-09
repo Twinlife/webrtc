@@ -98,14 +98,11 @@ template <class Codec>
 void RtpParametersFromMediaDescription(
     const MediaContentDescriptionImpl<Codec>* desc,
     const RtpHeaderExtensions& extensions,
+    bool is_stream_active,
     RtpParameters<Codec>* params) {
-  // TODO(pthatcher): Remove this once we're sure no one will give us
-  // a description without codecs. Currently the ORTC implementation is relying
-  // on this.
-  if (desc->has_codecs()) {
-    params->codecs = desc->codecs();
-  }
-  // TODO(pthatcher): See if we really need
+  params->is_stream_active = is_stream_active;
+  params->codecs = desc->codecs();
+  // TODO(bugs.webrtc.org/11513): See if we really need
   // rtp_header_extensions_set() and remove it if we don't.
   if (desc->rtp_header_extensions_set()) {
     params->extensions = extensions;
@@ -118,8 +115,10 @@ template <class Codec>
 void RtpSendParametersFromMediaDescription(
     const MediaContentDescriptionImpl<Codec>* desc,
     const RtpHeaderExtensions& extensions,
+    bool is_stream_active,
     RtpSendParameters<Codec>* send_params) {
-  RtpParametersFromMediaDescription(desc, extensions, send_params);
+  RtpParametersFromMediaDescription(desc, extensions, is_stream_active,
+                                    send_params);
   send_params->max_bandwidth_bps = desc->bandwidth();
   send_params->extmap_allow_mixed = desc->extmap_allow_mixed();
 }
@@ -150,10 +149,6 @@ BaseChannel::~BaseChannel() {
   TRACE_EVENT0("webrtc", "BaseChannel::~BaseChannel");
   RTC_DCHECK_RUN_ON(worker_thread_);
 
-  if (media_transport_config_.media_transport) {
-    media_transport_config_.media_transport->RemoveNetworkChangeCallback(this);
-  }
-
   // Eats any outstanding messages or packets.
   worker_thread_->Clear(&invoker_);
   worker_thread_->Clear(this);
@@ -171,15 +166,8 @@ bool BaseChannel::ConnectToRtpTransport() {
   }
   rtp_transport_->SignalReadyToSend.connect(
       this, &BaseChannel::OnTransportReadyToSend);
-
-  // If media transport is used, it's responsible for providing network
-  // route changed callbacks.
-  if (!media_transport_config_.media_transport) {
-    rtp_transport_->SignalNetworkRouteChanged.connect(
-        this, &BaseChannel::OnNetworkRouteChanged);
-  }
-  // TODO(bugs.webrtc.org/9719): Media transport should also be used to provide
-  // 'writable' state here.
+  rtp_transport_->SignalNetworkRouteChanged.connect(
+      this, &BaseChannel::OnNetworkRouteChanged);
   rtp_transport_->SignalWritableState.connect(this,
                                               &BaseChannel::OnWritableState);
   rtp_transport_->SignalSentPacket.connect(this,
@@ -208,12 +196,6 @@ void BaseChannel::Init_w(
   // Both RTP and RTCP channels should be set, we can call SetInterface on
   // the media channel and it can set network options.
   media_channel_->SetInterface(this, media_transport_config);
-
-  RTC_LOG(LS_INFO) << "BaseChannel::Init_w, media_transport_config="
-                   << media_transport_config.DebugString();
-  if (media_transport_config_.media_transport) {
-    media_transport_config_.media_transport->AddNetworkChangeCallback(this);
-  }
 }
 
 void BaseChannel::Deinit() {
@@ -440,7 +422,7 @@ bool BaseChannel::SendPacket(bool rtcp,
       // (and SetSend(true) is called).
       RTC_LOG(LS_ERROR)
           << "Can't send outgoing RTP packet when SRTP is inactive"
-          << " and crypto is required";
+             " and crypto is required";
       RTC_NOTREACHED();
       return false;
     }
@@ -802,9 +784,6 @@ VoiceChannel::VoiceChannel(rtc::Thread* worker_thread,
                   ssrc_generator) {}
 
 VoiceChannel::~VoiceChannel() {
-  if (media_transport()) {
-    media_transport()->SetFirstAudioPacketReceivedObserver(nullptr);
-  }
   TRACE_EVENT0("webrtc", "VoiceChannel::~VoiceChannel");
   // this can't be done in the base class, since it calls a virtual
   DisableMedia_w();
@@ -817,24 +796,10 @@ void BaseChannel::UpdateMediaSendRecvState() {
                              [this] { UpdateMediaSendRecvState_w(); });
 }
 
-void BaseChannel::OnNetworkRouteChanged(
-    const rtc::NetworkRoute& network_route) {
-  OnNetworkRouteChanged(absl::make_optional(network_route));
-}
-
 void VoiceChannel::Init_w(
     webrtc::RtpTransportInternal* rtp_transport,
     const webrtc::MediaTransportConfig& media_transport_config) {
   BaseChannel::Init_w(rtp_transport, media_transport_config);
-  if (media_transport_config.media_transport) {
-    media_transport_config.media_transport->SetFirstAudioPacketReceivedObserver(
-        this);
-  }
-}
-
-void VoiceChannel::OnFirstAudioPacketReceived(int64_t channel_id) {
-  has_received_packet_ = true;
-  signaling_thread()->Post(RTC_FROM_HERE, this, MSG_FIRSTPACKETRECEIVED);
 }
 
 void VoiceChannel::UpdateMediaSendRecvState_w() {
@@ -872,7 +837,9 @@ bool VoiceChannel::SetLocalContent_w(const MediaContentDescription* content,
   media_channel()->SetExtmapAllowMixed(audio->extmap_allow_mixed());
 
   AudioRecvParameters recv_params = last_recv_params_;
-  RtpParametersFromMediaDescription(audio, rtp_header_extensions, &recv_params);
+  RtpParametersFromMediaDescription(
+      audio, rtp_header_extensions,
+      webrtc::RtpTransceiverDirectionHasRecv(audio->direction()), &recv_params);
   if (!media_channel()->SetRecvParameters(recv_params)) {
     SafeSetError("Failed to set local audio description recv parameters.",
                  error_desc);
@@ -925,8 +892,9 @@ bool VoiceChannel::SetRemoteContent_w(const MediaContentDescription* content,
       GetFilteredRtpHeaderExtensions(audio->rtp_header_extensions());
 
   AudioSendParameters send_params = last_send_params_;
-  RtpSendParametersFromMediaDescription(audio, rtp_header_extensions,
-                                        &send_params);
+  RtpSendParametersFromMediaDescription(
+      audio, rtp_header_extensions,
+      webrtc::RtpTransceiverDirectionHasRecv(audio->direction()), &send_params);
   send_params.mid = content_name();
 
   bool parameters_applied = media_channel()->SetSendParameters(send_params);
@@ -1023,9 +991,12 @@ bool VideoChannel::SetLocalContent_w(const MediaContentDescription* content,
   media_channel()->SetExtmapAllowMixed(video->extmap_allow_mixed());
 
   VideoRecvParameters recv_params = last_recv_params_;
-  RtpParametersFromMediaDescription(video, rtp_header_extensions, &recv_params);
+  RtpParametersFromMediaDescription(
+      video, rtp_header_extensions,
+      webrtc::RtpTransceiverDirectionHasRecv(video->direction()), &recv_params);
 
   VideoSendParameters send_params = last_send_params_;
+
   bool needs_send_params_update = false;
   if (type == SdpType::kAnswer || type == SdpType::kPrAnswer) {
     for (auto& send_codec : send_params.codecs) {
@@ -1104,14 +1075,16 @@ bool VideoChannel::SetRemoteContent_w(const MediaContentDescription* content,
       GetFilteredRtpHeaderExtensions(video->rtp_header_extensions());
 
   VideoSendParameters send_params = last_send_params_;
-  RtpSendParametersFromMediaDescription(video, rtp_header_extensions,
-                                        &send_params);
+  RtpSendParametersFromMediaDescription(
+      video, rtp_header_extensions,
+      webrtc::RtpTransceiverDirectionHasRecv(video->direction()), &send_params);
   if (video->conference_mode()) {
     send_params.conference_mode = true;
   }
   send_params.mid = content_name();
 
   VideoRecvParameters recv_params = last_recv_params_;
+
   bool needs_recv_params_update = false;
   if (type == SdpType::kAnswer || type == SdpType::kPrAnswer) {
     for (auto& recv_codec : recv_params.codecs) {
@@ -1211,14 +1184,15 @@ bool RtpDataChannel::SendData(const SendDataParams& params,
 }
 
 bool RtpDataChannel::CheckDataChannelTypeFromContent(
-    const RtpDataContentDescription* content,
+    const MediaContentDescription* content,
     std::string* error_desc) {
-  bool is_sctp = ((content->protocol() == kMediaProtocolSctp) ||
-                  (content->protocol() == kMediaProtocolDtlsSctp));
-  // It's been set before, but doesn't match.  That's bad.
-  if (is_sctp) {
-    SafeSetError("Data channel type mismatch. Expected RTP, got SCTP.",
-                 error_desc);
+  if (!content->as_rtp_data()) {
+    if (content->as_sctp()) {
+      SafeSetError("Data channel type mismatch. Expected RTP, got SCTP.",
+                   error_desc);
+    } else {
+      SafeSetError("Data channel is not RTP or SCTP.", error_desc);
+    }
     return false;
   }
   return true;
@@ -1237,17 +1211,18 @@ bool RtpDataChannel::SetLocalContent_w(const MediaContentDescription* content,
     return false;
   }
 
-  const RtpDataContentDescription* data = content->as_rtp_data();
-
-  if (!CheckDataChannelTypeFromContent(data, error_desc)) {
+  if (!CheckDataChannelTypeFromContent(content, error_desc)) {
     return false;
   }
+  const RtpDataContentDescription* data = content->as_rtp_data();
 
   RtpHeaderExtensions rtp_header_extensions =
       GetFilteredRtpHeaderExtensions(data->rtp_header_extensions());
 
   DataRecvParameters recv_params = last_recv_params_;
-  RtpParametersFromMediaDescription(data, rtp_header_extensions, &recv_params);
+  RtpParametersFromMediaDescription(
+      data, rtp_header_extensions,
+      webrtc::RtpTransceiverDirectionHasRecv(data->direction()), &recv_params);
   if (!media_channel()->SetRecvParameters(recv_params)) {
     SafeSetError("Failed to set remote data description recv parameters.",
                  error_desc);
@@ -1291,20 +1266,15 @@ bool RtpDataChannel::SetRemoteContent_w(const MediaContentDescription* content,
     return false;
   }
 
-  const RtpDataContentDescription* data = content->as_rtp_data();
-
-  if (!data) {
-    RTC_LOG(LS_INFO) << "Accepting and ignoring non-RTP content description";
-    return true;
+  if (!CheckDataChannelTypeFromContent(content, error_desc)) {
+    return false;
   }
+
+  const RtpDataContentDescription* data = content->as_rtp_data();
 
   // If the remote data doesn't have codecs, it must be empty, so ignore it.
   if (!data->has_codecs()) {
     return true;
-  }
-
-  if (!CheckDataChannelTypeFromContent(data, error_desc)) {
-    return false;
   }
 
   RtpHeaderExtensions rtp_header_extensions =
@@ -1312,8 +1282,9 @@ bool RtpDataChannel::SetRemoteContent_w(const MediaContentDescription* content,
 
   RTC_LOG(LS_INFO) << "Setting remote data description";
   DataSendParameters send_params = last_send_params_;
-  RtpSendParametersFromMediaDescription<DataCodec>(data, rtp_header_extensions,
-                                                   &send_params);
+  RtpSendParametersFromMediaDescription<DataCodec>(
+      data, rtp_header_extensions,
+      webrtc::RtpTransceiverDirectionHasRecv(data->direction()), &send_params);
   if (!media_channel()->SetSendParameters(send_params)) {
     SafeSetError("Failed to set remote data description send parameters.",
                  error_desc);
