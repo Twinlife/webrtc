@@ -105,9 +105,9 @@ class TestMultiplexAdapter : public VideoCodecUnitTest,
   }
 
   std::unique_ptr<VideoFrame> CreateI420AInputFrame() {
-    VideoFrame* input_frame = NextInputFrame();
+    VideoFrame input_frame = NextInputFrame();
     rtc::scoped_refptr<webrtc::I420BufferInterface> yuv_buffer =
-        input_frame->video_frame_buffer()->ToI420();
+        input_frame.video_frame_buffer()->ToI420();
     rtc::scoped_refptr<I420ABufferInterface> yuva_buffer = WrapI420ABuffer(
         yuv_buffer->width(), yuv_buffer->height(), yuv_buffer->DataY(),
         yuv_buffer->StrideY(), yuv_buffer->DataU(), yuv_buffer->StrideU(),
@@ -126,14 +126,14 @@ class TestMultiplexAdapter : public VideoCodecUnitTest,
     if (contains_alpha) {
       video_frame = CreateI420AInputFrame();
     } else {
-      VideoFrame* next_frame = NextInputFrame();
+      VideoFrame next_frame = NextInputFrame();
       video_frame = std::make_unique<VideoFrame>(
           VideoFrame::Builder()
-              .set_video_frame_buffer(next_frame->video_frame_buffer())
-              .set_timestamp_rtp(next_frame->timestamp())
-              .set_timestamp_ms(next_frame->render_time_ms())
-              .set_rotation(next_frame->rotation())
-              .set_id(next_frame->id())
+              .set_video_frame_buffer(next_frame.video_frame_buffer())
+              .set_timestamp_rtp(next_frame.timestamp())
+              .set_timestamp_ms(next_frame.render_time_ms())
+              .set_rotation(next_frame.rotation())
+              .set_id(next_frame.id())
               .build());
     }
     if (supports_augmenting_data_) {
@@ -180,21 +180,17 @@ class TestMultiplexAdapter : public VideoCodecUnitTest,
 
  private:
   void SetUp() override {
-    EXPECT_CALL(*decoder_factory_, Die());
+    EXPECT_CALL(*decoder_factory_, Die);
     // The decoders/encoders will be owned by the caller of
     // CreateVideoDecoder()/CreateVideoEncoder().
-    VideoDecoder* decoder1 = VP9Decoder::Create().release();
-    VideoDecoder* decoder2 = VP9Decoder::Create().release();
-    EXPECT_CALL(*decoder_factory_, CreateVideoDecoderProxy(_))
-        .WillOnce(Return(decoder1))
-        .WillOnce(Return(decoder2));
+    EXPECT_CALL(*decoder_factory_, CreateVideoDecoder)
+        .Times(2)
+        .WillRepeatedly([] { return VP9Decoder::Create(); });
 
-    EXPECT_CALL(*encoder_factory_, Die());
-    VideoEncoder* encoder1 = VP9Encoder::Create().release();
-    VideoEncoder* encoder2 = VP9Encoder::Create().release();
-    EXPECT_CALL(*encoder_factory_, CreateVideoEncoderProxy(_))
-        .WillOnce(Return(encoder1))
-        .WillOnce(Return(encoder2));
+    EXPECT_CALL(*encoder_factory_, Die);
+    EXPECT_CALL(*encoder_factory_, CreateVideoEncoder)
+        .Times(2)
+        .WillRepeatedly([] { return VP9Encoder::Create(); });
 
     VideoCodecUnitTest::SetUp();
   }

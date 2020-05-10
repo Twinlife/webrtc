@@ -1421,15 +1421,15 @@ TEST_P(PeerConnectionInterfaceTest, GetConfigurationAfterSetConfiguration) {
 
   PeerConnectionInterface::RTCConfiguration config = pc_->GetConfiguration();
   config.type = PeerConnectionInterface::kRelay;
-  config.use_media_transport = true;
-  config.use_media_transport_for_data_channels = true;
+  config.use_datagram_transport = true;
+  config.use_datagram_transport_for_data_channels = true;
   EXPECT_TRUE(pc_->SetConfiguration(config).ok());
 
   PeerConnectionInterface::RTCConfiguration returned_config =
       pc_->GetConfiguration();
   EXPECT_EQ(PeerConnectionInterface::kRelay, returned_config.type);
-  EXPECT_TRUE(returned_config.use_media_transport);
-  EXPECT_TRUE(returned_config.use_media_transport_for_data_channels);
+  EXPECT_TRUE(returned_config.use_datagram_transport);
+  EXPECT_TRUE(returned_config.use_datagram_transport_for_data_channels);
 }
 
 TEST_P(PeerConnectionInterfaceTest, SetConfigurationFailsAfterClose) {
@@ -3485,7 +3485,10 @@ TEST_P(PeerConnectionInterfaceTest, OffersAndAnswersHaveTrickleIceOption) {
   EXPECT_TRUE(desc->transport_infos()[1].description.HasOption("trickle"));
 
   // Apply the offer as a remote description, then create an answer.
+  EXPECT_FALSE(pc_->can_trickle_ice_candidates());
   EXPECT_TRUE(DoSetRemoteDescription(std::move(offer)));
+  ASSERT_TRUE(pc_->can_trickle_ice_candidates());
+  EXPECT_TRUE(*(pc_->can_trickle_ice_candidates()));
   std::unique_ptr<SessionDescriptionInterface> answer;
   ASSERT_TRUE(DoCreateAnswer(&answer, &options));
   desc = answer->description();
@@ -3664,28 +3667,6 @@ TEST_P(PeerConnectionInterfaceTest, SetBitrateMaxNegativeFails) {
   PeerConnectionInterface::BitrateParameters bitrate;
   bitrate.max_bitrate_bps = -1;
   EXPECT_FALSE(pc_->SetBitrate(bitrate).ok());
-}
-
-// ice_regather_interval_range requires WebRTC to be configured for continual
-// gathering already.
-TEST_P(PeerConnectionInterfaceTest,
-       SetIceRegatherIntervalRangeWithoutContinualGatheringFails) {
-  PeerConnectionInterface::RTCConfiguration config;
-  config.ice_regather_interval_range.emplace(1000, 2000);
-  config.continual_gathering_policy =
-      PeerConnectionInterface::ContinualGatheringPolicy::GATHER_ONCE;
-  CreatePeerConnectionExpectFail(config);
-}
-
-// Ensures that there is no error when ice_regather_interval_range is set with
-// continual gathering enabled.
-TEST_P(PeerConnectionInterfaceTest,
-       SetIceRegatherIntervalRangeWithContinualGathering) {
-  PeerConnectionInterface::RTCConfiguration config;
-  config.ice_regather_interval_range.emplace(1000, 2000);
-  config.continual_gathering_policy =
-      PeerConnectionInterface::ContinualGatheringPolicy::GATHER_CONTINUALLY;
-  CreatePeerConnection(config);
 }
 
 // The current bitrate from BitrateSettings is currently clamped

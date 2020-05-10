@@ -16,7 +16,7 @@ import android.os.Looper;
 import android.support.annotation.Nullable;
 import java.util.Arrays;
 import java.util.concurrent.Exchanger;
-import javax.annotation.Nullable;
+import java.util.List;
 
 @SuppressWarnings("deprecation")
 abstract class CameraCapturer implements CameraVideoCapturer {
@@ -32,7 +32,7 @@ abstract class CameraCapturer implements CameraVideoCapturer {
   private final static int OPEN_CAMERA_TIMEOUT = 10000;
 
   private final CameraEnumerator cameraEnumerator;
-  @Nullable private final CameraEventsHandler eventsHandler;
+  private final CameraEventsHandler eventsHandler;
   private final Handler uiThreadHandler;
 
   @Nullable
@@ -58,8 +58,10 @@ abstract class CameraCapturer implements CameraVideoCapturer {
                 switchEventsHandler = null;
               }
             } else if (switchState == SwitchState.PENDING) {
+              String selectedCameraName = pendingCameraName;
+              pendingCameraName = null;
               switchState = SwitchState.IDLE;
-              switchCameraInternal(switchEventsHandler);
+              switchCameraInternal(switchEventsHandler, selectedCameraName);
             }
           }
         }
@@ -177,15 +179,16 @@ abstract class CameraCapturer implements CameraVideoCapturer {
 
   // Initialized on initialize
   // -------------------------
-  @Nullable private Handler cameraThreadHandler;
+  private Handler cameraThreadHandler;
   private Context applicationContext;
   private org.webrtc.CapturerObserver capturerObserver;
-  @Nullable private SurfaceTextureHelper surfaceHelper;
+  private SurfaceTextureHelper surfaceHelper;
 
   private final Object stateLock = new Object();
   private boolean sessionOpening; /* guarded by stateLock */
   @Nullable private CameraSession currentSession; /* guarded by stateLock */
   private String cameraName; /* guarded by stateLock */
+  private String pendingCameraName; /* guarded by stateLock */
   private int width; /* guarded by stateLock */
   private int height; /* guarded by stateLock */
   private int framerate; /* guarded by stateLock */
@@ -218,27 +221,25 @@ abstract class CameraCapturer implements CameraVideoCapturer {
     this.eventsHandler = eventsHandler;
     this.cameraEnumerator = cameraEnumerator;
     this.cameraName = cameraName;
+    List<String> deviceNames = Arrays.asList(cameraEnumerator.getDeviceNames());
     uiThreadHandler = new Handler(Looper.getMainLooper());
 
-    final String[] deviceNames = cameraEnumerator.getDeviceNames();
-
-    if (deviceNames.length == 0) {
+    if (deviceNames.isEmpty()) {
       throw new RuntimeException("No cameras attached.");
     }
-    if (!Arrays.asList(deviceNames).contains(this.cameraName)) {
+    if (!deviceNames.contains(this.cameraName)) {
       throw new IllegalArgumentException(
           "Camera name " + this.cameraName + " does not match any known camera device.");
     }
   }
 
   @Override
-  public void initialize(@Nullable SurfaceTextureHelper surfaceTextureHelper,
-      Context applicationContext, org.webrtc.CapturerObserver capturerObserver) {
+  public void initialize(SurfaceTextureHelper surfaceTextureHelper, Context applicationContext,
+      org.webrtc.CapturerObserver capturerObserver) {
     this.applicationContext = applicationContext;
     this.capturerObserver = capturerObserver;
     this.surfaceHelper = surfaceTextureHelper;
-    this.cameraThreadHandler =
-        surfaceTextureHelper == null ? null : surfaceTextureHelper.getHandler();
+    this.cameraThreadHandler = surfaceTextureHelper.getHandler();
   }
 
   @Override
@@ -333,7 +334,27 @@ abstract class CameraCapturer implements CameraVideoCapturer {
     cameraThreadHandler.post(new Runnable() {
       @Override
       public void run() {
-        switchCameraInternal(switchEventsHandler);
+        List<String> deviceNames = Arrays.asList(cameraEnumerator.getDeviceNames());
+
+        if (deviceNames.size() < 2) {
+          reportCameraSwitchError("No camera to switch to.", switchEventsHandler);
+          return;
+        }
+
+        int cameraNameIndex = deviceNames.indexOf(cameraName);
+        String cameraName = deviceNames.get((cameraNameIndex + 1) % deviceNames.size());
+        switchCameraInternal(switchEventsHandler, cameraName);
+      }
+    });
+  }
+
+  @Override
+  public void switchCamera(final CameraSwitchHandler switchEventsHandler, final String cameraName) {
+    Logging.d(TAG, "switchCamera");
+    cameraThreadHandler.post(new Runnable() {
+      @Override
+      public void run() {
+        switchCameraInternal(switchEventsHandler, cameraName);
       }
     });
   }
@@ -400,15 +421,14 @@ abstract class CameraCapturer implements CameraVideoCapturer {
     }
   }
 
-  private void switchCameraInternal(@Nullable final CameraSwitchHandler switchEventsHandler) {
+  private void switchCameraInternal(
+      @Nullable final CameraSwitchHandler switchEventsHandler, final String selectedCameraName) {
     Logging.d(TAG, "switchCamera internal");
+    List<String> deviceNames = Arrays.asList(cameraEnumerator.getDeviceNames());
 
-    final String[] deviceNames = cameraEnumerator.getDeviceNames();
-
-    if (deviceNames.length < 2) {
-      if (switchEventsHandler != null) {
-        switchEventsHandler.onCameraSwitchError("No camera to switch to.");
-      }
+    if (!deviceNames.contains(selectedCameraName)) {
+      reportCameraSwitchError("Attempted to switch to unknown camera device " + selectedCameraName,
+          switchEventsHandler);
       return;
     }
 
@@ -425,6 +445,7 @@ abstract class CameraCapturer implements CameraVideoCapturer {
       this.switchEventsHandler = switchEventsHandler;
       if (sessionOpening) {
         switchState = SwitchState.PENDING;
+        pendingCameraName = selectedCameraName;
         return;
       } else {
         switchState = SwitchState.IN_PROGRESS;
@@ -442,8 +463,7 @@ abstract class CameraCapturer implements CameraVideoCapturer {
       });
       currentSession = null;
 
-      int cameraNameIndex = Arrays.asList(deviceNames).indexOf(cameraName);
-      cameraName = deviceNames[(cameraNameIndex + 1) % deviceNames.length];
+      cameraName = selectedCameraName;
 
       sessionOpening = true;
       openAttemptsRemaining = 1;

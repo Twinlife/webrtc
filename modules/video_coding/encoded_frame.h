@@ -17,10 +17,11 @@
 #include "modules/rtp_rtcp/source/rtp_video_header.h"
 #include "modules/video_coding/include/video_codec_interface.h"
 #include "modules/video_coding/include/video_coding_defines.h"
+#include "rtc_base/system/rtc_export.h"
 
 namespace webrtc {
 
-class VCMEncodedFrame : protected EncodedImage {
+class RTC_EXPORT VCMEncodedFrame : protected EncodedImage {
  public:
   VCMEncodedFrame();
   VCMEncodedFrame(const VCMEncodedFrame&);
@@ -31,14 +32,6 @@ class VCMEncodedFrame : protected EncodedImage {
    */
   void SetRenderTime(const int64_t renderTimeMs) {
     _renderTimeMs = renderTimeMs;
-  }
-
-  /**
-   *   Set the encoded frame size
-   */
-  void SetEncodedSize(uint32_t width, uint32_t height) {
-    _encodedWidth = width;
-    _encodedHeight = height;
   }
 
   void SetPlayoutDelay(PlayoutDelay playout_delay) {
@@ -54,7 +47,10 @@ class VCMEncodedFrame : protected EncodedImage {
 
   using EncodedImage::ColorSpace;
   using EncodedImage::data;
+  using EncodedImage::GetEncodedData;
+  using EncodedImage::NtpTimeMs;
   using EncodedImage::PacketInfos;
+  using EncodedImage::Retain;
   using EncodedImage::set_size;
   using EncodedImage::SetColorSpace;
   using EncodedImage::SetEncodedData;
@@ -75,6 +71,12 @@ class VCMEncodedFrame : protected EncodedImage {
    *   Get frame type
    */
   webrtc::VideoFrameType FrameType() const { return _frameType; }
+  /**
+   *   Set frame type
+   */
+  void SetFrameType(webrtc::VideoFrameType frame_type) {
+    _frameType = frame_type;
+  }
   /**
    *   Get frame rotation
    */

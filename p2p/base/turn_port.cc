@@ -18,9 +18,9 @@
 #include "absl/algorithm/container.h"
 #include "absl/strings/match.h"
 #include "absl/types/optional.h"
+#include "api/transport/stun.h"
 #include "p2p/base/connection.h"
 #include "p2p/base/p2p_constants.h"
-#include "p2p/base/stun.h"
 #include "rtc_base/async_packet_socket.h"
 #include "rtc_base/byte_order.h"
 #include "rtc_base/checks.h"
@@ -885,7 +885,8 @@ void TurnPort::OnAllocateError(int error_code, const std::string& reason) {
   thread()->Post(RTC_FROM_HERE, this, MSG_ALLOCATE_ERROR);
   SignalCandidateError(
       this,
-      IceCandidateErrorEvent(GetLocalAddress().ToSensitiveString(),
+      IceCandidateErrorEvent(GetLocalAddress().HostAsSensitiveURIString(),
+                             GetLocalAddress().port(),
                              ReconstructedServerUrl(true /* use_hostname */),
                              error_code, reason));
 }
@@ -1223,8 +1224,9 @@ bool TurnPort::CreateOrRefreshEntry(const rtc::SocketAddress& addr,
 
     if (webrtc::field_trial::IsEnabled("WebRTC-TurnAddMultiMapping")) {
       if (entry->get_remote_ufrag() != remote_ufrag) {
-        RTC_LOG(LS_INFO) << ToString() << ": remote ufrag updated."
-                         << " Sending new permission request";
+        RTC_LOG(LS_INFO) << ToString()
+                         << ": remote ufrag updated."
+                            " Sending new permission request";
         entry->set_remote_ufrag(remote_ufrag);
         entry->SendCreatePermissionRequest(0);
       }

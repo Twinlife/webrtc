@@ -22,6 +22,7 @@
 #include "api/fec_controller.h"
 #include "api/fec_controller_override.h"
 #include "api/rtc_event_log/rtc_event_log.h"
+#include "api/transport/field_trial_based_config.h"
 #include "api/video_codecs/video_encoder.h"
 #include "call/rtp_config.h"
 #include "call/rtp_payload_params.h"
@@ -50,18 +51,18 @@ namespace webrtc_internal_rtp_video_sender {
 // RTP state for a single simulcast stream. Internal to the implementation of
 // RtpVideoSender.
 struct RtpStreamSender {
-  RtpStreamSender(std::unique_ptr<PlayoutDelayOracle> playout_delay_oracle,
-                  std::unique_ptr<RtpRtcp> rtp_rtcp,
-                  std::unique_ptr<RTPSenderVideo> sender_video);
+  RtpStreamSender(std::unique_ptr<RtpRtcp> rtp_rtcp,
+                  std::unique_ptr<RTPSenderVideo> sender_video,
+                  std::unique_ptr<VideoFecGenerator> fec_generator);
   ~RtpStreamSender();
 
   RtpStreamSender(RtpStreamSender&&) = default;
   RtpStreamSender& operator=(RtpStreamSender&&) = default;
 
   // Note: Needs pointer stability.
-  std::unique_ptr<PlayoutDelayOracle> playout_delay_oracle;
   std::unique_ptr<RtpRtcp> rtp_rtcp;
   std::unique_ptr<RTPSenderVideo> sender_video;
+  std::unique_ptr<VideoFecGenerator> fec_generator;
 };
 
 }  // namespace webrtc_internal_rtp_video_sender
@@ -69,9 +70,8 @@ struct RtpStreamSender {
 // RtpVideoSender routes outgoing data to the correct sending RTP module, based
 // on the simulcast layer in RTPVideoHeader.
 class RtpVideoSender : public RtpVideoSenderInterface,
-                       public OverheadObserver,
                        public VCMProtectionCallback,
-                       public PacketFeedbackObserver {
+                       public StreamFeedbackObserver {
  public:
   // Rtp modules are assumed to be sorted in simulcast index order.
   RtpVideoSender(
@@ -87,7 +87,8 @@ class RtpVideoSender : public RtpVideoSenderInterface,
       RateLimiter* retransmission_limiter,  // move inside RtpTransport
       std::unique_ptr<FecController> fec_controller,
       FrameEncryptorInterface* frame_encryptor,
-      const CryptoOptions& crypto_options);  // move inside RtpTransport
+      const CryptoOptions& crypto_options,  // move inside RtpTransport
+      rtc::scoped_refptr<FrameTransformerInterface> frame_transformer);
   ~RtpVideoSender() override;
 
   // RegisterProcessThread register |module_process_thread| with those objects
@@ -134,8 +135,6 @@ class RtpVideoSender : public RtpVideoSenderInterface,
 
   void OnTransportOverheadChanged(
       size_t transport_overhead_bytes_per_packet) override;
-  // Implements OverheadObserver.
-  void OnOverheadChanged(size_t overhead_bytes_per_packet) override;
   void OnBitrateUpdated(BitrateAllocationUpdate update, int framerate) override;
   uint32_t GetPayloadBitrateBps() const override;
   uint32_t GetProtectionBitrateBps() const override;
@@ -147,23 +146,23 @@ class RtpVideoSender : public RtpVideoSenderInterface,
       uint32_t ssrc,
       rtc::ArrayView<const uint16_t> sequence_numbers) const override;
 
-  // From PacketFeedbackObserver.
-  void OnPacketAdded(uint32_t ssrc, uint16_t seq_num) override {}
+  // From StreamFeedbackObserver.
   void OnPacketFeedbackVector(
-      const std::vector<PacketFeedback>& packet_feedback_vector) override;
+      std::vector<StreamPacketInfo> packet_feedback_vector) override;
 
  private:
   void UpdateModuleSendingState() RTC_EXCLUSIVE_LOCKS_REQUIRED(crit_);
   void ConfigureProtection();
   void ConfigureSsrcs();
   void ConfigureRids();
-  bool FecEnabled() const;
   bool NackEnabled() const;
   uint32_t GetPacketizationOverheadRate() const;
 
+  const FieldTrialBasedConfig field_trials_;
   const bool send_side_bwe_with_overhead_;
   const bool account_for_packetization_overhead_;
   const bool use_early_loss_detection_;
+  const bool has_packet_feedback_;
 
   // TODO(holmer): Remove crit_ once RtpVideoSender runs on the
   // transport task queue.
@@ -173,8 +172,6 @@ class RtpVideoSender : public RtpVideoSenderInterface,
   ProcessThread* module_process_thread_;
   rtc::ThreadChecker module_process_thread_checker_;
   std::map<uint32_t, RtpState> suspended_ssrcs_;
-
-  std::unique_ptr<FlexfecSender> flexfec_sender_;
 
   const std::unique_ptr<FecController> fec_controller_;
   bool fec_allowed_ RTC_GUARDED_BY(crit_);
@@ -194,7 +191,6 @@ class RtpVideoSender : public RtpVideoSenderInterface,
   std::vector<RtpPayloadParams> params_ RTC_GUARDED_BY(crit_);
 
   size_t transport_overhead_bytes_per_packet_ RTC_GUARDED_BY(crit_);
-  size_t overhead_bytes_per_packet_ RTC_GUARDED_BY(crit_);
   uint32_t protection_bitrate_bps_;
   uint32_t encoder_target_rate_bps_;
 
@@ -203,10 +199,10 @@ class RtpVideoSender : public RtpVideoSenderInterface,
   std::vector<FrameCounts> frame_counts_ RTC_GUARDED_BY(crit_);
   FrameCountObserver* const frame_count_observer_;
 
-  // Effectively const map from ssrc to RTPSender, for all media ssrcs.
+  // Effectively const map from SSRC to RtpRtcp, for all media SSRCs.
   // This map is set at construction time and never changed, but it's
   // non-trivial to make it properly const.
-  std::map<uint32_t, RTPSender*> ssrc_to_rtp_sender_;
+  std::map<uint32_t, RtpRtcp*> ssrc_to_rtp_module_;
 
   RTC_DISALLOW_COPY_AND_ASSIGN(RtpVideoSender);
 };
