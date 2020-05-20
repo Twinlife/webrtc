@@ -32,7 +32,6 @@
 #include "call/rtx_receive_stream.h"
 #include "common_video/include/incoming_video_stream.h"
 #include "media/base/h264_profile_level_id.h"
-#include "modules/utility/include/process_thread.h"
 #include "modules/video_coding/include/video_codec_interface.h"
 #include "modules/video_coding/include/video_coding_defines.h"
 #include "modules/video_coding/include/video_error_codes.h"
@@ -48,7 +47,7 @@
 #include "rtc_base/trace_event.h"
 #include "system_wrappers/include/clock.h"
 #include "system_wrappers/include/field_trial.h"
-#include "video/call_stats.h"
+#include "video/call_stats2.h"
 #include "video/frame_dumping_decoder.h"
 #include "video/receive_statistics_proxy.h"
 
@@ -194,7 +193,6 @@ VideoReceiveStream2::VideoReceiveStream2(
       transport_adapter_(config.rtcp_send_transport),
       config_(std::move(config)),
       num_cpu_cores_(num_cpu_cores),
-      process_thread_(process_thread),
       worker_thread_(current_queue),
       clock_(clock),
       call_stats_(call_stats),
@@ -205,19 +203,19 @@ VideoReceiveStream2::VideoReceiveStream2(
       video_receiver_(clock_, timing_.get()),
       rtp_video_stream_receiver_(clock_,
                                  &transport_adapter_,
-                                 call_stats,
+                                 call_stats->AsRtcpRttStats(),
                                  packet_router,
                                  &config_,
                                  rtp_receive_statistics_.get(),
                                  &stats_proxy_,
                                  &stats_proxy_,
-                                 process_thread_,
+                                 process_thread,
                                  this,     // NackSender
                                  nullptr,  // Use default KeyFrameRequestSender
                                  this,     // OnCompleteFrameCallback
                                  config_.frame_decryptor,
                                  config_.frame_transformer),
-      rtp_stream_sync_(this),
+      rtp_stream_sync_(current_queue, this),
       max_wait_for_keyframe_ms_(KeyframeIntervalSettings::ParseFromFieldTrials()
                                     .MaxWaitForKeyframeMs()
                                     .value_or(kMaxWaitForKeyFrameMs)),
@@ -231,7 +229,6 @@ VideoReceiveStream2::VideoReceiveStream2(
 
   RTC_DCHECK(worker_thread_);
   RTC_DCHECK(config_.renderer);
-  RTC_DCHECK(process_thread_);
   RTC_DCHECK(call_stats_);
 
   module_process_sequence_checker_.Detach();
@@ -253,7 +250,6 @@ VideoReceiveStream2::VideoReceiveStream2(
   frame_buffer_.reset(
       new video_coding::FrameBuffer(clock_, timing_.get(), &stats_proxy_));
 
-  process_thread_->RegisterModule(&rtp_stream_sync_, RTC_FROM_HERE);
   // Register with RtpStreamReceiverController.
   media_receiver_ = receiver_controller->CreateReceiver(
       config_.rtp.remote_ssrc, &rtp_video_stream_receiver_);
@@ -273,7 +269,6 @@ VideoReceiveStream2::~VideoReceiveStream2() {
   RTC_DCHECK_RUN_ON(&worker_sequence_checker_);
   RTC_LOG(LS_INFO) << "~VideoReceiveStream2: " << config_.ToString();
   Stop();
-  process_thread_->DeRegisterModule(&rtp_stream_sync_);
 }
 
 void VideoReceiveStream2::SignalNetworkState(NetworkState state) {
@@ -491,28 +486,26 @@ int VideoReceiveStream2::GetBaseMinimumPlayoutDelayMs() const {
   return base_minimum_playout_delay_ms_;
 }
 
-// TODO(bugs.webrtc.org/11489): This method grabs a lock 6 times.
 void VideoReceiveStream2::OnFrame(const VideoFrame& video_frame) {
-  int64_t video_playout_ntp_ms;
-  int64_t sync_offset_ms;
-  double estimated_freq_khz;
-  // TODO(bugs.webrtc.org/11489): GetStreamSyncOffsetInMs grabs three locks. One
-  // inside the function itself, another in GetChannel() and a third in
-  // GetPlayoutTimestamp.  Seems excessive.  Anyhow, I'm assuming the function
-  // succeeds most of the time, which leads to grabbing a fourth lock.
-  if (rtp_stream_sync_.GetStreamSyncOffsetInMs(
-          video_frame.timestamp(), video_frame.render_time_ms(),
-          &video_playout_ntp_ms, &sync_offset_ms, &estimated_freq_khz)) {
-    // TODO(bugs.webrtc.org/11489): OnSyncOffsetUpdated grabs a lock.
-    stats_proxy_.OnSyncOffsetUpdated(video_playout_ntp_ms, sync_offset_ms,
-                                     estimated_freq_khz);
-  }
+  VideoFrameMetaData frame_meta(video_frame, clock_->CurrentTime());
+
+  worker_thread_->PostTask(
+      ToQueuedTask(task_safety_, [frame_meta, this]() {
+        RTC_DCHECK_RUN_ON(&worker_sequence_checker_);
+        int64_t video_playout_ntp_ms;
+        int64_t sync_offset_ms;
+        double estimated_freq_khz;
+        if (rtp_stream_sync_.GetStreamSyncOffsetInMs(
+                frame_meta.rtp_timestamp, frame_meta.render_time_ms(),
+                &video_playout_ntp_ms, &sync_offset_ms, &estimated_freq_khz)) {
+          stats_proxy_.OnSyncOffsetUpdated(video_playout_ntp_ms, sync_offset_ms,
+                                           estimated_freq_khz);
+        }
+        stats_proxy_.OnRenderedFrame(frame_meta);
+      }));
+
   source_tracker_.OnFrameDelivered(video_frame.packet_infos());
-
   config_.renderer->OnFrame(video_frame);
-
-  // TODO(bugs.webrtc.org/11489): OnRenderFrame grabs a lock too.
-  stats_proxy_.OnRenderedFrame(video_frame);
 }
 
 void VideoReceiveStream2::SetFrameDecryptor(
@@ -572,9 +565,10 @@ void VideoReceiveStream2::OnCompleteFrame(
 }
 
 void VideoReceiveStream2::OnRttUpdate(int64_t avg_rtt_ms, int64_t max_rtt_ms) {
-  RTC_DCHECK_RUN_ON(&module_process_sequence_checker_);
+  RTC_DCHECK_RUN_ON(&worker_sequence_checker_);
   frame_buffer_->UpdateRtt(max_rtt_ms);
   rtp_video_stream_receiver_.UpdateRtt(max_rtt_ms);
+  stats_proxy_.OnRttUpdate(avg_rtt_ms);
 }
 
 uint32_t VideoReceiveStream2::id() const {
@@ -583,7 +577,7 @@ uint32_t VideoReceiveStream2::id() const {
 }
 
 absl::optional<Syncable::Info> VideoReceiveStream2::GetInfo() const {
-  RTC_DCHECK_RUN_ON(&module_process_sequence_checker_);
+  RTC_DCHECK_RUN_ON(&worker_sequence_checker_);
   absl::optional<Syncable::Info> info =
       rtp_video_stream_receiver_.GetSyncInfo();
 
@@ -607,8 +601,9 @@ void VideoReceiveStream2::SetEstimatedPlayoutNtpTimestampMs(
 }
 
 void VideoReceiveStream2::SetMinimumPlayoutDelay(int delay_ms) {
-  RTC_DCHECK_RUN_ON(&module_process_sequence_checker_);
-  // TODO(bugs.webrtc.org/11489): Consider posting to worker.
+  RTC_DCHECK_RUN_ON(&worker_sequence_checker_);
+  // TODO(bugs.webrtc.org/11489): See if we can't get rid of the
+  // |playout_delay_lock_|
   rtc::CritScope cs(&playout_delay_lock_);
   syncable_minimum_playout_delay_ms_ = delay_ms;
   UpdatePlayoutDelays();
@@ -706,8 +701,12 @@ void VideoReceiveStream2::HandleFrameBufferTimeout() {
   // To avoid spamming keyframe requests for a stream that is not active we
   // check if we have received a packet within the last 5 seconds.
   bool stream_is_active = last_packet_ms && now_ms - *last_packet_ms < 5000;
-  if (!stream_is_active)
-    stats_proxy_.OnStreamInactive();
+  if (!stream_is_active) {
+    worker_thread_->PostTask(ToQueuedTask(task_safety_, [this]() {
+      RTC_DCHECK_RUN_ON(&worker_sequence_checker_);
+      stats_proxy_.OnStreamInactive();
+    }));
+  }
 
   if (stream_is_active && !IsReceivingKeyFrame(now_ms) &&
       (!config_.crypto_options.sframe.require_frame_encryption ||
