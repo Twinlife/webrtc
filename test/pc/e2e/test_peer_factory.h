@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "api/rtc_event_log/rtc_event_log_factory.h"
 #include "api/test/peerconnection_quality_test_fixture.h"
 #include "modules/audio_device/include/test_audio_device.h"
@@ -54,8 +55,7 @@ class TestPeerFactory {
   static std::unique_ptr<TestPeer> CreateTestPeer(
       std::unique_ptr<InjectableComponents> components,
       std::unique_ptr<Params> params,
-      std::vector<std::unique_ptr<test::FrameGeneratorInterface>>
-          video_generators,
+      std::vector<PeerConfigurerImpl::VideoSource> video_sources,
       std::unique_ptr<MockPeerConnectionObserver> observer,
       VideoQualityAnalyzerInjectionHelper* video_analyzer_helper,
       rtc::Thread* signaling_thread,

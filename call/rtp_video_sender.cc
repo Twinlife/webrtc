@@ -461,11 +461,16 @@ void RtpVideoSender::SetActive(bool active) {
   if (active_ == active)
     return;
   const std::vector<bool> active_modules(rtp_streams_.size(), active);
-  SetActiveModules(active_modules);
+  SetActiveModulesLocked(active_modules);
 }
 
 void RtpVideoSender::SetActiveModules(const std::vector<bool> active_modules) {
   rtc::CritScope lock(&crit_);
+  return SetActiveModulesLocked(active_modules);
+}
+
+void RtpVideoSender::SetActiveModulesLocked(
+    const std::vector<bool> active_modules) {
   RTC_DCHECK_EQ(rtp_streams_.size(), active_modules.size());
   active_ = false;
   for (size_t i = 0; i < active_modules.size(); ++i) {
@@ -481,6 +486,10 @@ void RtpVideoSender::SetActiveModules(const std::vector<bool> active_modules) {
 
 bool RtpVideoSender::IsActive() {
   rtc::CritScope lock(&crit_);
+  return IsActiveLocked();
+}
+
+bool RtpVideoSender::IsActiveLocked() {
   return active_ && !rtp_streams_.empty();
 }
 
@@ -565,7 +574,7 @@ EncodedImageCallback::Result RtpVideoSender::OnEncodedImage(
 void RtpVideoSender::OnBitrateAllocationUpdated(
     const VideoBitrateAllocation& bitrate) {
   rtc::CritScope lock(&crit_);
-  if (IsActive()) {
+  if (IsActiveLocked()) {
     if (rtp_streams_.size() == 1) {
       // If spatial scalability is enabled, it is covered by a single stream.
       rtp_streams_[0].rtp_rtcp->SetVideoBitrateAllocation(bitrate);
@@ -836,16 +845,14 @@ int RtpVideoSender::ProtectionRequest(const FecProtectionParams* delta_params,
   *sent_nack_rate_bps = 0;
   *sent_fec_rate_bps = 0;
   for (const RtpStreamSender& stream : rtp_streams_) {
-    uint32_t not_used = 0;
-    uint32_t module_nack_rate = 0;
     if (stream.fec_generator) {
       stream.fec_generator->SetProtectionParameters(*delta_params, *key_params);
       *sent_fec_rate_bps += stream.fec_generator->CurrentFecRate().bps();
     }
     *sent_video_rate_bps += stream.sender_video->VideoBitrateSent();
-    stream.rtp_rtcp->BitrateSent(&not_used, /*video_rate=*/nullptr,
-                                 /*fec_rate=*/nullptr, &module_nack_rate);
-    *sent_nack_rate_bps += module_nack_rate;
+    *sent_nack_rate_bps +=
+        stream.rtp_rtcp->GetSendRates()[RtpPacketMediaType::kRetransmission]
+            .bps<uint32_t>();
   }
   return 0;
 }
