@@ -100,7 +100,7 @@ void FuzzOneInput(const uint8_t* data, size_t size) {
         break;
       }
       case kRtpExtensionPlayoutDelay: {
-        PlayoutDelay playout = PlayoutDelay::Noop();
+        VideoPlayoutDelay playout;
         packet.GetExtension<PlayoutDelayLimits>(&playout);
         break;
       }
@@ -111,10 +111,6 @@ void FuzzOneInput(const uint8_t* data, size_t size) {
       case kRtpExtensionVideoTiming:
         VideoSendTiming timing;
         packet.GetExtension<VideoTimingExtension>(&timing);
-        break;
-      case kRtpExtensionFrameMarking:
-        FrameMarking frame_marking;
-        packet.GetExtension<FrameMarkingExtension>(&frame_marking);
         break;
       case kRtpExtensionRtpStreamId: {
         std::string rsid;
