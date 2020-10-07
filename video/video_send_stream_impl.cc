@@ -92,17 +92,26 @@ int CalculateMaxPadBitrateBps(const std::vector<VideoStream>& streams,
       const double hysteresis_factor =
           RateControlSettings::ParseFromFieldTrials()
               .GetSimulcastHysteresisFactor(content_type);
-      const size_t top_active_stream_idx = active_streams.size() - 1;
-      pad_up_to_bitrate_bps = std::min(
-          static_cast<int>(
-              hysteresis_factor *
-                  active_streams[top_active_stream_idx].min_bitrate_bps +
-              0.5),
-          active_streams[top_active_stream_idx].target_bitrate_bps);
+      if (is_svc) {
+        // For SVC, since there is only one "stream", the padding bitrate
+        // needed to enable the top spatial layer is stored in the
+        // |target_bitrate_bps| field.
+        // TODO(sprang): This behavior needs to die.
+        pad_up_to_bitrate_bps = static_cast<int>(
+            hysteresis_factor * active_streams[0].target_bitrate_bps + 0.5);
+      } else {
+        const size_t top_active_stream_idx = active_streams.size() - 1;
+        pad_up_to_bitrate_bps = std::min(
+            static_cast<int>(
+                hysteresis_factor *
+                    active_streams[top_active_stream_idx].min_bitrate_bps +
+                0.5),
+            active_streams[top_active_stream_idx].target_bitrate_bps);
 
-      // Add target_bitrate_bps of the lower active streams.
-      for (size_t i = 0; i < top_active_stream_idx; ++i) {
-        pad_up_to_bitrate_bps += active_streams[i].target_bitrate_bps;
+        // Add target_bitrate_bps of the lower active streams.
+        for (size_t i = 0; i < top_active_stream_idx; ++i) {
+          pad_up_to_bitrate_bps += active_streams[i].target_bitrate_bps;
+        }
       }
     }
   } else if (!active_streams.empty() && pad_to_min_bitrate) {
@@ -291,17 +300,6 @@ VideoSendStreamImpl::VideoSendStreamImpl(
 
   video_stream_encoder_->SetStartBitrate(
       bitrate_allocator_->GetStartBitrate(this));
-
-  // Only request rotation at the source when we positively know that the remote
-  // side doesn't support the rotation extension. This allows us to prepare the
-  // encoder in the expectation that rotation is supported - which is the common
-  // case.
-  bool rotation_applied = absl::c_none_of(
-      config_->rtp.extensions, [](const RtpExtension& extension) {
-        return extension.uri == RtpExtension::kVideoRotationUri;
-      });
-
-  video_stream_encoder_->SetSink(this, rotation_applied);
 }
 
 VideoSendStreamImpl::~VideoSendStreamImpl() {
@@ -314,6 +312,21 @@ VideoSendStreamImpl::~VideoSendStreamImpl() {
 
 void VideoSendStreamImpl::RegisterProcessThread(
     ProcessThread* module_process_thread) {
+  // Called on libjingle's worker thread (not worker_queue_), as part of the
+  // initialization steps. That's also the correct thread/queue for setting the
+  // state for |video_stream_encoder_|.
+
+  // Only request rotation at the source when we positively know that the remote
+  // side doesn't support the rotation extension. This allows us to prepare the
+  // encoder in the expectation that rotation is supported - which is the common
+  // case.
+  bool rotation_applied = absl::c_none_of(
+      config_->rtp.extensions, [](const RtpExtension& extension) {
+        return extension.uri == RtpExtension::kVideoRotationUri;
+      });
+
+  video_stream_encoder_->SetSink(this, rotation_applied);
+
   rtp_video_sender_->RegisterProcessThread(module_process_thread);
 }
 
@@ -549,8 +562,7 @@ void VideoSendStreamImpl::OnEncoderConfigurationChanged(
 
 EncodedImageCallback::Result VideoSendStreamImpl::OnEncodedImage(
     const EncodedImage& encoded_image,
-    const CodecSpecificInfo* codec_specific_info,
-    const RTPFragmentationHeader* fragmentation) {
+    const CodecSpecificInfo* codec_specific_info) {
   // Encoded is called on whatever thread the real encoder implementation run
   // on. In the case of hardware encoders, there might be several encoders
   // running in parallel on different threads.
@@ -573,8 +585,8 @@ EncodedImageCallback::Result VideoSendStreamImpl::OnEncodedImage(
   }
 
   EncodedImageCallback::Result result(EncodedImageCallback::Result::OK);
-  result = rtp_video_sender_->OnEncodedImage(encoded_image, codec_specific_info,
-                                             fragmentation);
+  result =
+      rtp_video_sender_->OnEncodedImage(encoded_image, codec_specific_info);
   // Check if there's a throttled VideoBitrateAllocation that we should try
   // sending.
   rtc::WeakPtr<VideoSendStreamImpl> send_stream = weak_ptr_;

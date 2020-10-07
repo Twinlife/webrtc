@@ -16,7 +16,7 @@
 #include "api/audio_codecs/audio_format.h"
 #include "api/task_queue/task_queue_factory.h"
 #include "modules/rtp_rtcp/include/receive_statistics.h"
-#include "rtc_base/critical_section.h"
+#include "modules/rtp_rtcp/source/rtp_rtcp_impl2.h"
 #include "rtc_base/location.h"
 #include "rtc_base/logging.h"
 
@@ -43,7 +43,7 @@ AudioChannel::AudioChannel(
   Clock* clock = Clock::GetRealTimeClock();
   receive_statistics_ = ReceiveStatistics::Create(clock);
 
-  RtpRtcp::Configuration rtp_config;
+  RtpRtcpInterface::Configuration rtp_config;
   rtp_config.clock = clock;
   rtp_config.audio = true;
   rtp_config.receive_statistics = receive_statistics_.get();
@@ -51,7 +51,7 @@ AudioChannel::AudioChannel(
   rtp_config.outgoing_transport = transport;
   rtp_config.local_media_ssrc = local_ssrc;
 
-  rtp_rtcp_ = RtpRtcp::Create(rtp_config);
+  rtp_rtcp_ = ModuleRtpRtcpImpl2::Create(rtp_config);
 
   rtp_rtcp_->SetSendingMediaStatus(false);
   rtp_rtcp_->SetRTCPStatus(RtcpMode::kCompound);
@@ -82,44 +82,50 @@ AudioChannel::~AudioChannel() {
   process_thread_->DeRegisterModule(rtp_rtcp_.get());
 }
 
-void AudioChannel::StartSend() {
-  egress_->StartSend();
+bool AudioChannel::StartSend() {
+  // If encoder has not been set, return false.
+  if (!egress_->StartSend()) {
+    return false;
+  }
 
   // Start sending with RTP stack if it has not been sending yet.
-  if (!rtp_rtcp_->Sending() && rtp_rtcp_->SetSendingStatus(true) != 0) {
-    RTC_DLOG(LS_ERROR) << "StartSend() RTP/RTCP failed to start sending";
+  if (!rtp_rtcp_->Sending()) {
+    rtp_rtcp_->SetSendingStatus(true);
   }
+  return true;
 }
 
 void AudioChannel::StopSend() {
   egress_->StopSend();
 
-  // If the channel is not playing and RTP stack is active then deactivate RTP
-  // stack. SetSendingStatus(false) triggers the transmission of RTCP BYE
+  // Deactivate RTP stack when both sending and receiving are stopped.
+  // SetSendingStatus(false) triggers the transmission of RTCP BYE
   // message to remote endpoint.
-  if (!IsPlaying() && rtp_rtcp_->Sending() &&
-      rtp_rtcp_->SetSendingStatus(false) != 0) {
-    RTC_DLOG(LS_ERROR) << "StopSend() RTP/RTCP failed to stop sending";
+  if (!ingress_->IsPlaying() && rtp_rtcp_->Sending()) {
+    rtp_rtcp_->SetSendingStatus(false);
   }
 }
 
-void AudioChannel::StartPlay() {
-  ingress_->StartPlay();
+bool AudioChannel::StartPlay() {
+  // If decoders have not been set, return false.
+  if (!ingress_->StartPlay()) {
+    return false;
+  }
 
   // If RTP stack is not sending then start sending as in recv-only mode, RTCP
   // receiver report is expected.
-  if (!rtp_rtcp_->Sending() && rtp_rtcp_->SetSendingStatus(true) != 0) {
-    RTC_DLOG(LS_ERROR) << "StartPlay() RTP/RTCP failed to start sending";
+  if (!rtp_rtcp_->Sending()) {
+    rtp_rtcp_->SetSendingStatus(true);
   }
+  return true;
 }
 
 void AudioChannel::StopPlay() {
   ingress_->StopPlay();
 
   // Deactivate RTP stack only when both sending and receiving are stopped.
-  if (!IsSendingMedia() && rtp_rtcp_->Sending() &&
-      rtp_rtcp_->SetSendingStatus(false) != 0) {
-    RTC_DLOG(LS_ERROR) << "StopPlay() RTP/RTCP failed to stop sending";
+  if (!rtp_rtcp_->SendingMedia() && rtp_rtcp_->Sending()) {
+    rtp_rtcp_->SetSendingStatus(false);
   }
 }
 

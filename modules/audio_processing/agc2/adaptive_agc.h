@@ -21,6 +21,8 @@
 namespace webrtc {
 class ApmDataDumper;
 
+// Adaptive digital gain controller.
+// TODO(crbug.com/webrtc/7494): Unify with `AdaptiveDigitalGainApplier`.
 class AdaptiveAgc {
  public:
   explicit AdaptiveAgc(ApmDataDumper* apm_data_dumper);
@@ -28,12 +30,15 @@ class AdaptiveAgc {
               const AudioProcessing::Config::GainController2& config);
   ~AdaptiveAgc();
 
-  void Process(AudioFrameView<float> float_frame, float last_audio_level);
+  // Analyzes `frame` and applies a digital adaptive gain to it. Takes into
+  // account the envelope measured by the limiter.
+  // TODO(crbug.com/webrtc/7494): Make the class depend on the limiter.
+  void Process(AudioFrameView<float> frame, float limiter_envelope);
   void Reset();
 
  private:
   AdaptiveModeLevelEstimator speech_level_estimator_;
-  VadWithLevel vad_;
+  VadLevelAnalyzer vad_;
   AdaptiveDigitalGainApplier gain_applier_;
   ApmDataDumper* const apm_data_dumper_;
   NoiseLevelEstimator noise_level_estimator_;
