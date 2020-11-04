@@ -467,6 +467,9 @@ if (!build_with_chromium) {
 # -twinlife- 190205
       "third_party/libwebsockets",
 # -twinlife- 190205
+# -twinlife- 201102
+      "third_party/sqlcipher",
+# -twinlife- 201102
     ]
 
     if (rtc_include_builtin_audio_codecs) {

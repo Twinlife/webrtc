@@ -16,6 +16,8 @@
 #include "sdk/android/src/jni/class_reference_holder.h"
 #include "sdk/android/src/jni/jni_helpers.h"
 
+extern "C" jint JNIEXPORT JNICALL JNI_OnLoad1(JavaVM* jvm, void* reserved);
+
 namespace webrtc {
 namespace jni {
 
@@ -28,6 +30,7 @@ extern "C" jint JNIEXPORT JNICALL JNI_OnLoad(JavaVM* jvm, void* reserved) {
   RTC_CHECK(rtc::InitializeSSL()) << "Failed to InitializeSSL()";
   LoadGlobalClassReferenceHolder();
 
+  ret = JNI_OnLoad1(jvm, reserved);
   return ret;
 }
 
