@@ -115,8 +115,6 @@ class WebRtcRecordableEncodedFrame : public RecordableEncodedFrame {
 
 VideoCodec CreateDecoderVideoCodec(const VideoReceiveStream::Decoder& decoder) {
   VideoCodec codec;
-  memset(&codec, 0, sizeof(codec));
-
   codec.codecType = PayloadStringToCodecType(decoder.video_format.name);
 
   if (codec.codecType == kVideoCodecVP8) {
@@ -169,6 +167,11 @@ class NullVideoDecoder : public webrtc::VideoDecoder {
 
   int32_t Release() override { return WEBRTC_VIDEO_CODEC_OK; }
 
+  DecoderInfo GetDecoderInfo() const override {
+    DecoderInfo info;
+    info.implementation_name = "NullVideoDecoder";
+    return info;
+  }
   const char* ImplementationName() const override { return "NullVideoDecoder"; }
 };
 
@@ -636,17 +639,15 @@ void VideoReceiveStream::StartNextDecode() {
       [this](std::unique_ptr<EncodedFrame> frame, ReturnReason res) {
         RTC_DCHECK_EQ(frame == nullptr, res == ReturnReason::kTimeout);
         RTC_DCHECK_EQ(frame != nullptr, res == ReturnReason::kFrameFound);
-        decode_queue_.PostTask([this, frame = std::move(frame)]() mutable {
-          RTC_DCHECK_RUN_ON(&decode_queue_);
-          if (decoder_stopped_)
-            return;
-          if (frame) {
-            HandleEncodedFrame(std::move(frame));
-          } else {
-            HandleFrameBufferTimeout();
-          }
-          StartNextDecode();
-        });
+        RTC_DCHECK_RUN_ON(&decode_queue_);
+        if (decoder_stopped_)
+          return;
+        if (frame) {
+          HandleEncodedFrame(std::move(frame));
+        } else {
+          HandleFrameBufferTimeout();
+        }
+        StartNextDecode();
       });
 }
 

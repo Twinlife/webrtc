@@ -138,7 +138,8 @@ class RtpVideoSender : public RtpVideoSenderInterface,
 
   void OnBitrateAllocationUpdated(const VideoBitrateAllocation& bitrate)
       RTC_LOCKS_EXCLUDED(mutex_) override;
-
+  void OnVideoLayersAllocationUpdated(
+      const VideoLayersAllocation& layers) override;
   void OnTransportOverheadChanged(size_t transport_overhead_bytes_per_packet)
       RTC_LOCKS_EXCLUDED(mutex_) override;
   void OnBitrateUpdated(BitrateAllocationUpdate update, int framerate)
@@ -168,13 +169,15 @@ class RtpVideoSender : public RtpVideoSenderInterface,
   void ConfigureRids();
   bool NackEnabled() const;
   uint32_t GetPacketizationOverheadRate() const;
+  DataRate CalculateOverheadRate(DataRate data_rate,
+                                 DataSize packet_size,
+                                 DataSize overhead_per_packet,
+                                 Frequency framerate) const;
 
   const FieldTrialBasedConfig field_trials_;
   const bool send_side_bwe_with_overhead_;
-  const bool account_for_packetization_overhead_;
-  const bool use_early_loss_detection_;
+  const bool use_frame_rate_for_overhead_;
   const bool has_packet_feedback_;
-  const bool use_deferred_fec_;
 
   // TODO(holmer): Remove mutex_ once RtpVideoSender runs on the
   // transport task queue.

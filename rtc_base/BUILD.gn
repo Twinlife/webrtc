@@ -48,12 +48,13 @@ rtc_source_set("untyped_function") {
   deps = [ "system:assume" ]
 }
 
-rtc_source_set("robo_caller") {
+rtc_source_set("callback_list") {
   sources = [
-    "robo_caller.cc",
-    "robo_caller.h",
+    "callback_list.cc",
+    "callback_list.h",
   ]
   deps = [
+    ":checks",
     ":untyped_function",
     "../api:function_view",
     "system:assume",
@@ -125,6 +126,14 @@ rtc_library("rtc_base_approved") {
 
   if (is_win) {
     sources += [
+      "win/create_direct3d_device.cc",
+      "win/create_direct3d_device.h",
+      "win/get_activation_factory.cc",
+      "win/get_activation_factory.h",
+      "win/hstring.cc",
+      "win/hstring.h",
+      "win/scoped_com_initializer.cc",
+      "win/scoped_com_initializer.h",
       "win/windows_version.cc",
       "win/windows_version.h",
     ]
@@ -158,8 +167,6 @@ rtc_library("rtc_base_approved") {
 }
 
 rtc_source_set("macromagic") {
-  # TODO(bugs.webrtc.org/9606): This should not be public.
-  visibility = [ "*" ]
   sources = [
     "arraysize.h",
     "constructor_magic.h",
@@ -660,6 +667,13 @@ rtc_library("rtc_json") {
   }
 }
 
+rtc_source_set("async_resolver") {
+  # TODO(bugs.webrtc.org/9987): This build target will soon contain
+  # async_resolver source files (see
+  # https://webrtc-review.googlesource.com/c/src/+/196903).
+  sources = [ "async_resolver.h" ]
+}
+
 rtc_source_set("net_helpers") {
   # TODO(bugs.webrtc.org/9987): This build target will soon contain
   #                             the following files:
@@ -835,6 +849,7 @@ rtc_library("rtc_base") {
     "system:no_unique_address",
     "system:rtc_export",
     "task_utils:pending_task_safety_flag",
+    "task_utils:repeating_task",
     "task_utils:to_queued_task",
     "third_party/base64",
     "third_party/sigslot",
@@ -905,12 +920,10 @@ rtc_library("rtc_base") {
     "openssl.h",
     "openssl_adapter.cc",
     "openssl_adapter.h",
-    "openssl_certificate.cc",
-    "openssl_certificate.h",
     "openssl_digest.cc",
     "openssl_digest.h",
-    "openssl_identity.cc",
-    "openssl_identity.h",
+    "openssl_key_pair.cc",
+    "openssl_key_pair.h",
     "openssl_session_cache.cc",
     "openssl_session_cache.h",
     "openssl_stream_adapter.cc",
@@ -955,6 +968,23 @@ rtc_library("rtc_base") {
     "unique_id_generator.cc",
     "unique_id_generator.h",
   ]
+
+  # If we are building the SSL library ourselves, we know it's BoringSSL.
+  if (rtc_build_ssl) {
+    sources += [
+      "boringssl_certificate.cc",
+      "boringssl_certificate.h",
+      "boringssl_identity.cc",
+      "boringssl_identity.h",
+    ]
+  } else {
+    sources += [
+      "openssl_certificate.cc",
+      "openssl_certificate.h",
+      "openssl_identity.cc",
+      "openssl_identity.h",
+    ]
+  }
 
   if (build_with_chromium) {
     include_dirs = [ "../../boringssl/src/include" ]
@@ -1077,13 +1107,13 @@ rtc_library("testclient") {
   ]
 }
 
-rtc_library("robo_caller_unittests") {
+rtc_library("callback_list_unittests") {
   testonly = true
 
-  sources = [ "robo_caller_unittest.cc" ]
+  sources = [ "callback_list_unittest.cc" ]
   deps = [
+    ":callback_list",
     ":gunit_helpers",
-    ":robo_caller",
     ":rtc_base",
     "../api:function_view",
     "../test:test_support",
@@ -1425,6 +1455,7 @@ if (rtc_include_tests) {
       "memory:fifo_buffer",
       "synchronization:mutex",
       "synchronization:synchronization_unittests",
+      "task_utils:pending_task_safety_flag",
       "task_utils:to_queued_task",
       "third_party/sigslot",
     ]

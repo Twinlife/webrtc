@@ -644,6 +644,9 @@ class RTC_EXPORT PeerConnectionInterface : public rtc::RefCountInterface {
     // Whether network condition based codec switching is allowed.
     absl::optional<bool> allow_codec_switching;
 
+    // The delay before doing a usage histogram report for long-lived
+    // PeerConnections. Used for testing only.
+    absl::optional<int> report_usage_pattern_delay_ms;
     //
     // Don't forget to update operator== if adding something.
     //
@@ -1429,6 +1432,12 @@ class RTC_EXPORT PeerConnectionFactoryInterface
   // configuration and a PeerConnectionDependencies structure.
   // TODO(benwright): Make pure virtual once downstream mock PC factory classes
   // are updated.
+  virtual RTCErrorOr<rtc::scoped_refptr<PeerConnectionInterface>>
+  CreatePeerConnectionOrError(
+      const PeerConnectionInterface::RTCConfiguration& configuration,
+      PeerConnectionDependencies dependencies);
+  // Deprecated creator - does not return an error code on error.
+  // TODO(bugs.webrtc.org:12238): Deprecate and remove.
   virtual rtc::scoped_refptr<PeerConnectionInterface> CreatePeerConnection(
       const PeerConnectionInterface::RTCConfiguration& configuration,
       PeerConnectionDependencies dependencies);

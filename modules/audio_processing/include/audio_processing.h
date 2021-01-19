@@ -187,7 +187,7 @@ struct ExperimentalNs {
 // analog_level = apm->recommended_stream_analog_level();
 // has_voice = apm->stream_has_voice();
 //
-// // Repeate render and capture processing for the duration of the call...
+// // Repeat render and capture processing for the duration of the call...
 // // Start a new call...
 // apm->Initialize();
 //
@@ -274,6 +274,11 @@ class RTC_EXPORT AudioProcessing : public rtc::RefCountInterface {
     // HAL.
     // Recommended to be enabled on the client-side.
     struct GainController1 {
+      bool operator==(const GainController1& rhs) const;
+      bool operator!=(const GainController1& rhs) const {
+        return !(*this == rhs);
+      }
+
       bool enabled = false;
       enum Mode {
         // Adaptive mode intended for use if an analog volume control is
@@ -338,12 +343,17 @@ class RTC_EXPORT AudioProcessing : public rtc::RefCountInterface {
     // first applies a fixed gain. The adaptive digital AGC can be turned off by
     // setting |adaptive_digital_mode=false|.
     struct GainController2 {
+      bool operator==(const GainController2& rhs) const;
+      bool operator!=(const GainController2& rhs) const {
+        return !(*this == rhs);
+      }
+
       enum LevelEstimator { kRms, kPeak };
       bool enabled = false;
-      struct {
+      struct FixedDigital {
         float gain_db = 0.f;
       } fixed_digital;
-      struct {
+      struct AdaptiveDigital {
         bool enabled = false;
         float vad_probability_attack = 1.f;
         LevelEstimator level_estimator = kRms;
@@ -353,6 +363,11 @@ class RTC_EXPORT AudioProcessing : public rtc::RefCountInterface {
         float initial_saturation_margin_db = 20.f;
         float extra_saturation_margin_db = 2.f;
         int gain_applier_adjacent_speech_frames_threshold = 1;
+        float max_gain_change_db_per_second = 3.f;
+        float max_output_noise_level_dbfs = -50.f;
+        bool sse2_allowed = true;
+        bool avx2_allowed = true;
+        bool neon_allowed = true;
       } adaptive_digital;
     } gain_controller2;
 
@@ -701,7 +716,7 @@ class RTC_EXPORT AudioProcessing : public rtc::RefCountInterface {
   static constexpr int kMaxNativeSampleRateHz =
       kNativeSampleRatesHz[kNumNativeSampleRates - 1];
 
-  static const int kChunkSizeMs = 10;
+  static constexpr int kChunkSizeMs = 10;
 };
 
 class RTC_EXPORT AudioProcessingBuilder {

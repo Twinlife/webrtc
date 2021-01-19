@@ -112,15 +112,13 @@ class AudioDeviceTemplate : public AudioDeviceGeneric {
   int32_t PlayoutDeviceName(uint16_t index,
                             char name[kAdmMaxDeviceNameSize],
                             char guid[kAdmMaxGuidSize]) override {
-    FATAL() << "Should never be called";
-    return -1;
+    RTC_CHECK_NOTREACHED();
   }
 
   int32_t RecordingDeviceName(uint16_t index,
                               char name[kAdmMaxDeviceNameSize],
                               char guid[kAdmMaxGuidSize]) override {
-    FATAL() << "Should never be called";
-    return -1;
+    RTC_CHECK_NOTREACHED();
   }
 
   int32_t SetPlayoutDevice(uint16_t index) override {
@@ -132,8 +130,7 @@ class AudioDeviceTemplate : public AudioDeviceGeneric {
 
   int32_t SetPlayoutDevice(
       AudioDeviceModule::WindowsDeviceType device) override {
-    FATAL() << "Should never be called";
-    return -1;
+    RTC_CHECK_NOTREACHED();
   }
 
   int32_t SetRecordingDevice(uint16_t index) override {
@@ -145,8 +142,7 @@ class AudioDeviceTemplate : public AudioDeviceGeneric {
 
   int32_t SetRecordingDevice(
       AudioDeviceModule::WindowsDeviceType device) override {
-    FATAL() << "Should never be called";
-    return -1;
+    RTC_CHECK_NOTREACHED();
   }
 
   int32_t PlayoutIsAvailable(bool& available) override {
@@ -275,53 +271,38 @@ class AudioDeviceTemplate : public AudioDeviceGeneric {
   }
 
   int32_t SetMicrophoneVolume(uint32_t volume) override {
-    FATAL() << "Should never be called";
-    return -1;
+    RTC_CHECK_NOTREACHED();
   }
 
   int32_t MicrophoneVolume(uint32_t& volume) const override {
-    FATAL() << "Should never be called";
+    RTC_CHECK_NOTREACHED();
     return -1;
   }
 
   int32_t MaxMicrophoneVolume(uint32_t& maxVolume) const override {
-    FATAL() << "Should never be called";
-    return -1;
+    RTC_CHECK_NOTREACHED();
   }
 
   int32_t MinMicrophoneVolume(uint32_t& minVolume) const override {
-    FATAL() << "Should never be called";
-    return -1;
+    RTC_CHECK_NOTREACHED();
   }
 
   int32_t SpeakerMuteIsAvailable(bool& available) override {
-    FATAL() << "Should never be called";
-    return -1;
+    RTC_CHECK_NOTREACHED();
   }
 
-  int32_t SetSpeakerMute(bool enable) override {
-    FATAL() << "Should never be called";
-    return -1;
-  }
+  int32_t SetSpeakerMute(bool enable) override { RTC_CHECK_NOTREACHED(); }
 
-  int32_t SpeakerMute(bool& enabled) const override {
-    FATAL() << "Should never be called";
-    return -1;
-  }
+  int32_t SpeakerMute(bool& enabled) const override { RTC_CHECK_NOTREACHED(); }
 
   int32_t MicrophoneMuteIsAvailable(bool& available) override {
-    FATAL() << "Not implemented";
-    return -1;
+    RTC_CHECK_NOTREACHED();
   }
 
-  int32_t SetMicrophoneMute(bool enable) override {
-    FATAL() << "Not implemented";
-    return -1;
-  }
+  int32_t SetMicrophoneMute(bool enable) override { RTC_CHECK_NOTREACHED(); }
 
   int32_t MicrophoneMute(bool& enabled) const override {
-    FATAL() << "Not implemented";
-    return -1;
+    RTC_CHECK_NOTREACHED();
   }
 
   // Returns true if the audio manager has been configured to support stereo

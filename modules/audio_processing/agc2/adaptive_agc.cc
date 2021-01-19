@@ -11,6 +11,7 @@
 #include "modules/audio_processing/agc2/adaptive_agc.h"
 
 #include "common_audio/include/audio_util.h"
+#include "modules/audio_processing/agc2/cpu_features.h"
 #include "modules/audio_processing/agc2/vad_with_level.h"
 #include "modules/audio_processing/logging/apm_data_dumper.h"
 #include "rtc_base/checks.h"
@@ -28,11 +29,34 @@ void DumpDebugData(const AdaptiveDigitalGainApplier::FrameInfo& info,
   dumper.DumpRaw("agc2_last_limiter_audio_level", info.limiter_envelope_dbfs);
 }
 
+constexpr int kGainApplierAdjacentSpeechFramesThreshold = 1;
+constexpr float kMaxGainChangePerSecondDb = 3.f;
+constexpr float kMaxOutputNoiseLevelDbfs = -50.f;
+
+// Detects the available CPU features and applies any kill-switches.
+AvailableCpuFeatures GetAllowedCpuFeatures(
+    const AudioProcessing::Config::GainController2::AdaptiveDigital& config) {
+  AvailableCpuFeatures features = GetAvailableCpuFeatures();
+  if (!config.sse2_allowed) {
+    features.sse2 = false;
+  }
+  if (!config.avx2_allowed) {
+    features.avx2 = false;
+  }
+  if (!config.neon_allowed) {
+    features.neon = false;
+  }
+  return features;
+}
+
 }  // namespace
 
 AdaptiveAgc::AdaptiveAgc(ApmDataDumper* apm_data_dumper)
     : speech_level_estimator_(apm_data_dumper),
-      gain_applier_(apm_data_dumper),
+      gain_applier_(apm_data_dumper,
+                    kGainApplierAdjacentSpeechFramesThreshold,
+                    kMaxGainChangePerSecondDb,
+                    kMaxOutputNoiseLevelDbfs),
       apm_data_dumper_(apm_data_dumper),
       noise_level_estimator_(apm_data_dumper) {
   RTC_DCHECK(apm_data_dumper);
@@ -47,10 +71,13 @@ AdaptiveAgc::AdaptiveAgc(ApmDataDumper* apm_data_dumper,
               .level_estimator_adjacent_speech_frames_threshold,
           config.adaptive_digital.initial_saturation_margin_db,
           config.adaptive_digital.extra_saturation_margin_db),
-      vad_(config.adaptive_digital.vad_probability_attack),
-      gain_applier_(apm_data_dumper,
-                    config.adaptive_digital
-                        .gain_applier_adjacent_speech_frames_threshold),
+      vad_(config.adaptive_digital.vad_probability_attack,
+           GetAllowedCpuFeatures(config.adaptive_digital)),
+      gain_applier_(
+          apm_data_dumper,
+          config.adaptive_digital.gain_applier_adjacent_speech_frames_threshold,
+          config.adaptive_digital.max_gain_change_db_per_second,
+          config.adaptive_digital.max_output_noise_level_dbfs),
       apm_data_dumper_(apm_data_dumper),
       noise_level_estimator_(apm_data_dumper) {
   RTC_DCHECK(apm_data_dumper);
