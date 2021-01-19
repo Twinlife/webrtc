@@ -12,6 +12,7 @@
 
 #include "absl/types/optional.h"
 #include "api/array_view.h"
+#include "api/network_state_predictor.h"
 #include "logging/rtc_event_log/encoder/blob_encoding.h"
 #include "logging/rtc_event_log/encoder/delta_encoding.h"
 #include "logging/rtc_event_log/encoder/rtc_event_log_encoder_common.h"
@@ -43,7 +44,6 @@
 #include "logging/rtc_event_log/events/rtc_event_video_send_stream_config.h"
 #include "logging/rtc_event_log/rtc_stream_config.h"
 #include "modules/audio_coding/audio_network_adaptor/include/audio_network_adaptor_config.h"
-#include "modules/remote_bitrate_estimator/include/bwe_defines.h"
 #include "modules/rtp_rtcp/include/rtp_cvo.h"
 #include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "modules/rtp_rtcp/source/rtcp_packet/app.h"
@@ -288,11 +288,9 @@ rtclog2::IceCandidatePairEvent::IceCandidatePairEventType ConvertToProtoFormat(
 }
 
 // Copies all RTCP blocks except APP, SDES and unknown from |packet| to
-// |buffer|. |buffer| must have space for |IP_PACKET_SIZE| bytes. |packet| must
-// be at most |IP_PACKET_SIZE| bytes long.
-size_t RemoveNonWhitelistedRtcpBlocks(const rtc::Buffer& packet,
+// |buffer|. |buffer| must have space for at least |packet.size()| bytes.
+size_t RemoveNonAllowlistedRtcpBlocks(const rtc::Buffer& packet,
                                       uint8_t* buffer) {
-  RTC_DCHECK(packet.size() <= IP_PACKET_SIZE);
   RTC_DCHECK(buffer != nullptr);
   rtcp::CommonHeader header;
   const uint8_t* block_begin = packet.data();
@@ -318,7 +316,7 @@ size_t RemoveNonWhitelistedRtcpBlocks(const rtc::Buffer& packet,
         // inter-arrival jitter, third-party loss reports, payload-specific
         // feedback and extended reports.
         // TODO(terelius): As an optimization, don't copy anything if all blocks
-        // in the packet are whitelisted types.
+        // in the packet are allowlisted types.
         memcpy(buffer + buffer_length, block_begin, block_size);
         buffer_length += block_size;
         break;
@@ -346,10 +344,10 @@ void EncodeRtcpPacket(rtc::ArrayView<const EventType*> batch,
   const EventType* const base_event = batch[0];
   proto_batch->set_timestamp_ms(base_event->timestamp_ms());
   {
-    uint8_t buffer[IP_PACKET_SIZE];
+    std::vector<uint8_t> buffer(base_event->packet().size());
     size_t buffer_length =
-        RemoveNonWhitelistedRtcpBlocks(base_event->packet(), buffer);
-    proto_batch->set_raw_packet(buffer, buffer_length);
+        RemoveNonAllowlistedRtcpBlocks(base_event->packet(), buffer.data());
+    proto_batch->set_raw_packet(buffer.data(), buffer_length);
   }
 
   if (batch.size() == 1) {
@@ -377,7 +375,7 @@ void EncodeRtcpPacket(rtc::ArrayView<const EventType*> batch,
     const EventType* event = batch[i + 1];
     scrubed_packets[i].resize(event->packet().size());
     static_assert(sizeof(std::string::value_type) == sizeof(uint8_t), "");
-    const size_t buffer_length = RemoveNonWhitelistedRtcpBlocks(
+    const size_t buffer_length = RemoveNonAllowlistedRtcpBlocks(
         event->packet(), reinterpret_cast<uint8_t*>(&scrubed_packets[i][0]));
     if (buffer_length < event->packet().size()) {
       scrubed_packets[i].resize(buffer_length);

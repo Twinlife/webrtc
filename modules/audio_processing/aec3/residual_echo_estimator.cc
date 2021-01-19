@@ -23,19 +23,10 @@
 namespace webrtc {
 namespace {
 
-bool ModelReverbInNonlinearMode() {
-  return !field_trial::IsEnabled("WebRTC-Aec3NonlinearModeReverbKillSwitch");
-}
-
-constexpr float kDefaultTransparentModeGain = 0.f;
+constexpr float kDefaultTransparentModeGain = 0.01f;
 
 float GetTransparentModeGain() {
-  if (field_trial::IsEnabled(
-          "WebRTC-Aec3NoSuppressionInTransparentModeKillSwitch")) {
-    return 0.01f;
-  } else {
-    return kDefaultTransparentModeGain;
-  }
+  return kDefaultTransparentModeGain;
 }
 
 float GetEarlyReflectionsDefaultModeGain(
@@ -181,8 +172,7 @@ ResidualEchoEstimator::ResidualEchoEstimator(const EchoCanceller3Config& config,
       early_reflections_general_gain_(
           GetEarlyReflectionsDefaultModeGain(config_.ep_strength)),
       late_reflections_general_gain_(
-          GetLateReflectionsDefaultModeGain(config_.ep_strength)),
-      model_reverb_in_nonlinear_mode_(ModelReverbInNonlinearMode()) {
+          GetLateReflectionsDefaultModeGain(config_.ep_strength)) {
   Reset();
 }
 
@@ -250,7 +240,8 @@ void ResidualEchoEstimator::Estimate(
       NonLinearEstimate(echo_path_gain, X2, R2);
     }
 
-    if (model_reverb_in_nonlinear_mode_ && !aec_state.TransparentModeActive()) {
+    if (config_.echo_model.model_reverb_in_nonlinear_mode &&
+        !aec_state.TransparentModeActive()) {
       AddReverb(ReverbType::kNonLinear, aec_state, render_buffer, R2);
     }
   }

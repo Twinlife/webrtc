@@ -36,6 +36,7 @@
 #include "rtc_base/logging.h"
 #include "rtc_base/third_party/base64/base64.h"
 #include "rtc_base/unique_id_generator.h"
+#include "system_wrappers/include/field_trial.h"
 
 namespace {
 
@@ -335,6 +336,12 @@ static StreamParams CreateStreamParamsForNewSenderWithSsrcs(
         << "Our FlexFEC implementation only supports protecting "
            "a single media streams. This session has multiple "
            "media streams however, so no FlexFEC SSRC will be generated.";
+  }
+  if (include_flexfec_stream &&
+      !webrtc::field_trial::IsEnabled("WebRTC-FlexFEC-03")) {
+    include_flexfec_stream = false;
+    RTC_LOG(LS_WARNING)
+        << "WebRTC-FlexFEC trial is not enabled, not sending FlexFEC";
   }
 
   result.GenerateSsrcs(sender.num_sim_layers, include_rtx_streams,
@@ -1505,8 +1512,11 @@ std::unique_ptr<SessionDescription> MediaSessionDescriptionFactory::CreateOffer(
   AudioCodecs offer_audio_codecs;
   VideoCodecs offer_video_codecs;
   RtpDataCodecs offer_rtp_data_codecs;
-  GetCodecsForOffer(current_active_contents, &offer_audio_codecs,
-                    &offer_video_codecs, &offer_rtp_data_codecs);
+  GetCodecsForOffer(
+      current_active_contents, &offer_audio_codecs, &offer_video_codecs,
+      session_options.data_channel_type == DataChannelType::DCT_SCTP
+          ? nullptr
+          : &offer_rtp_data_codecs);
   if (!session_options.vad_enabled) {
     // If application doesn't want CN codecs in offer.
     StripCNCodecs(&offer_audio_codecs);
@@ -1556,6 +1566,13 @@ std::unique_ptr<SessionDescription> MediaSessionDescriptionFactory::CreateOffer(
                                     current_content, current_description,
                                     offer_rtp_data_codecs, &current_streams,
                                     offer.get(), &ice_credentials)) {
+          return nullptr;
+        }
+        break;
+      case MEDIA_TYPE_UNSUPPORTED:
+        if (!AddUnsupportedContentForOffer(
+                media_description_options, session_options, current_content,
+                current_description, offer.get(), &ice_credentials)) {
           return nullptr;
         }
         break;
@@ -1713,6 +1730,14 @@ MediaSessionDescriptionFactory::CreateAnswer(
           return nullptr;
         }
         break;
+      case MEDIA_TYPE_UNSUPPORTED:
+        if (!AddUnsupportedContentForAnswer(
+                media_description_options, session_options, offer_content,
+                offer, current_content, current_description,
+                bundle_transport.get(), answer.get(), &ice_credentials)) {
+          return nullptr;
+        }
+        break;
       default:
         RTC_NOTREACHED();
     }
@@ -1803,6 +1828,7 @@ const AudioCodecs& MediaSessionDescriptionFactory::GetAudioCodecsForOffer(
     case RtpTransceiverDirection::kRecvOnly:
       return audio_recv_codecs_;
   }
+  RTC_CHECK_NOTREACHED();
 }
 
 const AudioCodecs& MediaSessionDescriptionFactory::GetAudioCodecsForAnswer(
@@ -1821,6 +1847,7 @@ const AudioCodecs& MediaSessionDescriptionFactory::GetAudioCodecsForAnswer(
     case RtpTransceiverDirection::kRecvOnly:
       return audio_recv_codecs_;
   }
+  RTC_CHECK_NOTREACHED();
 }
 
 const VideoCodecs& MediaSessionDescriptionFactory::GetVideoCodecsForOffer(
@@ -1836,6 +1863,7 @@ const VideoCodecs& MediaSessionDescriptionFactory::GetVideoCodecsForOffer(
     case RtpTransceiverDirection::kRecvOnly:
       return video_recv_codecs_;
   }
+  RTC_CHECK_NOTREACHED();
 }
 
 const VideoCodecs& MediaSessionDescriptionFactory::GetVideoCodecsForAnswer(
@@ -1854,6 +1882,7 @@ const VideoCodecs& MediaSessionDescriptionFactory::GetVideoCodecsForAnswer(
     case RtpTransceiverDirection::kRecvOnly:
       return video_recv_codecs_;
   }
+  RTC_CHECK_NOTREACHED();
 }
 
 void MergeCodecsFromDescription(
@@ -1904,7 +1933,10 @@ void MediaSessionDescriptionFactory::GetCodecsForOffer(
   // Add our codecs that are not in the current description.
   MergeCodecs<AudioCodec>(all_audio_codecs_, audio_codecs, &used_pltypes);
   MergeCodecs<VideoCodec>(all_video_codecs_, video_codecs, &used_pltypes);
-  MergeCodecs<DataCodec>(rtp_data_codecs_, rtp_data_codecs, &used_pltypes);
+  // Only allocate a payload type for rtp datachannels when using rtp data
+  // channels.
+  if (rtp_data_codecs)
+    MergeCodecs<DataCodec>(rtp_data_codecs_, rtp_data_codecs, &used_pltypes);
 }
 
 // Getting codecs for an answer involves these steps:
@@ -2362,7 +2394,7 @@ bool MediaSessionDescriptionFactory::AddRtpDataContentForOffer(
     return false;
   }
 
-  data->set_bandwidth(kDataMaxBandwidth);
+  data->set_bandwidth(kRtpDataMaxBandwidth);
   SetMediaProtocol(secure_transport, data.get());
   desc->AddContent(media_description_options.mid, MediaProtocolType::kRtp,
                    media_description_options.stopped, std::move(data));
@@ -2401,6 +2433,31 @@ bool MediaSessionDescriptionFactory::AddDataContentForOffer(
                                      rtp_data_codecs, current_streams, desc,
                                      ice_credentials);
   }
+}
+
+bool MediaSessionDescriptionFactory::AddUnsupportedContentForOffer(
+    const MediaDescriptionOptions& media_description_options,
+    const MediaSessionOptions& session_options,
+    const ContentInfo* current_content,
+    const SessionDescription* current_description,
+    SessionDescription* desc,
+    IceCredentialsIterator* ice_credentials) const {
+  RTC_CHECK(IsMediaContentOfType(current_content, MEDIA_TYPE_UNSUPPORTED));
+
+  const UnsupportedContentDescription* current_unsupported_description =
+      current_content->media_description()->as_unsupported();
+  auto unsupported = std::make_unique<UnsupportedContentDescription>(
+      current_unsupported_description->media_type());
+  unsupported->set_protocol(current_content->media_description()->protocol());
+  desc->AddContent(media_description_options.mid, MediaProtocolType::kOther,
+                   /*rejected=*/true, std::move(unsupported));
+
+  if (!AddTransportOffer(media_description_options.mid,
+                         media_description_options.transport_options,
+                         current_description, desc, ice_credentials)) {
+    return false;
+  }
+  return true;
 }
 
 // |audio_codecs| = set of all possible codecs that can be used, with correct
@@ -2733,8 +2790,8 @@ bool MediaSessionDescriptionFactory::AddDataContentForAnswer(
     return false;
   }
 
-  if (!rejected) {
-    data_answer->set_bandwidth(kDataMaxBandwidth);
+  if (!rejected && session_options.data_channel_type == DCT_RTP) {
+    data_answer->set_bandwidth(kRtpDataMaxBandwidth);
   } else {
     // RFC 3264
     // The answer MUST contain the same number of m-lines as the offer.
@@ -2742,6 +2799,42 @@ bool MediaSessionDescriptionFactory::AddDataContentForAnswer(
   }
   answer->AddContent(media_description_options.mid, offer_content->type,
                      rejected, std::move(data_answer));
+  return true;
+}
+
+bool MediaSessionDescriptionFactory::AddUnsupportedContentForAnswer(
+    const MediaDescriptionOptions& media_description_options,
+    const MediaSessionOptions& session_options,
+    const ContentInfo* offer_content,
+    const SessionDescription* offer_description,
+    const ContentInfo* current_content,
+    const SessionDescription* current_description,
+    const TransportInfo* bundle_transport,
+    SessionDescription* answer,
+    IceCredentialsIterator* ice_credentials) const {
+  std::unique_ptr<TransportDescription> unsupported_transport =
+      CreateTransportAnswer(media_description_options.mid, offer_description,
+                            media_description_options.transport_options,
+                            current_description, bundle_transport != nullptr,
+                            ice_credentials);
+  if (!unsupported_transport) {
+    return false;
+  }
+  RTC_CHECK(IsMediaContentOfType(offer_content, MEDIA_TYPE_UNSUPPORTED));
+
+  const UnsupportedContentDescription* offer_unsupported_description =
+      offer_content->media_description()->as_unsupported();
+  std::unique_ptr<MediaContentDescription> unsupported_answer =
+      std::make_unique<UnsupportedContentDescription>(
+          offer_unsupported_description->media_type());
+  unsupported_answer->set_protocol(offer_unsupported_description->protocol());
+
+  if (!AddTransportAnswer(media_description_options.mid,
+                          *(unsupported_transport.get()), answer)) {
+    return false;
+  }
+  answer->AddContent(media_description_options.mid, offer_content->type,
+                     /*rejected=*/true, std::move(unsupported_answer));
   return true;
 }
 
@@ -2820,6 +2913,10 @@ bool IsVideoContent(const ContentInfo* content) {
 
 bool IsDataContent(const ContentInfo* content) {
   return IsMediaContentOfType(content, MEDIA_TYPE_DATA);
+}
+
+bool IsUnsupportedContent(const ContentInfo* content) {
+  return IsMediaContentOfType(content, MEDIA_TYPE_UNSUPPORTED);
 }
 
 const ContentInfo* GetFirstMediaContent(const ContentInfos& contents,

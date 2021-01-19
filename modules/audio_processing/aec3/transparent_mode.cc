@@ -24,7 +24,9 @@ bool DeactivateTransparentMode() {
 }
 
 bool DeactivateTransparentModeHmm() {
-  return field_trial::IsEnabled("WebRTC-Aec3TransparentModeHmmKillSwitch");
+  // HMM based classifier is temporarily disabled (https://crbug.com/1155071).
+  return true;
+  // return field_trial::IsEnabled("WebRTC-Aec3TransparentModeHmmKillSwitch");
 }
 
 }  // namespace
@@ -46,6 +48,7 @@ class TransparentModeImpl : public TransparentMode {
   void Update(int filter_delay_blocks,
               bool any_filter_consistent,
               bool any_filter_converged,
+              bool any_coarse_filter_converged,
               bool all_filters_diverged,
               bool active_render,
               bool saturated_capture) override {
@@ -56,9 +59,9 @@ class TransparentModeImpl : public TransparentMode {
     // there is no echo present in the microphone signal.
 
     // The constants have been obtained by observing active_render and
-    // any_filter_converged under varying call scenarios. They have further been
-    // hand tuned to prefer normal state during uncertain regions (to avoid echo
-    // leaks).
+    // any_coarse_filter_converged under varying call scenarios. They
+    // have further been hand tuned to prefer normal state during uncertain
+    // regions (to avoid echo leaks).
 
     // The model is only updated during active render.
     if (!active_render)
@@ -69,8 +72,8 @@ class TransparentModeImpl : public TransparentMode {
 
     // Probability of observing converged filters in states "normal" and
     // "transparent" during active render.
-    constexpr float kConvergedNormal = 0.03f;
-    constexpr float kConvergedTransparent = 0.005f;
+    constexpr float kConvergedNormal = 0.01f;
+    constexpr float kConvergedTransparent = 0.001f;
 
     // Probability of transitioning to transparent state from normal state and
     // transparent state respectively.
@@ -92,7 +95,7 @@ class TransparentModeImpl : public TransparentMode {
     const float prob_transition_normal = 1.f - prob_transition_transparent;
 
     // Observed output.
-    const int out = any_filter_converged;
+    const int out = static_cast<int>(any_coarse_filter_converged);
 
     // Joint probabilites of the observed output and respective states.
     const float prob_joint_normal = prob_transition_normal * kB[0][out];
@@ -142,6 +145,7 @@ class LegacyTransparentModeImpl : public TransparentMode {
   void Update(int filter_delay_blocks,
               bool any_filter_consistent,
               bool any_filter_converged,
+              bool any_coarse_filter_converged,
               bool all_filters_diverged,
               bool active_render,
               bool saturated_capture) override {

@@ -46,6 +46,7 @@ constexpr int kSctpSuccessReturn = 1;
 #include "rtc_base/numerics/safe_conversions.h"
 #include "rtc_base/string_utils.h"
 #include "rtc_base/synchronization/mutex.h"
+#include "rtc_base/task_utils/to_queued_task.h"
 #include "rtc_base/thread_annotations.h"
 #include "rtc_base/thread_checker.h"
 #include "rtc_base/trace_event.h"
@@ -58,6 +59,7 @@ static constexpr size_t kSctpMtu = 1200;
 
 // Set the initial value of the static SCTP Data Engines reference count.
 ABSL_CONST_INIT int g_usrsctp_usage_count = 0;
+ABSL_CONST_INIT bool g_usrsctp_initialized_ = false;
 ABSL_CONST_INIT webrtc::GlobalMutex g_usrsctp_lock_(absl::kConstInit);
 
 // DataMessageType is used for the SCTP "Payload Protocol Identifier", as
@@ -262,9 +264,19 @@ class SctpTransport::UsrSctpWrapper {
  public:
   static void InitializeUsrSctp() {
     RTC_LOG(LS_INFO) << __FUNCTION__;
-    // First argument is udp_encapsulation_port, which is not releveant for our
-    // AF_CONN use of sctp.
-    usrsctp_init(0, &UsrSctpWrapper::OnSctpOutboundPacket, &DebugSctpPrintf);
+    // UninitializeUsrSctp tries to call usrsctp_finish in a loop for three
+    // seconds; if that failed and we were left in a still-initialized state, we
+    // don't want to call usrsctp_init again as that will result in undefined
+    // behavior.
+    if (g_usrsctp_initialized_) {
+      RTC_LOG(LS_WARNING) << "Not reinitializing usrsctp since last attempt at "
+                             "usrsctp_finish failed.";
+    } else {
+      // First argument is udp_encapsulation_port, which is not releveant for
+      // our AF_CONN use of sctp.
+      usrsctp_init(0, &UsrSctpWrapper::OnSctpOutboundPacket, &DebugSctpPrintf);
+      g_usrsctp_initialized_ = true;
+    }
 
     // To turn on/off detailed SCTP debugging. You will also need to have the
     // SCTP_DEBUG cpp defines flag, which can be turned on in media/BUILD.gn.
@@ -317,6 +329,7 @@ class SctpTransport::UsrSctpWrapper {
     // closed. Wait and try again until it succeeds for up to 3 seconds.
     for (size_t i = 0; i < 300; ++i) {
       if (usrsctp_finish() == 0) {
+        g_usrsctp_initialized_ = false;
         delete g_transport_map_;
         g_transport_map_ = nullptr;
         return;
@@ -374,11 +387,12 @@ class SctpTransport::UsrSctpWrapper {
     VerboseLogPacket(data, length, SCTP_DUMP_OUTBOUND);
     // Note: We have to copy the data; the caller will delete it.
     rtc::CopyOnWriteBuffer buf(reinterpret_cast<uint8_t*>(data), length);
-    // TODO(deadbeef): Why do we need an AsyncInvoke here? We're already on the
-    // right thread and don't need to unwind the stack.
-    transport->invoker_.AsyncInvoke<void>(
-        RTC_FROM_HERE, transport->network_thread_,
-        rtc::Bind(&SctpTransport::OnPacketFromSctpToNetwork, transport, buf));
+
+    transport->network_thread_->PostTask(ToQueuedTask(
+        transport->task_safety_, [transport, buf = std::move(buf)]() {
+          transport->OnPacketFromSctpToNetwork(buf);
+        }));
+
     return 0;
   }
 
@@ -398,6 +412,7 @@ class SctpTransport::UsrSctpWrapper {
       RTC_LOG(LS_ERROR)
           << "OnSctpInboundPacket: Failed to get transport for socket " << sock
           << "; possibly was already destroyed.";
+      free(data);
       return 0;
     }
     // Sanity check that both methods of getting the SctpTransport pointer
@@ -484,6 +499,7 @@ SctpTransport::SctpTransport(rtc::Thread* network_thread,
 }
 
 SctpTransport::~SctpTransport() {
+  RTC_DCHECK_RUN_ON(network_thread_);
   // Close abruptly; no reset procedure.
   CloseSctpSocket();
   // It's not strictly necessary to reset these fields to nullptr,
@@ -900,9 +916,11 @@ bool SctpTransport::ConfigureSctpSocket() {
   }
 
   // Subscribe to SCTP event notifications.
+  // TODO(crbug.com/1137936): Subscribe to SCTP_SEND_FAILED_EVENT once deadlock
+  // is fixed upstream, or we switch to the upcall API:
+  // https://github.com/sctplab/usrsctp/issues/537
   int event_types[] = {SCTP_ASSOC_CHANGE, SCTP_PEER_ADDR_CHANGE,
-                       SCTP_SEND_FAILED_EVENT, SCTP_SENDER_DRY_EVENT,
-                       SCTP_STREAM_RESET_EVENT};
+                       SCTP_SENDER_DRY_EVENT, SCTP_STREAM_RESET_EVENT};
   struct sctp_event event = {0};
   event.se_assoc_id = SCTP_ALL_ASSOC;
   event.se_on = 1;
@@ -1118,14 +1136,14 @@ void SctpTransport::OnPacketFromSctpToNetwork(
 }
 
 int SctpTransport::InjectDataOrNotificationFromSctpForTesting(
-    void* data,
+    const void* data,
     size_t length,
     struct sctp_rcvinfo rcv,
     int flags) {
   return OnDataOrNotificationFromSctp(data, length, rcv, flags);
 }
 
-int SctpTransport::OnDataOrNotificationFromSctp(void* data,
+int SctpTransport::OnDataOrNotificationFromSctp(const void* data,
                                                 size_t length,
                                                 struct sctp_rcvinfo rcv,
                                                 int flags) {
@@ -1148,11 +1166,12 @@ int SctpTransport::OnDataOrNotificationFromSctp(void* data,
         << " length=" << length;
 
     // Copy and dispatch asynchronously
-    rtc::CopyOnWriteBuffer notification(reinterpret_cast<uint8_t*>(data),
+    rtc::CopyOnWriteBuffer notification(reinterpret_cast<const uint8_t*>(data),
                                         length);
-    invoker_.AsyncInvoke<void>(
-        RTC_FROM_HERE, network_thread_,
-        rtc::Bind(&SctpTransport::OnNotificationFromSctp, this, notification));
+    network_thread_->PostTask(ToQueuedTask(
+        task_safety_, [this, notification = std::move(notification)]() {
+          OnNotificationFromSctp(notification);
+        }));
     return kSctpSuccessReturn;
   }
 
@@ -1197,7 +1216,7 @@ int SctpTransport::OnDataOrNotificationFromSctp(void* data,
   params.timestamp = 0;
 
   // Append the chunk's data to the message buffer
-  partial_incoming_message_.AppendData(reinterpret_cast<uint8_t*>(data),
+  partial_incoming_message_.AppendData(reinterpret_cast<const uint8_t*>(data),
                                        length);
   partial_params_ = params;
   partial_flags_ = flags;
@@ -1224,10 +1243,11 @@ int SctpTransport::OnDataOrNotificationFromSctp(void* data,
   // Dispatch the complete message.
   // The ownership of the packet transfers to |invoker_|. Using
   // CopyOnWriteBuffer is the most convenient way to do this.
-  invoker_.AsyncInvoke<void>(
-      RTC_FROM_HERE, network_thread_,
-      rtc::Bind(&SctpTransport::OnDataFromSctpToTransport, this, params,
-                partial_incoming_message_));
+  network_thread_->PostTask(webrtc::ToQueuedTask(
+      task_safety_, [this, params = std::move(params),
+                     message = partial_incoming_message_]() {
+        OnDataFromSctpToTransport(params, message);
+      }));
 
   // Reset the message buffer
   partial_incoming_message_.Clear();

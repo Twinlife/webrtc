@@ -16,6 +16,7 @@
 #include "modules/audio_processing/agc2/agc2_common.h"
 #include "modules/audio_processing/logging/apm_data_dumper.h"
 #include "rtc_base/checks.h"
+#include "rtc_base/logging.h"
 #include "rtc_base/numerics/safe_minmax.h"
 #include "system_wrappers/include/metrics.h"
 
@@ -44,12 +45,16 @@ float ComputeGainDb(float input_level_dbfs) {
   return 0.f;
 }
 
-// We require 'gain + noise_level <= kMaxNoiseLevelDbfs'.
+// Returns `target_gain` if the output noise level is below
+// `max_output_noise_level_dbfs`; otherwise returns a capped gain so that the
+// output noise level equals `max_output_noise_level_dbfs`.
 float LimitGainByNoise(float target_gain,
                        float input_noise_level_dbfs,
-                       ApmDataDumper* apm_data_dumper) {
-  const float noise_headroom_db = kMaxNoiseLevelDbfs - input_noise_level_dbfs;
-  apm_data_dumper->DumpRaw("agc2_noise_headroom_db", noise_headroom_db);
+                       float max_output_noise_level_dbfs,
+                       ApmDataDumper& apm_data_dumper) {
+  const float noise_headroom_db =
+      max_output_noise_level_dbfs - input_noise_level_dbfs;
+  apm_data_dumper.DumpRaw("agc2_noise_headroom_db", noise_headroom_db);
   return std::min(target_gain, std::max(noise_headroom_db, 0.f));
 }
 
@@ -74,57 +79,54 @@ float LimitGainByLowConfidence(float target_gain,
 // Return the gain difference in db to 'last_gain_db'.
 float ComputeGainChangeThisFrameDb(float target_gain_db,
                                    float last_gain_db,
-                                   bool gain_increase_allowed) {
+                                   bool gain_increase_allowed,
+                                   float max_gain_change_db) {
   float target_gain_difference_db = target_gain_db - last_gain_db;
   if (!gain_increase_allowed) {
     target_gain_difference_db = std::min(target_gain_difference_db, 0.f);
   }
-
-  return rtc::SafeClamp(target_gain_difference_db, -kMaxGainChangePerFrameDb,
-                        kMaxGainChangePerFrameDb);
+  return rtc::SafeClamp(target_gain_difference_db, -max_gain_change_db,
+                        max_gain_change_db);
 }
-}  // namespace
 
-// TODO(crbug.com/webrtc/7494): Remove ctor and the constant used below.
-AdaptiveDigitalGainApplier::AdaptiveDigitalGainApplier(
-    ApmDataDumper* apm_data_dumper)
-    : AdaptiveDigitalGainApplier(
-          apm_data_dumper,
-          kDefaultDigitalGainApplierAdjacentSpeechFramesThreshold) {}
+}  // namespace
 
 AdaptiveDigitalGainApplier::AdaptiveDigitalGainApplier(
     ApmDataDumper* apm_data_dumper,
-    int adjacent_speech_frames_threshold)
+    int adjacent_speech_frames_threshold,
+    float max_gain_change_db_per_second,
+    float max_output_noise_level_dbfs)
     : apm_data_dumper_(apm_data_dumper),
       gain_applier_(
           /*hard_clip_samples=*/false,
           /*initial_gain_factor=*/DbToRatio(kInitialAdaptiveDigitalGainDb)),
       adjacent_speech_frames_threshold_(adjacent_speech_frames_threshold),
+      max_gain_change_db_per_10ms_(max_gain_change_db_per_second *
+                                   kFrameDurationMs / 1000.f),
+      max_output_noise_level_dbfs_(max_output_noise_level_dbfs),
       calls_since_last_gain_log_(0),
       frames_to_gain_increase_allowed_(adjacent_speech_frames_threshold_),
       last_gain_db_(kInitialAdaptiveDigitalGainDb) {
+  RTC_DCHECK_GT(max_gain_change_db_per_second, 0.f);
   RTC_DCHECK_GE(frames_to_gain_increase_allowed_, 1);
+  RTC_DCHECK_GE(max_output_noise_level_dbfs_, -90.f);
+  RTC_DCHECK_LE(max_output_noise_level_dbfs_, 0.f);
 }
 
 void AdaptiveDigitalGainApplier::Process(const FrameInfo& info,
                                          AudioFrameView<float> frame) {
   RTC_DCHECK_GE(info.input_level_dbfs, -150.f);
   RTC_DCHECK_GE(frame.num_channels(), 1);
-  RTC_DCHECK_GE(frame.samples_per_channel(), 1);
-
-  // Log every second.
-  calls_since_last_gain_log_++;
-  if (calls_since_last_gain_log_ == 100) {
-    calls_since_last_gain_log_ = 0;
-    RTC_HISTOGRAM_COUNTS_LINEAR("WebRTC.Audio.Agc2.DigitalGainApplied",
-                                last_gain_db_, 0, kMaxGainDb, kMaxGainDb + 1);
-    RTC_HISTOGRAM_COUNTS_LINEAR("WebRTC.Audio.Agc2.EstimatedNoiseLevel",
-                                -info.input_noise_level_dbfs, 0, 100, 101);
-  }
+  RTC_DCHECK(
+      frame.samples_per_channel() == 80 || frame.samples_per_channel() == 160 ||
+      frame.samples_per_channel() == 320 || frame.samples_per_channel() == 480)
+      << "`frame` does not look like a 10 ms frame for an APM supported sample "
+         "rate";
 
   const float target_gain_db = LimitGainByLowConfidence(
       LimitGainByNoise(ComputeGainDb(std::min(info.input_level_dbfs, 0.f)),
-                       info.input_noise_level_dbfs, apm_data_dumper_),
+                       info.input_noise_level_dbfs,
+                       max_output_noise_level_dbfs_, *apm_data_dumper_),
       last_gain_db_, info.limiter_envelope_dbfs, info.estimate_is_confident);
 
   // Forbid increasing the gain until enough adjacent speech frames are
@@ -137,7 +139,8 @@ void AdaptiveDigitalGainApplier::Process(const FrameInfo& info,
 
   const float gain_change_this_frame_db = ComputeGainChangeThisFrameDb(
       target_gain_db, last_gain_db_,
-      /*gain_increase_allowed=*/frames_to_gain_increase_allowed_ == 0);
+      /*gain_increase_allowed=*/frames_to_gain_increase_allowed_ == 0,
+      max_gain_change_db_per_10ms_);
 
   apm_data_dumper_->DumpRaw("agc2_want_to_change_by_db",
                             target_gain_db - last_gain_db_);
@@ -155,5 +158,22 @@ void AdaptiveDigitalGainApplier::Process(const FrameInfo& info,
   // Remember that the gain has changed for the next iteration.
   last_gain_db_ = last_gain_db_ + gain_change_this_frame_db;
   apm_data_dumper_->DumpRaw("agc2_applied_gain_db", last_gain_db_);
+
+  // Log every 10 seconds.
+  calls_since_last_gain_log_++;
+  if (calls_since_last_gain_log_ == 1000) {
+    calls_since_last_gain_log_ = 0;
+    RTC_HISTOGRAM_COUNTS_LINEAR("WebRTC.Audio.Agc2.DigitalGainApplied",
+                                last_gain_db_, 0, kMaxGainDb, kMaxGainDb + 1);
+    RTC_HISTOGRAM_COUNTS_LINEAR(
+        "WebRTC.Audio.Agc2.EstimatedSpeechPlusNoiseLevel",
+        -info.input_level_dbfs, 0, 100, 101);
+    RTC_HISTOGRAM_COUNTS_LINEAR("WebRTC.Audio.Agc2.EstimatedNoiseLevel",
+                                -info.input_noise_level_dbfs, 0, 100, 101);
+    RTC_LOG(LS_INFO) << "AGC2 adaptive digital"
+                     << " | speech_plus_noise_dbfs: " << info.input_level_dbfs
+                     << " | noise_dbfs: " << info.input_noise_level_dbfs
+                     << " | gain_db: " << last_gain_db_;
+  }
 }
 }  // namespace webrtc

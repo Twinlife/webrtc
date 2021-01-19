@@ -85,6 +85,8 @@ class FrameBuffer {
   // Clears the FrameBuffer, removing all the buffered frames.
   void Clear();
 
+  int Size();
+
  private:
   struct FrameInfo {
     FrameInfo();
@@ -145,10 +147,6 @@ class FrameBuffer {
   void UpdateTimingFrameInfo() RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void ClearFramesAndHistory() RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
-  // Checks if the superframe, which current frame belongs to, is complete.
-  bool IsCompleteSuperFrame(const EncodedFrame& frame)
-      RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   bool HasBadRenderTiming(const EncodedFrame& frame, int64_t now_ms)
       RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
