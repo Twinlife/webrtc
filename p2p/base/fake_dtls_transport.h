@@ -55,9 +55,15 @@ class FakeDtlsTransport : public DtlsTransportInternal {
 
   // If this constructor is called, a new fake ICE transport will be created,
   // and this FakeDtlsTransport will take the ownership.
-  explicit FakeDtlsTransport(const std::string& name, int component)
+  FakeDtlsTransport(const std::string& name, int component)
       : FakeDtlsTransport(std::make_unique<FakeIceTransport>(name, component)) {
   }
+  FakeDtlsTransport(const std::string& name,
+                    int component,
+                    rtc::Thread* network_thread)
+      : FakeDtlsTransport(std::make_unique<FakeIceTransport>(name,
+                                                             component,
+                                                             network_thread)) {}
 
   ~FakeDtlsTransport() override {
     if (dest_ && dest_->dest_ == this) {
@@ -85,7 +91,7 @@ class FakeDtlsTransport : public DtlsTransportInternal {
   }
   void SetDtlsState(DtlsTransportState state) {
     dtls_state_ = state;
-    SignalDtlsState(this, dtls_state_);
+    SendDtlsState(this, dtls_state_);
   }
 
   // Simulates the two DTLS transports connecting to each other.

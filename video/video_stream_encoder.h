@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "api/adaptation/resource.h"
+#include "api/sequence_checker.h"
 #include "api/units/data_rate.h"
 #include "api/video/video_bitrate_allocator.h"
 #include "api/video/video_rotation.h"
@@ -33,6 +34,7 @@
 #include "call/adaptation/video_source_restrictions.h"
 #include "call/adaptation/video_stream_input_state_provider.h"
 #include "modules/video_coding/utility/frame_dropper.h"
+#include "modules/video_coding/utility/qp_parser.h"
 #include "rtc_base/experiments/rate_control_settings.h"
 #include "rtc_base/numerics/exp_filter.h"
 #include "rtc_base/race_checker.h"
@@ -40,7 +42,6 @@
 #include "rtc_base/task_queue.h"
 #include "rtc_base/task_utils/pending_task_safety_flag.h"
 #include "rtc_base/thread_annotations.h"
-#include "rtc_base/thread_checker.h"
 #include "system_wrappers/include/clock.h"
 #include "video/adaptation/video_stream_encoder_resource_manager.h"
 #include "video/encoder_bitrate_adjuster.h"
@@ -352,38 +353,6 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
   // experiment group numbers incremented by 1.
   const std::array<uint8_t, 2> experiment_groups_;
 
-  struct EncoderSwitchExperiment {
-    struct Thresholds {
-      absl::optional<DataRate> bitrate;
-      absl::optional<int> pixel_count;
-    };
-
-    // Codec --> switching thresholds
-    std::map<VideoCodecType, Thresholds> codec_thresholds;
-
-    // To smooth out the target bitrate so that we don't trigger a switch
-    // too easily.
-    rtc::ExpFilter bitrate_filter{1.0};
-
-    // Codec/implementation to switch to
-    std::string to_codec;
-    absl::optional<std::string> to_param;
-    absl::optional<std::string> to_value;
-
-    // Thresholds for the currently used codecs.
-    Thresholds current_thresholds;
-
-    // Updates the |bitrate_filter|, so not const.
-    bool IsBitrateBelowThreshold(const DataRate& target_bitrate);
-    bool IsPixelCountBelowThreshold(int pixel_count) const;
-    void SetCodec(VideoCodecType codec);
-  };
-
-  EncoderSwitchExperiment ParseEncoderSwitchFieldTrial() const;
-
-  EncoderSwitchExperiment encoder_switch_experiment_
-      RTC_GUARDED_BY(&encoder_queue_);
-
   struct AutomaticAnimationDetectionExperiment {
     bool enabled = false;
     int min_duration_ms = 2000;
@@ -403,10 +372,6 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
 
   AutomaticAnimationDetectionExperiment
       automatic_animation_detection_experiment_ RTC_GUARDED_BY(&encoder_queue_);
-
-  // An encoder switch is only requested once, this variable is used to keep
-  // track of whether a request has been made or not.
-  bool encoder_switch_requested_ RTC_GUARDED_BY(&encoder_queue_);
 
   // Provies video stream input states: current resolution and frame rate.
   VideoStreamInputStateProvider input_state_provider_;
@@ -439,6 +404,14 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
   // This class is thread-safe.
   VideoSourceSinkController video_source_sink_controller_
       RTC_GUARDED_BY(main_queue_);
+
+  // Default bitrate limits in EncoderInfoSettings allowed.
+  const bool default_limits_allowed_;
+
+  // QP parser is used to extract QP value from encoded frame when that is not
+  // provided by encoder.
+  QpParser qp_parser_;
+  const bool qp_parsing_allowed_;
 
   // Public methods are proxied to the task queues. The queues must be destroyed
   // first to make sure no tasks run that use other members.
