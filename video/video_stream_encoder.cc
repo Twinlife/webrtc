@@ -592,7 +592,6 @@ VideoStreamEncoder::VideoStreamEncoder(
     BitrateAllocationCallbackType allocation_cb_type)
     : main_queue_(TaskQueueBase::Current()),
       number_of_cores_(number_of_cores),
-      quality_scaling_experiment_enabled_(QualityScalingExperiment::Enabled()),
       sink_(nullptr),
       settings_(settings),
       allocation_cb_type_(allocation_cb_type),
@@ -913,11 +912,11 @@ void VideoStreamEncoder::ReconfigureEncoder() {
   crop_width_ = last_frame_info_->width - highest_stream_width;
   crop_height_ = last_frame_info_->height - highest_stream_height;
 
-  encoder_bitrate_limits_ =
+  absl::optional<VideoEncoder::ResolutionBitrateLimits> encoder_bitrate_limits =
       encoder_->GetEncoderInfo().GetEncoderBitrateLimitsForResolution(
           last_frame_info_->width * last_frame_info_->height);
 
-  if (encoder_bitrate_limits_) {
+  if (encoder_bitrate_limits) {
     if (streams.size() == 1 && encoder_config_.simulcast_layers.size() == 1) {
       // Bitrate limits can be set by app (in SDP or RtpEncodingParameters)
       // or/and can be provided by encoder. In presence of both set of limits,
@@ -925,9 +924,9 @@ void VideoStreamEncoder::ReconfigureEncoder() {
       int min_bitrate_bps;
       if (encoder_config_.simulcast_layers.empty() ||
           encoder_config_.simulcast_layers[0].min_bitrate_bps <= 0) {
-        min_bitrate_bps = encoder_bitrate_limits_->min_bitrate_bps;
+        min_bitrate_bps = encoder_bitrate_limits->min_bitrate_bps;
       } else {
-        min_bitrate_bps = std::max(encoder_bitrate_limits_->min_bitrate_bps,
+        min_bitrate_bps = std::max(encoder_bitrate_limits->min_bitrate_bps,
                                    streams.back().min_bitrate_bps);
       }
 
@@ -936,9 +935,9 @@ void VideoStreamEncoder::ReconfigureEncoder() {
       // here since encoder_config_.max_bitrate_bps is derived from it (as
       // well as from other inputs).
       if (encoder_config_.max_bitrate_bps <= 0) {
-        max_bitrate_bps = encoder_bitrate_limits_->max_bitrate_bps;
+        max_bitrate_bps = encoder_bitrate_limits->max_bitrate_bps;
       } else {
-        max_bitrate_bps = std::min(encoder_bitrate_limits_->max_bitrate_bps,
+        max_bitrate_bps = std::min(encoder_bitrate_limits->max_bitrate_bps,
                                    streams.back().max_bitrate_bps);
       }
 
@@ -947,12 +946,12 @@ void VideoStreamEncoder::ReconfigureEncoder() {
         streams.back().max_bitrate_bps = max_bitrate_bps;
         streams.back().target_bitrate_bps =
             std::min(streams.back().target_bitrate_bps,
-                     encoder_bitrate_limits_->max_bitrate_bps);
+                     encoder_bitrate_limits->max_bitrate_bps);
       } else {
         RTC_LOG(LS_WARNING)
             << "Bitrate limits provided by encoder"
-            << " (min=" << encoder_bitrate_limits_->min_bitrate_bps
-            << ", max=" << encoder_bitrate_limits_->min_bitrate_bps
+            << " (min=" << encoder_bitrate_limits->min_bitrate_bps
+            << ", max=" << encoder_bitrate_limits->max_bitrate_bps
             << ") do not intersect with limits set by app"
             << " (min=" << streams.back().min_bitrate_bps
             << ", max=" << encoder_config_.max_bitrate_bps
@@ -1298,7 +1297,7 @@ void VideoStreamEncoder::OnFrame(const VideoFrame& video_frame) {
           MaybeEncodeVideoFrame(incoming_frame, post_time_us);
         } else {
           if (cwnd_frame_drop) {
-            // Frame drop by congestion window pusback. Do not encode this
+            // Frame drop by congestion window pushback. Do not encode this
             // frame.
             ++dropped_frame_cwnd_pushback_count_;
             encoder_stats_observer_->OnFrameDropped(
@@ -1435,7 +1434,7 @@ void VideoStreamEncoder::SetEncoderRates(
   // |bitrate_allocation| is 0 it means that the network is down or the send
   // pacer is full. We currently only report this if the encoder has an internal
   // source. If the encoder does not have an internal source, higher levels
-  // are expected to not call AddVideoFrame. We do this since its unclear
+  // are expected to not call AddVideoFrame. We do this since it is unclear
   // how current encoder implementations behave when given a zero target
   // bitrate.
   // TODO(perkj): Make sure all known encoder implementations handle zero
@@ -1496,7 +1495,7 @@ void VideoStreamEncoder::MaybeEncodeVideoFrame(const VideoFrame& video_frame,
         VideoFrame::UpdateRect{0, 0, video_frame.width(), video_frame.height()};
   }
 
-  // We have to create then encoder before the frame drop logic,
+  // We have to create the encoder before the frame drop logic,
   // because the latter depends on encoder_->GetScalingSettings.
   // According to the testcase
   // InitialFrameDropOffWhenEncoderDisabledScaling, the return value
@@ -1643,45 +1642,12 @@ void VideoStreamEncoder::EncodeVideoFrame(const VideoFrame& video_frame,
   last_encode_info_ms_ = clock_->TimeInMilliseconds();
 
   VideoFrame out_frame(video_frame);
-  if (out_frame.video_frame_buffer()->type() ==
-          VideoFrameBuffer::Type::kNative &&
-      !info.supports_native_handle) {
-    // This module only supports software encoding.
-    rtc::scoped_refptr<VideoFrameBuffer> buffer =
-        out_frame.video_frame_buffer()->GetMappedFrameBuffer(
-            info.preferred_pixel_formats);
-    bool buffer_was_converted = false;
-    if (!buffer) {
-      buffer = out_frame.video_frame_buffer()->ToI420();
-      // TODO(https://crbug.com/webrtc/12021): Once GetI420 is pure virtual,
-      // this just true as an I420 buffer would return from
-      // GetMappedFrameBuffer.
-      buffer_was_converted =
-          (out_frame.video_frame_buffer()->GetI420() == nullptr);
-    }
-    if (!buffer) {
-      RTC_LOG(LS_ERROR) << "Frame conversion failed, dropping frame.";
-      return;
-    }
-
-    VideoFrame::UpdateRect update_rect = out_frame.update_rect();
-    if (!update_rect.IsEmpty() &&
-        out_frame.video_frame_buffer()->GetI420() == nullptr) {
-      // UpdatedRect is reset to full update if it's not empty, and buffer was
-      // converted, therefore we can't guarantee that pixels outside of
-      // UpdateRect didn't change comparing to the previous frame.
-      update_rect =
-          VideoFrame::UpdateRect{0, 0, out_frame.width(), out_frame.height()};
-    }
-    out_frame.set_video_frame_buffer(buffer);
-    out_frame.set_update_rect(update_rect);
-  }
-
-  // Crop frame if needed.
+  // Crop or scale the frame if needed. Dimension may be reduced to fit encoder
+  // requirements, e.g. some encoders may require them to be divisible by 4.
   if ((crop_width_ > 0 || crop_height_ > 0) &&
-      out_frame.video_frame_buffer()->type() !=
-          VideoFrameBuffer::Type::kNative) {
-    // If the frame can't be converted to I420, drop it.
+      (out_frame.video_frame_buffer()->type() !=
+           VideoFrameBuffer::Type::kNative ||
+       !info.supports_native_handle)) {
     int cropped_width = video_frame.width() - crop_width_;
     int cropped_height = video_frame.height() - crop_height_;
     rtc::scoped_refptr<VideoFrameBuffer> cropped_buffer;
@@ -1689,6 +1655,7 @@ void VideoStreamEncoder::EncodeVideoFrame(const VideoFrame& video_frame,
     // happen after SinkWants signaled correctly from ReconfigureEncoder.
     VideoFrame::UpdateRect update_rect = video_frame.update_rect();
     if (crop_width_ < 4 && crop_height_ < 4) {
+      // The difference is small, crop without scaling.
       cropped_buffer = video_frame.video_frame_buffer()->CropAndScale(
           crop_width_ / 2, crop_height_ / 2, cropped_width, cropped_height,
           cropped_width, cropped_height);
@@ -1698,6 +1665,7 @@ void VideoStreamEncoder::EncodeVideoFrame(const VideoFrame& video_frame,
           VideoFrame::UpdateRect{0, 0, cropped_width, cropped_height});
 
     } else {
+      // The difference is large, scale it.
       cropped_buffer = video_frame.video_frame_buffer()->Scale(cropped_width,
                                                                cropped_height);
       if (!update_rect.IsEmpty()) {
@@ -1742,14 +1710,12 @@ void VideoStreamEncoder::EncodeVideoFrame(const VideoFrame& video_frame,
 
   stream_resource_manager_.OnEncodeStarted(out_frame, time_when_posted_us);
 
-  RTC_DCHECK_LE(send_codec_.width, out_frame.width());
-  RTC_DCHECK_LE(send_codec_.height, out_frame.height());
-  // Native frames should be scaled by the client.
-  // For internal encoders we scale everything in one place here.
-  RTC_DCHECK((out_frame.video_frame_buffer()->type() ==
-              VideoFrameBuffer::Type::kNative) ||
-             (send_codec_.width == out_frame.width() &&
-              send_codec_.height == out_frame.height()));
+  // The encoder should get the size that it expects.
+  RTC_DCHECK(send_codec_.width <= out_frame.width() &&
+             send_codec_.height <= out_frame.height())
+      << "Encoder configured to " << send_codec_.width << "x"
+      << send_codec_.height << " received a too small frame "
+      << out_frame.width() << "x" << out_frame.height();
 
   TRACE_EVENT1("webrtc", "VCMGenericEncoder::Encode", "timestamp",
                out_frame.timestamp());
@@ -2192,7 +2158,8 @@ void VideoStreamEncoder::RunPostEncode(const EncodedImage& encoded_image,
   stream_resource_manager_.OnEncodeCompleted(encoded_image, time_sent_us,
                                              encode_duration_us);
   if (bitrate_adjuster_) {
-    bitrate_adjuster_->OnEncodedFrame(encoded_image, temporal_index);
+    bitrate_adjuster_->OnEncodedFrame(
+        frame_size, encoded_image.SpatialIndex().value_or(0), temporal_index);
   }
 }
 

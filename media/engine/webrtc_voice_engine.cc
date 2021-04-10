@@ -211,7 +211,9 @@ bool IsEnabled(const webrtc::WebRtcKeyValueConfig& config,
 struct AdaptivePtimeConfig {
   bool enabled = false;
   webrtc::DataRate min_payload_bitrate = webrtc::DataRate::KilobitsPerSec(16);
-  webrtc::DataRate min_encoder_bitrate = webrtc::DataRate::KilobitsPerSec(12);
+  // Value is chosen to ensure FEC can be encoded, see LBRR_WB_MIN_RATE_BPS in
+  // libopus.
+  webrtc::DataRate min_encoder_bitrate = webrtc::DataRate::KilobitsPerSec(16);
   bool use_slow_adaptation = true;
 
   absl::optional<std::string> audio_network_adaptor_config;
@@ -2459,6 +2461,13 @@ bool WebRtcVoiceMediaChannel::GetStats(VoiceMediaInfo* info,
         stats.relative_packet_arrival_delay_seconds;
     rinfo.interruption_count = stats.interruption_count;
     rinfo.total_interruption_duration_ms = stats.total_interruption_duration_ms;
+    rinfo.last_sender_report_timestamp_ms =
+        stats.last_sender_report_timestamp_ms;
+    rinfo.last_sender_report_remote_timestamp_ms =
+        stats.last_sender_report_remote_timestamp_ms;
+    rinfo.sender_reports_packets_sent = stats.sender_reports_packets_sent;
+    rinfo.sender_reports_bytes_sent = stats.sender_reports_bytes_sent;
+    rinfo.sender_reports_reports_count = stats.sender_reports_reports_count;
 
     info->receivers.push_back(rinfo);
   }

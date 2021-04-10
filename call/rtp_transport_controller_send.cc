@@ -87,7 +87,7 @@ RtpTransportControllerSend::RtpTransportControllerSend(
     : clock_(clock),
       event_log_(event_log),
       bitrate_configurator_(bitrate_config),
-      process_thread_started_(false),
+      pacer_started_(false),
       process_thread_(std::move(process_thread)),
       use_task_queue_pacer_(IsEnabled(trials, "WebRTC-TaskQueuePacer")),
       process_thread_pacer_(use_task_queue_pacer_
@@ -132,6 +132,9 @@ RtpTransportControllerSend::RtpTransportControllerSend(
   initial_config_.event_log = event_log;
   initial_config_.key_value_config = trials;
   RTC_DCHECK(bitrate_config.start_bitrate_bps > 0);
+
+  pacer()->SetPacingRates(
+      DataRate::BitsPerSec(bitrate_config.start_bitrate_bps), DataRate::Zero());
 
   if (absl::StartsWith(trials->Lookup("WebRTC-LazyPacerStart"), "Disabled")) {
     EnsureStarted();
@@ -493,14 +496,13 @@ void RtpTransportControllerSend::IncludeOverheadInPacedSender() {
 }
 
 void RtpTransportControllerSend::EnsureStarted() {
-  if (!process_thread_started_) {
-    process_thread_started_ = true;
-    pacer()->SetPacingRates(
-        DataRate::BitsPerSec(
-            bitrate_configurator_.GetConfig().start_bitrate_bps),
-        DataRate::Zero());
-    if (!use_task_queue_pacer_)
+  if (!pacer_started_) {
+    pacer_started_ = true;
+    if (use_task_queue_pacer_) {
+      task_queue_pacer_->EnsureStarted();
+    } else {
       process_thread_->Start();
+    }
   }
 }
 
