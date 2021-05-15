@@ -299,7 +299,7 @@ void ChannelReceive::OnReceivedPayloadData(
     // updating RtpSource information.
     if (source_tracker_) {
       RtpPacketInfos::vector_type packet_vector = {
-          RtpPacketInfo(rtpHeader, clock_->TimeInMilliseconds())};
+          RtpPacketInfo(rtpHeader, clock_->CurrentTime())};
       source_tracker_->OnFrameDelivered(RtpPacketInfos(packet_vector));
     }
 
@@ -337,7 +337,7 @@ void ChannelReceive::InitFrameTransformerDelegate(
         OnReceivedPayloadData(packet, header);
       };
   frame_transformer_delegate_ =
-      new rtc::RefCountedObject<ChannelReceiveFrameTransformerDelegate>(
+      rtc::make_ref_counted<ChannelReceiveFrameTransformerDelegate>(
           std::move(receive_audio_callback), std::move(frame_transformer),
           rtc::Thread::Current());
   frame_transformer_delegate_->Init();

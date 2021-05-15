@@ -123,6 +123,7 @@ rtc_library("red") {
     "../../common_audio",
     "../../rtc_base:checks",
     "../../rtc_base:rtc_base_approved",
+    "../../system_wrappers:field_trial",
   ]
   absl_deps = [ "//third_party/abseil-cpp/absl/types:optional" ]
 }
@@ -1833,7 +1834,7 @@ if (rtc_include_tests) {
       ]
     }
 
-    rtc_executable("isac_fix_test") {
+    rtc_test("isac_fix_test") {
       testonly = true
 
       sources = [ "codecs/isac/fix/test/kenny.cc" ]

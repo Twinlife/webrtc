@@ -40,12 +40,7 @@
 namespace webrtc {
 class VideoDecoderFactory;
 class VideoEncoderFactory;
-struct MediaConfig;
 }  // namespace webrtc
-
-namespace rtc {
-class Thread;
-}  // namespace rtc
 
 namespace cricket {
 
@@ -159,6 +154,8 @@ class WebRtcVideoChannel : public VideoMediaChannel,
   bool AddRecvStream(const StreamParams& sp, bool default_stream);
   bool RemoveRecvStream(uint32_t ssrc) override;
   void ResetUnsignaledRecvStream() override;
+  void OnDemuxerCriteriaUpdatePending() override;
+  void OnDemuxerCriteriaUpdateComplete() override;
   bool SetSink(uint32_t ssrc,
                rtc::VideoSinkInterface<webrtc::VideoFrame>* sink) override;
   void SetDefaultSink(
@@ -168,6 +165,7 @@ class WebRtcVideoChannel : public VideoMediaChannel,
 
   void OnPacketReceived(rtc::CopyOnWriteBuffer packet,
                         int64_t packet_time_us) override;
+  void OnPacketSent(const rtc::SentPacket& sent_packet) override;
   void OnReadyToSend(bool ready) override;
   void OnNetworkRouteChanged(const std::string& transport_name,
                              const rtc::NetworkRoute& network_route) override;
@@ -399,7 +397,7 @@ class WebRtcVideoChannel : public VideoMediaChannel,
         RTC_EXCLUSIVE_LOCKS_REQUIRED(&thread_checker_);
 
     webrtc::SequenceChecker thread_checker_;
-    rtc::Thread* worker_thread_;
+    webrtc::TaskQueueBase* const worker_thread_;
     const std::vector<uint32_t> ssrcs_ RTC_GUARDED_BY(&thread_checker_);
     const std::vector<SsrcGroup> ssrc_groups_ RTC_GUARDED_BY(&thread_checker_);
     webrtc::Call* const call_;
@@ -550,7 +548,7 @@ class WebRtcVideoChannel : public VideoMediaChannel,
   void FillSendAndReceiveCodecStats(VideoMediaInfo* video_media_info)
       RTC_EXCLUSIVE_LOCKS_REQUIRED(thread_checker_);
 
-  rtc::Thread* const worker_thread_;
+  webrtc::TaskQueueBase* const worker_thread_;
   webrtc::ScopedTaskSafety task_safety_;
   webrtc::SequenceChecker network_thread_checker_;
   webrtc::SequenceChecker thread_checker_;
@@ -574,6 +572,22 @@ class WebRtcVideoChannel : public VideoMediaChannel,
       RTC_GUARDED_BY(thread_checker_);
   std::map<uint32_t, WebRtcVideoReceiveStream*> receive_streams_
       RTC_GUARDED_BY(thread_checker_);
+  // When the channel and demuxer get reconfigured, there is a window of time
+  // where we have to be prepared for packets arriving based on the old demuxer
+  // criteria because the streams live on the worker thread and the demuxer
+  // lives on the network thread. Because packets are posted from the network
+  // thread to the worker thread, they can still be in-flight when streams are
+  // reconfgured. This can happen when |demuxer_criteria_id_| and
+  // |demuxer_criteria_completed_id_| don't match. During this time, we do not
+  // want to create unsignalled receive streams and should instead drop the
+  // packets. E.g:
+  // * If RemoveRecvStream(old_ssrc) was recently called, there may be packets
+  //   in-flight for that ssrc. This happens when a receiver becomes inactive.
+  // * If we go from one to many m= sections, the demuxer may change from
+  //   forwarding all packets to only forwarding the configured ssrcs, so there
+  //   is a risk of receiving ssrcs for other, recently added m= sections.
+  uint32_t demuxer_criteria_id_ RTC_GUARDED_BY(thread_checker_) = 0;
+  uint32_t demuxer_criteria_completed_id_ RTC_GUARDED_BY(thread_checker_) = 0;
   std::set<uint32_t> send_ssrcs_ RTC_GUARDED_BY(thread_checker_);
   std::set<uint32_t> receive_ssrcs_ RTC_GUARDED_BY(thread_checker_);
 

@@ -35,12 +35,12 @@
 #include "api/video/video_bitrate_allocation.h"
 #include "api/video_codecs/builtin_video_decoder_factory.h"
 #include "api/video_codecs/builtin_video_encoder_factory.h"
+#include "api/video_codecs/h264_profile_level_id.h"
 #include "api/video_codecs/sdp_video_format.h"
 #include "api/video_codecs/video_decoder_factory.h"
 #include "api/video_codecs/video_encoder.h"
 #include "api/video_codecs/video_encoder_factory.h"
 #include "call/flexfec_receive_stream.h"
-#include "common_video/h264/profile_level_id.h"
 #include "media/base/fake_frame_source.h"
 #include "media/base/fake_network_interface.h"
 #include "media/base/fake_video_renderer.h"
@@ -581,20 +581,21 @@ TEST_F(WebRtcVideoEngineTest, UseFactoryForVp8WhenSupported) {
 // TODO(deadbeef): This test should be updated if/when we start
 // adding RTX codecs for unrecognized codec names.
 TEST_F(WebRtcVideoEngineTest, RtxCodecAddedForH264Codec) {
-  using webrtc::H264::kLevel1;
-  using webrtc::H264::ProfileLevelId;
-  using webrtc::H264::ProfileLevelIdToString;
+  using webrtc::H264Level;
+  using webrtc::H264Profile;
+  using webrtc::H264ProfileLevelId;
+  using webrtc::H264ProfileLevelIdToString;
   webrtc::SdpVideoFormat h264_constrained_baseline("H264");
   h264_constrained_baseline.parameters[kH264FmtpProfileLevelId] =
-      *ProfileLevelIdToString(
-          ProfileLevelId(webrtc::H264::kProfileConstrainedBaseline, kLevel1));
+      *H264ProfileLevelIdToString(H264ProfileLevelId(
+          H264Profile::kProfileConstrainedBaseline, H264Level::kLevel1));
   webrtc::SdpVideoFormat h264_constrained_high("H264");
   h264_constrained_high.parameters[kH264FmtpProfileLevelId] =
-      *ProfileLevelIdToString(
-          ProfileLevelId(webrtc::H264::kProfileConstrainedHigh, kLevel1));
+      *H264ProfileLevelIdToString(H264ProfileLevelId(
+          H264Profile::kProfileConstrainedHigh, H264Level::kLevel1));
   webrtc::SdpVideoFormat h264_high("H264");
-  h264_high.parameters[kH264FmtpProfileLevelId] = *ProfileLevelIdToString(
-      ProfileLevelId(webrtc::H264::kProfileHigh, kLevel1));
+  h264_high.parameters[kH264FmtpProfileLevelId] = *H264ProfileLevelIdToString(
+      H264ProfileLevelId(H264Profile::kProfileHigh, H264Level::kLevel1));
 
   encoder_factory_->AddSupportedVideoCodec(h264_constrained_baseline);
   encoder_factory_->AddSupportedVideoCodec(h264_constrained_high);
@@ -721,10 +722,10 @@ size_t WebRtcVideoEngineTest::GetEngineCodecIndex(
     // The tests only use H264 Constrained Baseline. Make sure we don't return
     // an internal H264 codec from the engine with a different H264 profile.
     if (absl::EqualsIgnoreCase(name.c_str(), kH264CodecName)) {
-      const absl::optional<webrtc::H264::ProfileLevelId> profile_level_id =
-          webrtc::H264::ParseSdpProfileLevelId(engine_codec.params);
+      const absl::optional<webrtc::H264ProfileLevelId> profile_level_id =
+          webrtc::ParseSdpForH264ProfileLevelId(engine_codec.params);
       if (profile_level_id->profile !=
-          webrtc::H264::kProfileConstrainedBaseline) {
+          webrtc::H264Profile::kProfileConstrainedBaseline) {
         continue;
       }
     }
@@ -1416,6 +1417,10 @@ class WebRtcVideoChannelEncodedFrameCallbackTest : public ::testing::Test {
     channel_->SetRecvParameters(parameters);
   }
 
+  ~WebRtcVideoChannelEncodedFrameCallbackTest() override {
+    channel_->SetInterface(nullptr);
+  }
+
   void DeliverKeyFrame(uint32_t ssrc) {
     webrtc::RtpPacket packet;
     packet.SetMarker(true);
@@ -1426,6 +1431,13 @@ class WebRtcVideoChannelEncodedFrameCallbackTest : public ::testing::Test {
     uint8_t* buf_ptr = packet.AllocatePayload(11);
     memset(buf_ptr, 0, 11);  // Pass MSAN (don't care about bytes 1-9)
     buf_ptr[0] = 0x10;       // Partition ID 0 + beginning of partition.
+    constexpr unsigned width = 1080;
+    constexpr unsigned height = 720;
+    buf_ptr[6] = width & 255;
+    buf_ptr[7] = width >> 8;
+    buf_ptr[8] = height & 255;
+    buf_ptr[9] = height >> 8;
+
     call_->Receiver()->DeliverPacket(webrtc::MediaType::VIDEO, packet.Buffer(),
                                      /*packet_time_us=*/0);
   }
@@ -1536,7 +1548,7 @@ class WebRtcVideoChannelBaseTest : public ::testing::Test {
                 webrtc::CreateBuiltinVideoDecoderFactory(),
                 field_trials_) {}
 
-  virtual void SetUp() {
+  void SetUp() override {
     // One testcase calls SetUp in a loop, only create call_ once.
     if (!call_) {
       webrtc::Call::Config call_config(&event_log_);
@@ -1578,6 +1590,7 @@ class WebRtcVideoChannelBaseTest : public ::testing::Test {
     // Make the second renderer available for use by a new stream.
     EXPECT_TRUE(channel_->SetSink(kSsrc + 2, &renderer2_));
   }
+
   // Setup an additional stream just to send video. Defer add recv stream.
   // This is required if you want to test unsignalled recv of video rtp packets.
   void SetUpSecondStreamWithNoRecv() {
@@ -1596,7 +1609,17 @@ class WebRtcVideoChannelBaseTest : public ::testing::Test {
     EXPECT_TRUE(
         channel_->SetVideoSend(kSsrc + 2, nullptr, frame_forwarder_2_.get()));
   }
-  virtual void TearDown() { channel_.reset(); }
+
+  void TearDown() override {
+    channel_->SetInterface(nullptr);
+    channel_.reset();
+  }
+
+  void ResetTest() {
+    TearDown();
+    SetUp();
+  }
+
   bool SetDefaultCodec() { return SetOneCodec(DefaultCodec()); }
 
   bool SetOneCodec(const cricket::VideoCodec& codec) {
@@ -1780,7 +1803,7 @@ TEST_F(WebRtcVideoChannelBaseTest, OverridesRecvBufferSize) {
   const int kCustomRecvBufferSize = 123456;
   webrtc::test::ScopedFieldTrials field_trial(
       "WebRTC-IncreasedReceivebuffers/123456/");
-  SetUp();
+  ResetTest();
 
   EXPECT_TRUE(SetOneCodec(DefaultCodec()));
   EXPECT_TRUE(SetSend(true));
@@ -1796,7 +1819,7 @@ TEST_F(WebRtcVideoChannelBaseTest, OverridesRecvBufferSizeWithSuffix) {
   const int kCustomRecvBufferSize = 123456;
   webrtc::test::ScopedFieldTrials field_trial(
       "WebRTC-IncreasedReceivebuffers/123456_Dogfood/");
-  SetUp();
+  ResetTest();
 
   EXPECT_TRUE(SetOneCodec(DefaultCodec()));
   EXPECT_TRUE(SetSend(true));
@@ -1816,7 +1839,7 @@ TEST_F(WebRtcVideoChannelBaseTest, InvalidRecvBufferSize) {
     field_trial_string += group;
     field_trial_string += "/";
     webrtc::test::ScopedFieldTrials field_trial(field_trial_string);
-    SetUp();
+    ResetTest();
 
     EXPECT_TRUE(SetOneCodec(DefaultCodec()));
     EXPECT_TRUE(SetSend(true));
@@ -1827,8 +1850,6 @@ TEST_F(WebRtcVideoChannelBaseTest, InvalidRecvBufferSize) {
 
 // Test that stats work properly for a 1-1 call.
 TEST_F(WebRtcVideoChannelBaseTest, GetStats) {
-  SetUp();
-
   const int kDurationSec = 3;
   const int kFps = 10;
   SendReceiveManyAndGetStats(DefaultCodec(), kDurationSec, kFps);
@@ -1885,8 +1906,6 @@ TEST_F(WebRtcVideoChannelBaseTest, GetStats) {
 
 // Test that stats work properly for a conf call with multiple recv streams.
 TEST_F(WebRtcVideoChannelBaseTest, GetStatsMultipleRecvStreams) {
-  SetUp();
-
   cricket::FakeVideoRenderer renderer1, renderer2;
   EXPECT_TRUE(SetOneCodec(DefaultCodec()));
   cricket::VideoSendParameters parameters;
@@ -2503,6 +2522,16 @@ class WebRtcVideoChannelTest : public WebRtcVideoEngineTest {
     send_parameters_.codecs = engine_.send_codecs();
     recv_parameters_.codecs = engine_.recv_codecs();
     ASSERT_TRUE(channel_->SetSendParameters(send_parameters_));
+  }
+
+  void TearDown() override {
+    channel_->SetInterface(nullptr);
+    channel_ = nullptr;
+  }
+
+  void ResetTest() {
+    TearDown();
+    SetUp();
   }
 
   cricket::VideoCodec GetEngineCodec(const std::string& name) {
@@ -3157,7 +3186,7 @@ TEST_F(WebRtcVideoChannelTest, LossNotificationIsEnabledByFieldTrial) {
   RTC_DCHECK(!override_field_trials_);
   override_field_trials_ = std::make_unique<webrtc::test::ScopedFieldTrials>(
       "WebRTC-RtcpLossNotification/Enabled/");
-  SetUp();
+  ResetTest();
   TestLossNotificationState(true);
 }
 
@@ -3165,7 +3194,7 @@ TEST_F(WebRtcVideoChannelTest, LossNotificationCanBeEnabledAndDisabled) {
   RTC_DCHECK(!override_field_trials_);
   override_field_trials_ = std::make_unique<webrtc::test::ScopedFieldTrials>(
       "WebRTC-RtcpLossNotification/Enabled/");
-  SetUp();
+  ResetTest();
 
   AssignDefaultCodec();
   VerifyCodecHasDefaultFeedbackParams(default_codec_, true);
@@ -5240,6 +5269,7 @@ TEST_F(WebRtcVideoChannelTest, TestSetDscpOptions) {
   channel->SetInterface(network_interface.get());
   // Default value when DSCP is disabled should be DSCP_DEFAULT.
   EXPECT_EQ(rtc::DSCP_DEFAULT, network_interface->dscp());
+  channel->SetInterface(nullptr);
 
   // Default value when DSCP is enabled is also DSCP_DEFAULT, until it is set
   // through rtp parameters.
@@ -5269,6 +5299,7 @@ TEST_F(WebRtcVideoChannelTest, TestSetDscpOptions) {
   EXPECT_TRUE(static_cast<webrtc::Transport*>(channel.get())
                   ->SendRtcp(kData, sizeof(kData)));
   EXPECT_EQ(rtc::DSCP_CS1, network_interface->options().dscp);
+  channel->SetInterface(nullptr);
 
   // Verify that setting the option to false resets the
   // DiffServCodePoint.
@@ -5279,6 +5310,7 @@ TEST_F(WebRtcVideoChannelTest, TestSetDscpOptions) {
           video_bitrate_allocator_factory_.get())));
   channel->SetInterface(network_interface.get());
   EXPECT_EQ(rtc::DSCP_DEFAULT, network_interface->dscp());
+  channel->SetInterface(nullptr);
 }
 
 // This test verifies that the RTCP reduced size mode is properly applied to
@@ -6385,6 +6417,9 @@ TEST_F(WebRtcVideoChannelTest, RecvUnsignaledSsrcWithSignaledStreamId) {
   cricket::StreamParams unsignaled_stream;
   unsignaled_stream.set_stream_ids({kSyncLabel});
   ASSERT_TRUE(channel_->AddRecvStream(unsignaled_stream));
+  channel_->OnDemuxerCriteriaUpdatePending();
+  channel_->OnDemuxerCriteriaUpdateComplete();
+  rtc::Thread::Current()->ProcessMessages(0);
   // The stream shouldn't have been created at this point because it doesn't
   // have any SSRCs.
   EXPECT_EQ(0u, fake_call_->GetVideoReceiveStreams().size());
@@ -6403,11 +6438,22 @@ TEST_F(WebRtcVideoChannelTest, RecvUnsignaledSsrcWithSignaledStreamId) {
   EXPECT_EQ(kSyncLabel,
             fake_call_->GetVideoReceiveStreams()[0]->GetConfig().sync_group);
 
-  // Reset the unsignaled stream to clear the cache. This time when
-  // a default video receive stream is created it won't have a sync_group.
+  // Reset the unsignaled stream to clear the cache. This deletes the receive
+  // stream.
   channel_->ResetUnsignaledRecvStream();
+  channel_->OnDemuxerCriteriaUpdatePending();
   EXPECT_EQ(0u, fake_call_->GetVideoReceiveStreams().size());
 
+  // Until the demuxer criteria has been updated, we ignore in-flight ssrcs of
+  // the recently removed unsignaled receive stream.
+  channel_->OnPacketReceived(packet, /* packet_time_us */ -1);
+  rtc::Thread::Current()->ProcessMessages(0);
+  EXPECT_EQ(0u, fake_call_->GetVideoReceiveStreams().size());
+
+  // After the demuxer criteria has been updated, we should proceed to create
+  // unsignalled receive streams. This time when a default video receive stream
+  // is created it won't have a sync_group.
+  channel_->OnDemuxerCriteriaUpdateComplete();
   channel_->OnPacketReceived(packet, /* packet_time_us */ -1);
   rtc::Thread::Current()->ProcessMessages(0);
   EXPECT_EQ(1u, fake_call_->GetVideoReceiveStreams().size());
@@ -6445,6 +6491,279 @@ TEST_F(WebRtcVideoChannelTest,
   const auto& receivers2 = fake_call_->GetVideoReceiveStreams();
   ASSERT_EQ(receivers2.size(), 1u);
   EXPECT_EQ(receivers2[0]->GetConfig().rtp.remote_ssrc, kIncomingSignalledSsrc);
+}
+
+TEST_F(WebRtcVideoChannelTest,
+       RecentlyAddedSsrcsDoNotCreateUnsignalledRecvStreams) {
+  const uint32_t kSsrc1 = 1;
+  const uint32_t kSsrc2 = 2;
+
+  // Starting point: receiving kSsrc1.
+  EXPECT_TRUE(channel_->AddRecvStream(StreamParams::CreateLegacy(kSsrc1)));
+  channel_->OnDemuxerCriteriaUpdatePending();
+  channel_->OnDemuxerCriteriaUpdateComplete();
+  rtc::Thread::Current()->ProcessMessages(0);
+  EXPECT_EQ(fake_call_->GetVideoReceiveStreams().size(), 1u);
+
+  // If this is the only m= section the demuxer might be configure to forward
+  // all packets, regardless of ssrc, to this channel. When we go to multiple m=
+  // sections, there can thus be a window of time where packets that should
+  // never have belonged to this channel arrive anyway.
+
+  // Emulate a second m= section being created by updating the demuxer criteria
+  // without adding any streams.
+  channel_->OnDemuxerCriteriaUpdatePending();
+
+  // Emulate there being in-flight packets for kSsrc1 and kSsrc2 arriving before
+  // the demuxer is updated.
+  {
+    // Receive a packet for kSsrc1.
+    const size_t kDataLength = 12;
+    uint8_t data[kDataLength];
+    memset(data, 0, sizeof(data));
+    rtc::SetBE32(&data[8], kSsrc1);
+    rtc::CopyOnWriteBuffer packet(data, kDataLength);
+    channel_->OnPacketReceived(packet, /* packet_time_us */ -1);
+  }
+  {
+    // Receive a packet for kSsrc2.
+    const size_t kDataLength = 12;
+    uint8_t data[kDataLength];
+    memset(data, 0, sizeof(data));
+    rtc::SetBE32(&data[8], kSsrc2);
+    rtc::CopyOnWriteBuffer packet(data, kDataLength);
+    channel_->OnPacketReceived(packet, /* packet_time_us */ -1);
+  }
+  rtc::Thread::Current()->ProcessMessages(0);
+
+  // No unsignaled ssrc for kSsrc2 should have been created, but kSsrc1 should
+  // arrive since it already has a stream.
+  EXPECT_EQ(fake_call_->GetVideoReceiveStreams().size(), 1u);
+  EXPECT_EQ(fake_call_->GetDeliveredPacketsForSsrc(kSsrc1), 1u);
+  EXPECT_EQ(fake_call_->GetDeliveredPacketsForSsrc(kSsrc2), 0u);
+
+  // Signal that the demuxer update is complete. Because there are no more
+  // pending demuxer updates, receiving unknown ssrcs (kSsrc2) should again
+  // result in unsignalled receive streams being created.
+  channel_->OnDemuxerCriteriaUpdateComplete();
+  rtc::Thread::Current()->ProcessMessages(0);
+
+  // Receive packets for kSsrc1 and kSsrc2 again.
+  {
+    // Receive a packet for kSsrc1.
+    const size_t kDataLength = 12;
+    uint8_t data[kDataLength];
+    memset(data, 0, sizeof(data));
+    rtc::SetBE32(&data[8], kSsrc1);
+    rtc::CopyOnWriteBuffer packet(data, kDataLength);
+    channel_->OnPacketReceived(packet, /* packet_time_us */ -1);
+  }
+  {
+    // Receive a packet for kSsrc2.
+    const size_t kDataLength = 12;
+    uint8_t data[kDataLength];
+    memset(data, 0, sizeof(data));
+    rtc::SetBE32(&data[8], kSsrc2);
+    rtc::CopyOnWriteBuffer packet(data, kDataLength);
+    channel_->OnPacketReceived(packet, /* packet_time_us */ -1);
+  }
+  rtc::Thread::Current()->ProcessMessages(0);
+
+  // An unsignalled ssrc for kSsrc2 should be created and the packet counter
+  // should increase for both ssrcs.
+  EXPECT_EQ(fake_call_->GetVideoReceiveStreams().size(), 2u);
+  EXPECT_EQ(fake_call_->GetDeliveredPacketsForSsrc(kSsrc1), 2u);
+  EXPECT_EQ(fake_call_->GetDeliveredPacketsForSsrc(kSsrc2), 1u);
+}
+
+TEST_F(WebRtcVideoChannelTest,
+       RecentlyRemovedSsrcsDoNotCreateUnsignalledRecvStreams) {
+  const uint32_t kSsrc1 = 1;
+  const uint32_t kSsrc2 = 2;
+
+  // Starting point: receiving kSsrc1 and kSsrc2.
+  EXPECT_TRUE(channel_->AddRecvStream(StreamParams::CreateLegacy(kSsrc1)));
+  EXPECT_TRUE(channel_->AddRecvStream(StreamParams::CreateLegacy(kSsrc2)));
+  channel_->OnDemuxerCriteriaUpdatePending();
+  channel_->OnDemuxerCriteriaUpdateComplete();
+  rtc::Thread::Current()->ProcessMessages(0);
+  EXPECT_EQ(fake_call_->GetVideoReceiveStreams().size(), 2u);
+  EXPECT_EQ(fake_call_->GetDeliveredPacketsForSsrc(kSsrc1), 0u);
+  EXPECT_EQ(fake_call_->GetDeliveredPacketsForSsrc(kSsrc2), 0u);
+
+  // Remove kSsrc1, signal that a demuxer criteria update is pending, but not
+  // completed yet.
+  EXPECT_TRUE(channel_->RemoveRecvStream(kSsrc1));
+  channel_->OnDemuxerCriteriaUpdatePending();
+
+  // We only have a receiver for kSsrc2 now.
+  EXPECT_EQ(fake_call_->GetVideoReceiveStreams().size(), 1u);
+
+  // Emulate there being in-flight packets for kSsrc1 and kSsrc2 arriving before
+  // the demuxer is updated.
+  {
+    // Receive a packet for kSsrc1.
+    const size_t kDataLength = 12;
+    uint8_t data[kDataLength];
+    memset(data, 0, sizeof(data));
+    rtc::SetBE32(&data[8], kSsrc1);
+    rtc::CopyOnWriteBuffer packet(data, kDataLength);
+    channel_->OnPacketReceived(packet, /* packet_time_us */ -1);
+  }
+  {
+    // Receive a packet for kSsrc2.
+    const size_t kDataLength = 12;
+    uint8_t data[kDataLength];
+    memset(data, 0, sizeof(data));
+    rtc::SetBE32(&data[8], kSsrc2);
+    rtc::CopyOnWriteBuffer packet(data, kDataLength);
+    channel_->OnPacketReceived(packet, /* packet_time_us */ -1);
+  }
+  rtc::Thread::Current()->ProcessMessages(0);
+
+  // No unsignaled ssrc for kSsrc1 should have been created, but the packet
+  // count for kSsrc2 should increase.
+  EXPECT_EQ(fake_call_->GetVideoReceiveStreams().size(), 1u);
+  EXPECT_EQ(fake_call_->GetDeliveredPacketsForSsrc(kSsrc1), 0u);
+  EXPECT_EQ(fake_call_->GetDeliveredPacketsForSsrc(kSsrc2), 1u);
+
+  // Signal that the demuxer update is complete. This means we should stop
+  // ignorning kSsrc1.
+  channel_->OnDemuxerCriteriaUpdateComplete();
+  rtc::Thread::Current()->ProcessMessages(0);
+
+  // Receive packets for kSsrc1 and kSsrc2 again.
+  {
+    // Receive a packet for kSsrc1.
+    const size_t kDataLength = 12;
+    uint8_t data[kDataLength];
+    memset(data, 0, sizeof(data));
+    rtc::SetBE32(&data[8], kSsrc1);
+    rtc::CopyOnWriteBuffer packet(data, kDataLength);
+    channel_->OnPacketReceived(packet, /* packet_time_us */ -1);
+  }
+  {
+    // Receive a packet for kSsrc2.
+    const size_t kDataLength = 12;
+    uint8_t data[kDataLength];
+    memset(data, 0, sizeof(data));
+    rtc::SetBE32(&data[8], kSsrc2);
+    rtc::CopyOnWriteBuffer packet(data, kDataLength);
+    channel_->OnPacketReceived(packet, /* packet_time_us */ -1);
+  }
+  rtc::Thread::Current()->ProcessMessages(0);
+
+  // An unsignalled ssrc for kSsrc1 should be created and the packet counter
+  // should increase for both ssrcs.
+  EXPECT_EQ(fake_call_->GetVideoReceiveStreams().size(), 2u);
+  EXPECT_EQ(fake_call_->GetDeliveredPacketsForSsrc(kSsrc1), 1u);
+  EXPECT_EQ(fake_call_->GetDeliveredPacketsForSsrc(kSsrc2), 2u);
+}
+
+TEST_F(WebRtcVideoChannelTest, MultiplePendingDemuxerCriteriaUpdates) {
+  const uint32_t kSsrc = 1;
+
+  // Starting point: receiving kSsrc.
+  EXPECT_TRUE(channel_->AddRecvStream(StreamParams::CreateLegacy(kSsrc)));
+  channel_->OnDemuxerCriteriaUpdatePending();
+  channel_->OnDemuxerCriteriaUpdateComplete();
+  rtc::Thread::Current()->ProcessMessages(0);
+  ASSERT_EQ(fake_call_->GetVideoReceiveStreams().size(), 1u);
+
+  // Remove kSsrc...
+  EXPECT_TRUE(channel_->RemoveRecvStream(kSsrc));
+  channel_->OnDemuxerCriteriaUpdatePending();
+  EXPECT_EQ(fake_call_->GetVideoReceiveStreams().size(), 0u);
+  // And then add it back again, before the demuxer knows about the new
+  // criteria!
+  EXPECT_TRUE(channel_->AddRecvStream(StreamParams::CreateLegacy(kSsrc)));
+  channel_->OnDemuxerCriteriaUpdatePending();
+  EXPECT_EQ(fake_call_->GetVideoReceiveStreams().size(), 1u);
+
+  // In-flight packets should arrive because the stream was recreated, even
+  // though demuxer criteria updates are pending...
+  {
+    const size_t kDataLength = 12;
+    uint8_t data[kDataLength];
+    memset(data, 0, sizeof(data));
+    rtc::SetBE32(&data[8], kSsrc);
+    rtc::CopyOnWriteBuffer packet(data, kDataLength);
+    channel_->OnPacketReceived(packet, /* packet_time_us */ -1);
+  }
+  rtc::Thread::Current()->ProcessMessages(0);
+  EXPECT_EQ(fake_call_->GetDeliveredPacketsForSsrc(kSsrc), 1u);
+
+  // Signal that the demuxer knows about the first update: the removal.
+  channel_->OnDemuxerCriteriaUpdateComplete();
+  rtc::Thread::Current()->ProcessMessages(0);
+
+  // This still should not prevent in-flight packets from arriving because we
+  // have a receive stream for it.
+  {
+    const size_t kDataLength = 12;
+    uint8_t data[kDataLength];
+    memset(data, 0, sizeof(data));
+    rtc::SetBE32(&data[8], kSsrc);
+    rtc::CopyOnWriteBuffer packet(data, kDataLength);
+    channel_->OnPacketReceived(packet, /* packet_time_us */ -1);
+  }
+  rtc::Thread::Current()->ProcessMessages(0);
+  EXPECT_EQ(fake_call_->GetDeliveredPacketsForSsrc(kSsrc), 2u);
+
+  // Remove the kSsrc again while previous demuxer updates are still pending.
+  EXPECT_TRUE(channel_->RemoveRecvStream(kSsrc));
+  channel_->OnDemuxerCriteriaUpdatePending();
+  EXPECT_EQ(fake_call_->GetVideoReceiveStreams().size(), 0u);
+
+  // Now the packet should be dropped and not create an unsignalled receive
+  // stream.
+  {
+    const size_t kDataLength = 12;
+    uint8_t data[kDataLength];
+    memset(data, 0, sizeof(data));
+    rtc::SetBE32(&data[8], kSsrc);
+    rtc::CopyOnWriteBuffer packet(data, kDataLength);
+    channel_->OnPacketReceived(packet, /* packet_time_us */ -1);
+  }
+  rtc::Thread::Current()->ProcessMessages(0);
+  EXPECT_EQ(fake_call_->GetVideoReceiveStreams().size(), 0u);
+  EXPECT_EQ(fake_call_->GetDeliveredPacketsForSsrc(kSsrc), 2u);
+
+  // Signal that the demuxer knows about the second update: adding it back.
+  channel_->OnDemuxerCriteriaUpdateComplete();
+  rtc::Thread::Current()->ProcessMessages(0);
+
+  // The packets should continue to be dropped because removal happened after
+  // the most recently completed demuxer update.
+  {
+    const size_t kDataLength = 12;
+    uint8_t data[kDataLength];
+    memset(data, 0, sizeof(data));
+    rtc::SetBE32(&data[8], kSsrc);
+    rtc::CopyOnWriteBuffer packet(data, kDataLength);
+    channel_->OnPacketReceived(packet, /* packet_time_us */ -1);
+  }
+  rtc::Thread::Current()->ProcessMessages(0);
+  EXPECT_EQ(fake_call_->GetVideoReceiveStreams().size(), 0u);
+  EXPECT_EQ(fake_call_->GetDeliveredPacketsForSsrc(kSsrc), 2u);
+
+  // Signal that the demuxer knows about the last update: the second removal.
+  channel_->OnDemuxerCriteriaUpdateComplete();
+  rtc::Thread::Current()->ProcessMessages(0);
+
+  // If packets still arrive after the demuxer knows about the latest removal we
+  // should finally create an unsignalled receive stream.
+  {
+    const size_t kDataLength = 12;
+    uint8_t data[kDataLength];
+    memset(data, 0, sizeof(data));
+    rtc::SetBE32(&data[8], kSsrc);
+    rtc::CopyOnWriteBuffer packet(data, kDataLength);
+    channel_->OnPacketReceived(packet, /* packet_time_us */ -1);
+  }
+  rtc::Thread::Current()->ProcessMessages(0);
+  EXPECT_EQ(fake_call_->GetVideoReceiveStreams().size(), 1u);
+  EXPECT_EQ(fake_call_->GetDeliveredPacketsForSsrc(kSsrc), 3u);
 }
 
 // Test BaseMinimumPlayoutDelayMs on receive streams.
