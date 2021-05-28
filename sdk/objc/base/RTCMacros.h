@@ -40,9 +40,9 @@
 // problem.
 //
 // This macro must be defined uniformily across all the translation units.
-#ifndef RTC_OBJC_TYPE_PREFIX
-#define RTC_OBJC_TYPE_PREFIX
-#endif
+// This macro must only be defined here and not on via compiler flag to
+// ensure it has a unique value.
+#define RTC_OBJC_TYPE_PREFIX TL_
 
 // RCT_OBJC_TYPE
 //
