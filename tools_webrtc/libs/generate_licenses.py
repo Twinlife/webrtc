@@ -42,6 +42,7 @@ LIB_TO_LICENSES_DICT = {
     ],
     'bazel': ['third_party/bazel/LICENSE'],
     'boringssl': ['third_party/boringssl/src/LICENSE'],
+    'crc32c': ['third_party/crc32c/src/LICENSE'],
     'errorprone': [
         'third_party/android_deps/libs/'
         'com_google_errorprone_error_prone_core/LICENSE'
@@ -78,6 +79,8 @@ LIB_TO_LICENSES_DICT = {
     # TODO(bugs.webrtc.org/1110): Remove this hack. This is not a lib.
     # For some reason it is listed as so in _GetThirdPartyLibraries.
     'android_deps': [],
+    # This is not a library but a collection of libraries.
+    'androidx': [],
 
     # Compile time dependencies, no license needed:
     'yasm': [],

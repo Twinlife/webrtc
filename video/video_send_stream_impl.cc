@@ -20,6 +20,7 @@
 #include "api/crypto/crypto_options.h"
 #include "api/rtp_parameters.h"
 #include "api/scoped_refptr.h"
+#include "api/sequence_checker.h"
 #include "api/video_codecs/video_codec.h"
 #include "call/rtp_transport_controller_send_interface.h"
 #include "call/video_send_stream.h"
@@ -32,8 +33,6 @@
 #include "rtc_base/experiments/rate_control_settings.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/numerics/safe_conversions.h"
-#include "rtc_base/synchronization/sequence_checker.h"
-#include "rtc_base/thread_checker.h"
 #include "rtc_base/trace_event.h"
 #include "system_wrappers/include/clock.h"
 #include "system_wrappers/include/field_trial.h"
@@ -147,7 +146,6 @@ RtpSenderObservers CreateObservers(RtcpRttStats* call_stats,
   observers.rtcp_rtt_stats = call_stats;
   observers.intra_frame_callback = encoder_feedback;
   observers.rtcp_loss_notification_observer = encoder_feedback;
-  observers.rtcp_stats = stats_proxy;
   observers.report_block_data_observer = stats_proxy;
   observers.rtp_stats = stats_proxy;
   observers.bitrate_observer = stats_proxy;

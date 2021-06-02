@@ -501,6 +501,9 @@ public class PeerConnection {
     // to keep NAT bindings open.
     // The default value in the implementation is used if this field is null.
     @Nullable public Integer stunCandidateKeepaliveIntervalMs;
+    // The interval in milliseconds of pings sent when the connection is stable and writable.
+    // The default value in the implementation is used if this field is null.
+    @Nullable public Integer stableWritableConnectionPingIntervalMs;
     public boolean disableIPv6OnWifi;
     // By default, PeerConnection will use a limited number of IPv6 network
     // interfaces, in order to avoid too many ICE candidate pairs being created
@@ -514,7 +517,6 @@ public class PeerConnection {
     public boolean disableIpv6;
     public boolean enableDscp;
     public boolean enableCpuOveruseDetection;
-    public boolean enableRtpDataChannel;
     public boolean suspendBelowMinBitrate;
     @Nullable public Integer screencastMinBitrate;
     @Nullable public Boolean combinedAudioVideoBwe;
@@ -557,6 +559,19 @@ public class PeerConnection {
      */
     @Nullable public String turnLoggingId;
 
+    /**
+     * Allow implicit rollback of local description when remote description
+     * conflicts with local description.
+     * See: https://w3c.github.io/webrtc-pc/#dom-peerconnection-setremotedescription
+     */
+    public boolean enableImplicitRollback;
+
+    /**
+     * Control if "a=extmap-allow-mixed" is included in the offer.
+     * See: https://www.chromestatus.com/feature/6269234631933952
+     */
+    public boolean offerExtmapAllowMixed;
+
     // TODO(deadbeef): Instead of duplicating the defaults here, we should do
     // something to pick up the defaults from C++. The Objective-C equivalent
     // of RTCConfiguration does that.
@@ -584,12 +599,12 @@ public class PeerConnection {
       iceUnwritableTimeMs = null;
       iceUnwritableMinChecks = null;
       stunCandidateKeepaliveIntervalMs = null;
+      stableWritableConnectionPingIntervalMs = null;
       disableIPv6OnWifi = false;
       maxIPv6Networks = 5;
       disableIpv6 = false;
       enableDscp = false;
       enableCpuOveruseDetection = true;
-      enableRtpDataChannel = false;
       suspendBelowMinBitrate = false;
       screencastMinBitrate = null;
       combinedAudioVideoBwe = null;
@@ -606,6 +621,8 @@ public class PeerConnection {
       // --twinlife-- 180203
       turnLoggingId = null;
       allowCodecSwitching = null;
+      enableImplicitRollback = false;
+      offerExtmapAllowMixed = true;
     }
 
     @CalledByNative("RTCConfiguration")
@@ -735,6 +752,12 @@ public class PeerConnection {
       return stunCandidateKeepaliveIntervalMs;
     }
 
+    @Nullable
+    @CalledByNative("RTCConfiguration")
+    Integer getStableWritableConnectionPingIntervalMs() {
+      return stableWritableConnectionPingIntervalMs;
+    }
+
     @CalledByNative("RTCConfiguration")
     boolean getDisableIPv6OnWifi() {
       return disableIPv6OnWifi;
@@ -764,11 +787,6 @@ public class PeerConnection {
     @CalledByNative("RTCConfiguration")
     boolean getEnableCpuOveruseDetection() {
       return enableCpuOveruseDetection;
-    }
-
-    @CalledByNative("RTCConfiguration")
-    boolean getEnableRtpDataChannel() {
-      return enableRtpDataChannel;
     }
 
     @CalledByNative("RTCConfiguration")
@@ -821,7 +839,12 @@ public class PeerConnection {
       return cryptoOptions;
     }
 
-<<<<<<< HEAD
+    @Nullable
+    @CalledByNative("RTCConfiguration")
+    String getTurnLoggingId() {
+      return turnLoggingId;
+    }
+
     // --twinlife-- 180203
     @Nullable
     @CalledByNative("RTCConfiguration")
@@ -846,11 +869,15 @@ public class PeerConnection {
       return proxyPassword;
     }
     // --twinlife-- 180203
-=======
-    @Nullable
+
     @CalledByNative("RTCConfiguration")
-    String getTurnLoggingId() {
-      return turnLoggingId;
+    boolean getEnableImplicitRollback() {
+      return enableImplicitRollback;
+    }
+
+    @CalledByNative("RTCConfiguration")
+    boolean getOfferExtmapAllowMixed() {
+      return offerExtmapAllowMixed;
     }
 >>>>>>> google/master
   };
@@ -898,12 +925,23 @@ public class PeerConnection {
     nativeCreateAnswer(observer, constraints);
   }
 
+  public void setLocalDescription(SdpObserver observer) {
+    nativeSetLocalDescriptionAutomatically(observer);
+  }
+
   public void setLocalDescription(SdpObserver observer, SessionDescription sdp) {
     nativeSetLocalDescription(observer, sdp);
   }
 
   public void setRemoteDescription(SdpObserver observer, SessionDescription sdp) {
     nativeSetRemoteDescription(observer, sdp);
+  }
+
+  /**
+   * Tells the PeerConnection that ICE should be restarted.
+   */
+  public void restartIce() {
+    nativeRestartIce();
   }
 
   /**
@@ -934,6 +972,11 @@ public class PeerConnection {
 
   public boolean addIceCandidate(IceCandidate candidate) {
     return nativeAddIceCandidate(candidate.sdpMid, candidate.sdpMLineIndex, candidate.sdp);
+  }
+
+  public void addIceCandidate(IceCandidate candidate, AddIceObserver observer) {
+    nativeAddIceCandidateWithObserver(
+        candidate.sdpMid, candidate.sdpMLineIndex, candidate.sdp, observer);
   }
 
   public boolean removeIceCandidates(final IceCandidate[] candidates) {
@@ -1280,8 +1323,10 @@ public class PeerConnection {
   private native DataChannel nativeCreateDataChannel(String label, DataChannel.Init init);
   private native void nativeCreateOffer(SdpObserver observer, MediaConstraints constraints);
   private native void nativeCreateAnswer(SdpObserver observer, MediaConstraints constraints);
+  private native void nativeSetLocalDescriptionAutomatically(SdpObserver observer);
   private native void nativeSetLocalDescription(SdpObserver observer, SessionDescription sdp);
   private native void nativeSetRemoteDescription(SdpObserver observer, SessionDescription sdp);
+  private native void nativeRestartIce();
   private native void nativeSetAudioPlayout(boolean playout);
   private native void nativeSetAudioRecording(boolean recording);
   private native boolean nativeSetBitrate(Integer min, Integer current, Integer max);
@@ -1295,6 +1340,8 @@ public class PeerConnection {
   private native boolean nativeSetConfiguration(RTCConfiguration config);
   private native boolean nativeAddIceCandidate(
       String sdpMid, int sdpMLineIndex, String iceCandidateSdp);
+  private native void nativeAddIceCandidateWithObserver(
+      String sdpMid, int sdpMLineIndex, String iceCandidateSdp, AddIceObserver observer);
   private native boolean nativeRemoveIceCandidates(final IceCandidate[] candidates);
   private native boolean nativeAddLocalStream(long stream);
   private native void nativeRemoveLocalStream(long stream);

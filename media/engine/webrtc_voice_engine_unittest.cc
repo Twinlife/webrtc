@@ -277,6 +277,7 @@ class WebRtcVoiceEngineTestFake : public ::testing::TestWithParam<bool> {
   void DeliverPacket(const void* data, int len) {
     rtc::CopyOnWriteBuffer packet(reinterpret_cast<const uint8_t*>(data), len);
     channel_->OnPacketReceived(packet, /* packet_time_us */ -1);
+    rtc::Thread::Current()->ProcessMessages(0);
   }
 
   void TearDown() override { delete channel_; }
@@ -1217,7 +1218,7 @@ TEST_P(WebRtcVoiceEngineTestFake, SetRtpParametersAdaptivePtime) {
   parameters.encodings[0].adaptive_ptime = true;
   EXPECT_TRUE(channel_->SetRtpSendParameters(kSsrcX, parameters).ok());
   EXPECT_TRUE(GetAudioNetworkAdaptorConfig(kSsrcX));
-  EXPECT_EQ(12000, GetSendStreamConfig(kSsrcX).min_bitrate_bps);
+  EXPECT_EQ(16000, GetSendStreamConfig(kSsrcX).min_bitrate_bps);
 
   parameters.encodings[0].adaptive_ptime = false;
   EXPECT_TRUE(channel_->SetRtpSendParameters(kSsrcX, parameters).ok());
@@ -3202,6 +3203,7 @@ TEST_P(WebRtcVoiceEngineTestFake, TestSetDscpOptions) {
   channel->SetInterface(&network_interface);
   // Default value when DSCP is disabled should be DSCP_DEFAULT.
   EXPECT_EQ(rtc::DSCP_DEFAULT, network_interface.dscp());
+  channel->SetInterface(nullptr);
 
   config.enable_dscp = true;
   channel.reset(static_cast<cricket::WebRtcVoiceMediaChannel*>(
@@ -3228,6 +3230,7 @@ TEST_P(WebRtcVoiceEngineTestFake, TestSetDscpOptions) {
   const uint8_t kData[10] = {0};
   EXPECT_TRUE(channel->SendRtcp(kData, sizeof(kData)));
   EXPECT_EQ(rtc::DSCP_CS1, network_interface.options().dscp);
+  channel->SetInterface(nullptr);
 
   // Verify that setting the option to false resets the
   // DiffServCodePoint.
@@ -3443,6 +3446,8 @@ TEST_P(WebRtcVoiceEngineTestFake, DeliverAudioPacket_Call) {
       call_.GetAudioReceiveStream(kAudioSsrc);
   EXPECT_EQ(0, s->received_packets());
   channel_->OnPacketReceived(kPcmuPacket, /* packet_time_us */ -1);
+  rtc::Thread::Current()->ProcessMessages(0);
+
   EXPECT_EQ(1, s->received_packets());
 }
 

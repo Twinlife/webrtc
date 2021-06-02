@@ -14,11 +14,11 @@
 #include <limits>
 #include <map>
 #include <set>
-#include <sstream>  // no-presubmit-check TODO(webrtc:8982)
 #include <string>
 #include <utility>  // pair
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "api/rtc_event_log/rtc_event_log.h"
 #include "call/video_receive_stream.h"
 #include "call/video_send_stream.h"
@@ -296,7 +296,7 @@ class ParsedRtcEventLog {
       return error_ + " failed at " + file_ + " line " + std::to_string(line_);
     }
 
-    RTC_DEPRECATED operator bool() const { return ok(); }
+    ABSL_DEPRECATED("Use ok() instead") operator bool() const { return ok(); }
 
    private:
     ParseStatus() : error_(), file_(), line_(0) {}
@@ -388,9 +388,8 @@ class ParsedRtcEventLog {
   // Reads an RtcEventLog from a string and returns success if successful.
   ParseStatus ParseString(const std::string& s);
 
-  // Reads an RtcEventLog from an istream and returns success if successful.
-  ParseStatus ParseStream(
-      std::istream& stream);  // no-presubmit-check TODO(webrtc:8982)
+  // Reads an RtcEventLog from an string and returns success if successful.
+  ParseStatus ParseStream(const std::string& s);
 
   MediaType GetMediaType(uint32_t ssrc, PacketDirection direction) const;
 
@@ -603,6 +602,15 @@ class ParsedRtcEventLog {
     }
   }
 
+  const std::vector<LoggedRtcpPacketBye>& byes(
+      PacketDirection direction) const {
+    if (direction == kIncomingPacket) {
+      return incoming_bye_;
+    } else {
+      return outgoing_bye_;
+    }
+  }
+
   const std::vector<LoggedRtcpPacketTransportFeedback>& transport_feedbacks(
       PacketDirection direction) const {
     if (direction == kIncomingPacket) {
@@ -657,8 +665,7 @@ class ParsedRtcEventLog {
   std::vector<InferredRouteChangeEvent> GetRouteChanges() const;
 
  private:
-  ABSL_MUST_USE_RESULT ParseStatus ParseStreamInternal(
-      std::istream& stream);  // no-presubmit-check TODO(webrtc:8982)
+  ABSL_MUST_USE_RESULT ParseStatus ParseStreamInternal(absl::string_view s);
 
   ABSL_MUST_USE_RESULT ParseStatus
   StoreParsedLegacyEvent(const rtclog::Event& event);
@@ -849,6 +856,8 @@ class ParsedRtcEventLog {
   std::vector<LoggedRtcpPacketFir> outgoing_fir_;
   std::vector<LoggedRtcpPacketPli> incoming_pli_;
   std::vector<LoggedRtcpPacketPli> outgoing_pli_;
+  std::vector<LoggedRtcpPacketBye> incoming_bye_;
+  std::vector<LoggedRtcpPacketBye> outgoing_bye_;
   std::vector<LoggedRtcpPacketTransportFeedback> incoming_transport_feedback_;
   std::vector<LoggedRtcpPacketTransportFeedback> outgoing_transport_feedback_;
   std::vector<LoggedRtcpPacketLossNotification> incoming_loss_notification_;
