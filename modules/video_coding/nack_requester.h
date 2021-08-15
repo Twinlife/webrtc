@@ -8,8 +8,8 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#ifndef MODULES_VIDEO_CODING_NACK_MODULE2_H_
-#define MODULES_VIDEO_CODING_NACK_MODULE2_H_
+#ifndef MODULES_VIDEO_CODING_NACK_REQUESTER_H_
+#define MODULES_VIDEO_CODING_NACK_REQUESTER_H_
 
 #include <stdint.h>
 
@@ -30,19 +30,50 @@
 
 namespace webrtc {
 
-// TODO(bugs.webrtc.org/11594): This class no longer implements the Module
-// interface and therefore "NackModule" may not be a descriptive name anymore.
-// Consider renaming to e.g. NackTracker or NackRequester.
-class NackModule2 final {
+class NackRequesterBase {
+ public:
+  virtual ~NackRequesterBase() = default;
+  virtual void ProcessNacks() = 0;
+};
+
+class NackPeriodicProcessor {
  public:
   static constexpr TimeDelta kUpdateInterval = TimeDelta::Millis(20);
+  explicit NackPeriodicProcessor(TimeDelta update_interval = kUpdateInterval);
+  ~NackPeriodicProcessor();
+  void RegisterNackModule(NackRequesterBase* module);
+  void UnregisterNackModule(NackRequesterBase* module);
 
-  NackModule2(TaskQueueBase* current_queue,
-              Clock* clock,
-              NackSender* nack_sender,
-              KeyFrameRequestSender* keyframe_request_sender,
-              TimeDelta update_interval = kUpdateInterval);
-  ~NackModule2();
+ private:
+  void ProcessNackModules() RTC_RUN_ON(sequence_);
+
+  const TimeDelta update_interval_;
+  RepeatingTaskHandle repeating_task_ RTC_GUARDED_BY(sequence_);
+  std::vector<NackRequesterBase*> modules_ RTC_GUARDED_BY(sequence_);
+  RTC_NO_UNIQUE_ADDRESS SequenceChecker sequence_;
+};
+
+class ScopedNackPeriodicProcessorRegistration {
+ public:
+  ScopedNackPeriodicProcessorRegistration(NackRequesterBase* module,
+                                          NackPeriodicProcessor* processor);
+  ~ScopedNackPeriodicProcessorRegistration();
+
+ private:
+  NackRequesterBase* const module_;
+  NackPeriodicProcessor* const processor_;
+};
+
+class NackRequester final : public NackRequesterBase {
+ public:
+  NackRequester(TaskQueueBase* current_queue,
+                NackPeriodicProcessor* periodic_processor,
+                Clock* clock,
+                NackSender* nack_sender,
+                KeyFrameRequestSender* keyframe_request_sender);
+  ~NackRequester();
+
+  void ProcessNacks() override;
 
   int OnReceivedPacket(uint16_t seq_num, bool is_keyframe);
   int OnReceivedPacket(uint16_t seq_num, bool is_keyframe, bool is_recovered);
@@ -98,22 +129,17 @@ class NackModule2 final {
       RTC_EXCLUSIVE_LOCKS_REQUIRED(worker_thread_);
 
   // Returns how many packets we have to wait in order to receive the packet
-  // with probability |probabilty| or higher.
+  // with probability `probabilty` or higher.
   int WaitNumberOfPackets(float probability) const
       RTC_EXCLUSIVE_LOCKS_REQUIRED(worker_thread_);
 
   TaskQueueBase* const worker_thread_;
-
-  // Used to regularly call SendNack if needed.
-  RepeatingTaskHandle repeating_task_ RTC_GUARDED_BY(worker_thread_);
-  const TimeDelta update_interval_;
-
   Clock* const clock_;
   NackSender* const nack_sender_;
   KeyFrameRequestSender* const keyframe_request_sender_;
 
   // TODO(philipel): Some of the variables below are consistently used on a
-  // known thread (e.g. see |initialized_|). Those probably do not need
+  // known thread (e.g. see `initialized_`). Those probably do not need
   // synchronized access.
   std::map<uint16_t, NackInfo, DescendingSeqNumComp<uint16_t>> nack_list_
       RTC_GUARDED_BY(worker_thread_);
@@ -131,10 +157,12 @@ class NackModule2 final {
 
   const absl::optional<BackoffSettings> backoff_settings_;
 
+  ScopedNackPeriodicProcessorRegistration processor_registration_;
+
   // Used to signal destruction to potentially pending tasks.
   ScopedTaskSafety task_safety_;
 };
 
 }  // namespace webrtc
 
-#endif  // MODULES_VIDEO_CODING_NACK_MODULE2_H_
+#endif  // MODULES_VIDEO_CODING_NACK_REQUESTER_H_

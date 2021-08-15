@@ -10,7 +10,6 @@
 
 #include "modules/video_coding/timing.h"
 
-#include <assert.h>
 
 #include <algorithm>
 
@@ -36,7 +35,7 @@ VCMTiming::VCMTiming(Clock* clock)
       num_decoded_frames_(0),
       low_latency_renderer_enabled_("enabled", true),
       zero_playout_delay_min_pacing_("min_pacing", TimeDelta::Millis(0)),
-      earliest_next_decode_start_time_(0) {
+      last_decode_scheduled_ts_(0) {
   ParseFieldTrial({&low_latency_renderer_enabled_},
                   field_trial::FindFullName("WebRTC-LowLatencyRenderer"));
   ParseFieldTrial({&zero_playout_delay_min_pacing_},
@@ -172,6 +171,12 @@ int64_t VCMTiming::RenderTimeMs(uint32_t frame_timestamp,
   return RenderTimeMsInternal(frame_timestamp, now_ms);
 }
 
+void VCMTiming::SetLastDecodeScheduledTimestamp(
+    int64_t last_decode_scheduled_ts) {
+  MutexLock lock(&mutex_);
+  last_decode_scheduled_ts_ = last_decode_scheduled_ts;
+}
+
 int64_t VCMTiming::RenderTimeMsInternal(uint32_t frame_timestamp,
                                         int64_t now_ms) const {
   constexpr int kLowLatencyRendererMaxPlayoutDelayMs = 500;
@@ -190,8 +195,8 @@ int64_t VCMTiming::RenderTimeMsInternal(uint32_t frame_timestamp,
     estimated_complete_time_ms = now_ms;
   }
 
-  // Make sure the actual delay stays in the range of |min_playout_delay_ms_|
-  // and |max_playout_delay_ms_|.
+  // Make sure the actual delay stays in the range of `min_playout_delay_ms_`
+  // and `max_playout_delay_ms_`.
   int actual_delay = std::max(current_delay_ms_, min_playout_delay_ms_);
   actual_delay = std::min(actual_delay, max_playout_delay_ms_);
   return estimated_complete_time_ms + actual_delay;
@@ -203,19 +208,25 @@ int VCMTiming::RequiredDecodeTimeMs() const {
   return decode_time_ms;
 }
 
-int64_t VCMTiming::MaxWaitingTime(int64_t render_time_ms, int64_t now_ms) {
+int64_t VCMTiming::MaxWaitingTime(int64_t render_time_ms,
+                                  int64_t now_ms,
+                                  bool too_many_frames_queued) const {
   MutexLock lock(&mutex_);
 
   if (render_time_ms == 0 && zero_playout_delay_min_pacing_->us() > 0) {
-    // |render_time_ms| == 0 indicates that the frame should be decoded and
+    // `render_time_ms` == 0 indicates that the frame should be decoded and
     // rendered as soon as possible. However, the decoder can be choked if too
-    // many frames are sent at ones. Therefore, limit the interframe delay to
-    // |zero_playout_delay_min_pacing_|.
-    int64_t max_wait_time_ms = now_ms >= earliest_next_decode_start_time_
+    // many frames are sent at once. Therefore, limit the interframe delay to
+    // |zero_playout_delay_min_pacing_| unless too many frames are queued in
+    // which case the frames are sent to the decoder at once.
+    if (too_many_frames_queued) {
+      return 0;
+    }
+    int64_t earliest_next_decode_start_time =
+        last_decode_scheduled_ts_ + zero_playout_delay_min_pacing_->ms();
+    int64_t max_wait_time_ms = now_ms >= earliest_next_decode_start_time
                                    ? 0
-                                   : earliest_next_decode_start_time_ - now_ms;
-    earliest_next_decode_start_time_ =
-        now_ms + max_wait_time_ms + zero_playout_delay_min_pacing_->ms();
+                                   : earliest_next_decode_start_time - now_ms;
     return max_wait_time_ms;
   }
   return render_time_ms - now_ms - RequiredDecodeTimeMs() - render_delay_ms_;
