@@ -45,7 +45,7 @@ BufferedReadAdapter::~BufferedReadAdapter() {
 int BufferedReadAdapter::Send(const void* pv, size_t cb) {
   if (buffering_) {
     // TODO: Spoof error better; Signal Writeable
-    socket_->SetError(EWOULDBLOCK);
+    SetError(EWOULDBLOCK);
     return -1;
   }
   return AsyncSocketAdapter::Send(pv, cb);
@@ -53,7 +53,7 @@ int BufferedReadAdapter::Send(const void* pv, size_t cb) {
 
 int BufferedReadAdapter::Recv(void* pv, size_t cb, int64_t* timestamp) {
   if (buffering_) {
-    socket_->SetError(EWOULDBLOCK);
+    SetError(EWOULDBLOCK);
     return -1;
   }
 
@@ -92,7 +92,7 @@ void BufferedReadAdapter::BufferInput(bool on) {
 }
 
 void BufferedReadAdapter::OnReadEvent(AsyncSocket* socket) {
-  RTC_DCHECK(socket == socket_);
+  RTC_DCHECK(socket == GetSocket());
 
   if (!buffering_) {
     AsyncSocketAdapter::OnReadEvent(socket);
@@ -105,8 +105,8 @@ void BufferedReadAdapter::OnReadEvent(AsyncSocket* socket) {
     data_len_ = 0;
   }
 
-  int len =
-      socket_->Recv(buffer_ + data_len_, buffer_size_ - data_len_, nullptr);
+  int len = AsyncSocketAdapter::Recv(buffer_ + data_len_,
+                                     buffer_size_ - data_len_, nullptr);
   if (len < 0) {
     // TODO: Do something better like forwarding the error to the user.
     RTC_LOG_ERR(INFO) << "Recv";
@@ -183,7 +183,7 @@ int AsyncSSLSocket::Connect(const SocketAddress& addr) {
 }
 
 void AsyncSSLSocket::OnConnectEvent(AsyncSocket* socket) {
-  RTC_DCHECK(socket == socket_);
+  RTC_DCHECK(socket == GetSocket());
   // TODO: we could buffer output too...
   const int res = DirectSend(kSslClientHello, sizeof(kSslClientHello));
   RTC_DCHECK_EQ(sizeof(kSslClientHello), res);
