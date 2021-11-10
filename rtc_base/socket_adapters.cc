@@ -376,8 +376,7 @@ void AsyncHttpsProxySocket::SendRequest() {
   } else {
       auto iterator = paths_.find(dest_.ToString());
       if (iterator != paths_.end()) {
-	std::string path = iterator->second;
-	ss << "GET /" << path << " HTTP/1.1\r\n";
+	ss << "GET /" << iterator->second << " HTTP/1.1\r\n";
 	ss << "Host: " << proxy_.HostAsURIString() << "\r\n";
 	ss << "\r\n";
       }
