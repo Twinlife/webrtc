@@ -224,12 +224,19 @@ AsyncHttpsProxySocket::AsyncHttpsProxySocket(Socket* socket,
                                              const std::string& user_agent,
                                              const SocketAddress& proxy,
                                              const std::string& username,
-                                             const CryptString& password)
+                                             const CryptString& password,
+					     // --twinlife-- 211109
+					     const std::map<std::string, std::string>& paths)
+					     // --twinlife-- 211109
+
     : BufferedReadAdapter(socket, 1024),
       proxy_(proxy),
       agent_(user_agent),
       user_(username),
       pass_(password),
+      // --twinlife-- 211109
+      paths_(paths),
+      // --twinlife-- 211109
       force_connect_(false),
       state_(PS_ERROR),
       context_(0) {}
@@ -346,24 +353,36 @@ bool AsyncHttpsProxySocket::ShouldIssueConnect() const {
 
 void AsyncHttpsProxySocket::SendRequest() {
   rtc::StringBuilder ss;
-  ss << "CONNECT " << dest_.ToString() << " HTTP/1.0\r\n";
-  ss << "User-Agent: " << agent_ << "\r\n";
-  ss << "Host: " << dest_.HostAsURIString() << "\r\n";
-  // --twinlife-- 180202
-  if (!user_ .empty() && pass_.GetLength() != 0) {
-    size_t len = user_.size() + pass_.GetLength() + 2;
-    char * sensitive = new char[len];
-    size_t pos = strcpyn(sensitive, len, user_.data(), user_.size());
-    pos += strcpyn(sensitive + pos, len - pos, ":");
-    pass_.CopyTo(sensitive + pos, true);
-    ss << "Proxy-Authorization: Basic " << Base64::Encode(sensitive) << "\r\n";
-    delete [] sensitive;
+  // --twinlife-- 211109
+  if (paths_.empty()) {
+    ss << "CONNECT " << dest_.ToString() << " HTTP/1.0\r\n";
+    ss << "User-Agent: " << agent_ << "\r\n";
+    ss << "Host: " << dest_.HostAsURIString() << "\r\n";
+    // --twinlife-- 180202
+    if (!user_ .empty() && pass_.GetLength() != 0) {
+      size_t len = user_.size() + pass_.GetLength() + 2;
+      char * sensitive = new char[len];
+      size_t pos = strcpyn(sensitive, len, user_.data(), user_.size());
+      pos += strcpyn(sensitive + pos, len - pos, ":");
+      pass_.CopyTo(sensitive + pos, true);
+      ss << "Proxy-Authorization: Basic " << Base64::Encode(sensitive) << "\r\n";
+      delete [] sensitive;
+    }
+    // --twinlife-- 180202
+    ss << "Content-Length: 0\r\n";
+    ss << "Proxy-Connection: Keep-Alive\r\n";
+    ss << headers_;
+    ss << "\r\n";
+  } else {
+      auto iterator = paths_.find(dest_.ToString());
+      if (iterator != paths_.end()) {
+	std::string path = iterator->second;
+	ss << "GET /" << path << " HTTP/1.1\r\n";
+	ss << "Host: " << proxy_.HostAsURIString() << "\r\n";
+	ss << "\r\n";
+      }
   }
-  // --twinlife-- 180202
-  ss << "Content-Length: 0\r\n";
-  ss << "Proxy-Connection: Keep-Alive\r\n";
-  ss << headers_;
-  ss << "\r\n";
+  // --twinlife-- 211109
   std::string str = ss.str();
   DirectSend(str.c_str(), str.size());
   state_ = PS_LEADER;

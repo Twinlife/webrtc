@@ -284,6 +284,8 @@ void JavaToNativeRTCConfiguration(
       Java_RTCConfiguration_getProxyUsername(jni, j_rtc_config);
   ScopedJavaLocalRef<jstring> j_proxy_password =
       Java_RTCConfiguration_getProxyPassword(jni, j_rtc_config);
+  ScopedJavaLocalRef<jobject> j_proxy_paths =
+      Java_RTCConfiguration_getProxyPaths(jni, j_rtc_config);
   if (!IsNull(jni, j_proxy_address) && j_proxy_port != 0) {
     std::string proxy_address = JavaToNativeString(jni, j_proxy_address);
     CHECK_EXCEPTION(jni) << "error during JavaToNativeString";
@@ -300,6 +302,10 @@ void JavaToNativeRTCConfiguration(
       rtc::InsecureCryptStringImpl insecureCryptStringImpl;
       insecureCryptStringImpl.password() = proxy_password;
       rtc_config->proxy_info.password = rtc::CryptString(insecureCryptStringImpl);
+    }
+    if (!IsNull(jni, j_proxy_paths)) {
+      rtc_config->proxy_info.paths = JavaToNativeStringMap(jni, j_proxy_paths);
+      CHECK_EXCEPTION(jni) << "error during JavaToNativeStringMap";
     }
   }
   // --twinlife-- 180202

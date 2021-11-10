@@ -557,6 +557,7 @@ public class PeerConnection {
     public int proxyPort;
     @Nullable public String proxyUsername;
     @Nullable public String proxyPassword;
+    @Nullable public Map<String, String> proxyPaths;
     // --twinlife-- 180203
 
     /**
@@ -625,6 +626,7 @@ public class PeerConnection {
       proxyPort = 0;
       proxyUsername = null;
       proxyPassword = null;
+      proxyPaths = null;
       // --twinlife-- 180203
       turnLoggingId = null;
       allowCodecSwitching = null;
@@ -875,6 +877,12 @@ public class PeerConnection {
     String getProxyPassword() {
       return proxyPassword;
     }
+
+    @Nullable
+    @CalledByNative("RTCConfiguration")
+    Map getProxyPaths() {
+      return proxyPaths;
+    }
     // --twinlife-- 180203
 
     @CalledByNative("RTCConfiguration")
@@ -886,7 +894,6 @@ public class PeerConnection {
     boolean getOfferExtmapAllowMixed() {
       return offerExtmapAllowMixed;
     }
->>>>>>> google/master
   };
 
   private final List<MediaStream> localStreams = new ArrayList<>();

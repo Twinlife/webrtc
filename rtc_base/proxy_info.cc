@@ -33,7 +33,8 @@ bool ProxyInfo::operator==(const ProxyInfo& proxyInfo) const {
     autoconfig_url == proxyInfo.autoconfig_url &&
     autodetect == proxyInfo.autodetect &&
     bypass_list == proxyInfo.bypass_list && username == proxyInfo.username &&
-    password == proxyInfo.password;
+    password == proxyInfo.password &&
+    paths == proxyInfo.paths;
 }
 // --twinlife-- 180202
 

@@ -12,6 +12,9 @@
 #define RTC_BASE_SOCKET_ADAPTERS_H_
 
 #include <string>
+// --twinlife-- 211109
+#include <map>
+// --twinlife-- 211109
 
 #include "api/array_view.h"
 #include "rtc_base/async_socket.h"
@@ -82,7 +85,10 @@ class AsyncHttpsProxySocket : public BufferedReadAdapter {
                         const std::string& user_agent,
                         const SocketAddress& proxy,
                         const std::string& username,
-                        const CryptString& password);
+                        const CryptString& password,
+			// --twinlife-- 211109
+			const std::map<std::string, std::string>& paths);
+			// --twinlife-- 211109
   ~AsyncHttpsProxySocket() override;
 
   // If connect is forced, the adapter will always issue an HTTP CONNECT to the
@@ -110,6 +116,9 @@ class AsyncHttpsProxySocket : public BufferedReadAdapter {
   SocketAddress proxy_, dest_;
   std::string agent_, user_, headers_;
   CryptString pass_;
+  // --twinlife-- 211109
+  const std::map<std::string, std::string>& paths_;
+  // --twinlife-- 211109
   bool force_connect_;
   size_t content_length_;
   int defer_error_;

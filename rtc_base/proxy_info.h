@@ -12,6 +12,9 @@
 #define RTC_BASE_PROXY_INFO_H_
 
 #include <string>
+// --twinlife-- 211109
+#include <map>
+// --twinlife-- 211109
 
 #include "rtc_base/crypt_string.h"
 #include "rtc_base/socket_address.h"
@@ -29,6 +32,9 @@ struct ProxyInfo {
   std::string bypass_list;
   std::string username;
   CryptString password;
+  // --twinlife-- 211109
+  std::map<std::string, std::string> paths;
+  // --twinlife-- 211109
 
   ProxyInfo();
   // --twinlife-- 190102
