@@ -83,25 +83,13 @@ TEST_F(NetEqDecodingTest, MAYBE_TestBitExactness) {
       webrtc::test::ResourcePath("audio_coding/neteq_universal_new", "rtp");
 
   const std::string output_checksum = PlatformChecksum(
-// TODO(bugs.webrtc.org/12941): Linux x86 optimized builds have a different
-// checksum.
-#if defined(WEBRTC_LINUX) && defined(NDEBUG) && defined(WEBRTC_ARCH_X86)
-      "8d9c177b7f2f9398c0944a851edffae214de2c56",
-#else
       "6c35140ce4d75874bdd60aa1872400b05fd05ca2",
-#endif
       "ab451bb8301d9a92fbf4de91556b56f1ea38b4ce", "not used",
       "6c35140ce4d75874bdd60aa1872400b05fd05ca2",
       "64b46bb3c1165537a880ae8404afce2efba456c0");
 
   const std::string network_stats_checksum = PlatformChecksum(
-// TODO(bugs.webrtc.org/12941): Linux x86 optimized builds have a different
-// checksum.
-#if defined(WEBRTC_LINUX) && defined(NDEBUG) && defined(WEBRTC_ARCH_X86)
-      "8cc08e3cd6801dcba4fcc15eb4036c19296a140d",
-#else
       "90594d85fa31d3d9584d79293bf7aa4ee55ed751",
-#endif
       "77b9c3640b81aff6a38d69d07dd782d39c15321d", "not used",
       "90594d85fa31d3d9584d79293bf7aa4ee55ed751",
       "90594d85fa31d3d9584d79293bf7aa4ee55ed751");
@@ -384,7 +372,6 @@ class NetEqBgnTest : public NetEqDecodingTest {
     PopulateRtpInfo(0, 0, &rtp_info);
     rtp_info.payloadType = payload_type;
 
-    uint32_t receive_timestamp = 0;
     bool muted;
     for (int n = 0; n < 10; ++n) {  // Insert few packets and get audio.
       auto block = input.GetNextBlock();
@@ -405,8 +392,6 @@ class NetEqBgnTest : public NetEqDecodingTest {
       rtp_info.timestamp +=
           rtc::checked_cast<uint32_t>(expected_samples_per_channel);
       rtp_info.sequenceNumber++;
-      receive_timestamp +=
-          rtc::checked_cast<uint32_t>(expected_samples_per_channel);
     }
 
     output.Reset();

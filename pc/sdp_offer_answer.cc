@@ -468,28 +468,6 @@ bool ValidateOfferAnswerOptions(
          IsValidOfferToReceiveMedia(rtc_options.offer_to_receive_video);
 }
 
-// Map internal signaling state name to spec name:
-//  https://w3c.github.io/webrtc-pc/#rtcsignalingstate-enum
-std::string GetSignalingStateString(
-    PeerConnectionInterface::SignalingState state) {
-  switch (state) {
-    case PeerConnectionInterface::kStable:
-      return "stable";
-    case PeerConnectionInterface::kHaveLocalOffer:
-      return "have-local-offer";
-    case PeerConnectionInterface::kHaveLocalPrAnswer:
-      return "have-local-pranswer";
-    case PeerConnectionInterface::kHaveRemoteOffer:
-      return "have-remote-offer";
-    case PeerConnectionInterface::kHaveRemotePrAnswer:
-      return "have-remote-pranswer";
-    case PeerConnectionInterface::kClosed:
-      return "closed";
-  }
-  RTC_NOTREACHED();
-  return "";
-}
-
 // This method will extract any send encodings that were sent by the remote
 // connection. This is currently only relevant for Simulcast scenario (where
 // the number of layers may be communicated by the server).
@@ -1725,7 +1703,9 @@ RTCError SdpOfferAnswerHandler::ApplyRemoteDescription(
           RTC_LOG(LS_INFO)
               << "Processing the addition of a remote track for MID="
               << content->name << ".";
-          now_receiving_transceivers.push_back(transceiver);
+          // Since the transceiver is passed to the user in an
+          // OnTrack event, we must use the proxied transceiver.
+          now_receiving_transceivers.push_back(transceiver_ext);
         }
       }
       // 2.2.8.1.9: If direction is "sendonly" or "inactive", and transceiver's
@@ -2475,9 +2455,9 @@ void SdpOfferAnswerHandler::ChangeSignalingState(
     return;
   }
   RTC_LOG(LS_INFO) << "Session: " << pc_->session_id() << " Old state: "
-                   << GetSignalingStateString(signaling_state_)
+                   << PeerConnectionInterface::AsString(signaling_state_)
                    << " New state: "
-                   << GetSignalingStateString(signaling_state);
+                   << PeerConnectionInterface::AsString(signaling_state);
   signaling_state_ = signaling_state;
   pc_->Observer()->OnSignalingChange(signaling_state_);
 }
@@ -2692,8 +2672,9 @@ RTCError SdpOfferAnswerHandler::Rollback(SdpType desc_type) {
   if (state != PeerConnectionInterface::kHaveLocalOffer &&
       state != PeerConnectionInterface::kHaveRemoteOffer) {
     return RTCError(RTCErrorType::INVALID_STATE,
-                    "Called in wrong signalingState: " +
-                        GetSignalingStateString(signaling_state()));
+                    (rtc::StringBuilder("Called in wrong signalingState: ")
+                     << (PeerConnectionInterface::AsString(signaling_state())))
+                        .Release());
   }
   RTC_DCHECK_RUN_ON(signaling_thread());
   RTC_DCHECK(IsUnifiedPlan());
@@ -3048,7 +3029,9 @@ RTCError SdpOfferAnswerHandler::ValidateSessionDescription(
       (source == cricket::CS_REMOTE && !ExpectSetRemoteDescription(type))) {
     LOG_AND_RETURN_ERROR(
         RTCErrorType::INVALID_STATE,
-        "Called in wrong state: " + GetSignalingStateString(signaling_state()));
+        (rtc::StringBuilder("Called in wrong state: ")
+         << PeerConnectionInterface::AsString(signaling_state()))
+            .Release());
   }
 
   RTCError error = ValidateMids(*sdesc->description());

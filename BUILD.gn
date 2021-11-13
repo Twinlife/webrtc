@@ -118,11 +118,15 @@ config("common_inherited_config") {
   cflags = []
   ldflags = []
 
+  if (rtc_dlog_always_on) {
+    defines += [ "DLOG_ALWAYS_ON" ]
+  }
+
   if (rtc_enable_symbol_export || is_component_build) {
-    defines = [ "WEBRTC_ENABLE_SYMBOL_EXPORT" ]
+    defines += [ "WEBRTC_ENABLE_SYMBOL_EXPORT" ]
   }
   if (rtc_enable_objc_symbol_export) {
-    defines = [ "WEBRTC_ENABLE_OBJC_SYMBOL_EXPORT" ]
+    defines += [ "WEBRTC_ENABLE_OBJC_SYMBOL_EXPORT" ]
   }
 
   if (build_with_mozilla) {
@@ -305,7 +309,10 @@ config("common_config") {
     defines += [ "WEBRTC_EXCLUDE_AUDIO_PROCESSING_MODULE" ]
   }
 
-  cflags = []
+  # TODO(webrtc:13219): Fix -Wshadow instances and enable.
+  if (is_clang) {
+    cflags += [ "-Wno-shadow" ]
+  }
 
   if (build_with_chromium) {
     defines += [

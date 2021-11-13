@@ -49,6 +49,8 @@ constexpr char kVP8IosMaxNumberOfThreadFieldTrial[] =
 constexpr char kVP8IosMaxNumberOfThreadFieldTrialParameter[] = "max_thread";
 #endif
 
+constexpr absl::string_view kSupportedScalabilityModes[] = {"L1T2", "L1T3"};
+
 constexpr char kVp8ForcePartitionResilience[] =
     "WebRTC-VP8-ForcePartitionResilience";
 
@@ -228,6 +230,15 @@ std::unique_ptr<VideoEncoder> VP8Encoder::Create(
       std::move(frame_buffer_controller_factory);
   return std::make_unique<LibvpxVp8Encoder>(LibvpxInterface::Create(),
                                             std::move(settings));
+}
+
+bool VP8Encoder::SupportsScalabilityMode(absl::string_view scalability_mode) {
+  for (const auto& entry : kSupportedScalabilityModes) {
+    if (entry == scalability_mode) {
+      return true;
+    }
+  }
+  return false;
 }
 
 vpx_enc_frame_flags_t LibvpxVp8Encoder::EncodeFlags(
@@ -1282,8 +1293,8 @@ void LibvpxVp8Encoder::MaybeUpdatePixelFormat(vpx_img_fmt fmt) {
         << "Not all raw images had the right format!";
     return;
   }
-  RTC_LOG(INFO) << "Updating vp8 encoder pixel format to "
-                << (fmt == VPX_IMG_FMT_NV12 ? "NV12" : "I420");
+  RTC_LOG(LS_INFO) << "Updating vp8 encoder pixel format to "
+                   << (fmt == VPX_IMG_FMT_NV12 ? "NV12" : "I420");
   for (size_t i = 0; i < raw_images_.size(); ++i) {
     vpx_image_t& img = raw_images_[i];
     auto d_w = img.d_w;

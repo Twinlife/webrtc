@@ -233,7 +233,7 @@ struct ConfigHelper {
         .WillRepeatedly(Return(&bandwidth_observer_));
     if (audio_bwe_enabled) {
       EXPECT_CALL(rtp_rtcp_,
-                  RegisterRtpHeaderExtension(TransportSequenceNumber::kUri,
+                  RegisterRtpHeaderExtension(TransportSequenceNumber::Uri(),
                                              kTransportSequenceNumberId))
           .Times(1);
       EXPECT_CALL(*channel_send_,
@@ -246,7 +246,6 @@ struct ConfigHelper {
           .Times(1);
     }
     EXPECT_CALL(*channel_send_, ResetSenderCongestionControlObjects()).Times(1);
-    EXPECT_CALL(rtp_rtcp_, SetRid(std::string())).Times(1);
   }
 
   void SetupMockForSetupSendCodec(bool expect_set_encoder_call) {
@@ -802,7 +801,7 @@ TEST(AudioSendStreamTest, ReconfigureTransportCcResetsFirst) {
     ConfigHelper::AddBweToConfig(&new_config);
 
     EXPECT_CALL(*helper.rtp_rtcp(),
-                RegisterRtpHeaderExtension(TransportSequenceNumber::kUri,
+                RegisterRtpHeaderExtension(TransportSequenceNumber::Uri(),
                                            kTransportSequenceNumberId))
         .Times(1);
     {

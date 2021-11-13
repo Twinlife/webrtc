@@ -582,18 +582,17 @@ bool WebRtcVoiceEngine::ApplyOptions(const AudioOptions& options_in) {
     return true;
   }
 
-  webrtc::Config config;
-
   if (options.experimental_ns) {
     experimental_ns_ = options.experimental_ns;
   }
-  if (experimental_ns_) {
-    RTC_LOG(LS_INFO) << "Experimental ns is enabled? " << *experimental_ns_;
-    config.Set<webrtc::ExperimentalNs>(
-        new webrtc::ExperimentalNs(*experimental_ns_));
-  }
 
   webrtc::AudioProcessing::Config apm_config = ap->GetConfig();
+
+#if !(defined(WEBRTC_ANDROID) || defined(WEBRTC_IOS))
+  if (experimental_ns_.has_value()) {
+    apm_config.transient_suppression.enabled = experimental_ns_.value();
+  }
+#endif
 
   if (options.echo_cancellation) {
     apm_config.echo_canceller.enabled = *options.echo_cancellation;
@@ -610,10 +609,6 @@ bool WebRtcVoiceEngine::ApplyOptions(const AudioOptions& options_in) {
     apm_config.gain_controller1.mode =
         apm_config.gain_controller1.kAdaptiveAnalog;
 #endif
-    constexpr int kMinVolumeLevel = 0;
-    constexpr int kMaxVolumeLevel = 255;
-    apm_config.gain_controller1.analog_level_minimum = kMinVolumeLevel;
-    apm_config.gain_controller1.analog_level_maximum = kMaxVolumeLevel;
   }
   if (options.tx_agc_target_dbov) {
     apm_config.gain_controller1.target_level_dbfs = *options.tx_agc_target_dbov;
@@ -667,12 +662,10 @@ WebRtcVoiceEngine::GetRtpHeaderExtensions() const {
   RTC_DCHECK(signal_thread_checker_.IsCurrent());
   std::vector<webrtc::RtpHeaderExtensionCapability> result;
   int id = 1;
-  for (const auto& uri :
-       {webrtc::RtpExtension::kAudioLevelUri,
-        webrtc::RtpExtension::kAbsSendTimeUri,
-        webrtc::RtpExtension::kTransportSequenceNumberUri,
-        webrtc::RtpExtension::kMidUri, webrtc::RtpExtension::kRidUri,
-        webrtc::RtpExtension::kRepairedRidUri}) {
+  for (const auto& uri : {webrtc::RtpExtension::kAudioLevelUri,
+                          webrtc::RtpExtension::kAbsSendTimeUri,
+                          webrtc::RtpExtension::kTransportSequenceNumberUri,
+                          webrtc::RtpExtension::kMidUri}) {
     result.emplace_back(uri, id++, webrtc::RtpTransceiverDirection::kSendRecv);
   }
   return result;
@@ -777,7 +770,9 @@ std::vector<AudioCodec> WebRtcVoiceEngine::CollectCodecs(
       out.push_back(codec);
 
       if (codec.name == kOpusCodecName && audio_red_for_opus_enabled_) {
-        map_format({kRedCodecName, 48000, 2}, &out);
+        std::string redFmtp =
+            rtc::ToString(codec.id) + "/" + rtc::ToString(codec.id);
+        map_format({kRedCodecName, 48000, 2, {{"", redFmtp}}}, &out);
       }
     }
   }
@@ -1383,7 +1378,7 @@ bool WebRtcVoiceMediaChannel::SetSendParameters(
     return false;
   }
 
-  if (!ValidateRtpExtensions(params.extensions)) {
+  if (!ValidateRtpExtensions(params.extensions, send_rtp_extensions_)) {
     return false;
   }
 
@@ -1429,7 +1424,7 @@ bool WebRtcVoiceMediaChannel::SetRecvParameters(
     return false;
   }
 
-  if (!ValidateRtpExtensions(params.extensions)) {
+  if (!ValidateRtpExtensions(params.extensions, recv_rtp_extensions_)) {
     return false;
   }
   std::vector<webrtc::RtpExtension> filtered_extensions = FilterRtpExtensions(
@@ -1661,6 +1656,37 @@ bool WebRtcVoiceMediaChannel::SetRecvCodecs(
   return true;
 }
 
+// Utility function to check if RED codec and its parameters match a codec spec.
+bool CheckRedParameters(
+    const AudioCodec& red_codec,
+    const webrtc::AudioSendStream::Config::SendCodecSpec& send_codec_spec) {
+  if (red_codec.clockrate != send_codec_spec.format.clockrate_hz ||
+      red_codec.channels != send_codec_spec.format.num_channels) {
+    return false;
+  }
+
+  // Check the FMTP line for the empty parameter which should match
+  // <primary codec>/<primary codec>[/...]
+  auto red_parameters = red_codec.params.find("");
+  if (red_parameters == red_codec.params.end()) {
+    RTC_LOG(LS_WARNING) << "audio/RED missing fmtp parameters.";
+    return false;
+  }
+  std::vector<std::string> redundant_payloads;
+  rtc::split(red_parameters->second, '/', &redundant_payloads);
+  // 32 is chosen as a maximum upper bound for consistency with the
+  // red payload splitter.
+  if (redundant_payloads.size() < 2 || redundant_payloads.size() > 32) {
+    return false;
+  }
+  for (auto pt : redundant_payloads) {
+    if (pt != rtc::ToString(send_codec_spec.payload_type)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Utility function called from SetSendParameters() to extract current send
 // codec settings from the given list of codecs (originally from SDP). Both send
 // and receive streams may be reconfigured based on the new settings.
@@ -1772,8 +1798,7 @@ bool WebRtcVoiceMediaChannel::SetSendCodecs(
     for (const AudioCodec& red_codec : codecs) {
       if (red_codec_position < send_codec_position &&
           IsCodec(red_codec, kRedCodecName) &&
-          red_codec.clockrate == send_codec_spec->format.clockrate_hz &&
-          red_codec.channels == send_codec_spec->format.num_channels) {
+          CheckRedParameters(red_codec, *send_codec_spec)) {
         send_codec_spec->red_payload_type = red_codec.id;
         break;
       }

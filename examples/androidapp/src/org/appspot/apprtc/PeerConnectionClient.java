@@ -96,7 +96,6 @@ public class PeerConnectionClient {
   private static final String VIDEO_CODEC_H264_BASELINE = "H264 Baseline";
   private static final String VIDEO_CODEC_H264_HIGH = "H264 High";
   private static final String VIDEO_CODEC_AV1 = "AV1";
-  private static final String VIDEO_CODEC_AV1_SDP_CODEC_NAME = "AV1X";
   private static final String AUDIO_CODEC_OPUS = "opus";
   private static final String AUDIO_CODEC_ISAC = "ISAC";
   private static final String VIDEO_CODEC_PARAM_START_BITRATE = "x-google-start-bitrate";
@@ -443,6 +442,10 @@ public class PeerConnectionClient {
       decoderFactory = new SoftwareVideoDecoderFactory();
     }
 
+    // Disable encryption for loopback calls.
+    if (peerConnectionParameters.loopback) {
+      options.disableEncryption = true;
+    }
     factory = PeerConnectionFactory.builder()
                   .setOptions(options)
                   .setAudioDeviceModule(adm)
@@ -601,8 +604,6 @@ public class PeerConnectionClient {
     rtcConfig.continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY;
     // Use ECDSA encryption.
     rtcConfig.keyType = PeerConnection.KeyType.ECDSA;
-    // Enable DTLS for normal calls and disable for loopback calls.
-    rtcConfig.enableDtlsSrtp = !peerConnectionParameters.loopback;
     rtcConfig.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
 
     peerConnection = factory.createPeerConnection(rtcConfig, pcObserver);
@@ -985,7 +986,7 @@ public class PeerConnectionClient {
       case VIDEO_CODEC_VP9:
         return VIDEO_CODEC_VP9;
       case VIDEO_CODEC_AV1:
-        return VIDEO_CODEC_AV1_SDP_CODEC_NAME;
+        return VIDEO_CODEC_AV1;
       case VIDEO_CODEC_H264_HIGH:
       case VIDEO_CODEC_H264_BASELINE:
         return VIDEO_CODEC_H264;
