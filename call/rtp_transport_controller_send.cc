@@ -156,7 +156,7 @@ RtpTransportControllerSend::~RtpTransportControllerSend() {
 }
 
 RtpVideoSenderInterface* RtpTransportControllerSend::CreateRtpVideoSender(
-    std::map<uint32_t, RtpState> suspended_ssrcs,
+    const std::map<uint32_t, RtpState>& suspended_ssrcs,
     const std::map<uint32_t, RtpPayloadState>& states,
     const RtpConfig& rtp_config,
     int rtcp_report_interval_ms,
@@ -420,10 +420,16 @@ void RtpTransportControllerSend::OnSentPacket(
     RTC_DCHECK_RUN_ON(&task_queue_);
     absl::optional<SentPacket> packet_msg =
         transport_feedback_adapter_.ProcessSentPacket(sent_packet);
-    pacer()->UpdateOutstandingData(
-        transport_feedback_adapter_.GetOutstandingData());
-    if (packet_msg && controller_)
-      PostUpdates(controller_->OnSentPacket(*packet_msg));
+    if (packet_msg) {
+      // Only update outstanding data in pacer if:
+      // 1. Packet feadback is used.
+      // 2. The packet has not yet received an acknowledgement.
+      // 3. It is not a retransmission of an earlier packet.
+      pacer()->UpdateOutstandingData(
+          transport_feedback_adapter_.GetOutstandingData());
+      if (controller_)
+        PostUpdates(controller_->OnSentPacket(*packet_msg));
+    }
   });
 }
 
@@ -553,11 +559,10 @@ void RtpTransportControllerSend::OnReceivedRtcpReceiverReport(
 
 void RtpTransportControllerSend::OnAddPacket(
     const RtpPacketSendInfo& packet_info) {
-  feedback_demuxer_.AddPacket(packet_info);
-
   Timestamp creation_time = Timestamp::Millis(clock_->TimeInMilliseconds());
   task_queue_.PostTask([this, packet_info, creation_time]() {
     RTC_DCHECK_RUN_ON(&task_queue_);
+    feedback_demuxer_.AddPacket(packet_info);
     transport_feedback_adapter_.AddPacket(
         packet_info,
         send_side_bwe_with_overhead_ ? transport_overhead_bytes_per_packet_ : 0,
@@ -567,18 +572,22 @@ void RtpTransportControllerSend::OnAddPacket(
 
 void RtpTransportControllerSend::OnTransportFeedback(
     const rtcp::TransportFeedback& feedback) {
-  feedback_demuxer_.OnTransportFeedback(feedback);
   auto feedback_time = Timestamp::Millis(clock_->TimeInMilliseconds());
   task_queue_.PostTask([this, feedback, feedback_time]() {
     RTC_DCHECK_RUN_ON(&task_queue_);
+    feedback_demuxer_.OnTransportFeedback(feedback);
     absl::optional<TransportPacketsFeedback> feedback_msg =
         transport_feedback_adapter_.ProcessTransportFeedback(feedback,
                                                              feedback_time);
-    if (feedback_msg && controller_) {
-      PostUpdates(controller_->OnTransportPacketsFeedback(*feedback_msg));
+    if (feedback_msg) {
+      if (controller_)
+        PostUpdates(controller_->OnTransportPacketsFeedback(*feedback_msg));
+
+      // Only update outstanding data in pacer if any packet is first time
+      // acked.
+      pacer()->UpdateOutstandingData(
+          transport_feedback_adapter_.GetOutstandingData());
     }
-    pacer()->UpdateOutstandingData(
-        transport_feedback_adapter_.GetOutstandingData());
   });
 }
 

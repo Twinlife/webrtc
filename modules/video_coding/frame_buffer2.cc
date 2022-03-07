@@ -13,13 +13,15 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iterator>
+#include <memory>
 #include <queue>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
+#include "absl/container/inlined_vector.h"
 #include "api/video/encoded_image.h"
 #include "api/video/video_timing.h"
+#include "modules/video_coding/frame_helpers.h"
 #include "modules/video_coding/include/video_coding_defines.h"
 #include "modules/video_coding/jitter_estimator.h"
 #include "modules/video_coding/timing.h"
@@ -78,11 +80,10 @@ FrameBuffer::~FrameBuffer() {
   RTC_DCHECK_RUN_ON(&construction_checker_);
 }
 
-void FrameBuffer::NextFrame(
-    int64_t max_wait_time_ms,
-    bool keyframe_required,
-    rtc::TaskQueue* callback_queue,
-    std::function<void(std::unique_ptr<EncodedFrame>, ReturnReason)> handler) {
+void FrameBuffer::NextFrame(int64_t max_wait_time_ms,
+                            bool keyframe_required,
+                            rtc::TaskQueue* callback_queue,
+                            NextFrameCallback handler) {
   RTC_DCHECK_RUN_ON(&callback_checker_);
   RTC_DCHECK(callback_queue->IsCurrent());
   TRACE_EVENT0("webrtc", "FrameBuffer::NextFrame");
@@ -105,18 +106,18 @@ void FrameBuffer::StartWaitForNextFrameOnQueue() {
   RTC_DCHECK(!callback_task_.Running());
   int64_t wait_ms = FindNextFrame(clock_->TimeInMilliseconds());
   callback_task_ = RepeatingTaskHandle::DelayedStart(
-      callback_queue_->Get(), TimeDelta::Millis(wait_ms), [this] {
+      callback_queue_->Get(), TimeDelta::Millis(wait_ms),
+      [this] {
         RTC_DCHECK_RUN_ON(&callback_checker_);
         // If this task has not been cancelled, we did not get any new frames
         // while waiting. Continue with frame delivery.
         std::unique_ptr<EncodedFrame> frame;
-        std::function<void(std::unique_ptr<EncodedFrame>, ReturnReason)>
-            frame_handler;
+        NextFrameCallback frame_handler;
         {
           MutexLock lock(&mutex_);
           if (!frames_to_decode_.empty()) {
             // We have frames, deliver!
-            frame = absl::WrapUnique(GetNextFrame());
+            frame = GetNextFrame();
             timing_->SetLastDecodeScheduledTimestamp(
                 clock_->TimeInMilliseconds());
           } else if (clock_->TimeInMilliseconds() < latest_return_time_ms_) {
@@ -130,10 +131,10 @@ void FrameBuffer::StartWaitForNextFrameOnQueue() {
           CancelCallback();
         }
         // Deliver frame, if any. Otherwise signal timeout.
-        ReturnReason reason = frame ? kFrameFound : kTimeout;
-        frame_handler(std::move(frame), reason);
+        frame_handler(std::move(frame));
         return TimeDelta::Zero();  // Ignored.
-      });
+      },
+      TaskQueueBase::DelayPrecision::kHigh);
 }
 
 int64_t FrameBuffer::FindNextFrame(int64_t now_ms) {
@@ -240,11 +241,11 @@ int64_t FrameBuffer::FindNextFrame(int64_t now_ms) {
   return wait_ms;
 }
 
-EncodedFrame* FrameBuffer::GetNextFrame() {
+std::unique_ptr<EncodedFrame> FrameBuffer::GetNextFrame() {
   RTC_DCHECK_RUN_ON(&callback_checker_);
   int64_t now_ms = clock_->TimeInMilliseconds();
   // TODO(ilnik): remove `frames_out` use frames_to_decode_ directly.
-  std::vector<EncodedFrame*> frames_out;
+  std::vector<std::unique_ptr<EncodedFrame>> frames_out;
 
   RTC_DCHECK(!frames_to_decode_.empty());
   bool superframe_delayed_by_retransmission = false;
@@ -253,7 +254,8 @@ EncodedFrame* FrameBuffer::GetNextFrame() {
   int64_t render_time_ms = first_frame.RenderTime();
   int64_t receive_time_ms = first_frame.ReceivedTime();
   // Gracefully handle bad RTP timestamps and render time issues.
-  if (HasBadRenderTiming(first_frame, now_ms)) {
+  if (FrameHasBadRenderTiming(first_frame.RenderTimeMs(), now_ms,
+                              timing_->TargetVideoDelay())) {
     jitter_estimator_.Reset();
     timing_->Reset();
     render_time_ms = timing_->RenderTimeMs(first_frame.Timestamp(), now_ms);
@@ -261,7 +263,7 @@ EncodedFrame* FrameBuffer::GetNextFrame() {
 
   for (FrameMap::iterator& frame_it : frames_to_decode_) {
     RTC_DCHECK(frame_it != frames_.end());
-    EncodedFrame* frame = frame_it->second.frame.release();
+    std::unique_ptr<EncodedFrame> frame = std::move(frame_it->second.frame);
 
     frame->SetRenderTime(render_time_ms);
 
@@ -286,7 +288,7 @@ EncodedFrame* FrameBuffer::GetNextFrame() {
 
     frames_.erase(frames_.begin(), ++frame_it);
 
-    frames_out.push_back(frame);
+    frames_out.emplace_back(std::move(frame));
   }
 
   if (!superframe_delayed_by_retransmission) {
@@ -315,39 +317,10 @@ EncodedFrame* FrameBuffer::GetNextFrame() {
   UpdateTimingFrameInfo();
 
   if (frames_out.size() == 1) {
-    return frames_out[0];
+    return std::move(frames_out[0]);
   } else {
-    return CombineAndDeleteFrames(frames_out);
+    return CombineAndDeleteFrames(std::move(frames_out));
   }
-}
-
-bool FrameBuffer::HasBadRenderTiming(const EncodedFrame& frame,
-                                     int64_t now_ms) {
-  // Assume that render timing errors are due to changes in the video stream.
-  int64_t render_time_ms = frame.RenderTimeMs();
-  // Zero render time means render immediately.
-  if (render_time_ms == 0) {
-    return false;
-  }
-  if (render_time_ms < 0) {
-    return true;
-  }
-  const int64_t kMaxVideoDelayMs = 10000;
-  if (std::abs(render_time_ms - now_ms) > kMaxVideoDelayMs) {
-    int frame_delay = static_cast<int>(std::abs(render_time_ms - now_ms));
-    RTC_LOG(LS_WARNING)
-        << "A frame about to be decoded is out of the configured "
-           "delay bounds ("
-        << frame_delay << " > " << kMaxVideoDelayMs
-        << "). Resetting the video jitter buffer.";
-    return true;
-  }
-  if (static_cast<int>(timing_->TargetVideoDelay()) > kMaxVideoDelayMs) {
-    RTC_LOG(LS_WARNING) << "The video target delay has grown larger than "
-                        << kMaxVideoDelayMs << " ms.";
-    return true;
-  }
-  return false;
 }
 
 void FrameBuffer::SetProtectionMode(VCMVideoProtection mode) {
@@ -660,42 +633,14 @@ void FrameBuffer::ClearFramesAndHistory() {
 
 // TODO(philipel): Avoid the concatenation of frames here, by replacing
 // NextFrame and GetNextFrame with methods returning multiple frames.
-EncodedFrame* FrameBuffer::CombineAndDeleteFrames(
-    const std::vector<EncodedFrame*>& frames) const {
+std::unique_ptr<EncodedFrame> FrameBuffer::CombineAndDeleteFrames(
+    std::vector<std::unique_ptr<EncodedFrame>> frames) const {
   RTC_DCHECK(!frames.empty());
-  EncodedFrame* first_frame = frames[0];
-  EncodedFrame* last_frame = frames.back();
-  size_t total_length = 0;
-  for (size_t i = 0; i < frames.size(); ++i) {
-    total_length += frames[i]->size();
+  absl::InlinedVector<std::unique_ptr<EncodedFrame>, 4> inlined;
+  for (auto& frame : frames) {
+    inlined.push_back(std::move(frame));
   }
-  auto encoded_image_buffer = EncodedImageBuffer::Create(total_length);
-  uint8_t* buffer = encoded_image_buffer->data();
-  first_frame->SetSpatialLayerFrameSize(first_frame->SpatialIndex().value_or(0),
-                                        first_frame->size());
-  memcpy(buffer, first_frame->data(), first_frame->size());
-  buffer += first_frame->size();
-
-  // Spatial index of combined frame is set equal to spatial index of its top
-  // spatial layer.
-  first_frame->SetSpatialIndex(last_frame->SpatialIndex().value_or(0));
-
-  first_frame->video_timing_mutable()->network2_timestamp_ms =
-      last_frame->video_timing().network2_timestamp_ms;
-  first_frame->video_timing_mutable()->receive_finish_ms =
-      last_frame->video_timing().receive_finish_ms;
-
-  // Append all remaining frames to the first one.
-  for (size_t i = 1; i < frames.size(); ++i) {
-    EncodedFrame* next_frame = frames[i];
-    first_frame->SetSpatialLayerFrameSize(
-        next_frame->SpatialIndex().value_or(0), next_frame->size());
-    memcpy(buffer, next_frame->data(), next_frame->size());
-    buffer += next_frame->size();
-    delete next_frame;
-  }
-  first_frame->SetEncodedData(encoded_image_buffer);
-  return first_frame;
+  return webrtc::CombineAndDeleteFrames(std::move(inlined));
 }
 
 FrameBuffer::FrameInfo::FrameInfo() = default;

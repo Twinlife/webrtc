@@ -30,6 +30,7 @@
 #include "api/task_queue/task_queue_factory.h"
 #include "api/test/audio_quality_analyzer_interface.h"
 #include "api/test/frame_generator_interface.h"
+#include "api/test/peer_network_dependencies.h"
 #include "api/test/simulated_network.h"
 #include "api/test/stats_observer_interface.h"
 #include "api/test/track_id_stream_info_map.h"
@@ -395,6 +396,22 @@ class PeerConnectionE2EQualityTestFixture {
     // Set the audio stream for the call from this peer. If this method won't
     // be invoked, this peer will send no audio.
     virtual PeerConfigurer* SetAudioConfig(AudioConfig config) = 0;
+
+    // Set if ULP FEC should be used or not. False by default.
+    virtual PeerConfigurer* SetUseUlpFEC(bool value) = 0;
+    // Set if Flex FEC should be used or not. False by default.
+    // Client also must enable `enable_flex_fec_support` in the `RunParams` to
+    // be able to use this feature.
+    virtual PeerConfigurer* SetUseFlexFEC(bool value) = 0;
+    // Specifies how much video encoder target bitrate should be different than
+    // target bitrate, provided by WebRTC stack. Must be greater than 0. Can be
+    // used to emulate overshooting of video encoders. This multiplier will
+    // be applied for all video encoder on both sides for all layers. Bitrate
+    // estimated by WebRTC stack will be multiplied by this multiplier and then
+    // provided into VideoEncoder::SetRates(...). 1.0 by default.
+    virtual PeerConfigurer* SetVideoEncoderBitrateMultiplier(
+        double multiplier) = 0;
+
     // If is set, an RTCEventLog will be saved in that location and it will be
     // available for further analysis.
     virtual PeerConfigurer* SetRtcEventLogPath(std::string path) = 0;
@@ -426,15 +443,9 @@ class PeerConnectionE2EQualityTestFixture {
     // it will be shut downed.
     TimeDelta run_duration;
 
-    bool use_ulp_fec = false;
-    bool use_flex_fec = false;
-    // Specifies how much video encoder target bitrate should be different than
-    // target bitrate, provided by WebRTC stack. Must be greater then 0. Can be
-    // used to emulate overshooting of video encoders. This multiplier will
-    // be applied for all video encoder on both sides for all layers. Bitrate
-    // estimated by WebRTC stack will be multiplied on this multiplier and then
-    // provided into VideoEncoder::SetRates(...).
-    double video_encoder_bitrate_multiplier = 1.0;
+    // If set to true peers will be able to use Flex FEC, otherwise they won't
+    // be able to negotiate it even if it's enabled on per peer level.
+    bool enable_flex_fec_support = false;
     // If true will set conference mode in SDP media section for all video
     // tracks for all peers.
     bool use_conference_mode = false;
@@ -494,14 +505,13 @@ class PeerConnectionE2EQualityTestFixture {
 
   // Add a new peer to the call and return an object through which caller
   // can configure peer's behavior.
-  // `network_thread` will be used as network thread for peer's peer connection
-  // `network_manager` will be used to provide network interfaces for peer's
-  // peer connection.
+  // `network_dependencies` are used to provide networking for peer's peer
+  // connection. Members must be non-null.
   // `configurer` function will be used to configure peer in the call.
   virtual PeerHandle* AddPeer(
-      rtc::Thread* network_thread,
-      rtc::NetworkManager* network_manager,
+      const PeerNetworkDependencies& network_dependencies,
       rtc::FunctionView<void(PeerConfigurer*)> configurer) = 0;
+
   // Runs the media quality test, which includes setting up the call with
   // configured participants, running it according to provided `run_params` and
   // terminating it properly at the end. During call duration media quality

@@ -233,15 +233,16 @@ class PeerConnectionRampUpTest : public ::testing::Test {
   void CreateTurnServer(cricket::ProtocolType type,
                         const std::string& common_name = "test turn server") {
     rtc::Thread* thread = network_thread();
+    rtc::SocketFactory* factory = firewall_socket_server_.get();
     std::unique_ptr<cricket::TestTurnServer> turn_server =
         network_thread_->Invoke<std::unique_ptr<cricket::TestTurnServer>>(
-            RTC_FROM_HERE, [thread, type, common_name] {
+            RTC_FROM_HERE, [thread, factory, type, common_name] {
               static const rtc::SocketAddress turn_server_internal_address{
                   kTurnInternalAddress, kTurnInternalPort};
               static const rtc::SocketAddress turn_server_external_address{
                   kTurnExternalAddress, kTurnExternalPort};
               return std::make_unique<cricket::TestTurnServer>(
-                  thread, turn_server_internal_address,
+                  thread, factory, turn_server_internal_address,
                   turn_server_external_address, type,
                   true /*ignore_bad_certs=*/, common_name);
             });
@@ -343,9 +344,11 @@ TEST_F(PeerConnectionRampUpTest, Bwe_After_TurnOverTCP) {
   ice_server.username = "test";
   ice_server.password = "test";
   PeerConnectionInterface::RTCConfiguration client_1_config;
+  client_1_config.sdp_semantics = SdpSemantics::kUnifiedPlan;
   client_1_config.servers.push_back(ice_server);
   client_1_config.type = PeerConnectionInterface::kRelay;
   PeerConnectionInterface::RTCConfiguration client_2_config;
+  client_2_config.sdp_semantics = SdpSemantics::kUnifiedPlan;
   client_2_config.servers.push_back(ice_server);
   client_2_config.type = PeerConnectionInterface::kRelay;
   ASSERT_TRUE(CreatePeerConnectionWrappers(client_1_config, client_2_config));
@@ -364,9 +367,11 @@ TEST_F(PeerConnectionRampUpTest, Bwe_After_TurnOverUDP) {
   ice_server.username = "test";
   ice_server.password = "test";
   PeerConnectionInterface::RTCConfiguration client_1_config;
+  client_1_config.sdp_semantics = SdpSemantics::kUnifiedPlan;
   client_1_config.servers.push_back(ice_server);
   client_1_config.type = PeerConnectionInterface::kRelay;
   PeerConnectionInterface::RTCConfiguration client_2_config;
+  client_2_config.sdp_semantics = SdpSemantics::kUnifiedPlan;
   client_2_config.servers.push_back(ice_server);
   client_2_config.type = PeerConnectionInterface::kRelay;
   ASSERT_TRUE(CreatePeerConnectionWrappers(client_1_config, client_2_config));
@@ -385,9 +390,11 @@ TEST_F(PeerConnectionRampUpTest, Bwe_After_TurnOverTLS) {
   ice_server.username = "test";
   ice_server.password = "test";
   PeerConnectionInterface::RTCConfiguration client_1_config;
+  client_1_config.sdp_semantics = SdpSemantics::kUnifiedPlan;
   client_1_config.servers.push_back(ice_server);
   client_1_config.type = PeerConnectionInterface::kRelay;
   PeerConnectionInterface::RTCConfiguration client_2_config;
+  client_2_config.sdp_semantics = SdpSemantics::kUnifiedPlan;
   client_2_config.servers.push_back(ice_server);
   client_2_config.type = PeerConnectionInterface::kRelay;
 
@@ -399,9 +406,11 @@ TEST_F(PeerConnectionRampUpTest, Bwe_After_TurnOverTLS) {
 
 TEST_F(PeerConnectionRampUpTest, Bwe_After_UDPPeerToPeer) {
   PeerConnectionInterface::RTCConfiguration client_1_config;
+  client_1_config.sdp_semantics = SdpSemantics::kUnifiedPlan;
   client_1_config.tcp_candidate_policy =
       PeerConnection::kTcpCandidatePolicyDisabled;
   PeerConnectionInterface::RTCConfiguration client_2_config;
+  client_2_config.sdp_semantics = SdpSemantics::kUnifiedPlan;
   client_2_config.tcp_candidate_policy =
       PeerConnection::kTcpCandidatePolicyDisabled;
   ASSERT_TRUE(CreatePeerConnectionWrappers(client_1_config, client_2_config));
@@ -412,9 +421,9 @@ TEST_F(PeerConnectionRampUpTest, Bwe_After_UDPPeerToPeer) {
 
 TEST_F(PeerConnectionRampUpTest, Bwe_After_TCPPeerToPeer) {
   firewall_socket_server()->set_udp_sockets_enabled(false);
-  ASSERT_TRUE(CreatePeerConnectionWrappers(
-      PeerConnectionInterface::RTCConfiguration(),
-      PeerConnectionInterface::RTCConfiguration()));
+  PeerConnectionInterface::RTCConfiguration config;
+  config.sdp_semantics = SdpSemantics::kUnifiedPlan;
+  ASSERT_TRUE(CreatePeerConnectionWrappers(config, config));
 
   SetupOneWayCall();
   RunTest("tcp_peer_to_peer");

@@ -180,7 +180,7 @@ class AudioDeviceTemplate : public AudioDeviceGeneric {
   int32_t StartPlayout() override {
     RTC_DLOG(LS_INFO) << __FUNCTION__;
     if (!audio_manager_->IsCommunicationModeEnabled()) {
-      RTC_LOG(WARNING)
+      RTC_LOG(LS_WARNING)
           << "The application should use MODE_IN_COMMUNICATION audio mode!";
     }
     return output_.StartPlayout();
@@ -203,7 +203,7 @@ class AudioDeviceTemplate : public AudioDeviceGeneric {
   int32_t StartRecording() override {
     RTC_DLOG(LS_INFO) << __FUNCTION__;
     if (!audio_manager_->IsCommunicationModeEnabled()) {
-      RTC_LOG(WARNING)
+      RTC_LOG(LS_WARNING)
           << "The application should use MODE_IN_COMMUNICATION audio mode!";
     }
     return input_.StartRecording();
