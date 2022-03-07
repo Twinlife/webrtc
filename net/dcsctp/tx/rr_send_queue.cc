@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <map>
 #include <utility>
 #include <vector>
@@ -49,7 +50,7 @@ bool RRSendQueue::OutgoingStream::HasDataToSend(TimeMs now) {
     }
 
     // Message has expired. Remove it and inspect the next one.
-    if (item.expires_at.has_value() && *item.expires_at <= now) {
+    if (item.expires_at <= now) {
       buffered_amount_.Decrease(item.remaining_size);
       total_buffered_amount_.Decrease(item.remaining_size);
       items_.pop_front();
@@ -75,8 +76,8 @@ void RRSendQueue::OutgoingStream::AddHandoverState(
 
 bool RRSendQueue::IsConsistent() const {
   size_t total_buffered_amount = 0;
-  for (const auto& stream_entry : streams_) {
-    total_buffered_amount += stream_entry.second.buffered_amount().value();
+  for (const auto& [unused, stream] : streams_) {
+    total_buffered_amount += stream.buffered_amount().value();
   }
 
   if (previous_message_has_ended_) {
@@ -125,7 +126,7 @@ void RRSendQueue::ThresholdWatcher::SetLowThreshold(size_t low_threshold) {
 }
 
 void RRSendQueue::OutgoingStream::Add(DcSctpMessage message,
-                                      absl::optional<TimeMs> expires_at,
+                                      TimeMs expires_at,
                                       const SendOptions& send_options) {
   buffered_amount_.Increase(message.payload().size());
   total_buffered_amount_.Increase(message.payload().size());
@@ -186,7 +187,14 @@ absl::optional<SendQueue::DataToSend> RRSendQueue::OutgoingStream::Produce(
                                    item->message_id.value(), fsn, ppid,
                                    std::move(payload), is_beginning, is_end,
                                    item->send_options.unordered));
-  chunk.max_retransmissions = item->send_options.max_retransmissions;
+  if (item->send_options.max_retransmissions.has_value() &&
+      *item->send_options.max_retransmissions >=
+          std::numeric_limits<MaxRetransmits::UnderlyingType>::min() &&
+      *item->send_options.max_retransmissions <=
+          std::numeric_limits<MaxRetransmits::UnderlyingType>::max()) {
+    chunk.max_retransmissions =
+        MaxRetransmits(*item->send_options.max_retransmissions);
+  }
   chunk.expires_at = item->expires_at;
 
   if (is_end) {
@@ -278,7 +286,7 @@ void RRSendQueue::Add(TimeMs now,
   RTC_DCHECK(!message.payload().empty());
   // Any limited lifetime should start counting from now - when the message
   // has been added to the queue.
-  absl::optional<TimeMs> expires_at = absl::nullopt;
+  TimeMs expires_at = TimeMs::InfiniteFuture();
   if (send_options.lifetime.has_value()) {
     // `expires_at` is the time when it expires. Which is slightly larger than
     // the message's lifetime, as the message is alive during its entire
@@ -383,9 +391,8 @@ void RRSendQueue::PrepareResetStreams(rtc::ArrayView<const StreamID> streams) {
 bool RRSendQueue::CanResetStreams() const {
   // Streams can be reset if those streams that are paused don't have any
   // messages that are partially sent.
-  for (auto& stream : streams_) {
-    if (stream.second.is_paused() &&
-        stream.second.has_partially_sent_message()) {
+  for (auto& [unused, stream] : streams_) {
+    if (stream.is_paused() && stream.has_partially_sent_message()) {
       return false;
     }
   }
@@ -393,17 +400,17 @@ bool RRSendQueue::CanResetStreams() const {
 }
 
 void RRSendQueue::CommitResetStreams() {
-  for (auto& stream_entry : streams_) {
-    if (stream_entry.second.is_paused()) {
-      stream_entry.second.Reset();
+  for (auto& [unused, stream] : streams_) {
+    if (stream.is_paused()) {
+      stream.Reset();
     }
   }
   RTC_DCHECK(IsConsistent());
 }
 
 void RRSendQueue::RollbackResetStreams() {
-  for (auto& stream_entry : streams_) {
-    stream_entry.second.Resume();
+  for (auto& [unused, stream] : streams_) {
+    stream.Resume();
   }
   RTC_DCHECK(IsConsistent());
 }
@@ -411,8 +418,7 @@ void RRSendQueue::RollbackResetStreams() {
 void RRSendQueue::Reset() {
   // Recalculate buffered amount, as partially sent messages may have been put
   // fully back in the queue.
-  for (auto& stream_entry : streams_) {
-    OutgoingStream& stream = stream_entry.second;
+  for (auto& [unused, stream] : streams_) {
     stream.Reset();
   }
   previous_message_has_ended_ = true;
@@ -463,10 +469,10 @@ HandoverReadinessStatus RRSendQueue::GetHandoverReadiness() const {
 }
 
 void RRSendQueue::AddHandoverState(DcSctpSocketHandoverState& state) {
-  for (const auto& entry : streams_) {
+  for (const auto& [stream_id, stream] : streams_) {
     DcSctpSocketHandoverState::OutgoingStream state_stream;
-    state_stream.id = entry.first.value();
-    entry.second.AddHandoverState(state_stream);
+    state_stream.id = stream_id.value();
+    stream.AddHandoverState(state_stream);
     state.tx.streams.push_back(std::move(state_stream));
   }
 }

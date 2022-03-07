@@ -18,7 +18,6 @@
 #include "absl/strings/match.h"
 #include "modules/pacing/bitrate_prober.h"
 #include "modules/pacing/interval_budget.h"
-#include "modules/utility/include/process_thread.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/experiments/field_trial_parser.h"
 #include "rtc_base/logging.h"
@@ -281,13 +280,8 @@ absl::optional<Timestamp> PacingController::FirstSentPacketTime() const {
   return first_sent_packet_time_;
 }
 
-TimeDelta PacingController::OldestPacketWaitTime() const {
-  Timestamp oldest_packet = packet_queue_.OldestEnqueueTime();
-  if (oldest_packet.IsInfinite()) {
-    return TimeDelta::Zero();
-  }
-
-  return CurrentTime() - oldest_packet;
+Timestamp PacingController::OldestPacketEnqueueTime() const {
+  return packet_queue_.OldestEnqueueTime();
 }
 
 void PacingController::EnqueuePacketInternal(

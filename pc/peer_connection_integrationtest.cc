@@ -264,6 +264,30 @@ TEST_P(PeerConnectionIntegrationTest, EndToEndCallWithDtls) {
                                     webrtc::kEnumCounterKeyProtocolSdes));
 }
 
+// Uses SDES instead of DTLS for key agreement.
+TEST_P(PeerConnectionIntegrationTest, EndToEndCallWithSdes) {
+  PeerConnectionInterface::RTCConfiguration sdes_config;
+  sdes_config.enable_dtls_srtp.emplace(false);
+  ASSERT_TRUE(CreatePeerConnectionWrappersWithConfig(sdes_config, sdes_config));
+  ConnectFakeSignaling();
+
+  // Do normal offer/answer and wait for some frames to be received in each
+  // direction.
+  caller()->AddAudioVideoTracks();
+  callee()->AddAudioVideoTracks();
+  caller()->CreateAndSetAndSignalOffer();
+  ASSERT_TRUE_WAIT(SignalingStateStable(), kDefaultTimeout);
+  MediaExpectations media_expectations;
+  media_expectations.ExpectBidirectionalAudioAndVideo();
+  ASSERT_TRUE(ExpectNewFrames(media_expectations));
+  EXPECT_METRIC_LE(
+      2, webrtc::metrics::NumEvents("WebRTC.PeerConnection.KeyProtocol",
+                                    webrtc::kEnumCounterKeyProtocolSdes));
+  EXPECT_METRIC_EQ(
+      0, webrtc::metrics::NumEvents("WebRTC.PeerConnection.KeyProtocol",
+                                    webrtc::kEnumCounterKeyProtocolDtls));
+}
+
 // Basic end-to-end test specifying the `enable_encrypted_rtp_header_extensions`
 // option to offer encrypted versions of all header extensions alongside the
 // unencrypted versions.
@@ -449,7 +473,7 @@ TEST_P(PeerConnectionIntegrationTest,
   ASSERT_TRUE_WAIT(SignalingStateStable(), kDefaultTimeout);
 
   // Remove receive video (i.e., callee sender track).
-  callee()->pc()->RemoveTrack(callee_sender);
+  callee()->pc()->RemoveTrackOrError(callee_sender);
 
   caller()->CreateAndSetAndSignalOffer();
   ASSERT_TRUE_WAIT(SignalingStateStable(), kDefaultTimeout);
@@ -481,7 +505,7 @@ TEST_P(PeerConnectionIntegrationTest,
   ASSERT_TRUE_WAIT(SignalingStateStable(), kDefaultTimeout);
 
   // Remove send video (i.e., caller sender track).
-  caller()->pc()->RemoveTrack(caller_sender);
+  caller()->pc()->RemoveTrackOrError(caller_sender);
 
   caller()->CreateAndSetAndSignalOffer();
   ASSERT_TRUE_WAIT(SignalingStateStable(), kDefaultTimeout);
@@ -939,7 +963,7 @@ TEST_F(PeerConnectionIntegrationTestPlanB, EnableAudioAfterRejecting) {
 
   // Remove audio track, and set offer_to_receive_audio to false to cause the
   // m= section to be completely disabled, not just "recvonly".
-  caller()->pc()->RemoveTrack(sender);
+  caller()->pc()->RemoveTrackOrError(sender);
   PeerConnectionInterface::RTCOfferAnswerOptions options;
   options.offer_to_receive_audio = 0;
   caller()->SetOfferAnswerOptions(options);
@@ -2932,7 +2956,7 @@ TEST_F(PeerConnectionIntegrationTestPlanB, RemoveAndAddTrackWithNewStreamId) {
     ASSERT_TRUE(ExpectNewFrames(media_expectations));
   }
   // Remove the sender, and create a new one with the new stream.
-  caller()->pc()->RemoveTrack(sender);
+  caller()->pc()->RemoveTrackOrError(sender);
   sender = caller()->AddTrack(track, {"stream_2"});
   caller()->CreateAndSetAndSignalOffer();
   ASSERT_TRUE_WAIT(SignalingStateStable(), kDefaultTimeout);

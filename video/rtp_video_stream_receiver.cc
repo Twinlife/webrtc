@@ -17,7 +17,6 @@
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/macros.h"
 #include "absl/memory/memory.h"
 #include "absl/types/optional.h"
 #include "media/base/media_constants.h"
@@ -620,7 +619,7 @@ void RtpVideoStreamReceiver::OnReceivedPayloadData(
       case video_coding::H264SpsPpsTracker::kRequestKeyframe:
         rtcp_feedback_buffer_.RequestKeyFrame();
         rtcp_feedback_buffer_.SendBufferedRtcpFeedback();
-        ABSL_FALLTHROUGH_INTENDED;
+        [[fallthrough]];
       case video_coding::H264SpsPpsTracker::kDrop:
         return;
       case video_coding::H264SpsPpsTracker::kInsert:
@@ -780,8 +779,6 @@ void RtpVideoStreamReceiver::OnInsertedPacket(
         max_nack_count = packet->times_nacked;
         min_recv_time = packet_info.receive_time().ms();
         max_recv_time = packet_info.receive_time().ms();
-        payloads.clear();
-        packet_infos.clear();
       } else {
         max_nack_count = std::max(max_nack_count, packet->times_nacked);
         min_recv_time =
@@ -824,6 +821,8 @@ void RtpVideoStreamReceiver::OnInsertedPacket(
             last_packet.video_header.color_space,              //
             RtpPacketInfos(std::move(packet_infos)),           //
             std::move(bitstream)));
+        payloads.clear();
+        packet_infos.clear();
       }
     }
     RTC_DCHECK(frame_boundary);

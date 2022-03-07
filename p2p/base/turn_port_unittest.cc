@@ -76,7 +76,7 @@ static const SocketAddress kTurnIPv6IntAddr(
 static const SocketAddress kTurnUdpIPv6IntAddr(
     "2400:4030:1:2c00:be30:abcd:efab:cdef",
     cricket::TURN_SERVER_PORT);
-static const SocketAddress kTurnInvalidAddr("www.google.invalid", 3478);
+static const SocketAddress kTurnInvalidAddr("www.google.invalid.", 3478);
 
 static const char kCandidateFoundation[] = "foundation";
 static const char kIceUfrag1[] = "TESTICEUFRAG0001";
@@ -112,6 +112,9 @@ static const cricket::ProtocolAddress kTurnPort80ProtoAddr(kTurnPort80Addr,
                                                            cricket::PROTO_TCP);
 static const cricket::ProtocolAddress kTurnPort443ProtoAddr(kTurnPort443Addr,
                                                             cricket::PROTO_TCP);
+static const cricket::ProtocolAddress kTurnPortHostnameProtoAddr(
+    kTurnInvalidAddr,
+    cricket::PROTO_UDP);
 
 static const unsigned int MSG_TESTFINISH = 0;
 
@@ -151,6 +154,12 @@ class TestConnectionWrapper : public sigslot::has_slots<> {
         this, &TestConnectionWrapper::OnConnectionDestroyed);
   }
 
+  ~TestConnectionWrapper() {
+    if (connection_) {
+      connection_->SignalDestroyed.disconnect(this);
+    }
+  }
+
   Connection* connection() { return connection_; }
 
  private:
@@ -172,7 +181,7 @@ class TurnPortTest : public ::testing::Test,
       : ss_(new TurnPortTestVirtualSocketServer()),
         main_(ss_.get()),
         socket_factory_(ss_.get()),
-        turn_server_(&main_, kTurnUdpIntAddr, kTurnUdpExtAddr),
+        turn_server_(&main_, ss_.get(), kTurnUdpIntAddr, kTurnUdpExtAddr),
         turn_ready_(false),
         turn_error_(false),
         turn_unknown_address_(false),
@@ -812,6 +821,18 @@ TEST_F(TurnPortTest, TestReconstructedServerUrlForTls) {
   TestReconstructedServerUrl(PROTO_TLS, "turns:99.99.99.4:3478?transport=tcp");
 }
 
+TEST_F(TurnPortTest, TestReconstructedServerUrlForHostname) {
+  CreateTurnPort(kTurnUsername, kTurnPassword, kTurnPortHostnameProtoAddr);
+  // This test follows the pattern from TestTurnTcpOnAddressResolveFailure.
+  // As VSS doesn't provide DNS resolution, name resolve will fail,
+  // the error will be set and contain the url.
+  turn_port_->PrepareAddress();
+  EXPECT_TRUE_WAIT(turn_error_, kResolverTimeout);
+  std::string server_url =
+      "turn:" + kTurnInvalidAddr.ToString() + "?transport=udp";
+  ASSERT_EQ(error_event_.url, server_url);
+}
+
 // Do a normal TURN allocation.
 TEST_F(TurnPortTest, TestTurnAllocate) {
   CreateTurnPort(kTurnUsername, kTurnPassword, kTurnUdpProtoAddr);
@@ -1014,7 +1035,7 @@ TEST_F(TurnPortTest, TestTurnTcpOnAddressResolveFailure) {
                  ProtocolAddress(kTurnInvalidAddr, PROTO_TCP));
   turn_port_->PrepareAddress();
   EXPECT_TRUE_WAIT(turn_error_, kResolverTimeout);
-  // As VSS doesn't provide a DNS resolution, name resolve will fail. TurnPort
+  // As VSS doesn't provide DNS resolution, name resolve will fail. TurnPort
   // will proceed in creating a TCP socket which will fail as there is no
   // server on the above domain and error will be set to SOCKET_ERROR.
   EXPECT_EQ(SOCKET_ERROR, turn_port_->error());
@@ -1625,8 +1646,7 @@ TEST_F(TurnPortTest, TestResolverShutdown) {
   int last_fd_count = GetFDCount();
   // Need to supply unresolved address to kick off resolver.
   CreateTurnPort(kLocalIPv6Addr, kTurnUsername, kTurnPassword,
-                 ProtocolAddress(rtc::SocketAddress("www.google.invalid", 3478),
-                                 PROTO_UDP));
+                 ProtocolAddress(kTurnInvalidAddr, PROTO_UDP));
   turn_port_->PrepareAddress();
   ASSERT_TRUE_WAIT(turn_error_, kResolverTimeout);
   EXPECT_TRUE(turn_port_->Candidates().empty());

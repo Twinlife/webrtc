@@ -80,14 +80,34 @@ std::vector<SdpVideoFormat> SupportedH264Codecs() {
   //
   // We support both packetization modes 0 (mandatory) and 1 (optional,
   // preferred).
-  return {CreateH264Format(H264Profile::kProfileBaseline, H264Level::kLevel3_1,
-                           "1"),
-          CreateH264Format(H264Profile::kProfileBaseline, H264Level::kLevel3_1,
-                           "0"),
-          CreateH264Format(H264Profile::kProfileConstrainedBaseline,
-                           H264Level::kLevel3_1, "1"),
-          CreateH264Format(H264Profile::kProfileConstrainedBaseline,
-                           H264Level::kLevel3_1, "0")};
+  return {
+      CreateH264Format(H264Profile::kProfileBaseline, H264Level::kLevel3_1,
+                       "1"),
+      CreateH264Format(H264Profile::kProfileBaseline, H264Level::kLevel3_1,
+                       "0"),
+      CreateH264Format(H264Profile::kProfileConstrainedBaseline,
+                       H264Level::kLevel3_1, "1"),
+      CreateH264Format(H264Profile::kProfileConstrainedBaseline,
+                       H264Level::kLevel3_1, "0"),
+      CreateH264Format(H264Profile::kProfileMain, H264Level::kLevel3_1, "1"),
+      CreateH264Format(H264Profile::kProfileMain, H264Level::kLevel3_1, "0")};
+}
+
+std::vector<SdpVideoFormat> SupportedH264DecoderCodecs() {
+  TRACE_EVENT0("webrtc", __func__);
+  if (!IsH264CodecSupported())
+    return std::vector<SdpVideoFormat>();
+
+  std::vector<SdpVideoFormat> supportedCodecs = SupportedH264Codecs();
+
+  // OpenH264 doesn't yet support High Predictive 4:4:4 encoding but it does
+  // support decoding.
+  supportedCodecs.push_back(CreateH264Format(
+      H264Profile::kProfilePredictiveHigh444, H264Level::kLevel3_1, "1"));
+  supportedCodecs.push_back(CreateH264Format(
+      H264Profile::kProfilePredictiveHigh444, H264Level::kLevel3_1, "0"));
+
+  return supportedCodecs;
 }
 
 std::unique_ptr<H264Encoder> H264Encoder::Create(
@@ -98,7 +118,7 @@ std::unique_ptr<H264Encoder> H264Encoder::Create(
   RTC_LOG(LS_INFO) << "Creating H264EncoderImpl.";
   return std::make_unique<H264EncoderImpl>(codec);
 #else
-  RTC_NOTREACHED();
+  RTC_DCHECK_NOTREACHED();
   return nullptr;
 #endif
 }
@@ -123,7 +143,7 @@ std::unique_ptr<H264Decoder> H264Decoder::Create() {
   RTC_LOG(LS_INFO) << "Creating H264DecoderImpl.";
   return std::make_unique<H264DecoderImpl>();
 #else
-  RTC_NOTREACHED();
+  RTC_DCHECK_NOTREACHED();
   return nullptr;
 #endif
 }

@@ -25,7 +25,6 @@
 #include "modules/rtp_rtcp/include/rtp_rtcp_defines.h"
 #include "modules/rtp_rtcp/source/rtp_rtcp_impl2.h"
 #include "modules/rtp_rtcp/source/rtp_sender.h"
-#include "modules/utility/include/process_thread.h"
 #include "modules/video_coding/include/video_codec_interface.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/location.h"
@@ -347,7 +346,7 @@ bool IsFirstFrameOfACodedVideoSequence(
 
 RtpVideoSender::RtpVideoSender(
     Clock* clock,
-    std::map<uint32_t, RtpState> suspended_ssrcs,
+    const std::map<uint32_t, RtpState>& suspended_ssrcs,
     const std::map<uint32_t, RtpPayloadState>& states,
     const RtpConfig& rtp_config,
     int rtcp_report_interval_ms,
@@ -371,7 +370,6 @@ RtpVideoSender::RtpVideoSender(
           field_trials_.Lookup("WebRTC-GenericCodecDependencyDescriptor"),
           "Enabled")),
       active_(false),
-      suspended_ssrcs_(std::move(suspended_ssrcs)),
       fec_controller_(std::move(fec_controller)),
       fec_allowed_(true),
       rtp_streams_(CreateRtpStreamSenders(clock,
@@ -381,7 +379,7 @@ RtpVideoSender::RtpVideoSender(
                                           send_transport,
                                           transport->GetBandwidthObserver(),
                                           transport,
-                                          suspended_ssrcs_,
+                                          suspended_ssrcs,
                                           event_log,
                                           retransmission_limiter,
                                           frame_encryptor,
@@ -395,6 +393,7 @@ RtpVideoSender::RtpVideoSender(
       encoder_target_rate_bps_(0),
       frame_counts_(rtp_config.ssrcs.size()),
       frame_count_observer_(observers.frame_count_observer) {
+  transport_checker_.Detach();
   RTC_DCHECK_EQ(rtp_config_.ssrcs.size(), rtp_streams_.size());
   if (send_side_bwe_with_overhead_ && has_packet_feedback_)
     transport_->IncludeOverheadInPacedSender();
@@ -421,7 +420,7 @@ RtpVideoSender::RtpVideoSender(
     }
   }
 
-  ConfigureSsrcs();
+  ConfigureSsrcs(suspended_ssrcs);
   ConfigureRids();
 
   if (!rtp_config_.mid.empty()) {
@@ -446,9 +445,6 @@ RtpVideoSender::RtpVideoSender(
   fec_controller_->SetProtectionMethod(fec_enabled, NackEnabled());
 
   fec_controller_->SetProtectionCallback(this);
-  // Signal congestion controller this object is ready for OnPacket* callbacks.
-  transport_->GetStreamFeedbackProvider()->RegisterStreamFeedbackObserver(
-      rtp_config_.ssrcs, this);
 
   // Construction happens on the worker thread (see Call::CreateVideoSendStream)
   // but subseqeuent calls to the RTP state will happen on one of two threads:
@@ -461,27 +457,44 @@ RtpVideoSender::RtpVideoSender(
 }
 
 RtpVideoSender::~RtpVideoSender() {
+  // TODO(bugs.webrtc.org/13517): Remove once RtpVideoSender gets deleted on the
+  // transport task queue.
+  transport_checker_.Detach();
+
   SetActiveModulesLocked(
       std::vector<bool>(rtp_streams_.size(), /*active=*/false));
-  transport_->GetStreamFeedbackProvider()->DeRegisterStreamFeedbackObserver(
-      this);
+
+  RTC_DCHECK(!registered_for_feedback_);
 }
 
 void RtpVideoSender::SetActive(bool active) {
+  RTC_DCHECK_RUN_ON(&transport_checker_);
   MutexLock lock(&mutex_);
   if (active_ == active)
     return;
+
   const std::vector<bool> active_modules(rtp_streams_.size(), active);
   SetActiveModulesLocked(active_modules);
+
+  auto* feedback_provider = transport_->GetStreamFeedbackProvider();
+  if (active && !registered_for_feedback_) {
+    feedback_provider->RegisterStreamFeedbackObserver(rtp_config_.ssrcs, this);
+    registered_for_feedback_ = true;
+  } else if (!active && registered_for_feedback_) {
+    feedback_provider->DeRegisterStreamFeedbackObserver(this);
+    registered_for_feedback_ = false;
+  }
 }
 
 void RtpVideoSender::SetActiveModules(const std::vector<bool> active_modules) {
+  RTC_DCHECK_RUN_ON(&transport_checker_);
   MutexLock lock(&mutex_);
   return SetActiveModulesLocked(active_modules);
 }
 
 void RtpVideoSender::SetActiveModulesLocked(
     const std::vector<bool> active_modules) {
+  RTC_DCHECK_RUN_ON(&transport_checker_);
   RTC_DCHECK_EQ(rtp_streams_.size(), active_modules.size());
   active_ = false;
   for (size_t i = 0; i < active_modules.size(); ++i) {
@@ -515,6 +528,7 @@ void RtpVideoSender::SetActiveModulesLocked(
 }
 
 bool RtpVideoSender::IsActive() {
+  RTC_DCHECK_RUN_ON(&transport_checker_);
   MutexLock lock(&mutex_);
   return IsActiveLocked();
 }
@@ -623,6 +637,7 @@ EncodedImageCallback::Result RtpVideoSender::OnEncodedImage(
 
 void RtpVideoSender::OnBitrateAllocationUpdated(
     const VideoBitrateAllocation& bitrate) {
+  RTC_DCHECK_RUN_ON(&transport_checker_);
   MutexLock lock(&mutex_);
   if (IsActiveLocked()) {
     if (rtp_streams_.size() == 1) {
@@ -683,7 +698,8 @@ void RtpVideoSender::DeliverRtcp(const uint8_t* packet, size_t length) {
     stream.rtp_rtcp->IncomingRtcpPacket(packet, length);
 }
 
-void RtpVideoSender::ConfigureSsrcs() {
+void RtpVideoSender::ConfigureSsrcs(
+    const std::map<uint32_t, RtpState>& suspended_ssrcs) {
   // Configure regular SSRCs.
   RTC_CHECK(ssrc_to_rtp_module_.empty());
   for (size_t i = 0; i < rtp_config_.ssrcs.size(); ++i) {
@@ -691,8 +707,8 @@ void RtpVideoSender::ConfigureSsrcs() {
     RtpRtcpInterface* const rtp_rtcp = rtp_streams_[i].rtp_rtcp.get();
 
     // Restore RTP state if previous existed.
-    auto it = suspended_ssrcs_.find(ssrc);
-    if (it != suspended_ssrcs_.end())
+    auto it = suspended_ssrcs.find(ssrc);
+    if (it != suspended_ssrcs.end())
       rtp_rtcp->SetRtpState(it->second);
 
     ssrc_to_rtp_module_[ssrc] = rtp_rtcp;
@@ -706,8 +722,8 @@ void RtpVideoSender::ConfigureSsrcs() {
   for (size_t i = 0; i < rtp_config_.rtx.ssrcs.size(); ++i) {
     uint32_t ssrc = rtp_config_.rtx.ssrcs[i];
     RtpRtcpInterface* const rtp_rtcp = rtp_streams_[i].rtp_rtcp.get();
-    auto it = suspended_ssrcs_.find(ssrc);
-    if (it != suspended_ssrcs_.end())
+    auto it = suspended_ssrcs.find(ssrc);
+    if (it != suspended_ssrcs.end())
       rtp_rtcp->SetRtxState(it->second);
   }
 
