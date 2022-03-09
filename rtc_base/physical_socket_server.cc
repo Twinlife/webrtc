@@ -1553,7 +1553,7 @@ bool PhysicalSocketServer::WaitSelect(int cmsWait, bool process_io) {
 	// We can't close it because we may get an exception due to iOS guards.
 	// We rely on P2P connection timeouts to cleanup these descriptors that we cannot use.
 	if (fd >= FD_SETSIZE) {
-	  RTC_LOG(WARNING) << "Ignoring fd out of range: " << fd;
+	  RTC_LOG_E(LS_WARNING, EN, errno) << "Ignoring fd out of range: " << fd;
 	  continue;
 	}
 	// --twinlife-- 2020-01-10
