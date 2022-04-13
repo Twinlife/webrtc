@@ -26,9 +26,11 @@ public class RtpSender {
     this.nativeRtpSender = nativeRtpSender;
     long nativeTrack = nativeGetTrack(nativeRtpSender);
     cachedTrack = MediaStreamTrack.createMediaStreamTrack(nativeTrack);
-
+    /* -- twinlife 2022-04-13: disable DTMF sender as per Threema improvement.
     long nativeDtmfSender = nativeGetDtmfSender(nativeRtpSender);
     dtmfSender = (nativeDtmfSender != 0) ? new DtmfSender(nativeDtmfSender) : null;
+    */
+    dtmfSender = null;
   }
 
   /**

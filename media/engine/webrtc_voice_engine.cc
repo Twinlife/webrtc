@@ -689,12 +689,14 @@ std::vector<AudioCodec> WebRtcVoiceEngine::CollectCodecs(
   PayloadTypeMapper mapper;
   std::vector<AudioCodec> out;
 
+#ifdef WEBRTC_ENABLE_COMFORT_NOISE // --twinlife 2022-04-13: import from Threema
   // Only generate CN payload types for these clockrates:
   std::map<int, bool, std::greater<int>> generate_cn = {
       {8000, false}, {16000, false}, {32000, false}};
   // Only generate telephone-event payload types for these clockrates:
   std::map<int, bool, std::greater<int>> generate_dtmf = {
       {8000, false}, {16000, false}, {32000, false}, {48000, false}};
+#endif // --twinlife 2022-04-13
 
   auto map_format = [&mapper](const webrtc::SdpAudioFormat& format,
                               std::vector<AudioCodec>* out) {
@@ -721,6 +723,7 @@ std::vector<AudioCodec> WebRtcVoiceEngine::CollectCodecs(
             FeedbackParam(kRtcpFbParamTransportCc, kParamValueEmpty));
       }
 
+#ifdef WEBRTC_ENABLE_COMFORT_NOISE // --twinlife 2022-04-13: import from Threema
       if (spec.info.allow_comfort_noise) {
         // Generate a CN entry if the decoder allows it and we support the
         // clockrate.
@@ -735,6 +738,7 @@ std::vector<AudioCodec> WebRtcVoiceEngine::CollectCodecs(
       if (dtmf != generate_dtmf.end()) {
         dtmf->second = true;
       }
+#endif // --twinlife 2022-04-13
 
       out.push_back(codec);
 
@@ -746,6 +750,7 @@ std::vector<AudioCodec> WebRtcVoiceEngine::CollectCodecs(
     }
   }
 
+#ifdef WEBRTC_ENABLE_COMFORT_NOISE // --twinlife 2022-04-13: import from Threema
   // Add CN codecs after "proper" audio codecs.
   for (const auto& cn : generate_cn) {
     if (cn.second) {
@@ -759,6 +764,7 @@ std::vector<AudioCodec> WebRtcVoiceEngine::CollectCodecs(
       map_format({kDtmfCodecName, dtmf.first, 1}, &out);
     }
   }
+#endif // --twinlife 2022-04-13
 
   return out;
 }
@@ -1677,6 +1683,7 @@ bool WebRtcVoiceMediaChannel::SetSendCodecs(
     }
   }
 
+#ifdef WEBRTC_ENABLE_COMFORT_NOISE // --twinlife 2022-04-13: import from Threema
   // Find PT of telephone-event codec with lowest clockrate, as a fallback, in
   // case we don't have a DTMF codec with a rate matching the send codec's, or
   // if this function returns early.
@@ -1690,6 +1697,7 @@ bool WebRtcVoiceMediaChannel::SetSendCodecs(
       }
     }
   }
+#endif // --twinlife 2022-04-13
 
   // Scan through the list to figure out the codec to use for sending.
   absl::optional<webrtc::AudioSendStream::Config::SendCodecSpec>
@@ -1729,6 +1737,7 @@ bool WebRtcVoiceMediaChannel::SetSendCodecs(
   }
 
   RTC_DCHECK(voice_codec_info);
+#ifdef WEBRTC_ENABLE_COMFORT_NOISE // --twinlife 2022-04-13: import from Threema
   if (voice_codec_info->allow_comfort_noise) {
     // Loop through the codecs list again to find the CN codec.
     // TODO(solenberg): Break out into a separate function?
@@ -1759,6 +1768,7 @@ bool WebRtcVoiceMediaChannel::SetSendCodecs(
       }
     }
   }
+#endif // --twinlife 2022-04-13
 
   if (audio_red_for_opus_enabled_) {
     // Loop through the codecs to find the RED codec that matches opus

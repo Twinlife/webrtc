@@ -116,6 +116,7 @@
   if (self = [super init]) {
     _factory = factory;
     _nativeRtpSender = nativeRtpSender;
+    /* -- twinlife 2022-04-13: disable DTMF sender as per Threema improvement.
     if (_nativeRtpSender->media_type() == cricket::MEDIA_TYPE_AUDIO) {
       rtc::scoped_refptr<webrtc::DtmfSenderInterface> nativeDtmfSender(
           _nativeRtpSender->GetDtmfSender());
@@ -123,7 +124,7 @@
         _dtmfSender =
             [[RTC_OBJC_TYPE(RTCDtmfSender) alloc] initWithNativeDtmfSender:nativeDtmfSender];
       }
-    }
+    }*/
     RTCLogInfo(@"RTC_OBJC_TYPE(RTCRtpSender)(%p): created sender: %@", self, self.description);
   }
   return self;
