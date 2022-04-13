@@ -13,14 +13,18 @@
 #include <memory>
 #include <vector>
 
+#ifdef WEBRTC_USE_G7xx // --twinlife 2022-04-13: don't include G711 and G722 because we don't use them
 #include "api/audio_codecs/L16/audio_decoder_L16.h"
+#endif
 #include "api/audio_codecs/audio_decoder_factory_template.h"
+#ifdef WEBRTC_USE_G7xx // --twinlife 2022-04-13: don't include G711 and G722 because we don't use them
 #include "api/audio_codecs/g711/audio_decoder_g711.h"
 #include "api/audio_codecs/g722/audio_decoder_g722.h"
 #if WEBRTC_USE_BUILTIN_ILBC
 #include "api/audio_codecs/ilbc/audio_decoder_ilbc.h"  // nogncheck
 #endif
 #include "api/audio_codecs/isac/audio_decoder_isac.h"
+#endif
 #if WEBRTC_USE_BUILTIN_OPUS
 #include "api/audio_codecs/opus/audio_decoder_multi_channel_opus.h"
 #include "api/audio_codecs/opus/audio_decoder_opus.h"  // nogncheck
@@ -54,8 +58,9 @@ rtc::scoped_refptr<AudioDecoderFactory> CreateBuiltinAudioDecoderFactory() {
   return CreateAudioDecoderFactory<
 
 #if WEBRTC_USE_BUILTIN_OPUS
-      AudioDecoderOpus, NotAdvertised<AudioDecoderMultiChannelOpus>,
+      AudioDecoderOpus, NotAdvertised<AudioDecoderMultiChannelOpus>
 #endif
+#ifdef WEBRTC_USE_G7xx // --twinlife 2022-04-13: don't include G711 and G722 because we don't use them
 
       AudioDecoderIsac, AudioDecoderG722,
 
@@ -63,7 +68,9 @@ rtc::scoped_refptr<AudioDecoderFactory> CreateBuiltinAudioDecoderFactory() {
       AudioDecoderIlbc,
 #endif
 
-      AudioDecoderG711, NotAdvertised<AudioDecoderL16>>();
+      AudioDecoderG711, NotAdvertised<AudioDecoderL16>
+#endif
+    >();
 }
 
 }  // namespace webrtc
