@@ -363,7 +363,7 @@ void AsyncHttpsProxySocket::SendRequest() {
     if (!user_ .empty() && pass_.GetLength() != 0) {
       size_t len = user_.size() + pass_.GetLength() + 2;
       char * sensitive = new char[len];
-      size_t pos = strcpyn(sensitive, len, user_.data(), user_.size());
+      size_t pos = strcpyn(sensitive, len, user_.data());
       pos += strcpyn(sensitive + pos, len - pos, ":");
       pass_.CopyTo(sensitive + pos, true);
       ss << "Proxy-Authorization: Basic " << Base64::Encode(sensitive) << "\r\n";
