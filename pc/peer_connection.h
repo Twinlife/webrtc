@@ -14,33 +14,28 @@
 #include <stdint.h>
 
 #include <functional>
-#include <iosfwd>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/types/optional.h"
 #include "api/adaptation/resource.h"
 #include "api/async_dns_resolver.h"
-#include "api/async_resolver_factory.h"
-#include "api/audio_options.h"
 #include "api/candidate.h"
 #include "api/crypto/crypto_options.h"
 #include "api/data_channel_interface.h"
 #include "api/dtls_transport_interface.h"
+#include "api/field_trials_view.h"
 #include "api/ice_transport_interface.h"
 #include "api/jsep.h"
 #include "api/media_stream_interface.h"
 #include "api/media_types.h"
-#include "api/packet_socket_factory.h"
 #include "api/peer_connection_interface.h"
 #include "api/rtc_error.h"
 #include "api/rtc_event_log/rtc_event_log.h"
 #include "api/rtc_event_log_output.h"
-#include "api/rtp_parameters.h"
 #include "api/rtp_receiver_interface.h"
 #include "api/rtp_sender_interface.h"
 #include "api/rtp_transceiver_interface.h"
@@ -50,55 +45,48 @@
 #include "api/set_local_description_observer_interface.h"
 #include "api/set_remote_description_observer_interface.h"
 #include "api/stats/rtc_stats_collector_callback.h"
+#include "api/task_queue/pending_task_safety_flag.h"
 #include "api/transport/bitrate_settings.h"
 #include "api/transport/data_channel_transport_interface.h"
 #include "api/transport/enums.h"
 #include "api/turn_customizer.h"
-#include "api/video/video_bitrate_allocator_factory.h"
 #include "call/call.h"
-#include "media/base/media_channel.h"
-#include "media/base/media_engine.h"
 #include "p2p/base/ice_transport_internal.h"
 #include "p2p/base/port.h"
 #include "p2p/base/port_allocator.h"
 #include "p2p/base/transport_description.h"
-#include "pc/channel.h"
 #include "pc/channel_interface.h"
-#include "pc/channel_manager.h"
 #include "pc/connection_context.h"
 #include "pc/data_channel_controller.h"
 #include "pc/data_channel_utils.h"
 #include "pc/dtls_transport.h"
 #include "pc/jsep_transport_controller.h"
+#include "pc/legacy_stats_collector.h"
 #include "pc/peer_connection_internal.h"
 #include "pc/peer_connection_message_handler.h"
 #include "pc/rtc_stats_collector.h"
-#include "pc/rtp_receiver.h"
-#include "pc/rtp_sender.h"
 #include "pc/rtp_transceiver.h"
 #include "pc/rtp_transmission_manager.h"
 #include "pc/rtp_transport_internal.h"
 #include "pc/sctp_data_channel.h"
-#include "pc/sctp_transport.h"
 #include "pc/sdp_offer_answer.h"
 #include "pc/session_description.h"
-#include "pc/stats_collector.h"
-#include "pc/stream_collection.h"
 #include "pc/transceiver_list.h"
 #include "pc/transport_stats.h"
 #include "pc/usage_pattern.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/copy_on_write_buffer.h"
-#include "rtc_base/network/sent_packet.h"
 #include "rtc_base/rtc_certificate.h"
 #include "rtc_base/ssl_certificate.h"
 #include "rtc_base/ssl_stream_adapter.h"
-#include "rtc_base/task_utils/pending_task_safety_flag.h"
 #include "rtc_base/third_party/sigslot/sigslot.h"
 #include "rtc_base/thread.h"
 #include "rtc_base/thread_annotations.h"
-#include "rtc_base/unique_id_generator.h"
 #include "rtc_base/weak_ptr.h"
+
+namespace cricket {
+class ChannelManager;
+}
 
 namespace webrtc {
 
@@ -285,6 +273,9 @@ class PeerConnection : public PeerConnectionInternal,
       rtc::scoped_refptr<RtpTransceiverProxyWithInternal<RtpTransceiver>>>
   GetTransceiversInternal() const override {
     RTC_DCHECK_RUN_ON(signaling_thread());
+    if (!ConfiguredForMedia()) {
+      return {};
+    }
     return rtp_manager()->transceivers()->List();
   }
 
@@ -329,9 +320,9 @@ class PeerConnection : public PeerConnectionInternal,
   bool ShouldFireNegotiationNeededEvent(uint32_t event_id) override;
 
   // Functions needed by SdpOfferAnswerHandler
-  StatsCollector* stats() override {
+  LegacyStatsCollector* legacy_stats() override {
     RTC_DCHECK_RUN_ON(signaling_thread());
-    return stats_.get();
+    return legacy_stats_.get();
   }
   DataChannelController* data_channel_controller() override {
     RTC_DCHECK_RUN_ON(signaling_thread());
@@ -355,7 +346,6 @@ class PeerConnection : public PeerConnectionInternal,
   const RtpTransmissionManager* rtp_manager() const override {
     return rtp_manager_.get();
   }
-  cricket::ChannelManager* channel_manager();
 
   JsepTransportController* transport_controller_s() override {
     RTC_DCHECK_RUN_ON(signaling_thread());
@@ -381,13 +371,12 @@ class PeerConnection : public PeerConnectionInternal,
   void AddRemoteCandidate(const std::string& mid,
                           const cricket::Candidate& candidate) override;
 
-  // Report the UMA metric SdpFormatReceived for the given remote description.
-  void ReportSdpFormatReceived(
-      const SessionDescriptionInterface& remote_description) override;
-
   // Report the UMA metric BundleUsage for the given remote description.
   void ReportSdpBundleUsage(
       const SessionDescriptionInterface& remote_description) override;
+
+  // Report several UMA metrics on establishing the connection.
+  void ReportFirstConnectUsageMetrics() RTC_RUN_ON(signaling_thread());
 
   // Returns true if the PeerConnection is configured to use Unified Plan
   // semantics for creating offers/answers and setting local/remote
@@ -442,8 +431,10 @@ class PeerConnection : public PeerConnectionInternal,
   bool SetupDataChannelTransport_n(const std::string& mid) override
       RTC_RUN_ON(network_thread());
   void TeardownDataChannelTransport_n() override RTC_RUN_ON(network_thread());
-  cricket::ChannelInterface* GetChannel(const std::string& mid)
-      RTC_RUN_ON(network_thread());
+
+  const FieldTrialsView& trials() const override { return *trials_; }
+
+  bool ConfiguredForMedia() const;
 
   // Functions made public for testing.
   void ReturnHistogramVeryQuicklyForTesting() {
@@ -506,11 +497,6 @@ class PeerConnection : public PeerConnectionInternal,
       RTC_RUN_ON(signaling_thread());
 
   void OnNegotiationNeeded();
-
-  // Returns the specified SCTP DataChannel in sctp_data_channels_,
-  // or nullptr if not found.
-  SctpDataChannel* FindDataChannelBySid(int sid) const
-      RTC_RUN_ON(signaling_thread());
 
   // Called when first configuring the port allocator.
   struct InitializePortAllocatorResult {
@@ -610,6 +596,12 @@ class PeerConnection : public PeerConnectionInternal,
   InitializeRtcpCallback();
 
   const rtc::scoped_refptr<ConnectionContext> context_;
+  // Field trials active for this PeerConnection is the first of:
+  // a) Specified in PeerConnectionDependencies (owned).
+  // b) Accessed via ConnectionContext (e.g PeerConnectionFactoryDependencies>
+  // c) Created as Default (FieldTrialBasedConfig).
+  const webrtc::AlwaysValidPointer<const FieldTrialsView, FieldTrialBasedConfig>
+      trials_;
   const PeerConnectionFactoryInterface::Options options_;
   PeerConnectionObserver* observer_ RTC_GUARDED_BY(signaling_thread()) =
       nullptr;
@@ -662,7 +654,7 @@ class PeerConnection : public PeerConnectionInternal,
   // pointer).
   Call* const call_ptr_;
 
-  std::unique_ptr<StatsCollector> stats_
+  std::unique_ptr<LegacyStatsCollector> legacy_stats_
       RTC_GUARDED_BY(signaling_thread());  // A pointer is passed to senders_
   rtc::scoped_refptr<RTCStatsCollector> stats_collector_
       RTC_GUARDED_BY(signaling_thread());

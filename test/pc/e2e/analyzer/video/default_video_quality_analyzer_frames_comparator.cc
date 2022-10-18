@@ -18,6 +18,7 @@
 #include "api/array_view.h"
 #include "api/scoped_refptr.h"
 #include "api/video/i420_buffer.h"
+#include "api/video/video_frame_type.h"
 #include "common_video/libyuv/include/webrtc_libyuv.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/platform_thread.h"
@@ -29,12 +30,17 @@
 namespace webrtc {
 namespace {
 
-constexpr int kFreezeThresholdMs = 150;
+constexpr TimeDelta kFreezeThreshold = TimeDelta::Millis(150);
 constexpr int kMaxActiveComparisons = 10;
 
 SamplesStatsCounter::StatsSample StatsSample(double value,
                                              Timestamp sampling_time) {
   return SamplesStatsCounter::StatsSample{value, sampling_time};
+}
+
+SamplesStatsCounter::StatsSample StatsSample(TimeDelta duration,
+                                             Timestamp sampling_time) {
+  return SamplesStatsCounter::StatsSample{duration.ms<double>(), sampling_time};
 }
 
 FrameComparison ValidateFrameComparison(FrameComparison comparison) {
@@ -71,6 +77,8 @@ FrameComparison ValidateFrameComparison(FrameComparison comparison) {
           << "Regular comparison has to have used_encoder";
       RTC_DCHECK(comparison.frame_stats.used_decoder.has_value())
           << "Regular comparison has to have used_decoder";
+      RTC_DCHECK(!comparison.frame_stats.decoder_failed)
+          << "Regular comparison can't have decoder failure";
       break;
     case FrameComparisonType::kDroppedFrame:
       // Frame can be dropped before encoder, by encoder, inside network or
@@ -89,26 +97,27 @@ FrameComparison ValidateFrameComparison(FrameComparison comparison) {
             << "when encoded_time is finite.";
       }
 
-      if (comparison.frame_stats.decode_end_time.IsFinite()) {
+      if (comparison.frame_stats.decode_end_time.IsFinite() ||
+          comparison.frame_stats.decoder_failed) {
         RTC_DCHECK(comparison.frame_stats.received_time.IsFinite())
             << "Dropped frame comparison has to have received_time when "
-            << "decode_end_time is set";
+            << "decode_end_time is set or decoder_failed is true";
         RTC_DCHECK(comparison.frame_stats.decode_start_time.IsFinite())
             << "Dropped frame comparison has to have decode_start_time when "
-            << "decode_end_time is set";
+            << "decode_end_time is set or decoder_failed is true";
         RTC_DCHECK(comparison.frame_stats.used_decoder.has_value())
             << "Dropped frame comparison has to have used_decoder when "
-            << "decode_end_time is set";
+            << "decode_end_time is set or decoder_failed is true";
       } else {
         RTC_DCHECK(!comparison.frame_stats.received_time.IsFinite())
             << "Dropped frame comparison can't have received_time when "
-            << "decode_end_time is not set";
+            << "decode_end_time is not set and there were no decoder failures";
         RTC_DCHECK(!comparison.frame_stats.decode_start_time.IsFinite())
             << "Dropped frame comparison can't have decode_start_time when "
-            << "decode_end_time is not set";
+            << "decode_end_time is not set and there were no decoder failures";
         RTC_DCHECK(!comparison.frame_stats.used_decoder.has_value())
             << "Dropped frame comparison can't have used_decoder when "
-            << "decode_end_time is not set";
+            << "decode_end_time is not set and there were no decoder failures";
       }
       RTC_DCHECK(!comparison.frame_stats.rendered_time.IsFinite())
           << "Dropped frame comparison can't have rendered_time";
@@ -132,13 +141,15 @@ FrameComparison ValidateFrameComparison(FrameComparison comparison) {
       RTC_DCHECK(!comparison.frame_stats.rendered_frame_height.has_value())
           << "Frame in flight comparison can't have rendered_frame_height";
 
-      if (comparison.frame_stats.decode_end_time.IsFinite()) {
+      if (comparison.frame_stats.decode_end_time.IsFinite() ||
+          comparison.frame_stats.decoder_failed) {
         RTC_DCHECK(comparison.frame_stats.used_decoder.has_value())
             << "Frame in flight comparison has to have used_decoder when "
-            << "decode_end_time is set";
+            << "decode_end_time is set or decoder_failed is true.";
         RTC_DCHECK(comparison.frame_stats.decode_start_time.IsFinite())
             << "Frame in flight comparison has to have finite "
-            << "decode_start_time when decode_end_time is finite.";
+            << "decode_start_time when decode_end_time is finite or "
+            << "decoder_failed is true.";
       }
       if (comparison.frame_stats.decode_start_time.IsFinite()) {
         RTC_DCHECK(comparison.frame_stats.received_time.IsFinite())
@@ -211,10 +222,9 @@ void DefaultVideoQualityAnalyzerFramesComparator::Stop(
       // `last_rendered_frame_time` for this stream will be stream start time.
       // If there is freeze, then we need add time from last rendered frame
       // to last freeze end as time between freezes.
-      stream_stats_.at(stats_key).time_between_freezes_ms.AddSample(
-          StatsSample(last_rendered_frame_time.ms() -
-                          stream_last_freeze_end_time_.at(stats_key).ms(),
-                      Now()));
+      stream_stats_.at(stats_key).time_between_freezes_ms.AddSample(StatsSample(
+          last_rendered_frame_time - stream_last_freeze_end_time_.at(stats_key),
+          Now()));
     }
   }
 }
@@ -345,7 +355,7 @@ void DefaultVideoQualityAnalyzerFramesComparator::ProcessComparisons() {
         comparison_available_event_.Set();
         return;
       }
-      comparison_available_event_.Wait(1000);
+      comparison_available_event_.Wait(TimeDelta::Seconds(1));
       continue;
     }
 
@@ -363,20 +373,25 @@ void DefaultVideoQualityAnalyzerFramesComparator::ProcessComparison(
   // Perform expensive psnr and ssim calculations while not holding lock.
   double psnr = -1.0;
   double ssim = -1.0;
-  if (options_.heavy_metrics_computation_enabled &&
+  if ((options_.compute_psnr || options_.compute_ssim) &&
       comparison.captured.has_value() && comparison.rendered.has_value()) {
     rtc::scoped_refptr<I420BufferInterface> reference_buffer =
         comparison.captured->video_frame_buffer()->ToI420();
     rtc::scoped_refptr<I420BufferInterface> test_buffer =
         comparison.rendered->video_frame_buffer()->ToI420();
     if (options_.adjust_cropping_before_comparing_frames) {
-      test_buffer =
-          ScaleVideoFrameBuffer(*test_buffer.get(), reference_buffer->width(),
-                                reference_buffer->height());
+      test_buffer = ScaleVideoFrameBuffer(
+          *test_buffer, reference_buffer->width(), reference_buffer->height());
       reference_buffer = test::AdjustCropping(reference_buffer, test_buffer);
     }
-    psnr = I420PSNR(*reference_buffer.get(), *test_buffer.get());
-    ssim = I420SSIM(*reference_buffer.get(), *test_buffer.get());
+    if (options_.compute_psnr) {
+      psnr = options_.use_weighted_psnr
+                 ? I420WeightedPSNR(*reference_buffer, *test_buffer)
+                 : I420PSNR(*reference_buffer, *test_buffer);
+    }
+    if (options_.compute_ssim) {
+      ssim = I420SSIM(*reference_buffer, *test_buffer);
+    }
   }
 
   const FrameStats& frame_stats = comparison.frame_stats;
@@ -405,6 +420,9 @@ void DefaultVideoQualityAnalyzerFramesComparator::ProcessComparison(
     FrameDropPhase dropped_phase;
     if (frame_stats.decode_end_time.IsFinite()) {
       dropped_phase = FrameDropPhase::kAfterDecoder;
+    } else if (frame_stats.decode_start_time.IsFinite() &&
+               frame_stats.decoder_failed) {
+      dropped_phase = FrameDropPhase::kByDecoder;
     } else if (frame_stats.encoded_time.IsFinite()) {
       dropped_phase = FrameDropPhase::kTransport;
     } else if (frame_stats.pre_encode_time.IsFinite()) {
@@ -416,36 +434,57 @@ void DefaultVideoQualityAnalyzerFramesComparator::ProcessComparison(
   }
 
   if (frame_stats.encoded_time.IsFinite()) {
-    stats->encode_time_ms.AddSample(StatsSample(
-        (frame_stats.encoded_time - frame_stats.pre_encode_time).ms(),
-        frame_stats.encoded_time));
+    stats->encode_time_ms.AddSample(
+        StatsSample(frame_stats.encoded_time - frame_stats.pre_encode_time,
+                    frame_stats.encoded_time));
     stats->encode_frame_rate.AddEvent(frame_stats.encoded_time);
-    stats->total_encoded_images_payload += frame_stats.encoded_image_size;
+    stats->total_encoded_images_payload +=
+        frame_stats.encoded_image_size.bytes();
     stats->target_encode_bitrate.AddSample(StatsSample(
         frame_stats.target_encode_bitrate, frame_stats.encoded_time));
+
+    // Stats sliced on encoded frame type.
+    if (frame_stats.encoded_frame_type == VideoFrameType::kVideoFrameKey) {
+      ++stats->num_send_key_frames;
+    }
   }
   // Next stats can be calculated only if frame was received on remote side.
-  if (comparison.type != FrameComparisonType::kDroppedFrame) {
+  if (comparison.type != FrameComparisonType::kDroppedFrame ||
+      comparison.frame_stats.decoder_failed) {
     if (frame_stats.rendered_time.IsFinite()) {
       stats->resolution_of_rendered_frame.AddSample(
           StatsSample(*comparison.frame_stats.rendered_frame_width *
                           *comparison.frame_stats.rendered_frame_height,
                       frame_stats.rendered_time));
-      stats->total_delay_incl_transport_ms.AddSample(StatsSample(
-          (frame_stats.rendered_time - frame_stats.captured_time).ms(),
-          frame_stats.received_time));
-      stats->receive_to_render_time_ms.AddSample(StatsSample(
-          (frame_stats.rendered_time - frame_stats.received_time).ms(),
-          frame_stats.rendered_time));
+      stats->total_delay_incl_transport_ms.AddSample(
+          StatsSample(frame_stats.rendered_time - frame_stats.captured_time,
+                      frame_stats.received_time));
+      stats->receive_to_render_time_ms.AddSample(
+          StatsSample(frame_stats.rendered_time - frame_stats.received_time,
+                      frame_stats.rendered_time));
     }
     if (frame_stats.decode_start_time.IsFinite()) {
-      stats->transport_time_ms.AddSample(StatsSample(
-          (frame_stats.decode_start_time - frame_stats.encoded_time).ms(),
-          frame_stats.decode_start_time));
+      stats->transport_time_ms.AddSample(
+          StatsSample(frame_stats.decode_start_time - frame_stats.encoded_time,
+                      frame_stats.decode_start_time));
+
+      // Stats sliced on decoded frame type.
+      if (frame_stats.pre_decoded_frame_type ==
+          VideoFrameType::kVideoFrameKey) {
+        ++stats->num_recv_key_frames;
+        stats->recv_key_frame_size_bytes.AddSample(
+            StatsSample(frame_stats.pre_decoded_image_size.bytes(),
+                        frame_stats.decode_start_time));
+      } else if (frame_stats.pre_decoded_frame_type ==
+                 VideoFrameType::kVideoFrameDelta) {
+        stats->recv_delta_frame_size_bytes.AddSample(
+            StatsSample(frame_stats.pre_decoded_image_size.bytes(),
+                        frame_stats.decode_start_time));
+      }
     }
     if (frame_stats.decode_end_time.IsFinite()) {
       stats->decode_time_ms.AddSample(StatsSample(
-          (frame_stats.decode_end_time - frame_stats.decode_start_time).ms(),
+          frame_stats.decode_end_time - frame_stats.decode_start_time,
           frame_stats.decode_end_time));
     }
 
@@ -453,20 +492,20 @@ void DefaultVideoQualityAnalyzerFramesComparator::ProcessComparison(
         frame_stats.rendered_time.IsFinite()) {
       TimeDelta time_between_rendered_frames =
           frame_stats.rendered_time - frame_stats.prev_frame_rendered_time;
-      stats->time_between_rendered_frames_ms.AddSample(StatsSample(
-          time_between_rendered_frames.ms(), frame_stats.rendered_time));
-      double average_time_between_rendered_frames_ms =
-          stats->time_between_rendered_frames_ms.GetAverage();
-      if (time_between_rendered_frames.ms() >
-          std::max(kFreezeThresholdMs + average_time_between_rendered_frames_ms,
-                   3 * average_time_between_rendered_frames_ms)) {
+      stats->time_between_rendered_frames_ms.AddSample(
+          StatsSample(time_between_rendered_frames, frame_stats.rendered_time));
+      TimeDelta average_time_between_rendered_frames = TimeDelta::Millis(
+          stats->time_between_rendered_frames_ms.GetAverage());
+      if (time_between_rendered_frames >
+          std::max(kFreezeThreshold + average_time_between_rendered_frames,
+                   3 * average_time_between_rendered_frames)) {
         stats->freeze_time_ms.AddSample(StatsSample(
-            time_between_rendered_frames.ms(), frame_stats.rendered_time));
+            time_between_rendered_frames, frame_stats.rendered_time));
         auto freeze_end_it =
             stream_last_freeze_end_time_.find(comparison.stats_key);
         RTC_DCHECK(freeze_end_it != stream_last_freeze_end_time_.end());
         stats->time_between_freezes_ms.AddSample(StatsSample(
-            (frame_stats.prev_frame_rendered_time - freeze_end_it->second).ms(),
+            frame_stats.prev_frame_rendered_time - freeze_end_it->second,
             frame_stats.rendered_time));
         freeze_end_it->second = frame_stats.rendered_time;
       }

@@ -13,7 +13,7 @@
 #define JNIEXPORT __attribute__((visibility("default")))
 
 #include "rtc_base/ssl_adapter.h"
-#include "sdk/android/src/jni/class_reference_holder.h"
+#include "sdk/android/native_api/jni/class_loader.h"
 #include "sdk/android/src/jni/jni_helpers.h"
 
 extern "C" jint JNIEXPORT JNICALL JNI_OnLoad1(JavaVM* jvm, void* reserved);
@@ -28,14 +28,13 @@ extern "C" jint JNIEXPORT JNICALL JNI_OnLoad(JavaVM* jvm, void* reserved) {
     return -1;
 
   RTC_CHECK(rtc::InitializeSSL()) << "Failed to InitializeSSL()";
-  LoadGlobalClassReferenceHolder();
+  webrtc::InitClassLoader(GetEnv());
 
   ret = JNI_OnLoad1(jvm, reserved);
   return ret;
 }
 
 extern "C" void JNIEXPORT JNICALL JNI_OnUnLoad(JavaVM* jvm, void* reserved) {
-  FreeGlobalClassReferenceHolder();
   RTC_CHECK(rtc::CleanupSSL()) << "Failed to CleanupSSL()";
 }
 

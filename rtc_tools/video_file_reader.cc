@@ -16,10 +16,10 @@
 
 #include "absl/strings/match.h"
 #include "absl/types/optional.h"
+#include "api/make_ref_counted.h"
 #include "api/video/i420_buffer.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
-#include "rtc_base/ref_counted_object.h"
 #include "rtc_base/string_encode.h"
 #include "rtc_base/string_to_number.h"
 
@@ -204,9 +204,10 @@ rtc::scoped_refptr<Video> OpenY4mFile(const std::string& file_name) {
   const int i420_frame_size = 3 * *width * *height / 2;
   std::vector<fpos_t> frame_positions;
   while (true) {
-    int parse_frame_header_result = -1;
-    if (fscanf(file, "FRAME\n%n", &parse_frame_header_result) != 0 ||
-        parse_frame_header_result == -1) {
+    std::array<char, 6> read_buffer;
+    if (fread(read_buffer.data(), 1, read_buffer.size(), file) <
+            read_buffer.size() ||
+        memcmp(read_buffer.data(), "FRAME\n", read_buffer.size()) != 0) {
       if (!feof(file)) {
         RTC_LOG(LS_ERROR) << "Did not find FRAME header, ignoring rest of file";
       }

@@ -21,9 +21,9 @@
 #include "api/call/transport.h"
 #include "api/fec_controller.h"
 #include "api/fec_controller_override.h"
+#include "api/field_trials_view.h"
 #include "api/rtc_event_log/rtc_event_log.h"
 #include "api/sequence_checker.h"
-#include "api/transport/field_trial_based_config.h"
 #include "api/video_codecs/video_encoder.h"
 #include "call/rtp_config.h"
 #include "call/rtp_payload_params.h"
@@ -85,7 +85,8 @@ class RtpVideoSender : public RtpVideoSenderInterface,
       std::unique_ptr<FecController> fec_controller,
       FrameEncryptorInterface* frame_encryptor,
       const CryptoOptions& crypto_options,  // move inside RtpTransport
-      rtc::scoped_refptr<FrameTransformerInterface> frame_transformer);
+      rtc::scoped_refptr<FrameTransformerInterface> frame_transformer,
+      const FieldTrialsView& field_trials);
   ~RtpVideoSender() override;
 
   RtpVideoSender(const RtpVideoSender&) = delete;
@@ -158,7 +159,6 @@ class RtpVideoSender : public RtpVideoSenderInterface,
   void UpdateModuleSendingState() RTC_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void ConfigureProtection();
   void ConfigureSsrcs(const std::map<uint32_t, RtpState>& suspended_ssrcs);
-  void ConfigureRids();
   bool NackEnabled() const;
   uint32_t GetPacketizationOverheadRate() const;
   DataRate CalculateOverheadRate(DataRate data_rate,
@@ -166,11 +166,10 @@ class RtpVideoSender : public RtpVideoSenderInterface,
                                  DataSize overhead_per_packet,
                                  Frequency framerate) const;
 
-  const FieldTrialBasedConfig field_trials_;
+  const FieldTrialsView& field_trials_;
   const bool send_side_bwe_with_overhead_;
   const bool use_frame_rate_for_overhead_;
   const bool has_packet_feedback_;
-  const bool simulate_generic_structure_;
 
   // Semantically equivalent to checking for `transport_->GetWorkerQueue()`
   // but some tests need to be updated to call from the correct context.

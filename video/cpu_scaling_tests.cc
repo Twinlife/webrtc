@@ -55,7 +55,7 @@ void CpuOveruseTest::RunTestAndCheckForAdaptation(
    public:
     OveruseObserver(const DegradationPreference& degradation_preference,
                     bool expect_adaptation)
-        : SendTest(expect_adaptation ? kLongTimeoutMs : kDefaultTimeoutMs),
+        : SendTest(expect_adaptation ? kLongTimeout : kDefaultTimeout),
           degradation_preference_(degradation_preference),
           expect_adaptation_(expect_adaptation) {}
 
@@ -102,7 +102,7 @@ void CpuOveruseTest::RunTestAndCheckForAdaptation(
 
     void ModifyVideoConfigs(
         VideoSendStream::Config* send_config,
-        std::vector<VideoReceiveStream::Config>* receive_configs,
+        std::vector<VideoReceiveStreamInterface::Config>* receive_configs,
         VideoEncoderConfig* encoder_config) override {
       EXPECT_FALSE(encoder_config->simulcast_layers.empty());
       encoder_config->simulcast_layers[0].max_framerate = kFps;

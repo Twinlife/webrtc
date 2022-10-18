@@ -38,6 +38,7 @@
 #include "rtc_base/arraysize.h"
 #include "rtc_base/rate_limiter.h"
 #include "rtc_base/task_queue_for_test.h"
+#include "rtc_base/thread.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
 #include "test/mock_frame_transformer.h"
@@ -127,7 +128,7 @@ class TestRtpSenderVideo : public RTPSenderVideo {
  public:
   TestRtpSenderVideo(Clock* clock,
                      RTPSender* rtp_sender,
-                     const WebRtcKeyValueConfig& field_trials)
+                     const FieldTrialsView& field_trials)
       : RTPSenderVideo([&] {
           Config config;
           config.clock = clock;
@@ -146,7 +147,7 @@ class TestRtpSenderVideo : public RTPSenderVideo {
   }
 };
 
-class FieldTrials : public WebRtcKeyValueConfig {
+class FieldTrials : public FieldTrialsView {
  public:
   explicit FieldTrials(bool use_send_side_bwe_with_overhead)
       : use_send_side_bwe_with_overhead_(use_send_side_bwe_with_overhead),
@@ -197,6 +198,7 @@ class RtpSenderVideoTest : public ::testing::TestWithParam<bool> {
       int version);
 
  protected:
+  rtc::AutoThread main_thread_;
   const RtpRtcpInterface::Configuration config_;
   FieldTrials field_trials_;
   SimulatedClock fake_clock_;
@@ -787,7 +789,7 @@ TEST_P(RtpSenderVideoTest,
   config.clock = &fake_clock_;
   config.rtp_sender = rtp_module_->RtpSender();
   config.field_trials = &field_trials_;
-  config.frame_encryptor = encryptor;
+  config.frame_encryptor = encryptor.get();
   RTPSenderVideo rtp_sender_video(config);
 
   FrameDependencyStructure video_structure;
@@ -1416,6 +1418,7 @@ class RtpSenderVideoWithFrameTransformerTest : public ::testing::Test {
   }
 
  protected:
+  rtc::AutoThread main_thread_;
   FieldTrialBasedConfig field_trials_;
   SimulatedClock fake_clock_;
   LoopbackTransportTest transport_;
@@ -1517,8 +1520,7 @@ TEST_F(RtpSenderVideoWithFrameTransformerTest, OnTransformedFrameSendsVideo) {
         rtp_sender_video->SendEncodedImage(
             kPayload, kType, kTimestamp, *encoded_image, video_header,
             kDefaultExpectedRetransmissionTimeMs);
-      },
-      RTC_FROM_HERE);
+      });
   encoder_queue.WaitForPreviouslyPostedTasks();
   EXPECT_EQ(transport_.packets_sent(), 1);
 }

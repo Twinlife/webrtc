@@ -19,6 +19,12 @@
 #include <type_traits>
 #include <vector>
 
+// TODO(alcooper): Update include usage in downstream consumers and then change
+// this to a forward declaration.
+#include "modules/desktop_capture/delegated_source_list_controller.h"
+#if defined(WEBRTC_USE_GIO)
+#include "modules/desktop_capture/desktop_capture_metadata.h"
+#endif  // defined(WEBRTC_USE_GIO)
 #include "modules/desktop_capture/desktop_capture_types.h"
 #include "modules/desktop_capture/desktop_frame.h"
 #include "modules/desktop_capture/shared_memory.h"
@@ -85,6 +91,18 @@ class RTC_EXPORT DesktopCapturer {
   // valid until capturer is destroyed.
   virtual void Start(Callback* callback) = 0;
 
+  // Returns a valid pointer if the capturer requires the user to make a
+  // selection from a source list provided by the capturer.
+  // Returns nullptr if the capturer does not provide a UI for the user to make
+  // a selection.
+  //
+  // Callers should not take ownership of the returned pointer, but it is
+  // guaranteed to be valid as long as the desktop_capturer is valid.
+  // Note that consumers should still use GetSourceList and SelectSource, but
+  // their behavior may be modified if this returns a value. See those methods
+  // for a more in-depth discussion of those potential modifications.
+  virtual DelegatedSourceListController* GetDelegatedSourceListController();
+
   // Sets SharedMemoryFactory that will be used to create buffers for the
   // captured frames. The factory can be invoked on a thread other than the one
   // where CaptureFrame() is called. It will be destroyed on the same thread.
@@ -113,10 +131,19 @@ class RTC_EXPORT DesktopCapturer {
   // should return monitors.
   // For DesktopCapturer implementations to capture windows, this function
   // should only return root windows owned by applications.
+  //
+  // Note that capturers who use a delegated source list will return a
+  // SourceList with exactly one value, but it may not be viable for capture
+  // (e.g. CaptureFrame will return ERROR_TEMPORARY) until a selection has been
+  // made.
   virtual bool GetSourceList(SourceList* sources);
 
   // Selects a source to be captured. Returns false in case of a failure (e.g.
   // if there is no source with the specified type and id.)
+  //
+  // Note that some capturers with delegated source lists may also support
+  // selecting a SourceID that is not in the returned source list as a form of
+  // restore token.
   virtual bool SelectSource(SourceId id);
 
   // Brings the selected source to the front and sets the input focus on it.
@@ -141,7 +168,15 @@ class RTC_EXPORT DesktopCapturer {
 
 #if defined(WEBRTC_USE_PIPEWIRE) || defined(WEBRTC_USE_X11)
   static bool IsRunningUnderWayland();
+
+  virtual void UpdateResolution(uint32_t width, uint32_t height) {}
 #endif  // defined(WEBRTC_USE_PIPEWIRE) || defined(WEBRTC_USE_X11)
+
+#if defined(WEBRTC_USE_GIO)
+  // Populates implementation specific metadata into the passed in pointer.
+  // Classes can choose to override it or use the default no-op implementation.
+  virtual DesktopCaptureMetadata GetMetadata() { return {}; }
+#endif  // defined(WEBRTC_USE_GIO)
 
  protected:
   // CroppingWindowCapturer needs to create raw capturers without wrappers, so

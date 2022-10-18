@@ -13,6 +13,7 @@
 #include <memory>
 
 #include "absl/flags/flag.h"
+#include "absl/strings/string_view.h"
 #include "api/rtc_event_log/rtc_event_log_factory.h"
 #include "api/rtc_event_log_output_file.h"
 #include "api/task_queue/default_task_queue_factory.h"
@@ -26,7 +27,6 @@
 #include "rtc_base/task_queue_for_test.h"
 #include "rtc_base/time_utils.h"
 #include "test/encoder_settings.h"
-#include "test/field_trial.h"
 #include "test/gtest.h"
 #include "test/testsupport/perf_test.h"
 
@@ -59,12 +59,12 @@ RampUpTester::RampUpTester(size_t num_video_streams,
                            size_t num_flexfec_streams,
                            unsigned int start_bitrate_bps,
                            int64_t min_run_time_ms,
-                           const std::string& extension_type,
+                           absl::string_view extension_type,
                            bool rtx,
                            bool red,
                            bool report_perf_stats,
                            TaskQueueBase* task_queue)
-    : EndToEndTest(test::CallTest::kLongTimeoutMs),
+    : EndToEndTest(test::CallTest::kLongTimeout),
       clock_(Clock::GetRealTimeClock()),
       num_video_streams_(num_video_streams),
       num_audio_streams_(num_audio_streams),
@@ -103,7 +103,7 @@ void RampUpTester::ModifySenderBitrateConfig(
 
 void RampUpTester::OnVideoStreamsCreated(
     VideoSendStream* send_stream,
-    const std::vector<VideoReceiveStream*>& receive_streams) {
+    const std::vector<VideoReceiveStreamInterface*>& receive_streams) {
   send_stream_ = send_stream;
 }
 
@@ -154,7 +154,7 @@ class RampUpTester::VideoStreamFactory
 
 void RampUpTester::ModifyVideoConfigs(
     VideoSendStream::Config* send_config,
-    std::vector<VideoReceiveStream::Config>* receive_configs,
+    std::vector<VideoReceiveStreamInterface::Config>* receive_configs,
     VideoEncoderConfig* encoder_config) {
   send_config->suspend_below_min_bitrate = true;
   encoder_config->number_of_streams = num_video_streams_;
@@ -214,7 +214,7 @@ void RampUpTester::ModifyVideoConfigs(
   }
 
   size_t i = 0;
-  for (VideoReceiveStream::Config& recv_config : *receive_configs) {
+  for (VideoReceiveStreamInterface::Config& recv_config : *receive_configs) {
     recv_config.rtp.transport_cc = transport_cc;
     recv_config.rtp.extensions = send_config->rtp.extensions;
     recv_config.decoders.reserve(1);
@@ -256,7 +256,7 @@ void RampUpTester::ModifyVideoConfigs(
 
 void RampUpTester::ModifyAudioConfigs(
     AudioSendStream::Config* send_config,
-    std::vector<AudioReceiveStream::Config>* receive_configs) {
+    std::vector<AudioReceiveStreamInterface::Config>* receive_configs) {
   if (num_audio_streams_ == 0)
     return;
 
@@ -278,7 +278,7 @@ void RampUpTester::ModifyAudioConfigs(
         extension_type_.c_str(), kTransportSequenceNumberExtensionId));
   }
 
-  for (AudioReceiveStream::Config& recv_config : *receive_configs) {
+  for (AudioReceiveStreamInterface::Config& recv_config : *receive_configs) {
     recv_config.rtp.transport_cc = transport_cc;
     recv_config.rtp.extensions = send_config->rtp.extensions;
     recv_config.rtp.remote_ssrc = send_config->rtp.ssrc;
@@ -330,9 +330,9 @@ void RampUpTester::PollStats() {
 }
 
 void RampUpTester::ReportResult(
-    const std::string& measurement,
+    absl::string_view measurement,
     size_t value,
-    const std::string& units,
+    absl::string_view units,
     test::ImproveDirection improve_direction) const {
   webrtc::test::PrintResult(
       measurement, "",
@@ -362,15 +362,14 @@ void RampUpTester::TriggerTestDone() {
 
   // Stop polling stats.
   // Corner case for field_trials=WebRTC-QuickPerfTest/Enabled/
-  SendTask(RTC_FROM_HERE, task_queue_, [this] { pending_task_.Stop(); });
+  SendTask(task_queue_, [this] { pending_task_.Stop(); });
 
   // TODO(holmer): Add audio send stats here too when those APIs are available.
   if (!send_stream_)
     return;
 
   VideoSendStream::Stats send_stats;
-  SendTask(RTC_FROM_HERE, task_queue_,
-           [&] { send_stats = send_stream_->GetStats(); });
+  SendTask(task_queue_, [&] { send_stats = send_stream_->GetStats(); });
 
   send_stream_ = nullptr;  // To avoid dereferencing a bad pointer.
 
@@ -421,7 +420,7 @@ RampUpDownUpTester::RampUpDownUpTester(size_t num_video_streams,
                                        size_t num_audio_streams,
                                        size_t num_flexfec_streams,
                                        unsigned int start_bitrate_bps,
-                                       const std::string& extension_type,
+                                       absl::string_view extension_type,
                                        bool rtx,
                                        bool red,
                                        const std::vector<int>& loss_rates,

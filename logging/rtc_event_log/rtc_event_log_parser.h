@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/strings/string_view.h"
 #include "api/rtc_event_log/rtc_event_log.h"
 #include "call/video_receive_stream.h"
 #include "call/video_send_stream.h"
@@ -379,13 +380,13 @@ class ParsedRtcEventLog {
   void Clear();
 
   // Reads an RtcEventLog file and returns success if parsing was successful.
-  ParseStatus ParseFile(const std::string& file_name);
+  ParseStatus ParseFile(absl::string_view file_name);
 
   // Reads an RtcEventLog from a string and returns success if successful.
-  ParseStatus ParseString(const std::string& s);
+  ParseStatus ParseString(absl::string_view s);
 
   // Reads an RtcEventLog from an string and returns success if successful.
-  ParseStatus ParseStream(const std::string& s);
+  ParseStatus ParseStream(absl::string_view s);
 
   MediaType GetMediaType(uint32_t ssrc, PacketDirection direction) const;
 
@@ -643,8 +644,8 @@ class ParsedRtcEventLog {
     return decoded_frames_;
   }
 
-  int64_t first_timestamp() const { return first_timestamp_; }
-  int64_t last_timestamp() const { return last_timestamp_; }
+  Timestamp first_timestamp() const { return first_timestamp_; }
+  Timestamp last_timestamp() const { return last_timestamp_; }
 
   const LogSegment& first_log_segment() const { return first_log_segment_; }
 
@@ -723,6 +724,9 @@ class ParsedRtcEventLog {
 
   ParsedRtcEventLog::ParseStatusOr<LoggedIceCandidatePairEvent>
   GetIceCandidatePairEvent(const rtclog::Event& event) const;
+
+  ParsedRtcEventLog::ParseStatusOr<LoggedRemoteEstimateEvent>
+  GetRemoteEstimateEvent(const rtclog::Event& event) const;
 
   // Parsing functions for new format.
   ParseStatus StoreAlrStateEvent(const rtclog2::AlrState& proto);
@@ -889,8 +893,8 @@ class ParsedRtcEventLog {
 
   std::vector<uint8_t> last_incoming_rtcp_packet_;
 
-  int64_t first_timestamp_;
-  int64_t last_timestamp_;
+  Timestamp first_timestamp_ = Timestamp::PlusInfinity();
+  Timestamp last_timestamp_ = Timestamp::MinusInfinity();
 
   LogSegment first_log_segment_ =
       LogSegment(0, std::numeric_limits<int64_t>::max());

@@ -13,11 +13,10 @@
 #include <memory>
 
 #include "media/base/fake_frame_source.h"
-#include "media/base/video_common.h"
 #include "pc/test/fake_video_track_renderer.h"
 #include "pc/test/fake_video_track_source.h"
 #include "pc/video_track_source.h"
-#include "rtc_base/ref_counted_object.h"
+#include "rtc_base/time_utils.h"
 #include "test/gtest.h"
 
 using webrtc::FakeVideoTrackRenderer;
@@ -39,6 +38,7 @@ class VideoTrackTest : public ::testing::Test {
   }
 
  protected:
+  rtc::AutoThread main_thread_;
   rtc::scoped_refptr<FakeVideoTrackSource> video_track_source_;
   rtc::scoped_refptr<VideoTrack> video_track_;
   cricket::FakeFrameSource frame_source_;

@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "api/rtp_headers.h"
 #include "api/units/timestamp.h"
 #include "modules/rtp_rtcp/source/rtcp_packet/bye.h"
@@ -41,6 +42,7 @@ struct LoggedRtpPacket {
 
   int64_t log_time_us() const { return timestamp.us(); }
   int64_t log_time_ms() const { return timestamp.ms(); }
+  Timestamp log_time() const { return timestamp; }
 
   Timestamp timestamp;
   // TODO(terelius): This allocates space for 15 CSRCs even if none are used.
@@ -57,6 +59,7 @@ struct LoggedRtpPacketIncoming {
       : rtp(timestamp, header, header_length, total_length) {}
   int64_t log_time_us() const { return rtp.timestamp.us(); }
   int64_t log_time_ms() const { return rtp.timestamp.ms(); }
+  Timestamp log_time() const { return rtp.timestamp; }
 
   LoggedRtpPacket rtp;
 };
@@ -69,6 +72,7 @@ struct LoggedRtpPacketOutgoing {
       : rtp(timestamp, header, header_length, total_length) {}
   int64_t log_time_us() const { return rtp.timestamp.us(); }
   int64_t log_time_ms() const { return rtp.timestamp.ms(); }
+  Timestamp log_time() const { return rtp.timestamp; }
 
   LoggedRtpPacket rtp;
 };
@@ -76,7 +80,7 @@ struct LoggedRtpPacketOutgoing {
 struct LoggedRtcpPacket {
   LoggedRtcpPacket(Timestamp timestamp, const std::vector<uint8_t>& packet)
       : timestamp(timestamp), raw_data(packet) {}
-  LoggedRtcpPacket(Timestamp timestamp, const std::string& packet)
+  LoggedRtcpPacket(Timestamp timestamp, absl::string_view packet)
       : timestamp(timestamp), raw_data(packet.size()) {
     memcpy(raw_data.data(), packet.data(), packet.size());
   }
@@ -87,6 +91,7 @@ struct LoggedRtcpPacket {
 
   int64_t log_time_us() const { return timestamp.us(); }
   int64_t log_time_ms() const { return timestamp.ms(); }
+  Timestamp log_time() const { return timestamp; }
 
   Timestamp timestamp;
   std::vector<uint8_t> raw_data;
@@ -96,11 +101,12 @@ struct LoggedRtcpPacketIncoming {
   LoggedRtcpPacketIncoming(Timestamp timestamp,
                            const std::vector<uint8_t>& packet)
       : rtcp(timestamp, packet) {}
-  LoggedRtcpPacketIncoming(Timestamp timestamp, const std::string& packet)
+  LoggedRtcpPacketIncoming(Timestamp timestamp, absl::string_view packet)
       : rtcp(timestamp, packet) {}
 
   int64_t log_time_us() const { return rtcp.timestamp.us(); }
   int64_t log_time_ms() const { return rtcp.timestamp.ms(); }
+  Timestamp log_time() const { return rtcp.timestamp; }
 
   LoggedRtcpPacket rtcp;
 };
@@ -109,11 +115,12 @@ struct LoggedRtcpPacketOutgoing {
   LoggedRtcpPacketOutgoing(Timestamp timestamp,
                            const std::vector<uint8_t>& packet)
       : rtcp(timestamp, packet) {}
-  LoggedRtcpPacketOutgoing(Timestamp timestamp, const std::string& packet)
+  LoggedRtcpPacketOutgoing(Timestamp timestamp, absl::string_view packet)
       : rtcp(timestamp, packet) {}
 
   int64_t log_time_us() const { return rtcp.timestamp.us(); }
   int64_t log_time_ms() const { return rtcp.timestamp.ms(); }
+  Timestamp log_time() const { return rtcp.timestamp; }
 
   LoggedRtcpPacket rtcp;
 };
@@ -126,6 +133,7 @@ struct LoggedRtcpPacketReceiverReport {
 
   int64_t log_time_us() const { return timestamp.us(); }
   int64_t log_time_ms() const { return timestamp.ms(); }
+  Timestamp log_time() const { return timestamp; }
 
   Timestamp timestamp = Timestamp::MinusInfinity();
   rtcp::ReceiverReport rr;
@@ -139,6 +147,7 @@ struct LoggedRtcpPacketSenderReport {
 
   int64_t log_time_us() const { return timestamp.us(); }
   int64_t log_time_ms() const { return timestamp.ms(); }
+  Timestamp log_time() const { return timestamp; }
 
   Timestamp timestamp = Timestamp::MinusInfinity();
   rtcp::SenderReport sr;
@@ -149,6 +158,7 @@ struct LoggedRtcpPacketExtendedReports {
 
   int64_t log_time_us() const { return timestamp.us(); }
   int64_t log_time_ms() const { return timestamp.ms(); }
+  Timestamp log_time() const { return timestamp; }
 
   Timestamp timestamp = Timestamp::MinusInfinity();
   rtcp::ExtendedReports xr;
@@ -161,6 +171,7 @@ struct LoggedRtcpPacketRemb {
 
   int64_t log_time_us() const { return timestamp.us(); }
   int64_t log_time_ms() const { return timestamp.ms(); }
+  Timestamp log_time() const { return timestamp; }
 
   Timestamp timestamp = Timestamp::MinusInfinity();
   rtcp::Remb remb;
@@ -173,6 +184,7 @@ struct LoggedRtcpPacketNack {
 
   int64_t log_time_us() const { return timestamp.us(); }
   int64_t log_time_ms() const { return timestamp.ms(); }
+  Timestamp log_time() const { return timestamp; }
 
   Timestamp timestamp = Timestamp::MinusInfinity();
   rtcp::Nack nack;
@@ -183,6 +195,7 @@ struct LoggedRtcpPacketFir {
 
   int64_t log_time_us() const { return timestamp.us(); }
   int64_t log_time_ms() const { return timestamp.ms(); }
+  Timestamp log_time() const { return timestamp; }
 
   Timestamp timestamp = Timestamp::MinusInfinity();
   rtcp::Fir fir;
@@ -193,6 +206,7 @@ struct LoggedRtcpPacketPli {
 
   int64_t log_time_us() const { return timestamp.us(); }
   int64_t log_time_ms() const { return timestamp.ms(); }
+  Timestamp log_time() const { return timestamp; }
 
   Timestamp timestamp = Timestamp::MinusInfinity();
   rtcp::Pli pli;
@@ -209,6 +223,7 @@ struct LoggedRtcpPacketTransportFeedback {
 
   int64_t log_time_us() const { return timestamp.us(); }
   int64_t log_time_ms() const { return timestamp.ms(); }
+  Timestamp log_time() const { return timestamp; }
 
   Timestamp timestamp = Timestamp::MinusInfinity();
   rtcp::TransportFeedback transport_feedback;
@@ -223,6 +238,7 @@ struct LoggedRtcpPacketLossNotification {
 
   int64_t log_time_us() const { return timestamp.us(); }
   int64_t log_time_ms() const { return timestamp.ms(); }
+  Timestamp log_time() const { return timestamp; }
 
   Timestamp timestamp = Timestamp::MinusInfinity();
   rtcp::LossNotification loss_notification;
@@ -233,6 +249,7 @@ struct LoggedRtcpPacketBye {
 
   int64_t log_time_us() const { return timestamp.us(); }
   int64_t log_time_ms() const { return timestamp.ms(); }
+  Timestamp log_time() const { return timestamp; }
 
   Timestamp timestamp = Timestamp::MinusInfinity();
   rtcp::Bye bye;
