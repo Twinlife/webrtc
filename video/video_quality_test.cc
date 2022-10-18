@@ -278,7 +278,7 @@ void PressEnterToContinue(TaskQueueBase* task_queue) {
 
   while (!_kbhit() || _getch() != '\r') {
     // Drive the message loop for the thread running the task_queue
-    SendTask(RTC_FROM_HERE, task_queue, [&]() {
+    SendTask(task_queue, [&]() {
       MSG msg;
       if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
         TranslateMessage(&msg);
@@ -807,6 +807,9 @@ void VideoQualityTest::SetupVideo(Transport* send_transport,
 
     video_encoder_configs_[video_idx].spatial_layers =
         params_.ss[video_idx].spatial_layers;
+
+    video_encoder_configs_[video_idx].frame_drop_enabled = true;
+
     decode_all_receive_streams = params_.ss[video_idx].selected_stream ==
                                  params_.ss[video_idx].streams.size();
     absl::optional<int> decode_sub_stream;
@@ -905,10 +908,7 @@ void VideoQualityTest::SetupVideo(Transport* send_transport,
             rtc::make_ref_counted<
                 VideoEncoderConfig::Vp9EncoderSpecificSettings>(vp9_settings);
       } else if (params_.video[video_idx].codec == "H264") {
-        VideoCodecH264 h264_settings = VideoEncoder::GetDefaultH264Settings();
-        video_encoder_configs_[video_idx].encoder_specific_settings =
-            rtc::make_ref_counted<
-                VideoEncoderConfig::H264EncoderSpecificSettings>(h264_settings);
+        video_encoder_configs_[video_idx].encoder_specific_settings = nullptr;
       }
     }
     total_streams_used += num_video_substreams;
@@ -954,7 +954,6 @@ void VideoQualityTest::SetupThumbnails(Transport* send_transport,
     // sender_call.
     VideoSendStream::Config thumbnail_send_config(recv_transport);
     thumbnail_send_config.rtp.ssrcs.push_back(kThumbnailSendSsrcStart + i);
-    // TODO(nisse): Could use a simpler VP8-only encoder factory.
     thumbnail_send_config.encoder_settings.encoder_factory =
         &video_encoder_factory_;
     thumbnail_send_config.encoder_settings.bitrate_allocator_factory =
@@ -1011,7 +1010,7 @@ void VideoQualityTest::DestroyThumbnailStreams() {
     receiver_call_->DestroyVideoSendStream(thumbnail_send_stream);
   }
   thumbnail_send_streams_.clear();
-  for (VideoReceiveStream* thumbnail_receive_stream :
+  for (VideoReceiveStreamInterface* thumbnail_receive_stream :
        thumbnail_receive_streams_) {
     sender_call_->DestroyVideoReceiveStream(thumbnail_receive_stream);
   }
@@ -1145,19 +1144,19 @@ void VideoQualityTest::CreateCapturers() {
 
 void VideoQualityTest::StartAudioStreams() {
   audio_send_stream_->Start();
-  for (AudioReceiveStream* audio_recv_stream : audio_receive_streams_)
+  for (AudioReceiveStreamInterface* audio_recv_stream : audio_receive_streams_)
     audio_recv_stream->Start();
 }
 
 void VideoQualityTest::StartThumbnails() {
   for (VideoSendStream* send_stream : thumbnail_send_streams_)
     send_stream->Start();
-  for (VideoReceiveStream* receive_stream : thumbnail_receive_streams_)
+  for (VideoReceiveStreamInterface* receive_stream : thumbnail_receive_streams_)
     receive_stream->Start();
 }
 
 void VideoQualityTest::StopThumbnails() {
-  for (VideoReceiveStream* receive_stream : thumbnail_receive_streams_)
+  for (VideoReceiveStreamInterface* receive_stream : thumbnail_receive_streams_)
     receive_stream->Stop();
   for (VideoSendStream* send_stream : thumbnail_send_streams_)
     send_stream->Stop();
@@ -1238,20 +1237,19 @@ void VideoQualityTest::RunWithAnalyzer(const Params& params) {
     recv_event_log_ = std::make_unique<RtcEventLogNull>();
   }
 
-  SendTask(RTC_FROM_HERE, task_queue(),
-           [this, &params, &send_transport, &recv_transport]() {
-             Call::Config send_call_config(send_event_log_.get());
-             Call::Config recv_call_config(recv_event_log_.get());
-             send_call_config.bitrate_config = params.call.call_bitrate_config;
-             recv_call_config.bitrate_config = params.call.call_bitrate_config;
-             if (params_.audio.enabled)
-               InitializeAudioDevice(&send_call_config, &recv_call_config,
-                                     params_.audio.use_real_adm);
+  SendTask(task_queue(), [this, &params, &send_transport, &recv_transport]() {
+    Call::Config send_call_config(send_event_log_.get());
+    Call::Config recv_call_config(recv_event_log_.get());
+    send_call_config.bitrate_config = params.call.call_bitrate_config;
+    recv_call_config.bitrate_config = params.call.call_bitrate_config;
+    if (params_.audio.enabled)
+      InitializeAudioDevice(&send_call_config, &recv_call_config,
+                            params_.audio.use_real_adm);
 
-             CreateCalls(send_call_config, recv_call_config);
-             send_transport = CreateSendTransport();
-             recv_transport = CreateReceiveTransport();
-           });
+    CreateCalls(send_call_config, recv_call_config);
+    send_transport = CreateSendTransport();
+    recv_transport = CreateReceiveTransport();
+  });
 
   std::string graph_title = params_.analyzer.graph_title;
   if (graph_title.empty())
@@ -1274,7 +1272,7 @@ void VideoQualityTest::RunWithAnalyzer(const Params& params) {
       is_quick_test_enabled, clock_, params_.logging.rtp_dump_name,
       task_queue());
 
-  SendTask(RTC_FROM_HERE, task_queue(), [&]() {
+  SendTask(task_queue(), [&]() {
     analyzer_->SetCall(sender_call_.get());
     analyzer_->SetReceiver(receiver_call_->Receiver());
     send_transport->SetReceiver(analyzer_.get());
@@ -1320,7 +1318,7 @@ void VideoQualityTest::RunWithAnalyzer(const Params& params) {
 
   analyzer_->Wait();
 
-  SendTask(RTC_FROM_HERE, task_queue(), [&]() {
+  SendTask(task_queue(), [&]() {
     StopThumbnails();
     Stop();
 
@@ -1462,7 +1460,7 @@ void VideoQualityTest::RunWithRenderers(const Params& params) {
     recv_event_log_ = std::make_unique<RtcEventLogNull>();
   }
 
-  SendTask(RTC_FROM_HERE, task_queue(), [&]() {
+  SendTask(task_queue(), [&]() {
     params_ = params;
     CheckParamsAndInjectionComponents();
 
@@ -1551,7 +1549,7 @@ void VideoQualityTest::RunWithRenderers(const Params& params) {
 
   PressEnterToContinue(task_queue());
 
-  SendTask(RTC_FROM_HERE, task_queue(), [&]() {
+  SendTask(task_queue(), [&]() {
     Stop();
     DestroyStreams();
 

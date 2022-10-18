@@ -87,7 +87,7 @@ class MockSendSideDelayObserver : public SendSideDelayObserver {
               (override));
 };
 
-class FieldTrialConfig : public WebRtcKeyValueConfig {
+class FieldTrialConfig : public FieldTrialsView {
  public:
   FieldTrialConfig() : overhead_enabled_(false) {}
   ~FieldTrialConfig() override {}
@@ -184,7 +184,7 @@ class RtpSenderEgressTest : public ::testing::TestWithParam<TestConfig> {
     packet->set_packet_type(RtpPacketMediaType::kVideo);
     packet->SetMarker(marker_bit);
     packet->SetTimestamp(capture_time_ms * 90);
-    packet->set_capture_time_ms(capture_time_ms);
+    packet->set_capture_time(Timestamp::Millis(capture_time_ms));
     packet->SetSequenceNumber(sequence_number_++);
     return packet;
   }
@@ -496,8 +496,7 @@ TEST_P(RtpSenderEgressTest, DoesNotPutNotRetransmittablePacketsInHistory) {
   std::unique_ptr<RtpPacketToSend> packet = BuildRtpPacket();
   packet->set_allow_retransmission(false);
   sender->SendPacket(packet.get(), PacedPacketInfo());
-  EXPECT_FALSE(
-      packet_history_.GetPacketState(packet->SequenceNumber()).has_value());
+  EXPECT_FALSE(packet_history_.GetPacketState(packet->SequenceNumber()));
 }
 
 TEST_P(RtpSenderEgressTest, PutsRetransmittablePacketsInHistory) {
@@ -508,10 +507,7 @@ TEST_P(RtpSenderEgressTest, PutsRetransmittablePacketsInHistory) {
   std::unique_ptr<RtpPacketToSend> packet = BuildRtpPacket();
   packet->set_allow_retransmission(true);
   sender->SendPacket(packet.get(), PacedPacketInfo());
-  EXPECT_THAT(
-      packet_history_.GetPacketState(packet->SequenceNumber()),
-      Optional(
-          Field(&RtpPacketHistory::PacketState::pending_transmission, false)));
+  EXPECT_TRUE(packet_history_.GetPacketState(packet->SequenceNumber()));
 }
 
 TEST_P(RtpSenderEgressTest, DoesNotPutNonMediaInHistory) {
@@ -527,22 +523,20 @@ TEST_P(RtpSenderEgressTest, DoesNotPutNonMediaInHistory) {
   retransmission->set_retransmitted_sequence_number(
       retransmission->SequenceNumber());
   sender->SendPacket(retransmission.get(), PacedPacketInfo());
-  EXPECT_FALSE(packet_history_.GetPacketState(retransmission->SequenceNumber())
-                   .has_value());
+  EXPECT_FALSE(
+      packet_history_.GetPacketState(retransmission->SequenceNumber()));
 
   std::unique_ptr<RtpPacketToSend> fec = BuildRtpPacket();
   fec->set_allow_retransmission(true);
   fec->set_packet_type(RtpPacketMediaType::kForwardErrorCorrection);
   sender->SendPacket(fec.get(), PacedPacketInfo());
-  EXPECT_FALSE(
-      packet_history_.GetPacketState(fec->SequenceNumber()).has_value());
+  EXPECT_FALSE(packet_history_.GetPacketState(fec->SequenceNumber()));
 
   std::unique_ptr<RtpPacketToSend> padding = BuildRtpPacket();
   padding->set_allow_retransmission(true);
   padding->set_packet_type(RtpPacketMediaType::kPadding);
   sender->SendPacket(padding.get(), PacedPacketInfo());
-  EXPECT_FALSE(
-      packet_history_.GetPacketState(padding->SequenceNumber()).has_value());
+  EXPECT_FALSE(packet_history_.GetPacketState(padding->SequenceNumber()));
 }
 
 TEST_P(RtpSenderEgressTest, UpdatesSendStatusOfRetransmittedPackets) {
@@ -554,10 +548,7 @@ TEST_P(RtpSenderEgressTest, UpdatesSendStatusOfRetransmittedPackets) {
   std::unique_ptr<RtpPacketToSend> media_packet = BuildRtpPacket();
   media_packet->set_allow_retransmission(true);
   sender->SendPacket(media_packet.get(), PacedPacketInfo());
-  EXPECT_THAT(
-      packet_history_.GetPacketState(media_packet->SequenceNumber()),
-      Optional(
-          Field(&RtpPacketHistory::PacketState::pending_transmission, false)));
+  EXPECT_TRUE(packet_history_.GetPacketState(media_packet->SequenceNumber()));
 
   // Simulate a retransmission, marking the packet as pending.
   std::unique_ptr<RtpPacketToSend> retransmission =
@@ -565,16 +556,11 @@ TEST_P(RtpSenderEgressTest, UpdatesSendStatusOfRetransmittedPackets) {
   retransmission->set_retransmitted_sequence_number(
       media_packet->SequenceNumber());
   retransmission->set_packet_type(RtpPacketMediaType::kRetransmission);
-  EXPECT_THAT(packet_history_.GetPacketState(media_packet->SequenceNumber()),
-              Optional(Field(
-                  &RtpPacketHistory::PacketState::pending_transmission, true)));
+  EXPECT_TRUE(packet_history_.GetPacketState(media_packet->SequenceNumber()));
 
   // Simulate packet leaving pacer, the packet should be marked as non-pending.
   sender->SendPacket(retransmission.get(), PacedPacketInfo());
-  EXPECT_THAT(
-      packet_history_.GetPacketState(media_packet->SequenceNumber()),
-      Optional(
-          Field(&RtpPacketHistory::PacketState::pending_transmission, false)));
+  EXPECT_TRUE(packet_history_.GetPacketState(media_packet->SequenceNumber()));
 }
 
 TEST_P(RtpSenderEgressTest, StreamDataCountersCallbacks) {
@@ -756,7 +742,7 @@ TEST_P(RtpSenderEgressTest, SendPacketUpdatesExtensions) {
   std::unique_ptr<RtpSenderEgress> sender = CreateRtpSenderEgress();
 
   std::unique_ptr<RtpPacketToSend> packet = BuildRtpPacket();
-  packet->set_packetization_finish_time_ms(clock_->TimeInMilliseconds());
+  packet->set_packetization_finish_time(clock_->CurrentTime());
 
   const int32_t kDiffMs = 10;
   time_controller_.AdvanceTime(TimeDelta::Millis(kDiffMs));
@@ -768,7 +754,7 @@ TEST_P(RtpSenderEgressTest, SendPacketUpdatesExtensions) {
   EXPECT_EQ(received_packet.GetExtension<TransmissionOffset>(), kDiffMs * 90);
 
   EXPECT_EQ(received_packet.GetExtension<AbsoluteSendTime>(),
-            AbsoluteSendTime::MsTo24Bits(clock_->TimeInMilliseconds()));
+            AbsoluteSendTime::To24Bits(clock_->CurrentTime()));
 
   VideoSendTiming timing;
   EXPECT_TRUE(received_packet.GetExtension<VideoTimingExtension>(&timing));
@@ -975,6 +961,33 @@ TEST_P(RtpSenderEgressTest, TransportFeedbackObserverFec) {
                         Field(&RtpPacketSendInfo::transport_sequence_number,
                               kTransportSequenceNumber))));
   sender->SendPacket(fec_packet.get(), PacedPacketInfo());
+}
+
+TEST_P(RtpSenderEgressTest, SupportsAbortingRetransmissions) {
+  std::unique_ptr<RtpSenderEgress> sender = CreateRtpSenderEgress();
+  packet_history_.SetStorePacketsStatus(
+      RtpPacketHistory::StorageMode::kStoreAndCull, 10);
+
+  // Create a packet and send it so it is put in the history.
+  std::unique_ptr<RtpPacketToSend> media_packet = BuildRtpPacket();
+  media_packet->set_packet_type(RtpPacketMediaType::kVideo);
+  media_packet->set_allow_retransmission(true);
+  const uint16_t media_sequence_number = media_packet->SequenceNumber();
+  sender->SendPacket(media_packet.get(), PacedPacketInfo());
+
+  // Fetch a retranmission packet from the history, this should mark the
+  // media packets as pending so it is not available to grab again.
+  std::unique_ptr<RtpPacketToSend> retransmission_packet =
+      packet_history_.GetPacketAndMarkAsPending(media_sequence_number);
+  ASSERT_TRUE(retransmission_packet);
+  EXPECT_FALSE(
+      packet_history_.GetPacketAndMarkAsPending(media_sequence_number));
+
+  // Mark retransmission as aborted, fetching packet is possible again.
+  retransmission_packet.reset();
+  uint16_t kAbortedSequenceNumbers[] = {media_sequence_number};
+  sender->OnAbortedRetransmissions(kAbortedSequenceNumbers);
+  EXPECT_TRUE(packet_history_.GetPacketAndMarkAsPending(media_sequence_number));
 }
 
 INSTANTIATE_TEST_SUITE_P(WithAndWithoutOverhead,

@@ -10,6 +10,10 @@
 
 #include "rtc_base/thread.h"
 
+#include "absl/strings/string_view.h"
+#include "api/units/time_delta.h"
+#include "rtc_base/socket_server.h"
+
 #if defined(WEBRTC_WIN)
 #include <comdef.h>
 #elif defined(WEBRTC_POSIX)
@@ -29,15 +33,14 @@
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "api/sequence_checker.h"
-#include "rtc_base/atomic_ops.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/deprecated/recursive_critical_section.h"
 #include "rtc_base/event.h"
 #include "rtc_base/internal/default_socket_server.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/null_socket_server.h"
-#include "rtc_base/task_utils/to_queued_task.h"
 #include "rtc_base/time_utils.h"
 #include "rtc_base/trace_event.h"
 
@@ -71,21 +74,26 @@ class ScopedAutoReleasePool {
 namespace rtc {
 namespace {
 
-class MessageHandlerWithTask final : public MessageHandler {
+using ::webrtc::TimeDelta;
+
+struct AnyInvocableMessage final : public MessageData {
+  explicit AnyInvocableMessage(absl::AnyInvocable<void() &&> task)
+      : task(std::move(task)) {}
+  absl::AnyInvocable<void() &&> task;
+};
+
+class AnyInvocableMessageHandler final : public MessageHandler {
  public:
-  MessageHandlerWithTask() {}
-
-  MessageHandlerWithTask(const MessageHandlerWithTask&) = delete;
-  MessageHandlerWithTask& operator=(const MessageHandlerWithTask&) = delete;
-
   void OnMessage(Message* msg) override {
-    static_cast<rtc_thread_internal::MessageLikeTask*>(msg->pdata)->Run();
+    std::move(static_cast<AnyInvocableMessage*>(msg->pdata)->task)();
     delete msg->pdata;
   }
-
- private:
-  ~MessageHandlerWithTask() override {}
 };
+
+MessageHandler* GetAnyInvocableMessageHandler() {
+  static MessageHandler* const handler = new AnyInvocableMessageHandler;
+  return handler;
+}
 
 class RTC_SCOPED_LOCKABLE MarkProcessingCritScope {
  public:
@@ -210,20 +218,7 @@ void ThreadManager::ProcessAllMessageQueuesInternal() {
   // This works by posting a delayed message at the current time and waiting
   // for it to be dispatched on all queues, which will ensure that all messages
   // that came before it were also dispatched.
-  volatile int queues_not_done = 0;
-
-  // This class is used so that whether the posted message is processed, or the
-  // message queue is simply cleared, queues_not_done gets decremented.
-  class ScopedIncrement : public MessageData {
-   public:
-    ScopedIncrement(volatile int* value) : value_(value) {
-      AtomicOps::Increment(value_);
-    }
-    ~ScopedIncrement() override { AtomicOps::Decrement(value_); }
-
-   private:
-    volatile int* value_;
-  };
+  std::atomic<int> queues_not_done(0);
 
   {
     MarkProcessingCritScope cs(&crit_, &processing_);
@@ -234,8 +229,13 @@ void ThreadManager::ProcessAllMessageQueuesInternal() {
         // or ignored.
         continue;
       }
-      queue->PostDelayed(RTC_FROM_HERE, 0, nullptr, MQID_DISPOSE,
-                         new ScopedIncrement(&queues_not_done));
+      queues_not_done.fetch_add(1);
+      // Whether the task is processed, or the thread is simply cleared,
+      // queues_not_done gets decremented.
+      absl::Cleanup sub = [&queues_not_done] { queues_not_done.fetch_sub(1); };
+      // Post delayed task instead of regular task to wait for all delayed tasks
+      // that are ready for processing.
+      queue->PostDelayedTask([sub = std::move(sub)] {}, TimeDelta::Zero());
     }
   }
 
@@ -243,7 +243,7 @@ void ThreadManager::ProcessAllMessageQueuesInternal() {
   // Note: One of the message queues may have been on this thread, which is
   // why we can't synchronously wait for queues_not_done to go to 0; we need
   // to process messages as well.
-  while (AtomicOps::AcquireLoad(&queues_not_done) > 0) {
+  while (queues_not_done.load() > 0) {
     if (current) {
       current->ProcessMessages(0);
     }
@@ -376,8 +376,7 @@ Thread::Thread(std::unique_ptr<SocketServer> ss)
     : Thread(std::move(ss), /*do_init=*/true) {}
 
 Thread::Thread(SocketServer* ss, bool do_init)
-    : fPeekKeep_(false),
-      delayed_next_num_(0),
+    : delayed_next_num_(0),
       fInitialized_(false),
       fDestroyed_(false),
       stop_(0),
@@ -434,40 +433,19 @@ void Thread::WakeUpSocketServer() {
 }
 
 void Thread::Quit() {
-  AtomicOps::ReleaseStore(&stop_, 1);
+  stop_.store(1, std::memory_order_release);
   WakeUpSocketServer();
 }
 
 bool Thread::IsQuitting() {
-  return AtomicOps::AcquireLoad(&stop_) != 0;
+  return stop_.load(std::memory_order_acquire) != 0;
 }
 
 void Thread::Restart() {
-  AtomicOps::ReleaseStore(&stop_, 0);
-}
-
-bool Thread::Peek(Message* pmsg, int cmsWait) {
-  if (fPeekKeep_) {
-    *pmsg = msgPeek_;
-    return true;
-  }
-  if (!Get(pmsg, cmsWait))
-    return false;
-  msgPeek_ = *pmsg;
-  fPeekKeep_ = true;
-  return true;
+  stop_.store(0, std::memory_order_release);
 }
 
 bool Thread::Get(Message* pmsg, int cmsWait, bool process_io) {
-  // Return and clear peek if present
-  // Always return the peek if it exists so there is Peek/Get symmetry
-
-  if (fPeekKeep_) {
-    *pmsg = msgPeek_;
-    fPeekKeep_ = false;
-    return true;
-  }
-
   // Get w/wait + timer scan / dispatch + socket / event multiplexer dispatch
 
   int64_t cmsTotal = cmsWait;
@@ -477,44 +455,27 @@ bool Thread::Get(Message* pmsg, int cmsWait, bool process_io) {
   while (true) {
     // Check for posted events
     int64_t cmsDelayNext = kForever;
-    bool first_pass = true;
-    while (true) {
+    {
       // All queue operations need to be locked, but nothing else in this loop
-      // (specifically handling disposed message) can happen inside the crit.
-      // Otherwise, disposed MessageHandlers will cause deadlocks.
-      {
-        CritScope cs(&crit_);
-        // On the first pass, check for delayed messages that have been
-        // triggered and calculate the next trigger time.
-        if (first_pass) {
-          first_pass = false;
-          while (!delayed_messages_.empty()) {
-            if (msCurrent < delayed_messages_.top().run_time_ms_) {
-              cmsDelayNext =
-                  TimeDiff(delayed_messages_.top().run_time_ms_, msCurrent);
-              break;
-            }
-            messages_.push_back(delayed_messages_.top().msg_);
-            delayed_messages_.pop();
-          }
-        }
-        // Pull a message off the message queue, if available.
-        if (messages_.empty()) {
+      // can happen inside the crit.
+      CritScope cs(&crit_);
+      // Check for delayed messages that have been triggered and calculate the
+      // next trigger time.
+      while (!delayed_messages_.empty()) {
+        if (msCurrent < delayed_messages_.top().run_time_ms_) {
+          cmsDelayNext =
+              TimeDiff(delayed_messages_.top().run_time_ms_, msCurrent);
           break;
-        } else {
-          *pmsg = messages_.front();
-          messages_.pop_front();
         }
-      }  // crit_ is released here.
-
-      // If this was a dispose message, delete it and skip it.
-      if (MQID_DISPOSE == pmsg->message_id) {
-        RTC_DCHECK(nullptr == pmsg->phandler);
-        delete pmsg->pdata;
-        *pmsg = Message();
-        continue;
+        messages_.push_back(delayed_messages_.top().msg_);
+        delayed_messages_.pop();
       }
-      return true;
+      // Pull a message off the message queue, if available.
+      if (!messages_.empty()) {
+        *pmsg = messages_.front();
+        messages_.pop_front();
+        return true;
+      }
     }
 
     if (IsQuitting())
@@ -533,7 +494,9 @@ bool Thread::Get(Message* pmsg, int cmsWait, bool process_io) {
 
     {
       // Wait and multiplex in the meantime
-      if (!ss_->Wait(static_cast<int>(cmsNext), process_io))
+      if (!ss_->Wait(cmsNext == kForever ? SocketServer::kForever
+                                         : webrtc::TimeDelta::Millis(cmsNext),
+                     process_io))
         return false;
     }
 
@@ -646,17 +609,6 @@ int Thread::GetDelay() {
 void Thread::ClearInternal(MessageHandler* phandler,
                            uint32_t id,
                            MessageList* removed) {
-  // Remove messages with phandler
-
-  if (fPeekKeep_ && msgPeek_.Match(phandler, id)) {
-    if (removed) {
-      removed->push_back(msgPeek_);
-    } else {
-      delete msgPeek_.pdata;
-    }
-    fPeekKeep_ = false;
-  }
-
   // Remove from ordered message queue
 
   for (auto it = messages_.begin(); it != messages_.end();) {
@@ -744,10 +696,10 @@ bool Thread::SleepMs(int milliseconds) {
 #endif
 }
 
-bool Thread::SetName(const std::string& name, const void* obj) {
+bool Thread::SetName(absl::string_view name, const void* obj) {
   RTC_DCHECK(!IsRunning());
 
-  name_ = name;
+  name_ = std::string(name);
   if (obj) {
     // The %p specifier typically produce at most 16 hex digits, possibly with a
     // 0x prefix. But format is implementation defined, so add some margin.
@@ -760,8 +712,7 @@ bool Thread::SetName(const std::string& name, const void* obj) {
 
 void Thread::SetDispatchWarningMs(int deadline) {
   if (!IsCurrent()) {
-    PostTask(webrtc::ToQueuedTask(
-        [this, deadline]() { SetDispatchWarningMs(deadline); }));
+    PostTask([this, deadline]() { SetDispatchWarningMs(deadline); });
     return;
   }
   RTC_DCHECK_RUN_ON(this);
@@ -900,29 +851,20 @@ void Thread::Stop() {
   Join();
 }
 
-void Thread::Send(const Location& posted_from,
-                  MessageHandler* phandler,
-                  uint32_t id,
-                  MessageData* pdata) {
+void Thread::BlockingCall(rtc::FunctionView<void()> functor) {
+  TRACE_EVENT0("webrtc", "Thread::BlockingCall");
+
   RTC_DCHECK(!IsQuitting());
   if (IsQuitting())
     return;
 
-  // Sent messages are sent to the MessageHandler directly, in the context
-  // of "thread", like Win32 SendMessage. If in the right context,
-  // call the handler directly.
-  Message msg;
-  msg.posted_from = posted_from;
-  msg.phandler = phandler;
-  msg.message_id = id;
-  msg.pdata = pdata;
   if (IsCurrent()) {
 #if RTC_DCHECK_IS_ON
     RTC_DCHECK(this->IsInvokeToThreadAllowed(this));
     RTC_DCHECK_RUN_ON(this);
     could_be_blocking_call_count_++;
 #endif
-    msg.phandler->OnMessage(&msg);
+    functor();
     return;
   }
 
@@ -941,30 +883,29 @@ void Thread::Send(const Location& posted_from,
 #endif
 
   // Perhaps down the line we can get rid of this workaround and always require
-  // current_thread to be valid when Send() is called.
+  // current_thread to be valid when BlockingCall() is called.
   std::unique_ptr<rtc::Event> done_event;
   if (!current_thread)
     done_event.reset(new rtc::Event());
 
   bool ready = false;
-  PostTask(webrtc::ToQueuedTask(
-      [&msg]() mutable { msg.phandler->OnMessage(&msg); },
-      [this, &ready, current_thread, done = done_event.get()] {
-        if (current_thread) {
-          CritScope cs(&crit_);
-          ready = true;
-          current_thread->socketserver()->WakeUp();
-        } else {
-          done->Set();
-        }
-      }));
-
+  absl::Cleanup cleanup = [this, &ready, current_thread,
+                           done = done_event.get()] {
+    if (current_thread) {
+      CritScope cs(&crit_);
+      ready = true;
+      current_thread->socketserver()->WakeUp();
+    } else {
+      done->Set();
+    }
+  };
+  PostTask([functor, cleanup = std::move(cleanup)] { functor(); });
   if (current_thread) {
     bool waited = false;
     crit_.Enter();
     while (!ready) {
       crit_.Leave();
-      current_thread->socketserver()->Wait(kForever, false);
+      current_thread->socketserver()->Wait(SocketServer::kForever, false);
       waited = true;
       crit_.Enter();
     }
@@ -989,24 +930,6 @@ void Thread::Send(const Location& posted_from,
   }
 }
 
-void Thread::InvokeInternal(const Location& posted_from,
-                            rtc::FunctionView<void()> functor) {
-  TRACE_EVENT2("webrtc", "Thread::Invoke", "src_file", posted_from.file_name(),
-               "src_func", posted_from.function_name());
-
-  class FunctorMessageHandler : public MessageHandler {
-   public:
-    explicit FunctorMessageHandler(rtc::FunctionView<void()> functor)
-        : functor_(functor) {}
-    void OnMessage(Message* msg) override { functor_(); }
-
-   private:
-    rtc::FunctionView<void()> functor_;
-  } handler(functor);
-
-  Send(posted_from, &handler);
-}
-
 // Called by the ThreadManager when being set as the current thread.
 void Thread::EnsureIsCurrentTaskQueue() {
   task_queue_registration_ =
@@ -1018,25 +941,10 @@ void Thread::ClearCurrentTaskQueue() {
   task_queue_registration_.reset();
 }
 
-void Thread::QueuedTaskHandler::OnMessage(Message* msg) {
-  RTC_DCHECK(msg);
-  auto* data = static_cast<ScopedMessageData<webrtc::QueuedTask>*>(msg->pdata);
-  std::unique_ptr<webrtc::QueuedTask> task(data->Release());
-  // Thread expects handler to own Message::pdata when OnMessage is called
-  // Since MessageData is no longer needed, delete it.
-  delete data;
-
-  // QueuedTask interface uses Run return value to communicate who owns the
-  // task. false means QueuedTask took the ownership.
-  if (!task->Run())
-    task.release();
-}
-
 void Thread::AllowInvokesToThread(Thread* thread) {
 #if (!defined(NDEBUG) || RTC_DCHECK_IS_ON)
   if (!IsCurrent()) {
-    PostTask(webrtc::ToQueuedTask(
-        [thread, this]() { AllowInvokesToThread(thread); }));
+    PostTask([thread, this]() { AllowInvokesToThread(thread); });
     return;
   }
   RTC_DCHECK_RUN_ON(this);
@@ -1048,7 +956,7 @@ void Thread::AllowInvokesToThread(Thread* thread) {
 void Thread::DisallowAllInvokes() {
 #if (!defined(NDEBUG) || RTC_DCHECK_IS_ON)
   if (!IsCurrent()) {
-    PostTask(webrtc::ToQueuedTask([this]() { DisallowAllInvokes(); }));
+    PostTask([this]() { DisallowAllInvokes(); });
     return;
   }
   RTC_DCHECK_RUN_ON(this);
@@ -1087,31 +995,31 @@ bool Thread::IsInvokeToThreadAllowed(rtc::Thread* target) {
 #endif
 }
 
-void Thread::PostTask(std::unique_ptr<webrtc::QueuedTask> task) {
-  // Though Post takes MessageData by raw pointer (last parameter), it still
-  // takes it with ownership.
-  Post(RTC_FROM_HERE, &queued_task_handler_,
-       /*id=*/0, new ScopedMessageData<webrtc::QueuedTask>(std::move(task)));
-}
-
-void Thread::PostDelayedTask(std::unique_ptr<webrtc::QueuedTask> task,
-                             uint32_t milliseconds) {
-  // This implementation does not support low precision yet.
-  PostDelayedHighPrecisionTask(std::move(task), milliseconds);
-}
-
-void Thread::PostDelayedHighPrecisionTask(
-    std::unique_ptr<webrtc::QueuedTask> task,
-    uint32_t milliseconds) {
-  // Though PostDelayed takes MessageData by raw pointer (last parameter),
-  // it still takes it with ownership.
-  PostDelayed(RTC_FROM_HERE, milliseconds, &queued_task_handler_, /*id=*/0,
-              new ScopedMessageData<webrtc::QueuedTask>(std::move(task)));
-}
-
 void Thread::Delete() {
   Stop();
   delete this;
+}
+
+void Thread::PostTask(absl::AnyInvocable<void() &&> task) {
+  // Though Post takes MessageData by raw pointer (last parameter), it still
+  // takes it with ownership.
+  Post(RTC_FROM_HERE, GetAnyInvocableMessageHandler(),
+       /*id=*/0, new AnyInvocableMessage(std::move(task)));
+}
+
+void Thread::PostDelayedTask(absl::AnyInvocable<void() &&> task,
+                             webrtc::TimeDelta delay) {
+  // This implementation does not support low precision yet.
+  PostDelayedHighPrecisionTask(std::move(task), delay);
+}
+
+void Thread::PostDelayedHighPrecisionTask(absl::AnyInvocable<void() &&> task,
+                                          webrtc::TimeDelta delay) {
+  int delay_ms = delay.RoundUpTo(webrtc::TimeDelta::Millis(1)).ms<int>();
+  // Though PostDelayed takes MessageData by raw pointer (last parameter),
+  // it still takes it with ownership.
+  PostDelayed(RTC_FROM_HERE, delay_ms, GetAnyInvocableMessageHandler(),
+              /*id=*/0, new AnyInvocableMessage(std::move(task)));
 }
 
 bool Thread::IsProcessingMessagesForTesting() {
@@ -1180,13 +1088,6 @@ bool Thread::IsRunning() {
 #elif defined(WEBRTC_POSIX)
   return thread_ != 0;
 #endif
-}
-
-// static
-MessageHandler* Thread::GetPostTaskMessageHandler() {
-  // Allocate at first call, never deallocate.
-  static MessageHandler* handler = new MessageHandlerWithTask;
-  return handler;
 }
 
 AutoThread::AutoThread()

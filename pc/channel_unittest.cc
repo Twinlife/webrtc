@@ -10,22 +10,30 @@
 
 #include "pc/channel.h"
 
-#include <cstdint>
-#include <memory>
-#include <utility>
+#include <stddef.h>
 
+#include <cstdint>
+#include <string>
+#include <type_traits>
+
+#include "absl/functional/any_invocable.h"
 #include "api/array_view.h"
 #include "api/audio_options.h"
 #include "api/rtp_parameters.h"
+#include "api/task_queue/pending_task_safety_flag.h"
 #include "media/base/codec.h"
 #include "media/base/fake_media_engine.h"
 #include "media/base/fake_rtp.h"
 #include "media/base/media_channel.h"
+#include "media/base/media_constants.h"
+#include "media/base/rid_description.h"
 #include "p2p/base/candidate_pair_interface.h"
+#include "p2p/base/dtls_transport_internal.h"
 #include "p2p/base/fake_dtls_transport.h"
 #include "p2p/base/fake_packet_transport.h"
 #include "p2p/base/ice_transport_internal.h"
 #include "p2p/base/p2p_constants.h"
+#include "p2p/base/packet_transport_internal.h"
 #include "pc/dtls_srtp_transport.h"
 #include "pc/jsep_transport.h"
 #include "pc/rtp_transport.h"
@@ -35,10 +43,10 @@
 #include "rtc_base/checks.h"
 #include "rtc_base/rtc_certificate.h"
 #include "rtc_base/ssl_identity.h"
-#include "rtc_base/task_utils/pending_task_safety_flag.h"
-#include "rtc_base/task_utils/to_queued_task.h"
+#include "rtc_base/task_queue_for_test.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
+#include "test/scoped_key_value_config.h"
 
 using cricket::DtlsTransportInternal;
 using cricket::FakeVoiceMediaChannel;
@@ -126,7 +134,7 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
 
   ~ChannelTest() {
     if (network_thread_) {
-      network_thread_->Invoke<void>(RTC_FROM_HERE, [this]() {
+      SendTask(network_thread_, [this]() {
         network_thread_safety_->SetNotAlive();
         DeinitChannels();
       });
@@ -277,7 +285,7 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
   void DeinitChannels() {
     if (!channel1_ && !channel2_)
       return;
-    network_thread_->Invoke<void>(RTC_FROM_HERE, [this]() {
+    SendTask(network_thread_, [this]() {
       if (channel1_) {
         RTC_DCHECK_RUN_ON(channel1_->network_thread());
         channel1_->SetRtpTransport(nullptr);
@@ -295,14 +303,13 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
     auto rtp_transport = std::make_unique<webrtc::RtpTransport>(
         rtcp_packet_transport == nullptr);
 
-    network_thread_->Invoke<void>(
-        RTC_FROM_HERE,
-        [&rtp_transport, rtp_packet_transport, rtcp_packet_transport] {
-          rtp_transport->SetRtpPacketTransport(rtp_packet_transport);
-          if (rtcp_packet_transport) {
-            rtp_transport->SetRtcpPacketTransport(rtcp_packet_transport);
-          }
-        });
+    SendTask(network_thread_,
+             [&rtp_transport, rtp_packet_transport, rtcp_packet_transport] {
+               rtp_transport->SetRtpPacketTransport(rtp_packet_transport);
+               if (rtcp_packet_transport) {
+                 rtp_transport->SetRtcpPacketTransport(rtcp_packet_transport);
+               }
+             });
     return rtp_transport;
   }
 
@@ -310,19 +317,18 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
       cricket::DtlsTransportInternal* rtp_dtls_transport,
       cricket::DtlsTransportInternal* rtcp_dtls_transport) {
     auto dtls_srtp_transport = std::make_unique<webrtc::DtlsSrtpTransport>(
-        rtcp_dtls_transport == nullptr);
+        rtcp_dtls_transport == nullptr, field_trials_);
 
-    network_thread_->Invoke<void>(
-        RTC_FROM_HERE,
-        [&dtls_srtp_transport, rtp_dtls_transport, rtcp_dtls_transport] {
-          dtls_srtp_transport->SetDtlsTransports(rtp_dtls_transport,
-                                                 rtcp_dtls_transport);
-        });
+    SendTask(network_thread_,
+             [&dtls_srtp_transport, rtp_dtls_transport, rtcp_dtls_transport] {
+               dtls_srtp_transport->SetDtlsTransports(rtp_dtls_transport,
+                                                      rtcp_dtls_transport);
+             });
     return dtls_srtp_transport;
   }
 
   void ConnectFakeTransports() {
-    network_thread_->Invoke<void>(RTC_FROM_HERE, [this] {
+    SendTask(network_thread_, [this] {
       bool asymmetric = false;
       // Depending on test flags, could be using DTLS or raw packet transport.
       if (fake_rtp_dtls_transport1_ && fake_rtp_dtls_transport2_) {
@@ -411,7 +417,7 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
   }
 
   void SendRtp(typename T::MediaChannel* media_channel, rtc::Buffer data) {
-    network_thread_->PostTask(webrtc::ToQueuedTask(
+    network_thread_->PostTask(webrtc::SafeTask(
         network_thread_safety_, [media_channel, data = std::move(data)]() {
           media_channel->SendRtp(data.data(), data.size(),
                                  rtc::PacketOptions());
@@ -495,11 +501,10 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
   // destroyed before this object goes out of scope.
   class ScopedCallThread {
    public:
-    template <class FunctorT>
-    explicit ScopedCallThread(FunctorT&& functor)
+    explicit ScopedCallThread(absl::AnyInvocable<void() &&> functor)
         : thread_(rtc::Thread::Create()) {
       thread_->Start();
-      thread_->PostTask(std::forward<FunctorT>(functor));
+      thread_->PostTask(std::move(functor));
     }
 
     ~ScopedCallThread() { thread_->Stop(); }
@@ -529,18 +534,21 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
   // network thread, which callers need to factor in.
   bool IsSrtpActive(std::unique_ptr<typename T::Channel>& channel) {
     RTC_DCHECK(channel.get());
-    return network_thread_->Invoke<bool>(
-        RTC_FROM_HERE, [&] { return channel->srtp_active(); });
+    bool result;
+    SendTask(network_thread_, [&] { result = channel->srtp_active(); });
+    return result;
   }
 
   // Returns true iff the transport is set for a channel and rtcp_mux_enabled()
   // returns true.
   bool IsRtcpMuxEnabled(std::unique_ptr<typename T::Channel>& channel) {
     RTC_DCHECK(channel.get());
-    return network_thread_->Invoke<bool>(RTC_FROM_HERE, [&] {
-      return channel->rtp_transport() &&
-             channel->rtp_transport()->rtcp_mux_enabled();
+    bool result;
+    SendTask(network_thread_, [&] {
+      result = channel->rtp_transport() &&
+               channel->rtp_transport()->rtcp_mux_enabled();
     });
+    return result;
   }
 
   // Tests that can be used by derived classes.
@@ -856,7 +864,7 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
     // when creating the channel.
     WaitForThreads();
     media_channel1->set_num_network_route_changes(0);
-    network_thread_->Invoke<void>(RTC_FROM_HERE, [this] {
+    SendTask(network_thread_, [this] {
       rtc::NetworkRoute network_route;
       // The transport channel becomes disconnected.
       fake_rtp_dtls_transport1_->ice_transport()->SignalNetworkRouteChanged(
@@ -867,7 +875,7 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
     EXPECT_FALSE(media_channel1->last_network_route().connected);
     media_channel1->set_num_network_route_changes(0);
 
-    network_thread_->Invoke<void>(RTC_FROM_HERE, [this] {
+    SendTask(network_thread_, [this] {
       rtc::NetworkRoute network_route;
       network_route.connected = true;
       network_route.local =
@@ -1027,9 +1035,8 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
     EXPECT_TRUE(CheckNoRtp2());
 
     // Lose writability, which should fail.
-    network_thread_->Invoke<void>(RTC_FROM_HERE, [this] {
-      fake_rtp_dtls_transport1_->SetWritable(false);
-    });
+    SendTask(network_thread_,
+             [this] { fake_rtp_dtls_transport1_->SetWritable(false); });
     SendRtp1();
     SendRtp2();
     WaitForThreads();
@@ -1037,9 +1044,8 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
     EXPECT_TRUE(CheckNoRtp2());
 
     // Regain writability
-    network_thread_->Invoke<void>(RTC_FROM_HERE, [this] {
-      fake_rtp_dtls_transport1_->SetWritable(true);
-    });
+    SendTask(network_thread_,
+             [this] { fake_rtp_dtls_transport1_->SetWritable(true); });
     EXPECT_TRUE(media_channel1()->sending());
     SendRtp1();
     SendRtp2();
@@ -1050,7 +1056,7 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
     EXPECT_TRUE(CheckNoRtp2());
 
     // Lose writability completely
-    network_thread_->Invoke<void>(RTC_FROM_HERE, [this] {
+    SendTask(network_thread_, [this] {
       bool asymmetric = true;
       fake_rtp_dtls_transport1_->SetDestination(nullptr, asymmetric);
     });
@@ -1065,7 +1071,7 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
     EXPECT_TRUE(CheckNoRtp1());
 
     // Gain writability back
-    network_thread_->Invoke<void>(RTC_FROM_HERE, [this] {
+    SendTask(network_thread_, [this] {
       bool asymmetric = true;
       fake_rtp_dtls_transport1_->SetDestination(fake_rtp_dtls_transport2_.get(),
                                                 asymmetric);
@@ -1296,7 +1302,7 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
 
     bool rcv_success, send_success;
     int rcv_buf, send_buf;
-    network_thread_->Invoke<void>(RTC_FROM_HERE, [&] {
+    SendTask(network_thread_, [&] {
       channel1_->SetOption(cricket::BaseChannel::ST_RTP,
                            rtc::Socket::Option::OPT_SNDBUF, kSndBufSize);
       channel2_->SetOption(cricket::BaseChannel::ST_RTP,
@@ -1379,14 +1385,13 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
   void WaitForThreads(rtc::ArrayView<rtc::Thread*> threads) {
     // `threads` and current thread post packets to network thread.
     for (rtc::Thread* thread : threads) {
-      thread->Invoke<void>(RTC_FROM_HERE,
-                           [thread] { ProcessThreadQueue(thread); });
+      SendTask(thread, [thread] { ProcessThreadQueue(thread); });
     }
     ProcessThreadQueue(rtc::Thread::Current());
     // Network thread move them around and post back to worker = current thread.
     if (!network_thread_->IsCurrent()) {
-      network_thread_->Invoke<void>(
-          RTC_FROM_HERE, [this] { ProcessThreadQueue(network_thread_); });
+      SendTask(network_thread_,
+               [this] { ProcessThreadQueue(network_thread_); });
     }
     // Worker thread = current Thread process received messages.
     ProcessThreadQueue(rtc::Thread::Current());
@@ -1404,6 +1409,7 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
     return static_cast<typename T::MediaChannel*>(channel2_->media_channel());
   }
 
+  rtc::AutoThread main_thread_;
   // TODO(pbos): Remove playout from all media channels and let renderers mute
   // themselves.
   const bool verify_playout_;
@@ -1434,6 +1440,7 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
   rtc::Buffer rtcp_packet_;
   cricket::CandidatePairInterface* last_selected_candidate_pair_;
   rtc::UniqueRandomIdGenerator ssrc_generator_;
+  webrtc::test::ScopedKeyValueConfig field_trials_;
 };
 
 template <>
@@ -1448,7 +1455,7 @@ std::unique_ptr<cricket::VoiceChannel> ChannelTest<VoiceTraits>::CreateChannel(
       worker_thread, network_thread, signaling_thread, std::move(ch),
       cricket::CN_AUDIO, (flags & DTLS) != 0, webrtc::CryptoOptions(),
       &ssrc_generator_);
-  network_thread->Invoke<void>(RTC_FROM_HERE, [&]() {
+  SendTask(network_thread, [&]() {
     RTC_DCHECK_RUN_ON(channel->network_thread());
     channel->SetRtpTransport(rtp_transport);
   });
@@ -1534,7 +1541,7 @@ std::unique_ptr<cricket::VideoChannel> ChannelTest<VideoTraits>::CreateChannel(
       worker_thread, network_thread, signaling_thread, std::move(ch),
       cricket::CN_VIDEO, (flags & DTLS) != 0, webrtc::CryptoOptions(),
       &ssrc_generator_);
-  network_thread->Invoke<void>(RTC_FROM_HERE, [&]() {
+  SendTask(network_thread, [&]() {
     RTC_DCHECK_RUN_ON(channel->network_thread());
     channel->SetRtpTransport(rtp_transport);
   });
@@ -2011,9 +2018,11 @@ TEST_F(VideoChannelSingleThreadTest, TestSetLocalOfferWithPacketization) {
   EXPECT_TRUE(channel1_->SetLocalContent(&video, SdpType::kOffer, err));
   EXPECT_THAT(media_channel1()->send_codecs(), testing::IsEmpty());
   ASSERT_THAT(media_channel1()->recv_codecs(), testing::SizeIs(2));
-  EXPECT_TRUE(media_channel1()->recv_codecs()[0].Matches(kVp8Codec));
+  EXPECT_TRUE(
+      media_channel1()->recv_codecs()[0].Matches(kVp8Codec, &field_trials_));
   EXPECT_EQ(media_channel1()->recv_codecs()[0].packetization, absl::nullopt);
-  EXPECT_TRUE(media_channel1()->recv_codecs()[1].Matches(vp9_codec));
+  EXPECT_TRUE(
+      media_channel1()->recv_codecs()[1].Matches(vp9_codec, &field_trials_));
   EXPECT_EQ(media_channel1()->recv_codecs()[1].packetization,
             cricket::kPacketizationParamRaw);
 }
@@ -2032,9 +2041,11 @@ TEST_F(VideoChannelSingleThreadTest, TestSetRemoteOfferWithPacketization) {
   EXPECT_TRUE(err.empty());
   EXPECT_THAT(media_channel1()->recv_codecs(), testing::IsEmpty());
   ASSERT_THAT(media_channel1()->send_codecs(), testing::SizeIs(2));
-  EXPECT_TRUE(media_channel1()->send_codecs()[0].Matches(kVp8Codec));
+  EXPECT_TRUE(
+      media_channel1()->send_codecs()[0].Matches(kVp8Codec, &field_trials_));
   EXPECT_EQ(media_channel1()->send_codecs()[0].packetization, absl::nullopt);
-  EXPECT_TRUE(media_channel1()->send_codecs()[1].Matches(vp9_codec));
+  EXPECT_TRUE(
+      media_channel1()->send_codecs()[1].Matches(vp9_codec, &field_trials_));
   EXPECT_EQ(media_channel1()->send_codecs()[1].packetization,
             cricket::kPacketizationParamRaw);
 }
@@ -2054,15 +2065,19 @@ TEST_F(VideoChannelSingleThreadTest, TestSetAnswerWithPacketization) {
   EXPECT_TRUE(channel1_->SetRemoteContent(&video, SdpType::kAnswer, err));
   EXPECT_TRUE(err.empty());
   ASSERT_THAT(media_channel1()->recv_codecs(), testing::SizeIs(2));
-  EXPECT_TRUE(media_channel1()->recv_codecs()[0].Matches(kVp8Codec));
+  EXPECT_TRUE(
+      media_channel1()->recv_codecs()[0].Matches(kVp8Codec, &field_trials_));
   EXPECT_EQ(media_channel1()->recv_codecs()[0].packetization, absl::nullopt);
-  EXPECT_TRUE(media_channel1()->recv_codecs()[1].Matches(vp9_codec));
+  EXPECT_TRUE(
+      media_channel1()->recv_codecs()[1].Matches(vp9_codec, &field_trials_));
   EXPECT_EQ(media_channel1()->recv_codecs()[1].packetization,
             cricket::kPacketizationParamRaw);
   EXPECT_THAT(media_channel1()->send_codecs(), testing::SizeIs(2));
-  EXPECT_TRUE(media_channel1()->send_codecs()[0].Matches(kVp8Codec));
+  EXPECT_TRUE(
+      media_channel1()->send_codecs()[0].Matches(kVp8Codec, &field_trials_));
   EXPECT_EQ(media_channel1()->send_codecs()[0].packetization, absl::nullopt);
-  EXPECT_TRUE(media_channel1()->send_codecs()[1].Matches(vp9_codec));
+  EXPECT_TRUE(
+      media_channel1()->send_codecs()[1].Matches(vp9_codec, &field_trials_));
   EXPECT_EQ(media_channel1()->send_codecs()[1].packetization,
             cricket::kPacketizationParamRaw);
 }

@@ -10,11 +10,11 @@
 
 package org.webrtc;
 
-import android.annotation.TargetApi;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
 import android.opengl.GLES20;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Surface;
 import androidx.annotation.Nullable;
@@ -28,11 +28,7 @@ import org.webrtc.ThreadUtils.ThreadChecker;
 
 /**
  * Android hardware video encoder.
- *
- * @note This class is only supported on Android Kitkat and above.
  */
-@TargetApi(19)
-@SuppressWarnings("deprecation") // Cannot support API level 19 without using deprecated methods.
 class HardwareVideoEncoder implements VideoEncoder {
   private static final String TAG = "HardwareVideoEncoder";
 
@@ -60,7 +56,7 @@ class HardwareVideoEncoder implements VideoEncoder {
   /**
    * Keeps track of the number of output buffers that have been passed down the pipeline and not yet
    * released. We need to wait for this to go down to zero before operations invalidating the output
-   * buffers, i.e., stop() and getOutputBuffers().
+   * buffers, i.e., stop() and getOutputBuffer().
    */
   private static class BusyCount {
     private final Object countLock = new Object();
@@ -136,7 +132,6 @@ class HardwareVideoEncoder implements VideoEncoder {
 
   // --- Valid and immutable while an encoding session is running.
   @Nullable private MediaCodecWrapper codec;
-  @Nullable private ByteBuffer[] outputBuffers;
   // Thread that delivers encoded frames to the user callback.
   @Nullable private Thread outputThread;
 
@@ -149,6 +144,10 @@ class HardwareVideoEncoder implements VideoEncoder {
 
   private int width;
   private int height;
+  // Y-plane strides in the encoder's input
+  private int stride;
+  // Y-plane slice-height in the encoder's input
+  private int sliceHeight;
   private boolean useSurfaceMode;
 
   // --- Only accessed from the encoding thread.
@@ -280,8 +279,11 @@ class HardwareVideoEncoder implements VideoEncoder {
         textureEglBase.makeCurrent();
       }
 
+      MediaFormat inputFormat = codec.getInputFormat();
+      stride = getStride(inputFormat, width);
+      sliceHeight = getSliceHeight(inputFormat, height);
+
       codec.start();
-      outputBuffers = codec.getOutputBuffers();
     } catch (IllegalStateException e) {
       Logging.e(TAG, "initEncodeInternal failed", e);
       release();
@@ -331,7 +333,6 @@ class HardwareVideoEncoder implements VideoEncoder {
     outputBuilders.clear();
 
     codec = null;
-    outputBuffers = null;
     outputThread = null;
 
     // Allow changing thread after release.
@@ -450,9 +451,9 @@ class HardwareVideoEncoder implements VideoEncoder {
 
     ByteBuffer buffer;
     try {
-      buffer = codec.getInputBuffers()[index];
+      buffer = codec.getInputBuffer(index);
     } catch (IllegalStateException e) {
-      Logging.e(TAG, "getInputBuffers failed", e);
+      Logging.e(TAG, "getInputBuffer with index=" + index + " failed", e);
       return VideoCodecStatus.ERROR;
     }
     fillInputBuffer(buffer, videoFrameBuffer);
@@ -578,12 +579,11 @@ class HardwareVideoEncoder implements VideoEncoder {
       if (index < 0) {
         if (index == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
           outputBuffersBusyCount.waitForZero();
-          outputBuffers = codec.getOutputBuffers();
         }
         return;
       }
 
-      ByteBuffer codecOutputBuffer = outputBuffers[index];
+      ByteBuffer codecOutputBuffer = codec.getOutputBuffer(index);
       codecOutputBuffer.position(info.offset);
       codecOutputBuffer.limit(info.offset + info.size);
 
@@ -686,9 +686,25 @@ class HardwareVideoEncoder implements VideoEncoder {
     return sharedContext != null && surfaceColorFormat != null;
   }
 
+  private static int getStride(MediaFormat inputFormat, int width) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && inputFormat != null
+        && inputFormat.containsKey(MediaFormat.KEY_STRIDE)) {
+      return inputFormat.getInteger(MediaFormat.KEY_STRIDE);
+    }
+    return width;
+  }
+
+  private static int getSliceHeight(MediaFormat inputFormat, int height) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && inputFormat != null
+        && inputFormat.containsKey(MediaFormat.KEY_SLICE_HEIGHT)) {
+      return inputFormat.getInteger(MediaFormat.KEY_SLICE_HEIGHT);
+    }
+    return height;
+  }
+
   // Visible for testing.
   protected void fillInputBuffer(ByteBuffer buffer, VideoFrame.Buffer videoFrameBuffer) {
-    yuvFormat.fillBuffer(buffer, videoFrameBuffer);
+    yuvFormat.fillBuffer(buffer, videoFrameBuffer, stride, sliceHeight);
   }
 
   /**
@@ -697,24 +713,39 @@ class HardwareVideoEncoder implements VideoEncoder {
   private enum YuvFormat {
     I420 {
       @Override
-      void fillBuffer(ByteBuffer dstBuffer, VideoFrame.Buffer srcBuffer) {
+      void fillBuffer(
+          ByteBuffer dstBuffer, VideoFrame.Buffer srcBuffer, int dstStrideY, int dstSliceHeightY) {
+        /*
+         * According to the docs in Android MediaCodec, the stride of the U and V planes can be
+         * calculated based on the color format, though it is generally undefined and depends on the
+         * device and release.
+         * <p/> Assuming the width and height, dstStrideY and dstSliceHeightY are
+         * even, it works fine when we define the stride and slice-height of the dst U/V plane to be
+         * half of the dst Y plane.
+         */
+        int dstStrideU = dstStrideY / 2;
+        int dstSliceHeight = dstSliceHeightY / 2;
         VideoFrame.I420Buffer i420 = srcBuffer.toI420();
         YuvHelper.I420Copy(i420.getDataY(), i420.getStrideY(), i420.getDataU(), i420.getStrideU(),
-            i420.getDataV(), i420.getStrideV(), dstBuffer, i420.getWidth(), i420.getHeight());
+            i420.getDataV(), i420.getStrideV(), dstBuffer, i420.getWidth(), i420.getHeight(),
+            dstStrideY, dstSliceHeightY, dstStrideU, dstSliceHeight);
         i420.release();
       }
     },
     NV12 {
       @Override
-      void fillBuffer(ByteBuffer dstBuffer, VideoFrame.Buffer srcBuffer) {
+      void fillBuffer(
+          ByteBuffer dstBuffer, VideoFrame.Buffer srcBuffer, int dstStrideY, int dstSliceHeightY) {
         VideoFrame.I420Buffer i420 = srcBuffer.toI420();
         YuvHelper.I420ToNV12(i420.getDataY(), i420.getStrideY(), i420.getDataU(), i420.getStrideU(),
-            i420.getDataV(), i420.getStrideV(), dstBuffer, i420.getWidth(), i420.getHeight());
+            i420.getDataV(), i420.getStrideV(), dstBuffer, i420.getWidth(), i420.getHeight(),
+            dstStrideY, dstSliceHeightY);
         i420.release();
       }
     };
 
-    abstract void fillBuffer(ByteBuffer dstBuffer, VideoFrame.Buffer srcBuffer);
+    abstract void fillBuffer(
+        ByteBuffer dstBuffer, VideoFrame.Buffer srcBuffer, int dstStrideY, int dstSliceHeightY);
 
     static YuvFormat valueOf(int colorFormat) {
       switch (colorFormat) {
