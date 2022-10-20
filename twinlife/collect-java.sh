@@ -9,6 +9,7 @@ mkdir -p out-java/org/webrtc/voiceengine
 cp -p ${ROOT}/modules/audio_device/android/java/src/org/webrtc/voiceengine/*.java out-java/org/webrtc/voiceengine
 mkdir -p out-java/org/webrtc/audio
 cp -p ${ROOT}/sdk/android/api/org/webrtc/audio/*.java out-java/org/webrtc/audio
+cp -p ${ROOT}/sdk/android/src/java/org/webrtc/audio/*.java out-java/org/webrtc/audio
 
 
 
