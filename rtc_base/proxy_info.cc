@@ -23,7 +23,8 @@ ProxyInfo::ProxyInfo() : type(PROXY_NONE), autodetect(false) {}
     type(proxyInfo.type), address(proxyInfo.address),
     autoconfig_url(proxyInfo.autoconfig_url), autodetect(proxyInfo.autodetect),
     bypass_list(proxyInfo.bypass_list), username(proxyInfo.username),
-    password(proxyInfo.password) {}
+    password(proxyInfo.password),
+    paths(proxyInfo.paths) {}
 // --twinlife-- 190102
 ProxyInfo::~ProxyInfo() = default;
 
