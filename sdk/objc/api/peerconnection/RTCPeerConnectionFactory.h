@@ -49,6 +49,11 @@ RTC_OBJC_EXPORT
             decoderFactory:(nullable id<RTC_OBJC_TYPE(RTCVideoDecoderFactory)>)
                                decoderFactory;
 
+// --twinlife-- 2020-06-17
+/// Initialize the factory without Audio/Video.
+- (instancetype)initWithNoMedia;
+// --twinlife-- 2020-06-17
+
 /* Initialize object with injectable video encoder/decoder factories and
  * injectable ADM */
 - (instancetype)
