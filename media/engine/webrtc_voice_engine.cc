@@ -333,10 +333,12 @@ void WebRtcVoiceEngine::Init() {
   RTC_LOG(LS_INFO) << "WebRtcVoiceEngine::Init";
 
   // TaskQueue expects to be created/destroyed on the same thread.
-  RTC_DCHECK(!low_priority_worker_queue_);
-  low_priority_worker_queue_.reset(
-      new rtc::TaskQueue(task_queue_factory_->CreateTaskQueue(
-          "rtc-low-prio", webrtc::TaskQueueFactory::Priority::LOW)));
+  // --twinlife-- 2022-10-24: don't create the low_priority worker queue (not used for us).
+  // RTC_DCHECK(!low_priority_worker_queue_);
+  // low_priority_worker_queue_.reset(
+  //    new rtc::TaskQueue(task_queue_factory_->CreateTaskQueue(
+  //        "rtc-low-prio", webrtc::TaskQueueFactory::Priority::LOW)));
+  // --twinlife-- 2022-10-24
 
   // Load our audio codec lists.
   RTC_LOG(LS_VERBOSE) << "Supported send codecs in order of preference:";
@@ -609,9 +611,11 @@ bool WebRtcVoiceEngine::StartAecDump(webrtc::FileWrapper file,
            "present, hence no aecdump is started.";
     return false;
   }
-
-  return ap->CreateAndAttachAecDump(file.Release(), max_size_bytes,
-                                    low_priority_worker_queue_.get());
+  // --twinlife-- 2022-10-24: do nothing if we try to start the AEC dump.
+  return false;
+  // return ap->CreateAndAttachAecDump(file.Release(), max_size_bytes,
+  //                                    low_priority_worker_queue_.get());
+  // --twinlife-- 2022-10-24
 }
 
 void WebRtcVoiceEngine::StopAecDump() {

@@ -96,7 +96,9 @@ class WebRtcVoiceEngine final : public VoiceEngineInterface {
   int CreateVoEChannel();
 
   webrtc::TaskQueueFactory* const task_queue_factory_;
-  std::unique_ptr<rtc::TaskQueue> low_priority_worker_queue_;
+  // --twinlife-- 2022-10-24: don't create the low_priority worker queue (not used for us).
+  // std::unique_ptr<rtc::TaskQueue> low_priority_worker_queue_;
+  // --twinlife-- 2022-10-24
 
   webrtc::AudioDeviceModule* adm();
   webrtc::AudioProcessing* apm() const;
