@@ -78,6 +78,12 @@ RTC_OBJC_EXPORT
 - (RTC_OBJC_TYPE(RTCRtpCapabilities) *)rtpReceiverCapabilitiesForKind:
     (NSString *)kind;
 
+// --twinlife-- 2022-10-26: factory use counter tracking
+- (void)incrementUseCounter;
+- (void)decrementUseCounter;
+- (BOOL)isUsed;
+// --twinlife-- 2022-10-26
+
 /** Initialize an RTCAudioSource with constraints. */
 - (RTC_OBJC_TYPE(RTCAudioSource) *)audioSourceWithConstraints:
     (nullable RTC_OBJC_TYPE(RTCMediaConstraints) *)constraints;

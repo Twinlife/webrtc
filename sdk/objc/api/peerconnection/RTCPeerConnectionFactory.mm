@@ -58,6 +58,9 @@
   std::unique_ptr<rtc::Thread> _workerThread;
   std::unique_ptr<rtc::Thread> _signalingThread;
   BOOL _hasStartedAecDump;
+  // --twinlife-- 2022-10-26: factory use counter tracking
+  int _useCounter;
+  // --twinlife-- 2022-10-26
 }
 
 @synthesize nativeFactory = _nativeFactory;
@@ -276,6 +279,20 @@
   return [[RTC_OBJC_TYPE(RTCRtpCapabilities) alloc]
       initWithNativeRtpCapabilities:rtpCapabilities];
 }
+
+// --twinlife-- 2022-10-26: factory use counter tracking
+- (void)incrementUseCounter {
+  _useCounter++;
+}
+
+- (void)decrementUseCounter {
+  _useCounter--;
+}
+
+- (BOOL)isUsed {
+  return _useCounter > 0;
+}
+// --twinlife-- 2022-10-26
 
 - (RTC_OBJC_TYPE(RTCAudioSource) *)audioSourceWithConstraints:
     (nullable RTC_OBJC_TYPE(RTCMediaConstraints) *)constraints {
