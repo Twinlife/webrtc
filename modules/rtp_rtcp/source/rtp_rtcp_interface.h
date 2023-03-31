@@ -186,8 +186,8 @@ class RtpRtcpInterface : public RtcpFeedbackSenderInterface {
   // Receiver functions
   // **************************************************************************
 
-  virtual void IncomingRtcpPacket(const uint8_t* incoming_packet,
-                                  size_t incoming_packet_length) = 0;
+  virtual void IncomingRtcpPacket(
+      rtc::ArrayView<const uint8_t> incoming_packet) = 0;
 
   virtual void SetRemoteSSRC(uint32_t ssrc) = 0;
 
@@ -257,10 +257,6 @@ class RtpRtcpInterface : public RtcpFeedbackSenderInterface {
   // The MID RTP header extension should be registered for this to do anything.
   // Once set, this value can not be changed or removed.
   virtual void SetMid(absl::string_view mid) = 0;
-
-  // Sets CSRC.
-  // `csrcs` - vector of CSRCs
-  virtual void SetCsrcs(const std::vector<uint32_t>& csrcs) = 0;
 
   // Turns on/off sending RTX (RFC 4588). The modes can be set as a combination
   // of values of the enumerator RtxMode.

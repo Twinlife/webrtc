@@ -66,8 +66,8 @@ class ModuleRtpRtcpImpl2 final : public RtpRtcpInterface,
   // Receiver part.
 
   // Called when we receive an RTCP packet.
-  void IncomingRtcpPacket(const uint8_t* incoming_packet,
-                          size_t incoming_packet_length) override;
+  void IncomingRtcpPacket(
+      rtc::ArrayView<const uint8_t> incoming_packet) override;
 
   void SetRemoteSSRC(uint32_t ssrc) override;
 
@@ -113,8 +113,6 @@ class ModuleRtpRtcpImpl2 final : public RtpRtcpInterface,
   uint32_t local_media_ssrc() const;
 
   void SetMid(absl::string_view mid) override;
-
-  void SetCsrcs(const std::vector<uint32_t>& csrcs) override;
 
   RTCPSender::FeedbackState GetFeedbackState();
 

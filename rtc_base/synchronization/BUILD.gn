@@ -90,7 +90,6 @@ if (rtc_include_tests) {
         "..:checks",
         "..:macromagic",
         "..:platform_thread",
-        "..:rtc_base",
         "..:rtc_event",
         "..:threading",
         "../../test:test_support",

@@ -38,7 +38,7 @@ class AudioReceiveStreamInterface : public MediaReceiveStreamInterface {
     uint32_t packets_rcvd = 0;
     uint64_t fec_packets_received = 0;
     uint64_t fec_packets_discarded = 0;
-    uint32_t packets_lost = 0;
+    int32_t packets_lost = 0;
     uint64_t packets_discarded = 0;
     uint32_t nacks_sent = 0;
     std::string codec_name;
@@ -197,12 +197,6 @@ class AudioReceiveStreamInterface : public MediaReceiveStreamInterface {
   // This member will not change mid-stream and can be assumed to be const
   // post initialization.
   virtual uint32_t remote_ssrc() const = 0;
-
-  // Access the currently set rtp extensions. Must be called on the packet
-  // delivery thread.
-  // TODO(tommi): This is currently only called from
-  // `WebRtcAudioReceiveStream::GetRtpParameters()`. See if we can remove it.
-  virtual const std::vector<RtpExtension>& GetRtpExtensions() const = 0;
 
  protected:
   virtual ~AudioReceiveStreamInterface() {}

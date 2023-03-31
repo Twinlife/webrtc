@@ -58,8 +58,6 @@ ModuleRtpRtcpImpl::RtpSenderContext::RtpSenderContext(
 std::unique_ptr<RtpRtcp> RtpRtcp::DEPRECATED_Create(
     const Configuration& configuration) {
   RTC_DCHECK(configuration.clock);
-  RTC_LOG(LS_ERROR)
-      << "*********** USING WebRTC INTERNAL IMPLEMENTATION DETAILS ***********";
   return std::make_unique<ModuleRtpRtcpImpl>(configuration);
 }
 
@@ -194,9 +192,9 @@ absl::optional<uint32_t> ModuleRtpRtcpImpl::FlexfecSsrc() const {
   return absl::nullopt;
 }
 
-void ModuleRtpRtcpImpl::IncomingRtcpPacket(const uint8_t* rtcp_packet,
-                                           const size_t length) {
-  rtcp_receiver_.IncomingPacket(rtcp_packet, length);
+void ModuleRtpRtcpImpl::IncomingRtcpPacket(
+    rtc::ArrayView<const uint8_t> rtcp_packet) {
+  rtcp_receiver_.IncomingPacket(rtcp_packet);
 }
 
 void ModuleRtpRtcpImpl::RegisterSendPayloadFrequency(int payload_type,
@@ -263,11 +261,6 @@ void ModuleRtpRtcpImpl::SetMid(absl::string_view mid) {
   }
   // TODO(bugs.webrtc.org/4050): If we end up supporting the MID SDES item for
   // RTCP, this will need to be passed down to the RTCPSender also.
-}
-
-void ModuleRtpRtcpImpl::SetCsrcs(const std::vector<uint32_t>& csrcs) {
-  rtcp_sender_.SetCsrcs(csrcs);
-  rtp_sender_->packet_generator.SetCsrcs(csrcs);
 }
 
 // TODO(pbos): Handle media and RTX streams separately (separate RTCP

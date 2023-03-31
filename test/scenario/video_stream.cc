@@ -27,6 +27,7 @@
 #include "test/fake_encoder.h"
 #include "test/scenario/hardware_codecs.h"
 #include "test/testsupport/file_utils.h"
+#include "video/config/encoder_stream_factory.h"
 
 namespace webrtc {
 namespace test {
@@ -77,24 +78,6 @@ VideoEncoderConfig::ContentType ConvertContentType(
     case VideoStreamConfig::Encoder::ContentType::kScreen:
       return VideoEncoderConfig::ContentType::kScreen;
   }
-}
-
-std::vector<RtpExtension> GetVideoRtpExtensions(
-    const VideoStreamConfig config) {
-  std::vector<RtpExtension> res = {
-      RtpExtension(RtpExtension::kVideoContentTypeUri,
-                   kVideoContentTypeExtensionId),
-      RtpExtension(RtpExtension::kVideoRotationUri,
-                   kVideoRotationRtpExtensionId)};
-  if (config.stream.packet_feedback) {
-    res.push_back(RtpExtension(RtpExtension::kTransportSequenceNumberUri,
-                               kTransportSequenceNumberExtensionId));
-  }
-  if (config.stream.abs_send_time) {
-    res.push_back(
-        RtpExtension(RtpExtension::kAbsSendTimeUri, kAbsSendTimeExtensionId));
-  }
-  return res;
 }
 
 std::string TransformFilePath(std::string path) {
@@ -223,6 +206,7 @@ CreateEncoderSpecificSettings(VideoStreamConfig config) {
 }
 
 VideoEncoderConfig CreateVideoEncoderConfig(VideoStreamConfig config) {
+  webrtc::VideoEncoder::EncoderInfo encoder_info;
   VideoEncoderConfig encoder_config;
   encoder_config.codec_type = config.encoder.codec;
   encoder_config.content_type = ConvertContentType(config.encoder.content_type);
@@ -240,7 +224,8 @@ VideoEncoderConfig CreateVideoEncoderConfig(VideoStreamConfig config) {
                        VideoStreamConfig::Encoder::ContentType::kScreen;
     encoder_config.video_stream_factory =
         rtc::make_ref_counted<cricket::EncoderStreamFactory>(
-            cricket_codec, kDefaultMaxQp, screenshare, screenshare);
+            cricket_codec, kDefaultMaxQp, screenshare, screenshare,
+            encoder_info);
   } else {
     encoder_config.video_stream_factory =
         rtc::make_ref_counted<DefaultVideoStreamFactory>();
@@ -326,9 +311,7 @@ VideoReceiveStreamInterface::Config CreateVideoReceiveStreamConfig(
     uint32_t ssrc,
     uint32_t rtx_ssrc) {
   VideoReceiveStreamInterface::Config recv(feedback_transport);
-  recv.rtp.transport_cc = config.stream.packet_feedback;
   recv.rtp.local_ssrc = local_ssrc;
-  recv.rtp.extensions = GetVideoRtpExtensions(config);
 
   RTC_DCHECK(!config.stream.use_rtx ||
              config.stream.nack_history_time > TimeDelta::Zero());
@@ -353,6 +336,24 @@ VideoReceiveStreamInterface::Config CreateVideoReceiveStreamConfig(
   return recv;
 }
 }  // namespace
+
+std::vector<RtpExtension> GetVideoRtpExtensions(
+    const VideoStreamConfig config) {
+  std::vector<RtpExtension> res = {
+      RtpExtension(RtpExtension::kVideoContentTypeUri,
+                   kVideoContentTypeExtensionId),
+      RtpExtension(RtpExtension::kVideoRotationUri,
+                   kVideoRotationRtpExtensionId)};
+  if (config.stream.packet_feedback) {
+    res.push_back(RtpExtension(RtpExtension::kTransportSequenceNumberUri,
+                               kTransportSequenceNumberExtensionId));
+  }
+  if (config.stream.abs_send_time) {
+    res.push_back(
+        RtpExtension(RtpExtension::kAbsSendTimeUri, kAbsSendTimeExtensionId));
+  }
+  return res;
+}
 
 SendVideoStream::SendVideoStream(CallClient* sender,
                                  VideoStreamConfig config,
@@ -477,7 +478,7 @@ void SendVideoStream::UpdateActiveLayers(std::vector<bool> active_layers) {
     MutexLock lock(&mutex_);
     if (config_.encoder.codec ==
         VideoStreamConfig::Encoder::Codec::kVideoCodecVP8) {
-      send_stream_->UpdateActiveSimulcastLayers(active_layers);
+      send_stream_->StartPerRtpStream(active_layers);
     }
     VideoEncoderConfig encoder_config = CreateVideoEncoderConfig(config_);
     RTC_CHECK_EQ(encoder_config.simulcast_layers.size(), active_layers.size());
