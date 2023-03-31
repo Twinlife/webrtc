@@ -29,6 +29,9 @@ uint16_t ExampleVideoQualityAnalyzer::OnFrameCaptured(
     const webrtc::VideoFrame& frame) {
   MutexLock lock(&lock_);
   uint16_t frame_id = next_frame_id_++;
+  if (frame_id == VideoFrame::kNotSetId) {
+    frame_id = next_frame_id_++;
+  }
   auto it = frames_in_flight_.find(frame_id);
   if (it == frames_in_flight_.end()) {
     frames_in_flight_.insert(frame_id);
@@ -58,7 +61,8 @@ void ExampleVideoQualityAnalyzer::OnFrameEncoded(
     absl::string_view peer_name,
     uint16_t frame_id,
     const webrtc::EncodedImage& encoded_image,
-    const EncoderStats& stats) {
+    const EncoderStats& stats,
+    bool discarded) {
   MutexLock lock(&lock_);
   ++frames_encoded_;
 }

@@ -624,10 +624,12 @@ VideoReceiveStreamInterface::Stats ReceiveStatisticsProxy::GetStats() const {
       video_quality_observer_->TotalFreezesDurationMs();
   stats_.total_pauses_duration_ms =
       video_quality_observer_->TotalPausesDurationMs();
-  stats_.total_frames_duration_ms =
-      video_quality_observer_->TotalFramesDurationMs();
-  stats_.sum_squared_frame_durations =
+  stats_.total_inter_frame_delay =
+      static_cast<double>(video_quality_observer_->TotalFramesDurationMs()) /
+      rtc::kNumMillisecsPerSec;
+  stats_.total_squared_inter_frame_delay =
       video_quality_observer_->SumSquaredFrameDurationsSec();
+
   stats_.content_type = last_content_type_;
   stats_.timing_frame_info = timing_frame_info_counter_.Max(now_ms);
   stats_.jitter_buffer_delay_seconds =
@@ -647,13 +649,16 @@ void ReceiveStatisticsProxy::OnIncomingPayloadType(int payload_type) {
   }));
 }
 
-void ReceiveStatisticsProxy::OnDecoderImplementationName(
-    const char* implementation_name) {
+void ReceiveStatisticsProxy::OnDecoderInfo(
+    const VideoDecoder::DecoderInfo& decoder_info) {
   RTC_DCHECK_RUN_ON(&decode_queue_);
   worker_thread_->PostTask(SafeTask(
-      task_safety_.flag(), [name = std::string(implementation_name), this]() {
+      task_safety_.flag(),
+      [this, name = decoder_info.implementation_name,
+       is_hardware_accelerated = decoder_info.is_hardware_accelerated]() {
         RTC_DCHECK_RUN_ON(&main_thread_);
         stats_.decoder_implementation_name = name;
+        stats_.power_efficient_decoder = is_hardware_accelerated;
       }));
 }
 
@@ -836,10 +841,6 @@ void ReceiveStatisticsProxy::OnDecodedFrame(
     int64_t interframe_delay_ms =
         frame_meta.decode_timestamp.ms() - *last_decoded_frame_time_ms_;
     RTC_DCHECK_GE(interframe_delay_ms, 0);
-    double interframe_delay = interframe_delay_ms / 1000.0;
-    stats_.total_inter_frame_delay += interframe_delay;
-    stats_.total_squared_inter_frame_delay +=
-        interframe_delay * interframe_delay;
     interframe_delay_max_moving_.Add(interframe_delay_ms,
                                      frame_meta.decode_timestamp.ms());
     content_specific_stats->interframe_delay_counter.Add(interframe_delay_ms);

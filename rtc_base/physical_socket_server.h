@@ -173,6 +173,8 @@ class PhysicalSocket : public Socket, public sigslot::has_slots<> {
 
   SocketServer* socketserver() { return ss_; }
 
+  SOCKET GetSocketFD() const { return s_; }
+
  protected:
   int DoConnect(const SocketAddress& connect_addr);
 
@@ -189,6 +191,11 @@ class PhysicalSocket : public Socket, public sigslot::has_slots<> {
                        int flags,
                        const struct sockaddr* dest_addr,
                        socklen_t addrlen);
+
+  int DoReadFromSocket(void* buffer,
+                       size_t length,
+                       SocketAddress* out_addr,
+                       int64_t* timestamp);
 
   void OnResolveResult(AsyncResolverInterface* resolver);
 
@@ -216,6 +223,7 @@ class PhysicalSocket : public Socket, public sigslot::has_slots<> {
 #endif
 
  private:
+  const bool read_scm_timestamp_experiment_;
   uint8_t enabled_events_ = 0;
 };
 

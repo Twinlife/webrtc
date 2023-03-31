@@ -143,7 +143,7 @@ int32_t FakeEncoder::Encode(const VideoFrame& input_image,
     encoded._encodedHeight = simulcast_streams[i].height;
     if (qp)
       encoded.qp_ = *qp;
-    encoded.SetSpatialIndex(i);
+    encoded.SetSimulcastIndex(i);
     CodecSpecificInfo codec_specific = EncodeHook(encoded, buffer);
 
     if (callback->OnEncodedImage(encoded, &codec_specific).error !=
@@ -275,6 +275,7 @@ const char* FakeEncoder::kImplementationName = "fake_encoder";
 VideoEncoder::EncoderInfo FakeEncoder::GetEncoderInfo() const {
   EncoderInfo info;
   info.implementation_name = kImplementationName;
+  info.is_hardware_accelerated = true;
   MutexLock lock(&mutex_);
   for (int sid = 0; sid < config_.numberOfSimulcastStreams; ++sid) {
     int number_of_temporal_layers =

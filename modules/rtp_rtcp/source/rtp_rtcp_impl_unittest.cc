@@ -44,6 +44,9 @@ const uint8_t kPayloadType = 100;
 const int kWidth = 320;
 const int kHeight = 100;
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+
 class RtcpRttStatsTestImpl : public RtcpRttStats {
  public:
   RtcpRttStatsTestImpl() : rtt_ms_(0) {}
@@ -86,7 +89,7 @@ class SendTransport : public Transport {
       clock_->AdvanceTimeMilliseconds(delay_ms_);
     }
     EXPECT_TRUE(receiver_);
-    receiver_->IncomingRtcpPacket(data, len);
+    receiver_->IncomingRtcpPacket(rtc::MakeArrayView(data, len));
     ++rtcp_packets_sent_;
     return true;
   }
@@ -225,7 +228,7 @@ class RtpRtcpImplTest : public ::testing::Test {
     const uint8_t payload[100] = {0};
     EXPECT_TRUE(module->impl_->OnSendingRtpFrame(0, 0, kPayloadType, true));
     EXPECT_TRUE(sender->SendVideo(kPayloadType, VideoCodecType::kVideoCodecVP8,
-                                  0, 0, payload, rtp_video_header, 0));
+                                  0, 0, payload, rtp_video_header, 0, {}));
   }
 
   void IncomingRtcpNack(const RtpRtcpModule* module, uint16_t sequence_number) {
@@ -237,8 +240,7 @@ class RtpRtcpImplTest : public ::testing::Test {
     nack.SetSenderSsrc(sender ? kReceiverSsrc : kSenderSsrc);
     nack.SetMediaSsrc(sender ? kSenderSsrc : kReceiverSsrc);
     nack.SetPacketIds(list, kListLength);
-    rtc::Buffer packet = nack.Build();
-    module->impl_->IncomingRtcpPacket(packet.data(), packet.size());
+    module->impl_->IncomingRtcpPacket(nack.Build());
   }
 };
 
@@ -625,8 +627,7 @@ TEST_F(RtpRtcpImplTest, SenderReportStatsNotUpdatedWithUnexpectedSsrc) {
   sr.SetNtp({/*seconds=*/1u, /*fractions=*/1u << 31});
   sr.SetPacketCount(123u);
   sr.SetOctetCount(456u);
-  auto raw_packet = sr.Build();
-  receiver_.impl_->IncomingRtcpPacket(raw_packet.data(), raw_packet.size());
+  receiver_.impl_->IncomingRtcpPacket(sr.Build());
   EXPECT_THAT(receiver_.impl_->GetSenderReportStats(), Eq(absl::nullopt));
 }
 
@@ -643,8 +644,7 @@ TEST_F(RtpRtcpImplTest, SenderReportStatsCheckStatsFromLastReport) {
   sr.SetNtp(ntp);
   sr.SetPacketCount(kPacketCount);
   sr.SetOctetCount(kOctetCount);
-  auto raw_packet = sr.Build();
-  receiver_.impl_->IncomingRtcpPacket(raw_packet.data(), raw_packet.size());
+  receiver_.impl_->IncomingRtcpPacket(sr.Build());
 
   EXPECT_THAT(
       receiver_.impl_->GetSenderReportStats(),
@@ -696,5 +696,7 @@ TEST_F(RtpRtcpImplTest, SenderReportStatsPacketByteCounters) {
               Optional(AllOf(Field(&SenderReportStats::packets_sent, Gt(0u)),
                              Field(&SenderReportStats::bytes_sent, Gt(0u)))));
 }
+
+#pragma clang diagnostic pop
 
 }  // namespace webrtc

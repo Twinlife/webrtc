@@ -176,7 +176,7 @@ typedef std::set<rtc::SocketAddress> ServerAddresses;
 // Represents a local communication mechanism that can be used to create
 // connections to similar mechanisms of the other client.  Subclasses of this
 // one add support for specific mechanisms like local UDP ports.
-class Port : public PortInterface, public sigslot::has_slots<> {
+class RTC_EXPORT Port : public PortInterface, public sigslot::has_slots<> {
  public:
   // INIT: The state when a port is just created.
   // KEEP_ALIVE_UNTIL_PRUNED: A port should not be destroyed even if no
@@ -386,10 +386,10 @@ class Port : public PortInterface, public sigslot::has_slots<> {
   //   then the foundation will be different.  Two candidate pairs with
   //   the same foundation pairs are likely to have similar network
   //   characteristics. Foundations are used in the frozen algorithm.
-  static std::string ComputeFoundation(absl::string_view type,
-                                       absl::string_view protocol,
-                                       absl::string_view relay_protocol,
-                                       const rtc::SocketAddress& base_address);
+  std::string ComputeFoundation(absl::string_view type,
+                                absl::string_view protocol,
+                                absl::string_view relay_protocol,
+                                const rtc::SocketAddress& base_address);
 
  protected:
   virtual void UpdateNetworkCost();

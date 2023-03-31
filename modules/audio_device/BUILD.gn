@@ -54,6 +54,7 @@ rtc_source_set("audio_device_api") {
     "../../rtc_base:refcount",
     "../../rtc_base:stringutils",
   ]
+  absl_deps = [ "//third_party/abseil-cpp/absl/types:optional" ]
 }
 
 rtc_library("audio_device_buffer") {
@@ -72,6 +73,7 @@ rtc_library("audio_device_buffer") {
     "../../common_audio:common_audio_c",
     "../../rtc_base:buffer",
     "../../rtc_base:checks",
+    "../../rtc_base:event_tracer",
     "../../rtc_base:logging",
     "../../rtc_base:macromagic",
     "../../rtc_base:rtc_task_queue",

@@ -314,12 +314,6 @@ TEST_F(RtpTransceiverTestForHeaderExtensions,
   EXPECT_THAT(transceiver_->SetOfferedRtpHeaderExtensions(modified_extensions),
               Property(&RTCError::type, RTCErrorType::INVALID_MODIFICATION));
   EXPECT_EQ(transceiver_->HeaderExtensionsToOffer(), extensions_);
-  modified_extensions = extensions_;
-  // Attempting to stop the mandatory video orientation extension.
-  modified_extensions[3].direction = RtpTransceiverDirection::kStopped;
-  EXPECT_THAT(transceiver_->SetOfferedRtpHeaderExtensions(modified_extensions),
-              Property(&RTCError::type, RTCErrorType::INVALID_MODIFICATION));
-  EXPECT_EQ(transceiver_->HeaderExtensionsToOffer(), extensions_);
 }
 
 TEST_F(RtpTransceiverTestForHeaderExtensions,
@@ -344,7 +338,8 @@ TEST_F(RtpTransceiverTestForHeaderExtensions,
   EXPECT_CALL(*mock_channel, SetFirstPacketReceivedCallback(_));
   EXPECT_CALL(*mock_channel, media_type())
       .WillRepeatedly(Return(cricket::MediaType::MEDIA_TYPE_AUDIO));
-  EXPECT_CALL(*mock_channel, media_channel()).WillRepeatedly(Return(nullptr));
+  EXPECT_CALL(*mock_channel, media_send_channel())
+      .WillRepeatedly(Return(nullptr));
   EXPECT_CALL(*mock_channel, mid()).WillRepeatedly(ReturnRef(content_name));
   EXPECT_CALL(*mock_channel, SetRtpTransport(_)).WillRepeatedly(Return(true));
   transceiver_->SetChannel(std::move(mock_channel),
@@ -368,7 +363,8 @@ TEST_F(RtpTransceiverTestForHeaderExtensions, ReturnsNegotiatedHdrExts) {
   EXPECT_CALL(*mock_channel, SetFirstPacketReceivedCallback(_));
   EXPECT_CALL(*mock_channel, media_type())
       .WillRepeatedly(Return(cricket::MediaType::MEDIA_TYPE_AUDIO));
-  EXPECT_CALL(*mock_channel, media_channel()).WillRepeatedly(Return(nullptr));
+  EXPECT_CALL(*mock_channel, media_send_channel())
+      .WillRepeatedly(Return(nullptr));
   EXPECT_CALL(*mock_channel, mid()).WillRepeatedly(ReturnRef(content_name));
   EXPECT_CALL(*mock_channel, SetRtpTransport(_)).WillRepeatedly(Return(true));
 
