@@ -20,6 +20,7 @@
 #ifdef WEBRTC_USE_G7xx // --twinlife 2022-04-13: don't include G711 and G722 because we don't use them
 #include "api/audio_codecs/g711/audio_decoder_g711.h"
 #include "api/audio_codecs/g722/audio_decoder_g722.h"
+#endif
 #if WEBRTC_USE_BUILTIN_ILBC
 #include "api/audio_codecs/ilbc/audio_decoder_ilbc.h"  // nogncheck
 #endif
