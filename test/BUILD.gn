@@ -910,16 +910,18 @@ rtc_library("fake_video_codecs") {
   allow_poison = [ "software_video_codecs" ]
   visibility = [ "*" ]
   sources = [
-    "configurable_frame_size_encoder.cc",
-    "configurable_frame_size_encoder.h",
-    "fake_decoder.cc",
-    "fake_decoder.h",
-    "fake_encoder.cc",
-    "fake_encoder.h",
-    "fake_vp8_decoder.cc",
-    "fake_vp8_decoder.h",
-    "fake_vp8_encoder.cc",
-    "fake_vp8_encoder.h",
+     # --twinlife-- 2023-04-04: don't build the fake encoder/decoder
+     # "configurable_frame_size_encoder.cc",
+     # "configurable_frame_size_encoder.h",
+     # "fake_decoder.cc",
+     # "fake_decoder.h",
+     # "fake_encoder.cc",
+     # "fake_encoder.h",
+     # "fake_vp8_decoder.cc",
+     # "fake_vp8_decoder.h",
+     # "fake_vp8_encoder.cc",
+     # "fake_vp8_encoder.h",
+     # --twinlife-- 2023-04-04: don't build the fake encoder/decoder
   ]
   deps = [
     "../api:fec_controller_api",
