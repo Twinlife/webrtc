@@ -13,11 +13,6 @@ enable_java_templates = true
 # only needed to support both WebRTC standalone and Chromium builds.
 build_with_chromium = false
 
-# WebRTC checks out google_benchmark by default since it is always used.
-# --twinlife-- 2023-04-04: we don't want google benchmark
-# checkout_google_benchmark = true
-# --twinlife-- 2023-04-04: we don't want google benchmark
-
 # Use our own suppressions files.
 asan_suppressions_file = "//build/sanitizers/asan_suppressions.cc"
 lsan_suppressions_file = "//tools_webrtc/sanitizers/lsan_suppressions_webrtc.cc"
