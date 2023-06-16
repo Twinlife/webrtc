@@ -17,14 +17,8 @@ cd $ROOT/buildtools
 echo -n "    buildtools:                           "
 git rev-parse HEAD
 
-echo    "     third_party"
-
-cd $ROOT/buildtools/third_party/libc++
-echo -n "      libc++:                             "
-git rev-parse HEAD
-
-cd $ROOT/buildtools/third_party/libc++abi
-echo -n "      libc++abi:                          "
+cd $ROOT/buildtools/third_party
+echo -n "     third_party                          "
 git rev-parse HEAD
 
 cd $ROOT/testing
@@ -78,6 +72,10 @@ cd $ROOT/third_party/crc32c
 echo -n "     crc32c:                              "
 git rev-parse HEAD
 
+cd $ROOT/third_party/dav1d
+echo -n "     dav1d:                               "
+git rev-parse HEAD
+
 cd $ROOT/third_party/expat
 echo -n "     expat:                               "
 git rev-parse HEAD
@@ -120,10 +118,6 @@ git rev-parse HEAD
 
 cd $ROOT/third_party/llvm-build
 echo -n "     llvm-build:                          "
-git rev-parse HEAD
-
-cd $ROOT/third_party/modp_b64
-echo -n "     modp_b64:                            "
 git rev-parse HEAD
 
 cd $ROOT/third_party/nasm
