@@ -42,6 +42,7 @@ namespace rtc {
 class RTC_EXPORT AsyncResolver : public AsyncResolverInterface {
  public:
   AsyncResolver();
+  AsyncResolver(const std::vector<rtc::StaticHostname> *hostnames);
   ~AsyncResolver() override;
 
   void Start(const SocketAddress& addr) override;
@@ -68,6 +69,7 @@ class RTC_EXPORT AsyncResolver : public AsyncResolverInterface {
   bool destroy_called_ = false;
   scoped_refptr<State> state_;
   RTC_NO_UNIQUE_ADDRESS webrtc::SequenceChecker sequence_checker_;
+  const std::vector<StaticHostname> *hostnames_;
 };
 
 }  // namespace rtc

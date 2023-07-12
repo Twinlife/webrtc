@@ -161,6 +161,37 @@ public class PeerConnection {
     @CalledByNative("Observer") default void onTrack(RtpTransceiver transceiver){};
   }
 
+  // --twinlife 2023-07-11: provide hostname resolution
+  public static class ServerAddr {
+      public final String hostname;
+      public final String ipv4;
+      public final String ipv6;
+      public ServerAddr(String hostname, String ipv4, String ipv6) {
+          this.hostname = hostname;
+          this.ipv4 = ipv4;
+          this.ipv6 = ipv6;
+      }
+
+      @Nullable
+      @CalledByNative("ServerAddr")
+      String getHostname() {
+          return hostname;
+      }
+
+      @Nullable
+      @CalledByNative("ServerAddr")
+      String getIPv4() {
+          return ipv4;
+      }
+
+      @Nullable
+      @CalledByNative("ServerAddr")
+      String getIPv6() {
+          return ipv6;
+      }
+  }
+  // --twinlife 2023-07-11: provide hostname resolution
+
   /** Java version of PeerConnectionInterface.IceServer. */
   public static class IceServer {
     // List of URIs associated with this server. Valid formats are described
@@ -561,6 +592,10 @@ public class PeerConnection {
     @Nullable public Map<String, String> proxyPaths;
     // --twinlife-- 180203
 
+    // --twinlife 2023-07-11: provide hostname resolution
+    @Nullable public List<ServerAddr> hostAddresses;
+    // --twinlife 2023-07-11: provide hostname resolution
+
     /**
      * An optional string that if set will be attached to the
      * TURN_ALLOCATE_REQUEST which can be used to correlate client
@@ -626,6 +661,7 @@ public class PeerConnection {
       proxyUsername = null;
       proxyPassword = null;
       proxyPaths = null;
+      hostAddresses = null;
       // --twinlife-- 180203
       turnLoggingId = null;
       allowCodecSwitching = null;
@@ -872,6 +908,14 @@ public class PeerConnection {
       return proxyPaths;
     }
     // --twinlife-- 180203
+
+    // --twinlife 2023-07-11: provide hostname resolution
+    @Nullable
+    @CalledByNative("RTCConfiguration")
+    List getHostAddresses() {
+      return hostAddresses;
+    }
+    // --twinlife 2023-07-11: provide hostname resolution
 
     @CalledByNative("RTCConfiguration")
     boolean getEnableImplicitRollback() {

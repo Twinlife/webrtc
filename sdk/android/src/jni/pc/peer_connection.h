@@ -34,6 +34,11 @@ void JavaToNativeRTCConfiguration(
 rtc::KeyType GetRtcConfigKeyType(JNIEnv* env,
                                  const JavaRef<jobject>& j_rtc_config);
 
+// --twinlife 2023-07-11: provide hostname resolution
+void JavaToNativeStaticHostnames(JNIEnv *jni, const JavaRef<jobject>& j_host_addresses,
+                                 std::vector<webrtc::StaticHostname>& hostnames);
+// --twinlife 2023-07-11: provide hostname resolution
+
 ScopedJavaLocalRef<jobject> NativeToJavaAdapterType(JNIEnv* env,
                                                     int adapterType);
 

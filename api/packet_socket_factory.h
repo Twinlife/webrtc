@@ -72,6 +72,9 @@ class RTC_EXPORT PacketSocketFactory {
       const std::string& user_agent,
       const PacketSocketTcpOptions& tcp_options) = 0;
 
+  // --twinlife 2023-07-11: provide hostname resolution
+  // disable the deprecated CreateAsyncResolver() to make sure we only use the CreateAsyncDnsResolver()
+#if 0
   // The AsyncResolverInterface is deprecated; users are encouraged
   // to switch to the AsyncDnsResolverInterface.
   // TODO(bugs.webrtc.org/12598): Remove once all downstream users
@@ -89,6 +92,11 @@ class RTC_EXPORT PacketSocketFactory {
     return std::make_unique<webrtc::WrappingAsyncDnsResolver>(
         CreateAsyncResolver());
   }
+#else
+  virtual std::unique_ptr<webrtc::AsyncDnsResolverInterface>
+  CreateAsyncDnsResolver() = 0;
+#endif
+  // --twinlife 2023-07-11: provide hostname resolution
 
  private:
   PacketSocketFactory(const PacketSocketFactory&) = delete;

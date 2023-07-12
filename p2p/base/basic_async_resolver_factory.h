@@ -22,7 +22,11 @@
 namespace webrtc {
 
 class BasicAsyncResolverFactory final : public AsyncResolverFactory {
+  // --twinlife 2023-07-11: provide hostname resolution
+  std::vector<rtc::StaticHostname> hostnames_;
  public:
+  void setHostnames(const std::vector<webrtc::StaticHostname> hostnames);
+  // --twinlife 2023-07-11: provide hostname resolution
   rtc::AsyncResolverInterface* Create() override;
 };
 

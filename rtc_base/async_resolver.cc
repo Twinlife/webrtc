@@ -19,6 +19,8 @@
 #include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/thread_annotations.h"
 
+#include "rtc_base/logging.h"
+
 #if defined(WEBRTC_WIN)
 #include <ws2spi.h>
 #include <ws2tcpip.h>
@@ -126,7 +128,9 @@ struct AsyncResolver::State : public RefCountedBase {
   } status RTC_GUARDED_BY(mutex) = Status::kLive;
 };
 
-AsyncResolver::AsyncResolver() : error_(-1), state_(new State) {}
+AsyncResolver::AsyncResolver() : error_(-1), state_(new State), hostnames_(0) {}
+
+AsyncResolver::AsyncResolver(const std::vector<rtc::StaticHostname> *hostnames) : error_(-1), state_(new State), hostnames_(hostnames) {}
 
 AsyncResolver::~AsyncResolver() {
   RTC_DCHECK_RUN_ON(&sequence_checker_);
@@ -152,6 +156,42 @@ void AsyncResolver::Start(const SocketAddress& addr, int family) {
   RTC_DCHECK_RUN_ON(&sequence_checker_);
   RTC_DCHECK(!destroy_called_);
   addr_ = addr;
+
+  // --twinlife 2023-07-11: provide hostname resolution
+  if (hostnames_) {
+    for (const rtc::StaticHostname& hostname : *hostnames_) {
+      if (hostname.hostname == addr.hostname()) {
+        std::vector<IPAddress> addresses;
+        if ((family == AF_INET || family == AF_UNSPEC) && hostname.ipv4.family() == AF_INET) {
+          addresses.push_back(hostname.ipv4);
+        }
+        if ((family == AF_INET6 || family == AF_UNSPEC) && hostname.ipv6.family() == AF_INET6) {
+          addresses.push_back(hostname.ipv6);
+        }
+        webrtc::MutexLock lock(&state_->mutex);
+        if (state_->status == State::Status::kLive) {
+          webrtc::TaskQueueBase::Current()->PostTask(
+          [this, addresses = std::move(addresses), state = state_] {
+            bool live;
+            {
+              // ResolveDone can lead to instance destruction, so make sure
+              // we don't deadlock.
+              webrtc::MutexLock lock(&state->mutex);
+              live = state->status == State::Status::kLive;
+            }
+            if (live) {
+              RTC_DCHECK_RUN_ON(&sequence_checker_);
+              ResolveDone(std::move(addresses), 0);
+            }
+          });
+        }
+        return;
+      }
+    }
+    RTC_LOG(LS_INFO) << "Static hostname not found " << addr.ToString();
+  }
+  // --twinlife 2023-07-11: provide hostname resolution
+
   auto thread_function = [this, addr, family,
                           caller_task_queue = webrtc::TaskQueueBase::Current(),
                           state = state_] {

@@ -31,7 +31,10 @@ class SocketFactory;
 
 class RTC_EXPORT BasicPacketSocketFactory : public PacketSocketFactory {
  public:
-  explicit BasicPacketSocketFactory(SocketFactory* socket_factory);
+  // --twinlife 2023-07-11: provide hostname resolution
+  explicit BasicPacketSocketFactory(SocketFactory* socket_factory,
+                                    webrtc::AsyncDnsResolverFactoryInterface *async_resolver_factory);
+  // --twinlife 2023-07-11: provide hostname resolution
   ~BasicPacketSocketFactory() override;
 
   AsyncPacketSocket* CreateUdpSocket(const SocketAddress& local_address,
@@ -48,9 +51,11 @@ class RTC_EXPORT BasicPacketSocketFactory : public PacketSocketFactory {
       const std::string& user_agent,
       const PacketSocketTcpOptions& tcp_options) override;
 
+#if 0  // --twinlife 2023-07-11: provide hostname resolution
   // TODO(bugs.webrtc.org/12598) Remove when downstream stops using it.
   ABSL_DEPRECATED("Use CreateAsyncDnsResolver")
   AsyncResolverInterface* CreateAsyncResolver() override;
+#endif // --twinlife 2023-07-11: provide hostname resolution
 
   std::unique_ptr<webrtc::AsyncDnsResolverInterface> CreateAsyncDnsResolver()
       override;
@@ -62,6 +67,9 @@ class RTC_EXPORT BasicPacketSocketFactory : public PacketSocketFactory {
                  uint16_t max_port);
 
   SocketFactory* socket_factory_;
+  // --twinlife 2023-07-11: provide hostname resolution
+  webrtc::AsyncDnsResolverFactoryInterface* async_resolver_factory_;
+  // --twinlife 2023-07-11: provide hostname resolution
 };
 
 }  // namespace rtc

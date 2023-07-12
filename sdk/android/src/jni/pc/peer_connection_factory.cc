@@ -45,6 +45,7 @@
 #include "sdk/android/src/jni/pc/ssl_certificate_verifier_wrapper.h"
 #include "sdk/android/src/jni/pc/video.h"
 #include "system_wrappers/include/field_trial.h"
+#include "p2p/base/basic_async_resolver_factory.h"  // --twinlife 2023-07-11: provide hostname resolution
 
 namespace webrtc {
 namespace jni {
@@ -243,7 +244,8 @@ ScopedJavaLocalRef<jobject> CreatePeerConnectionFactoryForJava(
         network_controller_factory,
     std::unique_ptr<NetworkStatePredictorFactoryInterface>
         network_state_predictor_factory,
-    std::unique_ptr<NetEqFactory> neteq_factory) {
+    std::unique_ptr<NetEqFactory> neteq_factory,
+    const JavaParamRef<jobject>& jhost_addresses) {  // --twinlife 2023-07-11: provide hostname resolution
   // talk/ assumes pretty widely that the current Thread is ThreadManager'd, but
   // ThreadManager only WrapCurrentThread()s the thread where it is first
   // created.  Since the semantics around when auto-wrapping happens in
@@ -274,6 +276,38 @@ ScopedJavaLocalRef<jobject> CreatePeerConnectionFactoryForJava(
   dependencies.worker_thread = worker_thread.get();
   dependencies.signaling_thread = signaling_thread.get();
   dependencies.task_queue_factory = CreateDefaultTaskQueueFactory();
+  // --twinlife 2023-07-11: provide hostname resolution
+  std::unique_ptr<BasicAsyncResolverFactory> async_resolver = std::make_unique<BasicAsyncResolverFactory>();
+  if (!IsNull(jni, jhost_addresses)) {
+    std::vector<webrtc::StaticHostname> hostnames;
+    JavaToNativeStaticHostnames(jni, jhost_addresses, hostnames);
+    async_resolver->setHostnames(hostnames);
+  }
+  dependencies.async_resolver_factory = std::make_unique<WrappingAsyncDnsResolverFactory>(std::move(async_resolver));
+  if (!(options && options->disable_network_monitor)) {
+    dependencies.network_monitor_factory =
+        std::make_unique<AndroidNetworkMonitorFactory>();
+  }
+  // --twinlife 2023-07-11: provide hostname resolution
+
+  // --twinlife-- 2022-10-24: If there is no audio module, create the
+  // factory without any media support (see objc, initWithNoMedia).
+  if (!audio_device_module) {
+    rtc::scoped_refptr<PeerConnectionFactoryInterface> factory =
+      CreateModularPeerConnectionFactory(std::move(dependencies));
+
+    RTC_CHECK(factory) << "Failed to create the peer connection factory; "
+      "WebRTC/libjingle init likely failed on this device";
+    // TODO(honghaiz): Maybe put the options as the argument of
+    // CreatePeerConnectionFactory.
+    if (options)
+      factory->SetOptions(*options);
+
+    return NativeToScopedJavaPeerConnectionFactory(jni, factory, std::move(socket_server), std::move(network_thread),
+                                                   std::move(worker_thread), std::move(signaling_thread));
+  }
+  // --twinlife-- 2022-10-24
+
   dependencies.call_factory = CreateCallFactory();
   dependencies.event_log_factory = std::make_unique<RtcEventLogFactory>(
       dependencies.task_queue_factory.get());
@@ -283,10 +317,6 @@ ScopedJavaLocalRef<jobject> CreatePeerConnectionFactoryForJava(
   dependencies.network_state_predictor_factory =
       std::move(network_state_predictor_factory);
   dependencies.neteq_factory = std::move(neteq_factory);
-  if (!(options && options->disable_network_monitor)) {
-    dependencies.network_monitor_factory =
-        std::make_unique<AndroidNetworkMonitorFactory>();
-  }
 
   cricket::MediaEngineDependencies media_dependencies;
   media_dependencies.task_queue_factory = dependencies.task_queue_factory.get();
@@ -330,7 +360,8 @@ JNI_PeerConnectionFactory_CreatePeerConnectionFactory(
     jlong native_fec_controller_factory,
     jlong native_network_controller_factory,
     jlong native_network_state_predictor_factory,
-    jlong native_neteq_factory) {
+    jlong native_neteq_factory,
+    const JavaParamRef<jobject>& jhost_addresses) { // --twinlife 2023-07-11: provide hostname resolution
   rtc::scoped_refptr<AudioProcessing> audio_processor(
       reinterpret_cast<AudioProcessing*>(native_audio_processor));
   return CreatePeerConnectionFactoryForJava(
@@ -347,7 +378,8 @@ JNI_PeerConnectionFactory_CreatePeerConnectionFactory(
           native_network_controller_factory),
       TakeOwnershipOfUniquePtr<NetworkStatePredictorFactoryInterface>(
           native_network_state_predictor_factory),
-      TakeOwnershipOfUniquePtr<NetEqFactory>(native_neteq_factory));
+      TakeOwnershipOfUniquePtr<NetEqFactory>(native_neteq_factory),
+      jhost_addresses);  // --twinlife 2023-07-11: provide hostname resolution
 }
 
 static void JNI_PeerConnectionFactory_FreeFactory(JNIEnv*, jlong j_p) {

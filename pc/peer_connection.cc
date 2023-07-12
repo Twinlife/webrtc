@@ -339,6 +339,9 @@ bool PeerConnectionInterface::RTCConfiguration::operator==(
     // --twinlife-- 180202
     rtc::ProxyInfo proxy_info;
     // --twinlife-- 180202
+    // --twinlife 2023-07-11: provide hostname resolution
+    std::vector<webrtc::StaticHostname> host_addresses;
+    // --twinlife 2023-07-11: provide hostname resolution
     std::string turn_logging_id;
     bool enable_implicit_rollback;
     absl::optional<bool> allow_codec_switching;
@@ -407,6 +410,9 @@ bool PeerConnectionInterface::RTCConfiguration::operator==(
          // --twinlife-- 180202
          proxy_info == o.proxy_info &&
          // --twinlife-- 180202
+         // --twinlife 2023-07-11: provide hostname resolution
+         host_addresses == o.host_addresses &&
+         // --twinlife 2023-07-11: provide hostname resolution
          turn_logging_id == o.turn_logging_id &&
          enable_implicit_rollback == o.enable_implicit_rollback &&
          allow_codec_switching == o.allow_codec_switching &&
@@ -488,6 +494,9 @@ RTCErrorOr<rtc::scoped_refptr<PeerConnection>> PeerConnection::Create(
     dependencies.async_dns_resolver_factory =
         std::make_unique<WrappingAsyncDnsResolverFactory>(
             std::make_unique<BasicAsyncResolverFactory>());
+    // --twinlife 2023-07-11: provide hostname resolution
+    ((webrtc::BasicAsyncResolverFactory *)dependencies.async_resolver_factory.get())->setHostnames(configuration.host_addresses);
+    // --twinlife 2023-07-11: provide hostname resolution
   }
 
   // The PeerConnection constructor consumes some, but not all, dependencies.

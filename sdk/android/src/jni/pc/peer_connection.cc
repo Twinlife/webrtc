@@ -62,6 +62,33 @@
 namespace webrtc {
 namespace jni {
 
+// --twinlife 2023-07-11: provide hostname resolution
+void JavaToNativeStaticHostnames(JNIEnv *jni, const JavaRef<jobject>& j_host_addresses,
+                                 std::vector<webrtc::StaticHostname>& hostnames) {
+  if (!IsNull(jni, j_host_addresses)) {
+    for (const JavaRef<jobject>& j_host_address : Iterable(jni, j_host_addresses)) {
+      ScopedJavaLocalRef<jstring> hostname =
+        Java_ServerAddr_getHostname(jni, j_host_address);
+      ScopedJavaLocalRef<jstring> ipv4 =
+        Java_ServerAddr_getIPv4(jni, j_host_address);
+      ScopedJavaLocalRef<jstring> ipv6 =
+        Java_ServerAddr_getIPv6(jni, j_host_address);
+      webrtc::StaticHostname host_address;
+      if (!IsNull(jni, hostname)) {
+        host_address.hostname = JavaToNativeString(jni, hostname);
+        if (!IsNull(jni, ipv4)) {
+          IPFromString(JavaToNativeString(jni, ipv4), &host_address.ipv4);
+        }
+        if (!IsNull(jni, ipv6)) {
+          IPFromString(JavaToNativeString(jni, ipv6), &host_address.ipv6);
+        }
+        hostnames.push_back(host_address);
+      }
+    }
+  }
+}
+// --twinlife 2023-07-11: provide hostname resolution
+
 namespace {
 
 PeerConnectionInterface* ExtractNativePC(JNIEnv* jni,
@@ -306,6 +333,13 @@ void JavaToNativeRTCConfiguration(
     }
   }
   // --twinlife-- 180202
+  // --twinlife 2023-07-11: provide hostname resolution
+  ScopedJavaLocalRef<jobject> j_hostAddresses =
+      Java_RTCConfiguration_getHostAddresses(jni, j_rtc_config);
+  if (!IsNull(jni, j_hostAddresses)) {
+    JavaToNativeStaticHostnames(jni, j_hostAddresses, rtc_config->host_addresses);
+  }
+  // --twinlife 2023-07-11: provide hostname resolution
 
   rtc_config->offer_extmap_allow_mixed =
       Java_RTCConfiguration_getOfferExtmapAllowMixed(jni, j_rtc_config);

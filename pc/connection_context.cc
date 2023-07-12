@@ -152,8 +152,10 @@ ConnectionContext::ConnectionContext(
         network_monitor_factory_.get(), socket_factory, &field_trials());
   }
   if (!default_socket_factory_) {
+    // --twinlife 2023-07-11: provide hostname resolution
     default_socket_factory_ =
-        std::make_unique<rtc::BasicPacketSocketFactory>(socket_factory);
+        std::make_unique<rtc::BasicPacketSocketFactory>(socket_factory, dependencies->async_resolver_factory.get());
+    // --twinlife 2023-07-11: provide hostname resolution
   }
   // Set warning levels on the threads, to give warnings when response
   // may be slower than is expected of the thread.

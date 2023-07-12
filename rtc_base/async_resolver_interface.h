@@ -18,6 +18,13 @@
 
 namespace rtc {
 
+class RTC_EXPORT StaticHostname {
+ public:
+ std::string hostname;
+ IPAddress ipv4;
+ IPAddress ipv6;
+};
+
 // This interface defines the methods to resolve the address asynchronously.
 class RTC_EXPORT AsyncResolverInterface {
  public:

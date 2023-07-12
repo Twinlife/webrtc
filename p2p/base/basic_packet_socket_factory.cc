@@ -28,9 +28,13 @@
 
 namespace rtc {
 
+// --twinlife 2023-07-11: provide hostname resolution
 BasicPacketSocketFactory::BasicPacketSocketFactory(
-    SocketFactory* socket_factory)
-    : socket_factory_(socket_factory) {}
+    SocketFactory* socket_factory,
+    webrtc::AsyncDnsResolverFactoryInterface* async_resolver_factory)
+  : socket_factory_(socket_factory), async_resolver_factory_(async_resolver_factory) {
+}
+// --twinlife 2023-07-11: provide hostname resolution
 
 BasicPacketSocketFactory::~BasicPacketSocketFactory() {}
 
@@ -193,14 +197,20 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateClientTcpSocket(
   return tcp_socket;
 }
 
+#if 0
 AsyncResolverInterface* BasicPacketSocketFactory::CreateAsyncResolver() {
+  // --twinlife 2023-07-11: provide hostname resolution
+  RTC_LOG(LS_ERROR) << "CreateAsyncResolver() without factory.";
+  // --twinlife 2023-07-11: provide hostname resolution
   return new AsyncResolver();
 }
+#endif
 
 std::unique_ptr<webrtc::AsyncDnsResolverInterface>
 BasicPacketSocketFactory::CreateAsyncDnsResolver() {
-  return std::make_unique<webrtc::WrappingAsyncDnsResolver>(
-      new AsyncResolver());
+  // --twinlife 2023-07-11: provide hostname resolution
+  return std::unique_ptr<webrtc::AsyncDnsResolverInterface>(async_resolver_factory_->Create());
+  // --twinlife 2023-07-11: provide hostname resolution
 }
 
 int BasicPacketSocketFactory::BindSocket(Socket* socket,

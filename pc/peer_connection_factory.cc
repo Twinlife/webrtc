@@ -101,7 +101,8 @@ PeerConnectionFactory::PeerConnectionFactory(
           (dependencies->transport_controller_send_factory)
               ? std::move(dependencies->transport_controller_send_factory)
               : std::make_unique<RtpTransportControllerSendFactory>()),
-      metronome_(std::move(dependencies->metronome)) {}
+      metronome_(std::move(dependencies->metronome)),
+      async_resolver_factory(std::move(dependencies->async_resolver_factory)){} // --twinlife 2023-07-11: provide hostname resolution
 
 PeerConnectionFactory::PeerConnectionFactory(
     PeerConnectionFactoryDependencies dependencies)
@@ -232,6 +233,9 @@ PeerConnectionFactory::CreatePeerConnectionOrError(
   if (!dependencies.async_resolver_factory) {
     dependencies.async_resolver_factory =
         std::make_unique<webrtc::BasicAsyncResolverFactory>();
+    // --twinlife 2023-07-11: provide hostname resolution
+    ((webrtc::BasicAsyncResolverFactory *)dependencies.async_resolver_factory.get())->setHostnames(configuration.host_addresses);
+    // --twinlife 2023-07-11: provide hostname resolution
   }
 
   if (!dependencies.ice_transport_factory) {

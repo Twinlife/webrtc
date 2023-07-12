@@ -658,7 +658,11 @@ class RTC_EXPORT PeerConnectionInterface : public rtc::RefCountInterface {
     // --twinlife-- 180202
     rtc::ProxyInfo proxy_info;
     // --twinlife-- 180202
-    
+
+    // --twinlife 2023-07-11: provide hostname resolution
+    std::vector<webrtc::StaticHostname> host_addresses;
+    // --twinlife 2023-07-11: provide hostname resolution
+
     // TURN logging identifier.
     // This identifier is added to a TURN allocation
     // and it intended to be used to be able to match client side
@@ -1452,6 +1456,7 @@ struct RTC_EXPORT PeerConnectionFactoryDependencies final {
   std::unique_ptr<RtpTransportControllerSendFactoryInterface>
       transport_controller_send_factory;
   std::unique_ptr<Metronome> metronome;
+  std::unique_ptr<AsyncDnsResolverFactoryInterface> async_resolver_factory;
 };
 
 // PeerConnectionFactoryInterface is the factory interface used for creating

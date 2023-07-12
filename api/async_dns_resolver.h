@@ -20,6 +20,27 @@
 
 namespace webrtc {
 
+  // --twinlife 2023-07-11: provide hostname resolution
+  class StaticHostname {
+  public:
+    std::string hostname;
+    rtc::IPAddress ipv4;
+    rtc::IPAddress ipv6;
+    StaticHostname() {}
+    StaticHostname(const StaticHostname& host) : hostname(host.hostname), ipv4(host.ipv4), ipv6(host.ipv6) {}
+    bool operator==(const StaticHostname& host) const {
+      return hostname == host.hostname && ipv4 == host.ipv4 && ipv6 == host.ipv6;
+    }
+
+    StaticHostname& operator=(const StaticHostname& second) {
+      hostname = second.hostname;
+      ipv4 = second.ipv4;
+      ipv6 = second.ipv6;
+      return *this;
+    }
+  };
+  // --twinlife 2023-07-11: provide hostname resolution
+
 // This interface defines the methods to resolve a hostname asynchronously.
 // The AsyncDnsResolverInterface class encapsulates a single name query.
 //

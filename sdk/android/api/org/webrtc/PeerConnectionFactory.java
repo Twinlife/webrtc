@@ -276,7 +276,8 @@ public class PeerConnectionFactory {
           networkStatePredictorFactoryFactory == null
               ? 0
               : networkStatePredictorFactoryFactory.createNativeNetworkStatePredictorFactory(),
-          neteqFactoryFactory == null ? 0 : neteqFactoryFactory.createNativeNetEqFactory());
+          neteqFactoryFactory == null ? 0 : neteqFactoryFactory.createNativeNetEqFactory(),
+          null);
     }
   }
 
@@ -595,7 +596,7 @@ public class PeerConnectionFactory {
       long audioDecoderFactory, VideoEncoderFactory encoderFactory,
       VideoDecoderFactory decoderFactory, long nativeAudioProcessor,
       long nativeFecControllerFactory, long nativeNetworkControllerFactory,
-      long nativeNetworkStatePredictorFactory, long neteqFactory);
+      long nativeNetworkStatePredictorFactory, long neteqFactory, List<PeerConnection.ServerAddr> hostAddresses);
 
   private static native long nativeCreatePeerConnection(long factory,
       PeerConnection.RTCConfiguration rtcConfig, MediaConstraints constraints, long nativeObserver,
