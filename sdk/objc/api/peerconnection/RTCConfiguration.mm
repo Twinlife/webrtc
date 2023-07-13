@@ -20,6 +20,12 @@
 #include "rtc_base/checks.h"
 #include "rtc_base/rtc_certificate_generator.h"
 #include "rtc_base/ssl_identity.h"
+// --twinlife-- 180202
+#include "sdk/objc/helpers/NSString+StdString.h"
+// --twinlife-- 180202
+// --twinlife-- 2023-07-12
+#import "RTCHostname.h"
+// --twinlife-- 2023-07-12
 
 @implementation RTC_OBJC_TYPE (RTCConfiguration)
 
@@ -50,6 +56,9 @@
 @synthesize iceCheckMinInterval = _iceCheckMinInterval;
 @synthesize sdpSemantics = _sdpSemantics;
 @synthesize turnCustomizer = _turnCustomizer;
+// --twinlife-- 2023-07-12
+@synthesize hostnames = _hostnames;
+// --twinlife-- 2023-07-12
 @synthesize activeResetSrtpParams = _activeResetSrtpParams;
 @synthesize cryptoOptions = _cryptoOptions;
 @synthesize turnLoggingId = _turnLoggingId;
@@ -286,6 +295,23 @@
   if (_turnCustomizer) {
     nativeConfig->turn_customizer = _turnCustomizer;
   }
+  // --twinlife-- 2023-07-12
+  if (_hostnames) {
+    for (RTC_OBJC_TYPE(RTCHostname) * hostname in _hostnames) {
+       webrtc::StaticHostname host_address;
+       host_address.hostname = [NSString stdStringForString:hostname.hostname];
+       if (hostname.ipv4) {
+          std::string nativeIpv4 = [NSString stdStringForString:hostname.ipv4];
+          IPFromString(nativeIpv4, &host_address.ipv4);
+       }
+       if (hostname.ipv6) {
+          std::string nativeIpv6 = [NSString stdStringForString:hostname.ipv6];
+          IPFromString(nativeIpv6, &host_address.ipv6);
+       }
+       nativeConfig->host_addresses.push_back(host_address);
+   }
+  }
+  // --twinlife-- 2023-07-12
   nativeConfig->active_reset_srtp_params =
       _activeResetSrtpParams ? true : false;
   if (_cryptoOptions) {

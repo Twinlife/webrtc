@@ -14,6 +14,9 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+// --twinlife-- 2023-07-12
+@class RTC_OBJC_TYPE(RTCHostname);
+// --twinlife-- 2023-07-12
 @class RTC_OBJC_TYPE(RTCRtpCapabilities);
 @class RTC_OBJC_TYPE(RTCAudioSource);
 @class RTC_OBJC_TYPE(RTCAudioTrack);
@@ -41,28 +44,32 @@ RTC_OBJC_EXPORT
 /* Initialize object with default H264 video encoder/decoder factories and default ADM */
 - (instancetype)init;
 
-/* Initialize object with injectable video encoder/decoder factories and default
- * ADM */
+// --twinlife-- 2023-07-12
+/* Initialize object with injectable video encoder/decoder factories and default ADM */
 - (instancetype)
-    initWithEncoderFactory:
-        (nullable id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)>)encoderFactory
-            decoderFactory:(nullable id<RTC_OBJC_TYPE(RTCVideoDecoderFactory)>)
-                               decoderFactory;
+    initWithEncoderFactory:(nullable id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)>)encoderFactory
+            decoderFactory:(nullable id<RTC_OBJC_TYPE(RTCVideoDecoderFactory)>)decoderFactory
+                 hostnames:(nullable NSArray<RTC_OBJC_TYPE(RTCHostname)*> *)hostnames;
 
 // --twinlife-- 2020-06-17
 /// Initialize the factory without Audio/Video.
-- (instancetype)initWithNoMedia;
+- (instancetype)initWithHostnames:(nullable NSArray<RTC_OBJC_TYPE(RTCHostname)*> *)hostnames;
 // --twinlife-- 2020-06-17
 
 /* Initialize object with injectable video encoder/decoder factories and
  * injectable ADM */
 - (instancetype)
-    initWithEncoderFactory:
-        (nullable id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)>)encoderFactory
-            decoderFactory:(nullable id<RTC_OBJC_TYPE(RTCVideoDecoderFactory)>)
-                               decoderFactory
-               audioDevice:
-                   (nullable id<RTC_OBJC_TYPE(RTCAudioDevice)>)audioDevice;
+    initWithEncoderFactory:(nullable id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)>)encoderFactory
+            decoderFactory:(nullable id<RTC_OBJC_TYPE(RTCVideoDecoderFactory)>)decoderFactory
+               audioDevice:(nullable id<RTC_OBJC_TYPE(RTCAudioDevice)>)audioDevice
+                 hostnames:(nullable NSArray<RTC_OBJC_TYPE(RTCHostname)*> *)hostnames;
+// --twinlife-- 2023-07-12
+
+// --twinlife-- 2022-10-26: factory use counter tracking
+- (void)incrementUseCounter;
+- (void)decrementUseCounter;
+- (BOOL)isUsed;
+// --twinlife-- 2022-10-26
 
 /**
  * Valid kind values are kRTCMediaStreamTrackKindAudio and
@@ -77,12 +84,6 @@ RTC_OBJC_EXPORT
  */
 - (RTC_OBJC_TYPE(RTCRtpCapabilities) *)rtpReceiverCapabilitiesForKind:
     (NSString *)kind;
-
-// --twinlife-- 2022-10-26: factory use counter tracking
-- (void)incrementUseCounter;
-- (void)decrementUseCounter;
-- (BOOL)isUsed;
-// --twinlife-- 2022-10-26
 
 /** Initialize an RTCAudioSource with constraints. */
 - (RTC_OBJC_TYPE(RTCAudioSource) *)audioSourceWithConstraints:
@@ -116,8 +117,10 @@ RTC_OBJC_EXPORT
                                       (RTC_OBJC_TYPE(RTCVideoSource) *)source
                                                trackId:(NSString *)trackId;
 
+#if 0 // --twinlife 2025-01-30: remove legacy MediaStream
 /** Initialize an RTCMediaStream with an id. */
 - (RTC_OBJC_TYPE(RTCMediaStream) *)mediaStreamWithStreamId:(NSString *)streamId;
+#endif // --twinlife 2025-01-30: remove legacy MediaStream
 
 /** Initialize an RTCPeerConnection with a configuration, constraints, and
  *  delegate.
@@ -145,6 +148,7 @@ RTC_OBJC_EXPORT
 - (void)setOptions:
     (nonnull RTC_OBJC_TYPE(RTCPeerConnectionFactoryOptions) *)options;
 
+#ifdef WEBRTC_HAS_AECDUMP // --twinlife 2025-01-27: disable AEC dump
 /** Start an AecDump recording. This API call will likely change in the future.
  */
 - (BOOL)startAecDumpWithFilePath:(NSString *)filePath
@@ -152,6 +156,7 @@ RTC_OBJC_EXPORT
 
 /* Stop an active AecDump recording */
 - (void)stopAecDump;
+#endif // --twinlife 2025-01-27: disable AEC dump
 
 @end
 

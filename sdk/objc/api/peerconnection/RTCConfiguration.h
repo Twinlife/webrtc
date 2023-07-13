@@ -15,6 +15,9 @@
 #import "sdk/objc/base/RTCMacros.h"
 
 @class RTC_OBJC_TYPE(RTCIceServer);
+// --twinlife-- 2023-07-12
+@class RTC_OBJC_TYPE(RTCHostname);
+// --twinlife-- 2023-07-12
 
 /**
  * Represents the ice transport policy. This exposes the same states in C++,
@@ -260,6 +263,11 @@ RTC_OBJC_EXPORT
  * default value in the ICE implementation if set.
  */
 @property(nonatomic, copy, nullable) NSNumber *iceInactiveTimeout;
+
+// --twinlife-- 2023-07-12
+/** An array of Hostnames with IPv4/IPV6 for DNS static resolution. */
+@property(nonatomic, copy) NSArray<RTC_OBJC_TYPE(RTCHostname) *> *hostnames;
+// --twinlife-- 2023-07-12
 
 - (instancetype)init;
 

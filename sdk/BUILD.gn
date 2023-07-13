@@ -950,6 +950,8 @@ if (is_ios || is_mac) {
         "objc/api/peerconnection/RTCConfiguration+Private.h",
         "objc/api/peerconnection/RTCConfiguration.h",
         "objc/api/peerconnection/RTCConfiguration.mm",
+        "objc/api/peerconnection/RTCHostname.h",
+        "objc/api/peerconnection/RTCHostname.mm",
         "objc/api/peerconnection/RTCCryptoOptions.h",
         "objc/api/peerconnection/RTCCryptoOptions.mm",
         "objc/api/peerconnection/RTCDataChannel+Private.h",

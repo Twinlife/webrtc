@@ -32,9 +32,15 @@ NS_ASSUME_NONNULL_BEGIN
     /* Initializer used when WebRTC is compiled with no media support */
     - (instancetype)initWithNoMedia;
 
+// --twinlife-- 2020-06-17
+/* Initializer used when WebRTC is compiled with no media support */
+- (instancetype)initWithHostnames:(nullable NSArray<RTC_OBJC_TYPE(RTCHostname)*> *)hostnames;
+// --twinlife-- 2020-06-17
+
 /* Initialize object with provided dependencies and with media support. */
 - (instancetype)initWithMediaAndDependencies:
-    (webrtc::PeerConnectionFactoryDependencies)dependencies;
+    (webrtc::PeerConnectionFactoryDependencies)dependencies
+    hostnames:(nullable NSArray<RTC_OBJC_TYPE(RTCHostname)*> *)hostnames;
 
 /* Initialize object with injectable native audio/video encoder/decoder
  * factories */
@@ -81,7 +87,8 @@ NS_ASSUME_NONNULL_BEGIN
     initWithEncoderFactory:
         (nullable id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)>)encoderFactory
             decoderFactory:(nullable id<RTC_OBJC_TYPE(RTCVideoDecoderFactory)>)
-                               decoderFactory;
+                               decoderFactory
+    hostnames:(nullable NSArray<RTC_OBJC_TYPE(RTCHostname)*> *)hostnames;
 
 /** Initialize an RTCPeerConnection with a configuration, constraints, and
  *  dependencies.

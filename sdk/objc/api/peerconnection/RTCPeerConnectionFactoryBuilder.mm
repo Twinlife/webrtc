@@ -28,7 +28,7 @@
 
 - (RTC_OBJC_TYPE(RTCPeerConnectionFactory) *)createPeerConnectionFactory {
   return [[RTC_OBJC_TYPE(RTCPeerConnectionFactory) alloc]
-      initWithMediaAndDependencies:std::move(_dependencies)];
+      initWithMediaAndDependencies:std::move(_dependencies) hostnames:nil];
 }
 
 - (void)setFieldTrials:(std::unique_ptr<webrtc::FieldTrialsView>)fieldTrials {

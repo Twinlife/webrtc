@@ -18,10 +18,13 @@
 #import "RTCAudioSource+Private.h"
 #import "RTCAudioTrack+Private.h"
 #import "RTCMediaConstraints+Private.h"
+#if 0 // --twinlife 2025-01-30: remove legacy MediaStream
 #import "RTCMediaStream+Private.h"
+#endif // --twinlife 2025-01-30: remove legacy MediaStream
 #import "RTCPeerConnection+Private.h"
 #import "RTCVideoSource+Private.h"
 #import "RTCVideoTrack+Private.h"
+#import "RTCHostname.h"
 #import "base/RTCLogging.h"
 #import "base/RTCVideoDecoderFactory.h"
 #import "base/RTCVideoEncoderFactory.h"
@@ -53,11 +56,15 @@
 #import "sdk/objc/native/api/audio_device_module.h"
 #endif
 
+#include "p2p/base/basic_async_resolver_factory.h"  // --twinlife 2023-07-11: provide hostname resolution
+
 @implementation RTC_OBJC_TYPE (RTCPeerConnectionFactory) {
   std::unique_ptr<rtc::Thread> _networkThread;
   std::unique_ptr<rtc::Thread> _workerThread;
   std::unique_ptr<rtc::Thread> _signalingThread;
+#ifdef WEBRTC_HAS_AECDUMP // --twinlife 2025-01-27: disable AEC dump
   BOOL _hasStartedAecDump;
+#endif // --twinlife 2025-01-27: disable AEC dump
   // --twinlife-- 2022-10-26: factory use counter tracking
   int _useCounter;
   // --twinlife-- 2022-10-26
@@ -84,17 +91,19 @@
   dependencies.video_decoder_factory = webrtc::ObjCToNativeVideoDecoderFactory(
       [[RTC_OBJC_TYPE(RTCVideoDecoderFactoryH264) alloc] init]);
   dependencies.adm = [self audioDeviceModule];
-  return [self initWithMediaAndDependencies:std::move(dependencies)];
+  return [self initWithMediaAndDependencies:std::move(dependencies) hostnames:nil];
 }
 
 - (instancetype)
     initWithEncoderFactory:
         (nullable id<RTC_OBJC_TYPE(RTCVideoEncoderFactory)>)encoderFactory
             decoderFactory:(nullable id<RTC_OBJC_TYPE(RTCVideoDecoderFactory)>)
-                               decoderFactory {
+                               decoderFactory
+                 hostnames:(nullable NSArray<RTC_OBJC_TYPE(RTCHostname)*> *)hostnames {
   return [self initWithEncoderFactory:encoderFactory
                        decoderFactory:decoderFactory
-                          audioDevice:nil];
+                          audioDevice:nil
+			  hostnames:hostnames];
 }
 
 - (instancetype)
@@ -103,9 +112,10 @@
             decoderFactory:(nullable id<RTC_OBJC_TYPE(RTCVideoDecoderFactory)>)
                                decoderFactory
                audioDevice:
-                   (nullable id<RTC_OBJC_TYPE(RTCAudioDevice)>)audioDevice {
+                   (nullable id<RTC_OBJC_TYPE(RTCAudioDevice)>)audioDevice
+                 hostnames:(nullable NSArray<RTC_OBJC_TYPE(RTCHostname)*> *)hostnames {
 #ifdef HAVE_NO_MEDIA
-  return [self initWithNoMedia];
+  return [self initWithHostnames:hostnames];
 #else
   webrtc::PeerConnectionFactoryDependencies dependencies;
   dependencies.audio_encoder_factory =
@@ -125,12 +135,13 @@
   } else {
     dependencies.adm = [self audioDeviceModule];
   }
-  return [self initWithMediaAndDependencies:std::move(dependencies)];
+  return [self initWithMediaAndDependencies:std::move(dependencies) hostnames:hostnames];
 #endif
 }
 
 - (instancetype)initWithNativeDependencies:
-    (webrtc::PeerConnectionFactoryDependencies)dependencies {
+    (webrtc::PeerConnectionFactoryDependencies)dependencies
+                 hostnames:(nullable NSArray<RTC_OBJC_TYPE(RTCHostname)*> *)hostnames {
   self = [super init];
   if (self) {
     _networkThread = rtc::Thread::CreateWithSocketServer();
@@ -162,6 +173,22 @@
           webrtc::CreateNetworkMonitorFactory();
     }
 
+    // --twinlife 2023-07-11: provide hostname resolution
+    for (RTC_OBJC_TYPE(RTCHostname) * hostname in hostnames) {
+       webrtc::StaticHostname host_address;
+       host_address.hostname = [NSString stdStringForString:hostname.hostname];
+       if (hostname.ipv4) {
+          std::string nativeIpv4 = [NSString stdStringForString:hostname.ipv4];
+          IPFromString(nativeIpv4, &host_address.ipv4);
+       }
+       if (hostname.ipv6) {
+          std::string nativeIpv6 = [NSString stdStringForString:hostname.ipv6];
+          IPFromString(nativeIpv6, &host_address.ipv6);
+       }
+       dependencies.hostnames.push_back(host_address);
+    }
+    // --twinlife 2023-07-11: provide hostname resolution
+
     _nativeFactory =
         webrtc::CreateModularPeerConnectionFactory(std::move(dependencies));
     NSAssert(_nativeFactory, @"Failed to initialize PeerConnectionFactory!");
@@ -169,9 +196,14 @@
   return self;
 }
 
+- (instancetype)initWithHostnames:(nullable NSArray<RTC_OBJC_TYPE(RTCHostname)*> *)hostnames {
+  return [self
+      initWithNativeDependencies:webrtc::PeerConnectionFactoryDependencies() hostnames:hostnames];
+}
+
 - (instancetype)initWithNoMedia {
   return [self
-      initWithNativeDependencies:webrtc::PeerConnectionFactoryDependencies()];
+      initWithNativeDependencies:webrtc::PeerConnectionFactoryDependencies() hostnames:nil];
 }
 
 - (instancetype)
@@ -201,8 +233,22 @@
     dependencies.audio_processing_builder =
         CustomAudioProcessing(std::move(audioProcessingModule));
   }
-  return [self initWithMediaAndDependencies:std::move(dependencies)];
+  return [self initWithMediaAndDependencies:std::move(dependencies) hostnames:nil];
 }
+
+// --twinlife-- 2022-10-26: factory use counter tracking
+- (void)incrementUseCounter {
+  _useCounter++;
+}
+
+- (void)decrementUseCounter {
+  _useCounter--;
+}
+
+- (BOOL)isUsed {
+  return _useCounter > 0;
+}
+// --twinlife-- 2022-10-26
 
 - (instancetype)
     initWithNativeAudioEncoderFactory:
@@ -235,11 +281,12 @@
         CustomAudioProcessing(std::move(audioProcessingModule));
   }
   dependencies.network_controller_factory = std::move(networkControllerFactory);
-  return [self initWithMediaAndDependencies:std::move(dependencies)];
+  return [self initWithMediaAndDependencies:std::move(dependencies) hostnames:nil];
 }
 
 - (instancetype)initWithMediaAndDependencies:
-    (webrtc::PeerConnectionFactoryDependencies)dependencies {
+    (webrtc::PeerConnectionFactoryDependencies)dependencies
+                 hostnames:(nullable NSArray<RTC_OBJC_TYPE(RTCHostname)*> *)hostnames {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
   // audio_processing_builder should be used instead in new code.
@@ -257,7 +304,7 @@
         std::make_unique<webrtc::RtcEventLogFactory>();
   }
   webrtc::EnableMedia(dependencies);
-  return [self initWithNativeDependencies:std::move(dependencies)];
+  return [self initWithNativeDependencies:std::move(dependencies) hostnames:hostnames];
 }
 
 - (RTC_OBJC_TYPE(RTCRtpCapabilities) *)rtpSenderCapabilitiesForKind:
@@ -279,20 +326,6 @@
   return [[RTC_OBJC_TYPE(RTCRtpCapabilities) alloc]
       initWithNativeRtpCapabilities:rtpCapabilities];
 }
-
-// --twinlife-- 2022-10-26: factory use counter tracking
-- (void)incrementUseCounter {
-  _useCounter++;
-}
-
-- (void)decrementUseCounter {
-  _useCounter--;
-}
-
-- (BOOL)isUsed {
-  return _useCounter > 0;
-}
-// --twinlife-- 2022-10-26
 
 - (RTC_OBJC_TYPE(RTCAudioSource) *)audioSourceWithConstraints:
     (nullable RTC_OBJC_TYPE(RTCMediaConstraints) *)constraints {
@@ -347,11 +380,13 @@
                                                        trackId:trackId];
 }
 
+#if 0 // --twinlife 2025-01-30: remove legacy MediaStream
 - (RTC_OBJC_TYPE(RTCMediaStream) *)mediaStreamWithStreamId:
     (NSString *)streamId {
   return [[RTC_OBJC_TYPE(RTCMediaStream) alloc] initWithFactory:self
                                                        streamId:streamId];
 }
+#endif
 
 - (nullable RTC_OBJC_TYPE(RTCPeerConnection) *)
     peerConnectionWithConfiguration:
@@ -410,6 +445,7 @@
   _nativeFactory->SetOptions(options.nativeOptions);
 }
 
+#ifdef WEBRTC_HAS_AECDUMP // --twinlife 2025-01-27: disable AEC dump
 - (BOOL)startAecDumpWithFilePath:(NSString *)filePath
                   maxSizeInBytes:(int64_t)maxSizeInBytes {
   RTC_DCHECK(filePath.length);
@@ -433,6 +469,7 @@
   _nativeFactory->StopAecDump();
   _hasStartedAecDump = NO;
 }
+#endif // --twinlife 2025-01-27: disable AEC dump
 
 - (rtc::Thread *)signalingThread {
   return _signalingThread.get();
