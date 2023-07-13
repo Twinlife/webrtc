@@ -91,7 +91,9 @@
 }
 
 + (MTKView *)createMetalView:(CGRect)frame {
-  return [[MTKViewClass alloc] initWithFrame:frame];
+  // --twinlife-- 2023-07-13: try fix black video screen
+  return [[MTKViewClass alloc] initWithFrame:frame device:nil];
+  // --twinlife-- 2023-07-13
 }
 
 + (RTCMTLNV12Renderer *)createNV12Renderer {
