@@ -39,6 +39,10 @@ RTC_OBJC_EXPORT
  */
 @property(nonatomic, nullable) NSValue* rotationOverride;
 
+// --twinlife-- 2023-07-13: try fix black video screen
+- (BOOL)isConfigured;
+// --twinlife-- 2023-07-13: try fix black video screen
+
 @end
 
 NS_ASSUME_NONNULL_END

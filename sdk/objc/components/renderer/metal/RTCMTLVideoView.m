@@ -84,6 +84,13 @@
   self.metalView.contentMode = mode;
 }
 
+// --twinlife-- 2023-07-13: try fix black video screen
+- (BOOL)isConfigured {
+
+  return self.metalView != nil;
+}
+// --twinlife-- 2023-07-13: try fix black video screen
+
 #pragma mark - Private
 
 + (BOOL)isMetalAvailable {
@@ -92,7 +99,7 @@
 
 + (MTKView *)createMetalView:(CGRect)frame {
   // --twinlife-- 2023-07-13: try fix black video screen
-  return [[MTKViewClass alloc] initWithFrame:frame device:nil];
+  return [[MTKViewClass alloc] initWithFrame:frame device:MTLCreateSystemDefaultDevice()];
   // --twinlife-- 2023-07-13
 }
 
@@ -113,6 +120,13 @@
            @"Metal not availiable on this device");
 
   self.metalView = [RTC_OBJC_TYPE(RTCMTLVideoView) createMetalView:self.bounds];
+  // --twinlife-- 2023-07-13: try fix black video screen
+  if (!self.metalView) {
+    RTCLogError(@"Metal: createMetalView returned NIL");
+  } else {
+    RTCLogError(@"Metal: createMetalView successful");
+  }
+  // --twinlife-- 2023-07-13: try fix black video screen
   self.metalView.delegate = self;
   self.metalView.contentMode = UIViewContentModeScaleAspectFill;
   [self addSubview:self.metalView];
