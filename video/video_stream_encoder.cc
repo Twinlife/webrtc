@@ -405,7 +405,7 @@ void ApplySpatialLayerBitrateLimits(
     return;
   }
   if (VideoStreamEncoderResourceManager::IsSimulcastOrMultipleSpatialLayers(
-          encoder_config) ||
+          encoder_config, *codec) ||
       encoder_config.simulcast_layers.size() <= 1) {
     // Resolution bitrate limits usage is restricted to singlecast.
     return;
@@ -785,31 +785,30 @@ void VideoStreamEncoder::Stop() {
 
   rtc::Event shutdown_event;
   absl::Cleanup shutdown = [&shutdown_event] { shutdown_event.Set(); };
-  encoder_queue_.PostTask(
-      [this, shutdown = std::move(shutdown)] {
-        RTC_DCHECK_RUN_ON(&encoder_queue_);
-        if (resource_adaptation_processor_) {
-          stream_resource_manager_.StopManagedResources();
-          for (auto* constraint : adaptation_constraints_) {
-            video_stream_adapter_->RemoveAdaptationConstraint(constraint);
-          }
-          for (auto& resource : additional_resources_) {
-            stream_resource_manager_.RemoveResource(resource);
-          }
-          additional_resources_.clear();
-          video_stream_adapter_->RemoveRestrictionsListener(this);
-          video_stream_adapter_->RemoveRestrictionsListener(
-              &stream_resource_manager_);
-          resource_adaptation_processor_->RemoveResourceLimitationsListener(
-              &stream_resource_manager_);
-          stream_resource_manager_.SetAdaptationProcessor(nullptr, nullptr);
-          resource_adaptation_processor_.reset();
-        }
-        rate_allocator_ = nullptr;
-        ReleaseEncoder();
-        encoder_ = nullptr;
-        frame_cadence_adapter_ = nullptr;
-      });
+  encoder_queue_.PostTask([this, shutdown = std::move(shutdown)] {
+    RTC_DCHECK_RUN_ON(&encoder_queue_);
+    if (resource_adaptation_processor_) {
+      stream_resource_manager_.StopManagedResources();
+      for (auto* constraint : adaptation_constraints_) {
+        video_stream_adapter_->RemoveAdaptationConstraint(constraint);
+      }
+      for (auto& resource : additional_resources_) {
+        stream_resource_manager_.RemoveResource(resource);
+      }
+      additional_resources_.clear();
+      video_stream_adapter_->RemoveRestrictionsListener(this);
+      video_stream_adapter_->RemoveRestrictionsListener(
+          &stream_resource_manager_);
+      resource_adaptation_processor_->RemoveResourceLimitationsListener(
+          &stream_resource_manager_);
+      stream_resource_manager_.SetAdaptationProcessor(nullptr, nullptr);
+      resource_adaptation_processor_.reset();
+    }
+    rate_allocator_ = nullptr;
+    ReleaseEncoder();
+    encoder_ = nullptr;
+    frame_cadence_adapter_ = nullptr;
+  });
   shutdown_event.Wait(rtc::Event::kForever);
 }
 
@@ -915,48 +914,48 @@ void VideoStreamEncoder::ConfigureEncoder(VideoEncoderConfig config,
                                           size_t max_data_payload_length,
                                           SetParametersCallback callback) {
   RTC_DCHECK_RUN_ON(worker_queue_);
-  encoder_queue_.PostTask(
-      [this, config = std::move(config), max_data_payload_length,
-       callback = std::move(callback)]() mutable {
-        RTC_DCHECK_RUN_ON(&encoder_queue_);
-        RTC_DCHECK(sink_);
-        RTC_LOG(LS_INFO) << "ConfigureEncoder requested.";
+  encoder_queue_.PostTask([this, config = std::move(config),
+                           max_data_payload_length,
+                           callback = std::move(callback)]() mutable {
+    RTC_DCHECK_RUN_ON(&encoder_queue_);
+    RTC_DCHECK(sink_);
+    RTC_LOG(LS_INFO) << "ConfigureEncoder requested.";
 
-        // Set up the frame cadence adapter according to if we're going to do
-        // screencast. The final number of spatial layers is based on info
-        // in `send_codec_`, which is computed based on incoming frame
-        // dimensions which can only be determined later.
-        //
-        // Note: zero-hertz mode isn't enabled by this alone. Constraints also
-        // have to be set up with min_fps = 0 and max_fps > 0.
-        if (config.content_type == VideoEncoderConfig::ContentType::kScreen) {
-          frame_cadence_adapter_->SetZeroHertzModeEnabled(
-              FrameCadenceAdapterInterface::ZeroHertzModeParams{});
-        } else {
-          frame_cadence_adapter_->SetZeroHertzModeEnabled(absl::nullopt);
-        }
+    // Set up the frame cadence adapter according to if we're going to do
+    // screencast. The final number of spatial layers is based on info
+    // in `send_codec_`, which is computed based on incoming frame
+    // dimensions which can only be determined later.
+    //
+    // Note: zero-hertz mode isn't enabled by this alone. Constraints also
+    // have to be set up with min_fps = 0 and max_fps > 0.
+    if (config.content_type == VideoEncoderConfig::ContentType::kScreen) {
+      frame_cadence_adapter_->SetZeroHertzModeEnabled(
+          FrameCadenceAdapterInterface::ZeroHertzModeParams{});
+    } else {
+      frame_cadence_adapter_->SetZeroHertzModeEnabled(absl::nullopt);
+    }
 
-        pending_encoder_creation_ =
-            (!encoder_ || encoder_config_.video_format != config.video_format ||
-             max_data_payload_length_ != max_data_payload_length);
-        encoder_config_ = std::move(config);
-        max_data_payload_length_ = max_data_payload_length;
-        pending_encoder_reconfiguration_ = true;
+    pending_encoder_creation_ =
+        (!encoder_ || encoder_config_.video_format != config.video_format ||
+         max_data_payload_length_ != max_data_payload_length);
+    encoder_config_ = std::move(config);
+    max_data_payload_length_ = max_data_payload_length;
+    pending_encoder_reconfiguration_ = true;
 
-        // Reconfigure the encoder now if the frame resolution is known.
-        // Otherwise, the reconfiguration is deferred until the next frame to
-        // minimize the number of reconfigurations. The codec configuration
-        // depends on incoming video frame size.
-        if (last_frame_info_) {
-          if (callback) {
-            encoder_configuration_callbacks_.push_back(std::move(callback));
-          }
+    // Reconfigure the encoder now if the frame resolution is known.
+    // Otherwise, the reconfiguration is deferred until the next frame to
+    // minimize the number of reconfigurations. The codec configuration
+    // depends on incoming video frame size.
+    if (last_frame_info_) {
+      if (callback) {
+        encoder_configuration_callbacks_.push_back(std::move(callback));
+      }
 
-          ReconfigureEncoder();
-        } else {
-          webrtc::InvokeSetParametersCallback(callback, webrtc::RTCError::OK());
-        }
-      });
+      ReconfigureEncoder();
+    } else {
+      webrtc::InvokeSetParametersCallback(callback, webrtc::RTCError::OK());
+    }
+  });
 }
 
 // We should reduce the number of 'full' ReconfigureEncoder(). If only need
@@ -1107,8 +1106,7 @@ void VideoStreamEncoder::ReconfigureEncoder() {
         // or/and can be provided by encoder. In presence of both set of
         // limits, the final set is derived as their intersection.
         int min_bitrate_bps;
-        if (encoder_config_.simulcast_layers.empty() ||
-            encoder_config_.simulcast_layers[0].min_bitrate_bps <= 0) {
+        if (encoder_config_.simulcast_layers[0].min_bitrate_bps <= 0) {
           min_bitrate_bps = encoder_bitrate_limits->min_bitrate_bps;
         } else {
           min_bitrate_bps = std::max(encoder_bitrate_limits->min_bitrate_bps,
@@ -1116,10 +1114,20 @@ void VideoStreamEncoder::ReconfigureEncoder() {
         }
 
         int max_bitrate_bps;
-        // We don't check encoder_config_.simulcast_layers[0].max_bitrate_bps
-        // here since encoder_config_.max_bitrate_bps is derived from it (as
-        // well as from other inputs).
-        if (encoder_config_.max_bitrate_bps <= 0) {
+        // The API max bitrate comes from both `encoder_config_.max_bitrate_bps`
+        // and `encoder_config_.simulcast_layers[0].max_bitrate_bps`.
+        absl::optional<int> api_max_bitrate_bps;
+        if (encoder_config_.simulcast_layers[0].max_bitrate_bps > 0) {
+          api_max_bitrate_bps =
+              encoder_config_.simulcast_layers[0].max_bitrate_bps;
+        }
+        if (encoder_config_.max_bitrate_bps > 0) {
+          api_max_bitrate_bps = api_max_bitrate_bps.has_value()
+                                    ? std::min(encoder_config_.max_bitrate_bps,
+                                               *api_max_bitrate_bps)
+                                    : encoder_config_.max_bitrate_bps;
+        }
+        if (!api_max_bitrate_bps.has_value()) {
           max_bitrate_bps = encoder_bitrate_limits->max_bitrate_bps;
         } else {
           max_bitrate_bps = std::min(encoder_bitrate_limits->max_bitrate_bps,
@@ -1139,7 +1147,7 @@ void VideoStreamEncoder::ReconfigureEncoder() {
               << ", max=" << encoder_bitrate_limits->max_bitrate_bps
               << ") do not intersect with limits set by app"
               << " (min=" << streams.back().min_bitrate_bps
-              << ", max=" << encoder_config_.max_bitrate_bps
+              << ", max=" << api_max_bitrate_bps.value_or(-1)
               << "). The app bitrate limits will be used.";
         }
       }
@@ -2126,26 +2134,11 @@ EncodedImage VideoStreamEncoder::AugmentEncodedImage(
             .Parse(codec_type, stream_idx, image_copy.data(), image_copy.size())
             .value_or(-1);
   }
-  RTC_LOG(LS_VERBOSE) << __func__ << " stream_idx " << stream_idx << " qp "
+  RTC_LOG(LS_VERBOSE) << __func__ << " ntp time " << encoded_image.NtpTimeMs()
+                      << " stream_idx " << stream_idx << " qp "
                       << image_copy.qp_;
   image_copy.SetAtTargetQuality(codec_type == kVideoCodecVP8 &&
                                 image_copy.qp_ <= kVp8SteadyStateQpThreshold);
-
-  // Piggyback ALR experiment group id and simulcast id into the content type.
-  const uint8_t experiment_id =
-      experiment_groups_[videocontenttypehelpers::IsScreenshare(
-          image_copy.content_type_)];
-
-  // TODO(ilnik): This will force content type extension to be present even
-  // for realtime video. At the expense of miniscule overhead we will get
-  // sliced receive statistics.
-  RTC_CHECK(videocontenttypehelpers::SetExperimentId(&image_copy.content_type_,
-                                                     experiment_id));
-  // We count simulcast streams from 1 on the wire. That's why we set simulcast
-  // id in content type to +1 of that is actual simulcast index. This is because
-  // value 0 on the wire is reserved for 'no simulcast stream specified'.
-  RTC_CHECK(videocontenttypehelpers::SetSimulcastId(
-      &image_copy.content_type_, static_cast<uint8_t>(stream_idx + 1)));
 
   return image_copy;
 }

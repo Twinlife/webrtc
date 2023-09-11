@@ -559,7 +559,6 @@ public class PeerConnection {
     public boolean enableCpuOveruseDetection;
     public boolean suspendBelowMinBitrate;
     @Nullable public Integer screencastMinBitrate;
-    @Nullable public Boolean combinedAudioVideoBwe;
     // Use "Unknown" to represent no preference of adapter types, not the
     // preference of adapters of unknown types.
     public AdapterType networkPreference;
@@ -650,7 +649,6 @@ public class PeerConnection {
       enableCpuOveruseDetection = true;
       suspendBelowMinBitrate = false;
       screencastMinBitrate = null;
-      combinedAudioVideoBwe = null;
       networkPreference = AdapterType.UNKNOWN;
       sdpSemantics = SdpSemantics.UNIFIED_PLAN;
       activeResetSrtpParams = false;
@@ -837,12 +835,6 @@ public class PeerConnection {
     @CalledByNative("RTCConfiguration")
     Integer getScreencastMinBitrate() {
       return screencastMinBitrate;
-    }
-
-    @Nullable
-    @CalledByNative("RTCConfiguration")
-    Boolean getCombinedAudioVideoBwe() {
-      return combinedAudioVideoBwe;
     }
 
     @CalledByNative("RTCConfiguration")

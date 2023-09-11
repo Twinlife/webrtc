@@ -1593,6 +1593,7 @@ rtc_library("rtp_transceiver") {
     ":session_description",
     "../api:array_view",
     "../api:audio_options_api",
+    "../api:field_trials_view",
     "../api:libjingle_peerconnection_api",
     "../api:rtc_error",
     "../api:rtp_parameters",
@@ -1600,13 +1601,17 @@ rtc_library("rtp_transceiver") {
     "../api:rtp_transceiver_direction",
     "../api:scoped_refptr",
     "../api:sequence_checker",
+    "../api/audio_codecs:audio_codecs_api",
+    "../api/crypto:options",
     "../api/task_queue",
     "../api/task_queue:pending_task_safety_flag",
     "../api/video:video_bitrate_allocator_factory",
     "../media:codec",
     "../media:media_channel",
+    "../media:media_channel_impl",
     "../media:media_constants",
     "../media:rtc_media_base",
+    "../media:rtc_media_config",
     "../rtc_base:checks",
     "../rtc_base:logging",
     "../rtc_base:macromagic",
@@ -2432,6 +2437,7 @@ if (rtc_include_tests && !build_with_chromium) {
       "../api/transport:field_trial_based_config",
       "../api/transport:sctp_transport_factory_interface",
       "../api/transport/rtp:rtp_source",
+      "../api/units:data_rate",
       "../api/units:time_delta",
       "../api/units:timestamp",
       "../api/video:builtin_video_bitrate_allocator_factory",
@@ -2446,7 +2452,6 @@ if (rtc_include_tests && !build_with_chromium) {
       "../common_video",
       "../logging:fake_rtc_event_log",
       "../media:codec",
-      "../media:delayable",
       "../media:media_channel",
       "../media:media_constants",
       "../media:rid_description",
@@ -2553,27 +2558,6 @@ if (rtc_include_tests && !build_with_chromium) {
       "../test:test_main",
       "../test:test_support",
     ]
-  }
-
-  rtc_test("peer_connection_mediachannel_split_unittests") {
-    testonly = true
-    sources = [ "peer_connection_mediachannel_split_unittest.cc" ]
-    deps = [
-      ":integration_test_helpers",
-      ":session_description",
-      "../api:libjingle_peerconnection_api",
-      "../api:media_stream_interface",
-      "../api:rtc_error",
-      "../api:rtc_stats_api",
-      "../api:scoped_refptr",
-      "../media:codec",
-      "../media:media_constants",
-      "../rtc_base:gunit_helpers",
-      "../rtc_base:rtc_base_tests_utils",
-      "../test:test_main",
-      "../test:test_support",
-    ]
-    absl_deps = [ "//third_party/abseil-cpp/absl/types:optional" ]
   }
 
   rtc_library("data_channel_controller_unittest") {
@@ -2754,7 +2738,7 @@ if (rtc_include_tests && !build_with_chromium) {
       "test/mock_peer_connection_observers.h",
       "test/mock_rtp_receiver_internal.h",
       "test/mock_rtp_sender_internal.h",
-      "test/mock_voice_media_channel.h",
+      "test/mock_voice_media_receive_channel_interface.h",
       "test/peer_connection_test_wrapper.cc",
       "test/peer_connection_test_wrapper.h",
       "test/rtc_stats_obtainer.h",
