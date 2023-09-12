@@ -1016,7 +1016,8 @@ SSL_CTX* OpenSSLStreamAdapter::SetupSSLContext() {
     return nullptr;
   }
 
-  if (support_legacy_tls_protocols_flag_) {
+  // --twinlife-- 2023-09-12: Drop old code to make sure we use TLS 1.2
+  /* (support_legacy_tls_protocols_flag_) {
     // TODO(https://bugs.webrtc.org/10261): Completely remove this branch in
     // M84.
     SSL_CTX_set_min_proto_version(
@@ -1036,7 +1037,7 @@ SSL_CTX* OpenSSLStreamAdapter::SetupSSLContext() {
             ctx, ssl_mode_ == SSL_MODE_DTLS ? DTLS1_2_VERSION : TLS1_2_VERSION);
         break;
     }
-  } else {
+  } else */ { // --twinlife-- 2023-09-12: Drop old code to make sure we use TLS 1.2
     // TODO(https://bugs.webrtc.org/10261): Make this the default in M84.
     SSL_CTX_set_min_proto_version(
         ctx, ssl_mode_ == SSL_MODE_DTLS ? DTLS1_2_VERSION : TLS1_2_VERSION);
@@ -1083,10 +1084,19 @@ SSL_CTX* OpenSSLStreamAdapter::SetupSSLContext() {
   // remove HMAC-SHA256 and HMAC-SHA384 cipher suites, not GCM cipher suites
   // with SHA256 or SHA384 as the handshake hash.
   // This matches the list of SSLClientSocketImpl in Chromium.
-  SSL_CTX_set_cipher_list(
-      ctx,
-      "DEFAULT:!NULL:!aNULL:!SHA256:!SHA384:!aECDH:!AESGCM+AES256:!aPSK:!3DES");
+  // --twinlife-- 2023-09-12: Restrict the ciphers, in many cases the selected cipher is 0xC02B TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+  SSL_CTX_set_cipher_list(ctx,
+      "ECDHE-ECDSA-CHACHA20-POLY1305:"
+      "ECDHE-ECDSA-AES256-GCM-SHA384:"
+      "ECDHE-ECDSA-AES128-GCM-SHA256:");
 
+  // Restrict the signatures (in particular exclude SHA1)
+  SSL_CTX_set1_sigalgs_list(ctx,
+      "ECDSA+SHA256:rsa_pss_rsae_sha256:"
+      "RSA+SHA256:"
+      "ECDSA+SHA384:rsa_pss_rsae_sha384:"
+      "RSA+SHA384:rsa_pss_rsae_sha512:RSA+SHA512");
+  // --twinlife-- 2023-09-12: Restrict the ciphers 
   if (!srtp_ciphers_.empty()) {
     if (SSL_CTX_set_tlsext_use_srtp(ctx, srtp_ciphers_.c_str())) {
       SSL_CTX_free(ctx);

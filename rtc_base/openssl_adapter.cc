@@ -1019,8 +1019,21 @@ SSL_CTX* OpenSSLAdapter::CreateContext(SSLMode mode, bool enable_cache) {
   // (note that SHA256 and SHA384 only select legacy CBC ciphers).
   // Additionally disable HMAC-SHA1 ciphers in ECDSA. These are the remaining
   // CBC-mode ECDSA ciphers. Finally, disable 3DES.
-  SSL_CTX_set_cipher_list(
-      ctx, "ALL:!SHA256:!SHA384:!aPSK:!ECDSA+SHA1:!ADH:!LOW:!EXP:!MD5:!3DES");
+  // SSL_CTX_set_cipher_list(
+  //    ctx, "ALL:!SHA256:!SHA384:!aPSK:!ECDSA+SHA1:!ADH:!LOW:!EXP:!MD5:!3DES");
+  // --twinlife-- 2023-09-12: Restrict the ciphers, in many cases the selected cipher is 0xC02B TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+  SSL_CTX_set_cipher_list(ctx, "EDH+aRSA+AES256:EECDH+aRSA+AES256:!SSLv3");
+
+  // Force TLS 1.3
+  SSL_CTX_set_min_proto_version(ctx, mode == SSL_MODE_DTLS ? DTLS1_2_VERSION : TLS1_3_VERSION);
+
+  // Restrict the signatures (in particular exclude SHA1)
+  SSL_CTX_set1_sigalgs_list(ctx,
+      "ECDSA+SHA256:rsa_pss_rsae_sha256:"
+      "RSA+SHA256:"
+      "ECDSA+SHA384:rsa_pss_rsae_sha384:"
+      "RSA+SHA384:rsa_pss_rsae_sha512:RSA+SHA512");
+  // --twinlife-- 2023-09-12: Restrict the ciphers 
 
   if (mode == SSL_MODE_DTLS) {
     SSL_CTX_set_read_ahead(ctx, 1);
