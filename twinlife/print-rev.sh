@@ -68,6 +68,10 @@ cd $ROOT/third_party/boringssl
 echo -n "     boringssl:                           "
 git rev-parse HEAD
 
+cd $ROOT/third_party/cpu_features
+echo -n "     cpu_features:                        "
+git rev-parse HEAD
+
 cd $ROOT/third_party/crc32c
 echo -n "     crc32c:                              "
 git rev-parse HEAD
