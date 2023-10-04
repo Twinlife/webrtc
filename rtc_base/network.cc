@@ -170,6 +170,13 @@ bool IsIgnoredIPv6(bool allow_mac_based_ipv6, const InterfaceAddress& ip) {
     return true;
   }
 
+  // --twinlife-- 2023-09-14: Ignore IPv6 site local address (used by DuckDuckGo on Android)
+  // Ignore site local IPv6 address FD00::/8
+  if (IPIsSiteLocal(ip)) {
+    RTC_LOG(LS_VERBOSE) << "Ignore site local IP:" << ip.ToSensitiveString();
+    return true;
+  }
+
   return false;
 }
 #endif  // !defined(__native_client__)

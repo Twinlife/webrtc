@@ -509,7 +509,8 @@ bool IPIsMacBased(const IPAddress& ip) {
 bool IPIsSiteLocal(const IPAddress& ip) {
   // Can't use the helper because the prefix is 10 bits.
   in6_addr addr = ip.ipv6_address();
-  return addr.s6_addr[0] == 0xFE && (addr.s6_addr[1] & 0xC0) == 0xC0;
+  // --twinlife-- 2023-09-14: A site local IPv6 address is in the range FD00::/8 (the other format is deprecated)
+  return addr.s6_addr[0] == 0xFD;
 }
 
 bool IPIsULA(const IPAddress& ip) {
