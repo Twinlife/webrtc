@@ -1489,6 +1489,9 @@ rtc_library("ssl") {
     "ssl_identity.h",
     "ssl_stream_adapter.cc",
     "ssl_stream_adapter.h",
+    # -twinlife- 2023-09-20: add twinlife::Crypto class
+    "twinlife_crypto.cc",
+    "twinlife_crypto.h"
   ]
 
   deps = [
