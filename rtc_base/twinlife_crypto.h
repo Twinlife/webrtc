@@ -31,13 +31,13 @@ namespace twinlife {
   class Crypto {
   public:
     // Create a private/public keypair for ECDSA (use prime256v1 EC).
-    static Crypto* create();
+    static EVP_PKEY* create();
 
     // Create the instance by importing a DER BASE64 public key.  Returns null if the format is invalid.
-    static Crypto* importPublicKey(const unsigned char* pubKey, size_t pubKeyLength);
+    static EVP_PKEY* importPublicKey(const unsigned char* pubKey, size_t pubKeyLength);
 
     // Create the instance by importing a DER binary private key.  Returns null if the format is invalid.
-    static Crypto* importPrivateKey(const unsigned char* privateKey, size_t privateKeyLength);
+    static EVP_PKEY* importPrivateKey(const unsigned char* privateKey, size_t privateKeyLength);
 
     // Export the public key in DER base64 in the given buffer and return the length of exported public key.
     int exportPublicKey(unsigned char* buffer, size_t maxLength);
@@ -52,28 +52,28 @@ namespace twinlife {
 
     // Verify with the public key that the data buffer corresponds to the Base64 ECDSA signature.
     // Returns 1 if the signature is verified, 0 if the data does not match or a negative error code.
-    int verifyECDSA(const unsigned char* data, size_t len, unsigned char* signature, size_t signatureLength);
+    int verifyECDSA(const unsigned char* data, size_t len, const unsigned char* signature, size_t signatureLength);
 
     // Prepare for use of AEAD with the peer's public key.  Derive a shared secret based on the private key
     // and peer's public key, compute the SHA256 digest of that secret, setup the AEAD internal context
     // to be ready to use `encryptAEAD` or `decryptAEAD`.  The `bind` is a costly operation compared
     // to encryption and decryption.  The encryption nonce is pre-initialized with the given buffer
     // and will be incremented before each encryptAEAD() a maximum of `maxIncrement` times.
-    int bind(const Crypto *peerPublicKey, unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement);
+    int bind(const Crypto *peerPublicKey, const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement);
 
     // Unbind with peer's public key and release the AEAD context.  This operation must be called when
     // encryption and decryption are not necessary any more.
     void unbind();
 
     // Setup a new nonce for encryptAEAD().
-    void newNonce(unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement);
+    void newNonce(const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement);
 
     // Encrypt and sign with AES256-GCM the data buffer and auth buffer with a new nonce.
     // Only the data buffer is encrypted.  The nonce buffer will be filled with a new nonce of 12 bytes.
     // Return the length of the output buffer or a negative error code.
     int encryptAEAD(const unsigned char* data, size_t len,
-                    const unsigned char* auth, size_t auth_length, unsigned char* nonce,
-                    unsigned char* buffer, size_t maxLength);
+                    const unsigned char* auth, size_t auth_length,
+                    unsigned char* nonce, unsigned char* buffer, size_t maxLength);
 
     // Decrypt and verify the data with AES256-GCM.  Only the encryptedData buffer is decrypted.
     int decryptAEAD(const unsigned char* encryptedData, size_t len,

@@ -40,7 +40,7 @@ int Crypto::digest(const unsigned char* data, int len, unsigned char digest[EVP_
   return digest_len;
 }
 
-Crypto* Crypto::create()
+EVP_PKEY* Crypto::create()
 {
   EC_KEY* ec_key = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
   if (!ec_key) {
@@ -54,10 +54,10 @@ Crypto* Crypto::create()
     return nullptr;
   }
 
-  return new Crypto(pkey);
+  return pkey;
 }
 
-Crypto* Crypto::importPublicKey(const unsigned char* pubKey, size_t pubKeyLength)
+EVP_PKEY* Crypto::importPublicKey(const unsigned char* pubKey, size_t pubKeyLength)
 {
   unsigned char buffer[TWINLIFE_MAX_PUBKEY_LENGTH];
   size_t length;
@@ -82,10 +82,10 @@ Crypto* Crypto::importPublicKey(const unsigned char* pubKey, size_t pubKeyLength
     return nullptr;
   }
 
-  return new Crypto(pkey);
+  return pkey;
 }
 
-Crypto* Crypto::importPrivateKey(const unsigned char* privateKey, size_t privateKeyLength)
+EVP_PKEY* Crypto::importPrivateKey(const unsigned char* privateKey, size_t privateKeyLength)
 {
   if (!privateKey || privateKeyLength <= 0 || privateKeyLength > TWINLIFE_MAX_SIZE) {
     return nullptr;
@@ -104,7 +104,7 @@ Crypto* Crypto::importPrivateKey(const unsigned char* privateKey, size_t private
     return nullptr;
   }
 
-  return new Crypto(pkey);
+  return pkey;
 }
 
 int Crypto::exportPublicKey(unsigned char* buffer, size_t maxLength)
@@ -206,7 +206,7 @@ int Crypto::signECDSA(const unsigned char* data, size_t len, unsigned char* sign
   return result;
 }
 
-int Crypto::verifyECDSA(const unsigned char* data, size_t len, unsigned char* signature, size_t signatureLength)
+int Crypto::verifyECDSA(const unsigned char* data, size_t len, const unsigned char* signature, size_t signatureLength)
 {
   if (!data || !signature || len <= 0 || signatureLength <= 0) {
     return TWINLIFE_BAD_PARAM;
@@ -271,7 +271,7 @@ int Crypto::createSharedSecret(const Crypto* peerPublicKey, unsigned char* key, 
   return Crypto::digest(key, keyLength, key);
 }
 
-int Crypto::bind(const Crypto *peerPublicKey, unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement) {
+int Crypto::bind(const Crypto *peerPublicKey, const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement) {
 
   unbind();
   unsigned char* key = (unsigned char*)OPENSSL_malloc(TWINLIFE_MAX_SECRET_SIZE);
@@ -300,7 +300,7 @@ void Crypto::unbind() {
   }
 }
 
-void Crypto::newNonce(unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement)
+void Crypto::newNonce(const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement)
 {
   memcpy(nonce_, nonce, TWINLIFE_NONCE_LENGTH);
   maxIncrement_ = maxIncrement;

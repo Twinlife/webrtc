@@ -307,6 +307,9 @@ if (is_android) {
       "src/java/org/webrtc/NativeAndroidVideoTrackSource.java",
       "src/java/org/webrtc/NativeCapturerObserver.java",
       "src/java/org/webrtc/NativeLibrary.java",
+
+      # -twinlife- 2023-10-04: add Crypto.java
+      "api/org/webrtc/Crypto.java",
     ]
 
     deps = [
@@ -756,6 +759,8 @@ if (current_os == "linux" || is_android) {
       "src/jni/pc/stats_observer.h",
       "src/jni/pc/turn_customizer.cc",
       "src/jni/pc/turn_customizer.h",
+      "src/jni/pc/twinlife_crypto.cc",
+      "src/jni/pc/twinlife_crypto.h",
     ]
 
     deps = [
@@ -798,6 +803,7 @@ if (current_os == "linux" || is_android) {
       "../../rtc_base:stringutils",
       "../../rtc_base:threading",
       "../../system_wrappers:field_trial",
+      "//third_party/boringssl",
     ]
     absl_deps = [
       "//third_party/abseil-cpp/absl/memory",
@@ -1410,6 +1416,7 @@ if (current_os == "linux" || is_android) {
       "api/org/webrtc/StatsObserver.java",
       "api/org/webrtc/StatsReport.java",
       "api/org/webrtc/TurnCustomizer.java",
+      "api/org/webrtc/Crypto.java",
     ]
     namespace = "webrtc::jni"
     jni_generator_include = "//sdk/android/src/jni/jni_generator_helper.h"
