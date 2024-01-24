@@ -40,7 +40,7 @@ namespace jni {
   // Export the private key in DER in the given buffer (no base64 encoding)
   // and return the length of exported private key.
   ScopedJavaLocalRef<jbyteArray> Crypto::GetPrivateKey(JNIEnv *env, jboolean useBase64) {
-    unsigned char buffer[TWINLIFE_MAX_PUBKEY_LENGTH];
+    unsigned char buffer[TWINLIFE_MAX_SIZE];
 
     Crypto::Format format = useBase64 ? Crypto::Format::BASE64 : Crypto::Format::BINARY;
     int length = exportPrivateKey(format, buffer, sizeof(buffer));
