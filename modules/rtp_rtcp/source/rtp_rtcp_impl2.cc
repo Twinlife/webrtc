@@ -53,8 +53,8 @@ RTCPSender::Configuration AddRtcpSendEvaluationCallback(
 
 RtpPacketHistory::PaddingMode GetPaddingMode(
     const FieldTrialsView* field_trials) {
-  if (field_trials &&
-      field_trials->IsEnabled("WebRTC-PaddingMode-RecentLargePacket")) {
+  if (!field_trials ||
+      !field_trials->IsDisabled("WebRTC-PaddingMode-RecentLargePacket")) {
     return RtpPacketHistory::PaddingMode::kRecentLargePacket;
   }
   return RtpPacketHistory::PaddingMode::kPriority;
@@ -260,9 +260,7 @@ RTCPSender::FeedbackState ModuleRtpRtcpImpl2::GetFeedbackState() {
     state.media_bytes_sent = rtp_stats.transmitted.payload_bytes +
                              rtx_stats.transmitted.payload_bytes;
     state.send_bitrate =
-        rtp_sender_->packet_sender.GetSendRates(clock_->CurrentTime())
-            .Sum()
-            .bps<uint32_t>();
+        rtp_sender_->packet_sender.GetSendRates(clock_->CurrentTime()).Sum();
   }
   state.receiver = &rtcp_receiver_;
 

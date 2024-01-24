@@ -160,6 +160,8 @@ class PeerConnectionRampUpTest : public ::testing::Test {
         virtual_socket_server_(new rtc::VirtualSocketServer()),
         firewall_socket_server_(
             new rtc::FirewallSocketServer(virtual_socket_server_.get())),
+        firewall_socket_factory_(
+            new rtc::BasicPacketSocketFactory(firewall_socket_server_.get())),
         network_thread_(new rtc::Thread(firewall_socket_server_.get())),
         worker_thread_(rtc::Thread::Create()) {
     network_thread_->SetName("PCNetworkThread", this);
@@ -199,12 +201,11 @@ class PeerConnectionRampUpTest : public ::testing::Test {
     fake_network_managers_.emplace_back(fake_network_manager);
 
     auto observer = std::make_unique<MockPeerConnectionObserver>();
-    webrtc::PeerConnectionDependencies dependencies(observer.get());
+    PeerConnectionDependencies dependencies(observer.get());
     cricket::BasicPortAllocator* port_allocator =
-        new cricket::BasicPortAllocator(
-            fake_network_manager,
-            std::make_unique<rtc::BasicPacketSocketFactory>(
-                firewall_socket_server_.get()));
+        new cricket::BasicPortAllocator(fake_network_manager,
+                                        firewall_socket_factory_.get());
+
     port_allocator->set_step_delay(cricket::kDefaultStepDelay);
     dependencies.allocator =
         std::unique_ptr<cricket::BasicPortAllocator>(port_allocator);
@@ -308,15 +309,17 @@ class PeerConnectionRampUpTest : public ::testing::Test {
     auto stats = caller_->GetStats();
     auto transport_stats = stats->GetStatsOfType<RTCTransportStats>();
     if (transport_stats.size() == 0u ||
-        !transport_stats[0]->selected_candidate_pair_id.is_defined()) {
+        !transport_stats[0]->selected_candidate_pair_id.has_value()) {
       return 0;
     }
     std::string selected_ice_id =
-        transport_stats[0]->selected_candidate_pair_id.ValueToString();
+        transport_stats[0]
+            ->GetAttribute(transport_stats[0]->selected_candidate_pair_id)
+            .ToString();
     // Use the selected ICE candidate pair ID to get the appropriate ICE stats.
     const RTCIceCandidatePairStats ice_candidate_pair_stats =
         stats->Get(selected_ice_id)->cast_to<const RTCIceCandidatePairStats>();
-    if (ice_candidate_pair_stats.available_outgoing_bitrate.is_defined()) {
+    if (ice_candidate_pair_stats.available_outgoing_bitrate.has_value()) {
       return *ice_candidate_pair_stats.available_outgoing_bitrate;
     }
     // We couldn't get the `available_outgoing_bitrate` for the active candidate
@@ -344,6 +347,8 @@ class PeerConnectionRampUpTest : public ::testing::Test {
   // up queue.
   std::unique_ptr<rtc::VirtualSocketServer> virtual_socket_server_;
   std::unique_ptr<rtc::FirewallSocketServer> firewall_socket_server_;
+  std::unique_ptr<rtc::BasicPacketSocketFactory> firewall_socket_factory_;
+
   std::unique_ptr<rtc::Thread> network_thread_;
   std::unique_ptr<rtc::Thread> worker_thread_;
   // The `pc_factory` uses `network_thread_` & `worker_thread_`, so it must be

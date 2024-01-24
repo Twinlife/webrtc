@@ -67,6 +67,7 @@ rtc_library("video_frame") {
     ":video_rtp_headers",
     "..:array_view",
     "..:make_ref_counted",
+    "..:ref_count",
     "..:rtp_packet_info",
     "..:scoped_refptr",
     "..:video_track_source_constraints",
@@ -170,7 +171,10 @@ rtc_library("encoded_frame") {
   ]
 
   deps = [
-    "../../modules/video_coding:encoded_frame",
+    ":encoded_image",
+    ":video_frame",
+    "../../modules/rtp_rtcp:rtp_video_header",
+    "../../modules/video_coding:video_codec_interface",
     "../units:timestamp",
   ]
   absl_deps = [ "//third_party/abseil-cpp/absl/types:optional" ]
