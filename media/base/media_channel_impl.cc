@@ -71,18 +71,6 @@ int MediaChannelUtil::GetRtpSendTimeExtnId() const {
   return -1;
 }
 
-void MediaChannelUtil::SetFrameEncryptor(
-    uint32_t ssrc,
-    rtc::scoped_refptr<FrameEncryptorInterface> frame_encryptor) {
-  // Placeholder should be pure virtual once internal supports it.
-}
-
-void MediaChannelUtil::SetFrameDecryptor(
-    uint32_t ssrc,
-    rtc::scoped_refptr<FrameDecryptorInterface> frame_decryptor) {
-  // Placeholder should be pure virtual once internal supports it.
-}
-
 bool MediaChannelUtil::SendPacket(rtc::CopyOnWriteBuffer* packet,
                                   const rtc::PacketOptions& options) {
   return transport_.DoSendPacket(packet, false, options);
@@ -114,14 +102,6 @@ bool MediaChannelUtil::ExtmapAllowMixed() const {
 bool MediaChannelUtil::HasNetworkInterface() const {
   return transport_.HasNetworkInterface();
 }
-
-void MediaChannelUtil::SetEncoderToPacketizerFrameTransformer(
-    uint32_t ssrc,
-    rtc::scoped_refptr<FrameTransformerInterface> frame_transformer) {}
-
-void MediaChannelUtil::SetDepacketizerToDecoderFrameTransformer(
-    uint32_t ssrc,
-    rtc::scoped_refptr<FrameTransformerInterface> frame_transformer) {}
 
 bool MediaChannelUtil::DscpEnabled() const {
   return transport_.DscpEnabled();
@@ -199,11 +179,6 @@ MediaChannelUtil::TransportForMediaChannels::~TransportForMediaChannels() {
   RTC_DCHECK(!network_interface_);
 }
 
-bool MediaChannelUtil::TransportForMediaChannels::SendRtcp(const uint8_t* data,
-                                                           size_t len) {
-  return SendRtcp(rtc::MakeArrayView(data, len));
-}
-
 bool MediaChannelUtil::TransportForMediaChannels::SendRtcp(
     rtc::ArrayView<const uint8_t> packet) {
   auto send = [this, packet = rtc::CopyOnWriteBuffer(
@@ -221,13 +196,6 @@ bool MediaChannelUtil::TransportForMediaChannels::SendRtcp(
     network_thread_->PostTask(SafeTask(network_safety_, std::move(send)));
   }
   return true;
-}
-
-bool MediaChannelUtil::TransportForMediaChannels::SendRtp(
-    const uint8_t* data,
-    size_t len,
-    const webrtc::PacketOptions& options) {
-  return SendRtp(rtc::ArrayView<const uint8_t>(data, len), options);
 }
 
 bool MediaChannelUtil::TransportForMediaChannels::SendRtp(

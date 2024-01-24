@@ -149,6 +149,7 @@ class PeerConnectionIceBaseTest : public ::testing::Test {
 
   explicit PeerConnectionIceBaseTest(SdpSemantics sdp_semantics)
       : vss_(new rtc::VirtualSocketServer()),
+        socket_factory_(new rtc::BasicPacketSocketFactory(vss_.get())),
         main_(vss_.get()),
         sdp_semantics_(sdp_semantics) {
 #ifdef WEBRTC_ANDROID
@@ -174,8 +175,7 @@ class PeerConnectionIceBaseTest : public ::testing::Test {
   WrapperPtr CreatePeerConnection(const RTCConfiguration& config) {
     auto* fake_network = NewFakeNetwork();
     auto port_allocator = std::make_unique<cricket::BasicPortAllocator>(
-        fake_network,
-        std::make_unique<rtc::BasicPacketSocketFactory>(vss_.get()));
+        fake_network, socket_factory_.get());
     port_allocator->set_flags(cricket::PORTALLOCATOR_DISABLE_TCP |
                               cricket::PORTALLOCATOR_DISABLE_RELAY);
     port_allocator->set_step_delay(cricket::kMinimumStepDelay);
@@ -330,6 +330,7 @@ class PeerConnectionIceBaseTest : public ::testing::Test {
   }
 
   std::unique_ptr<rtc::VirtualSocketServer> vss_;
+  std::unique_ptr<rtc::BasicPacketSocketFactory> socket_factory_;
   rtc::AutoSocketServerThread main_;
   rtc::scoped_refptr<PeerConnectionFactoryInterface> pc_factory_;
   std::vector<std::unique_ptr<rtc::FakeNetworkManager>> fake_networks_;
@@ -341,7 +342,7 @@ class PeerConnectionIceTest
       public ::testing::WithParamInterface<SdpSemantics> {
  protected:
   PeerConnectionIceTest() : PeerConnectionIceBaseTest(GetParam()) {
-    webrtc::metrics::Reset();
+    metrics::Reset();
   }
 };
 
@@ -513,7 +514,7 @@ TEST_P(PeerConnectionIceTest, CannotAddCandidateWhenRemoteDescriptionNotSet) {
 
   EXPECT_FALSE(caller->pc()->AddIceCandidate(jsep_candidate.get()));
   EXPECT_METRIC_THAT(
-      webrtc::metrics::Samples("WebRTC.PeerConnection.AddIceCandidate"),
+      metrics::Samples("WebRTC.PeerConnection.AddIceCandidate"),
       ElementsAre(Pair(kAddIceCandidateFailNoRemoteDescription, 2)));
 }
 
@@ -1456,7 +1457,7 @@ class PeerConnectionIceConfigTest : public ::testing::Test {
     pc_ = result.MoveValue();
   }
 
-  webrtc::test::ScopedKeyValueConfig field_trials_;
+  test::ScopedKeyValueConfig field_trials_;
   std::unique_ptr<rtc::SocketServer> socket_server_;
   rtc::AutoSocketServerThread main_thread_;
   rtc::scoped_refptr<PeerConnectionFactoryInterface> pc_factory_ = nullptr;

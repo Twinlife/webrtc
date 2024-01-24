@@ -571,11 +571,6 @@ public class PeerConnection {
     // every offer/answer negotiation.This is only intended to be a workaround for crbug.com/835958
     public boolean activeResetSrtpParams;
 
-    // Whether this client is allowed to switch encoding codec mid-stream. This is a workaround for
-    // a WebRTC bug where the receiver could get confussed if a codec switch happened mid-call.
-    // Null indicates no change to currently configured value.
-    @Nullable public Boolean allowCodecSwitching;
-
     /**
      * Defines advanced optional cryptographic settings related to SRTP and
      * frame encryption for native WebRTC. Setting this will overwrite any
@@ -662,7 +657,6 @@ public class PeerConnection {
       hostAddresses = null;
       // --twinlife-- 180203
       turnLoggingId = null;
-      allowCodecSwitching = null;
       enableImplicitRollback = false;
       offerExtmapAllowMixed = true;
     }
@@ -850,12 +844,6 @@ public class PeerConnection {
     @CalledByNative("RTCConfiguration")
     boolean getActiveResetSrtpParams() {
       return activeResetSrtpParams;
-    }
-
-    @Nullable
-    @CalledByNative("RTCConfiguration")
-    Boolean getAllowCodecSwitching() {
-      return allowCodecSwitching;
     }
 
     @Nullable

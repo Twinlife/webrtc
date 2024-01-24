@@ -253,8 +253,9 @@ TEST(RtpPacketTest, CreateWithTwoByteHeaderExtensionFirst) {
   packet.SetTimestamp(kTimestamp);
   packet.SetSsrc(kSsrc);
   // Set extension that requires two-byte header.
-  VideoPlayoutDelay playoutDelay = {30, 340};
-  ASSERT_TRUE(packet.SetExtension<PlayoutDelayLimits>(playoutDelay));
+  VideoPlayoutDelay playout_delay(TimeDelta::Millis(30),
+                                  TimeDelta::Millis(340));
+  ASSERT_TRUE(packet.SetExtension<PlayoutDelayLimits>(playout_delay));
   packet.SetExtension<TransmissionOffset>(kTimeOffset);
   packet.SetExtension<AudioLevel>(kVoiceActive, kAudioLevel);
   EXPECT_THAT(kPacketWithTwoByteExtensionIdFirst,
@@ -277,8 +278,9 @@ TEST(RtpPacketTest, CreateWithTwoByteHeaderExtensionLast) {
   EXPECT_THAT(kPacketWithTOAndAL,
               ElementsAreArray(packet.data(), packet.size()));
   // Set extension that requires two-byte header.
-  VideoPlayoutDelay playoutDelay = {30, 340};
-  ASSERT_TRUE(packet.SetExtension<PlayoutDelayLimits>(playoutDelay));
+  VideoPlayoutDelay playout_delay(TimeDelta::Millis(30),
+                                  TimeDelta::Millis(340));
+  ASSERT_TRUE(packet.SetExtension<PlayoutDelayLimits>(playout_delay));
   EXPECT_THAT(kPacketWithTwoByteExtensionIdLast,
               ElementsAreArray(packet.data(), packet.size()));
 }
@@ -899,6 +901,41 @@ TEST(RtpPacketTest, GetUncopyableExtension) {
 
   UncopyableValue value2;
   EXPECT_TRUE(rtp_packet.GetExtension<UncopyableExtension>(&value2));
+}
+
+struct ParseByReferenceExtension {
+  static constexpr RTPExtensionType kId = kRtpExtensionDependencyDescriptor;
+  static constexpr absl::string_view Uri() { return "uri"; }
+
+  static size_t ValueSize(uint8_t value1, uint8_t value2) { return 2; }
+  static bool Write(rtc::ArrayView<uint8_t> data,
+                    uint8_t value1,
+                    uint8_t value2) {
+    data[0] = value1;
+    data[1] = value2;
+    return true;
+  }
+  static bool Parse(rtc::ArrayView<const uint8_t> data,
+                    uint8_t& value1,
+                    uint8_t& value2) {
+    value1 = data[0];
+    value2 = data[1];
+    return true;
+  }
+};
+
+TEST(RtpPacketTest, GetExtensionByReference) {
+  RtpHeaderExtensionMap extensions;
+  extensions.Register<ParseByReferenceExtension>(1);
+  RtpPacket rtp_packet(&extensions);
+  rtp_packet.SetExtension<ParseByReferenceExtension>(13, 42);
+
+  uint8_t value1 = 1;
+  uint8_t value2 = 1;
+  EXPECT_TRUE(
+      rtp_packet.GetExtension<ParseByReferenceExtension>(value1, value2));
+  EXPECT_EQ(int{value1}, 13);
+  EXPECT_EQ(int{value2}, 42);
 }
 
 TEST(RtpPacketTest, CreateAndParseTimingFrameExtension) {

@@ -136,8 +136,8 @@ void PassAFrame(
     FrameCadenceAdapterInterface::Callback* video_stream_encoder_callback,
     int64_t ntp_time_ms) {
   encoder_queue->PostTask([video_stream_encoder_callback, ntp_time_ms] {
-    video_stream_encoder_callback->OnFrame(Timestamp::Millis(ntp_time_ms), 1,
-                                           CreateSimpleNV12Frame());
+    video_stream_encoder_callback->OnFrame(Timestamp::Millis(ntp_time_ms),
+                                           false, CreateSimpleNV12Frame());
   });
 }
 
@@ -783,6 +783,10 @@ class MockFrameCadenceAdapter : public FrameCadenceAdapterInterface {
               UpdateLayerStatus,
               (size_t spatial_index, bool enabled),
               (override));
+  MOCK_METHOD(void,
+              UpdateVideoSourceRestrictions,
+              (absl::optional<double>),
+              (override));
   MOCK_METHOD(void, ProcessKeyFrameRequest, (), (override));
 };
 
@@ -871,8 +875,9 @@ class VideoStreamEncoderTest : public ::testing::Test {
         "EncoderQueue", TaskQueueFactory::Priority::NORMAL);
     TaskQueueBase* encoder_queue_ptr = encoder_queue.get();
     std::unique_ptr<FrameCadenceAdapterInterface> cadence_adapter =
-        FrameCadenceAdapterInterface::Create(time_controller_.GetClock(),
-                                             encoder_queue_ptr, field_trials_);
+        FrameCadenceAdapterInterface::Create(
+            time_controller_.GetClock(), encoder_queue_ptr,
+            /*metronome=*/nullptr, /*worker_queue=*/nullptr, field_trials_);
     video_stream_encoder_ = std::make_unique<VideoStreamEncoderUnderTest>(
         &time_controller_, std::move(cadence_adapter), std::move(encoder_queue),
         stats_proxy_.get(), video_send_config_.encoder_settings,
@@ -1492,7 +1497,7 @@ class VideoStreamEncoderTest : public ::testing::Test {
       last_encoded_image_ = EncodedImage(encoded_image);
       last_encoded_image_data_ = std::vector<uint8_t>(
           encoded_image.data(), encoded_image.data() + encoded_image.size());
-      uint32_t timestamp = encoded_image.Timestamp();
+      uint32_t timestamp = encoded_image.RtpTimestamp();
       if (last_timestamp_ != timestamp) {
         num_received_layers_ = 1;
         last_width_ = encoded_image._encodedWidth;
@@ -5636,6 +5641,44 @@ TEST_F(VideoStreamEncoderTest,
   video_stream_encoder_->Stop();
 }
 
+TEST_F(VideoStreamEncoderTest, InitialFrameDropAccountsForResolutionScaling) {
+  VideoEncoderConfig video_encoder_config;
+  webrtc::VideoEncoder::EncoderInfo encoder_info;
+  test::FillEncoderConfiguration(PayloadStringToCodecType("VP8"), 1,
+                                 &video_encoder_config);
+  video_encoder_config.video_stream_factory =
+      rtc::make_ref_counted<cricket::EncoderStreamFactory>(
+          "VP8", /*max qp*/ 56, /*screencast*/ false,
+          /*screenshare enabled*/ false, encoder_info);
+  for (auto& layer : video_encoder_config.simulcast_layers) {
+    layer.num_temporal_layers = 1;
+    layer.max_framerate = kDefaultFramerate;
+  }
+  video_encoder_config.max_bitrate_bps = kSimulcastTargetBitrate.bps();
+  video_encoder_config.content_type =
+      VideoEncoderConfig::ContentType::kRealtimeVideo;
+
+  video_encoder_config.simulcast_layers[0].active = true;
+  video_encoder_config.simulcast_layers[0].scale_resolution_down_by = 4;
+
+  video_stream_encoder_->ConfigureEncoder(video_encoder_config.Copy(),
+                                          kMaxPayloadLength);
+  video_stream_encoder_->WaitUntilTaskQueueIsIdle();
+
+  // Bitrate is not enough for 720p.
+  video_stream_encoder_->OnBitrateUpdatedAndWaitForManagedResources(
+      DataRate::KilobitsPerSec(30), DataRate::KilobitsPerSec(30),
+      DataRate::KilobitsPerSec(30), 0, 0, 0);
+
+  // Pass 720p frame. Resolution scaling factor is set to 4 which means that
+  // the target encode resolution is 180p. The default initial frame dropping
+  // should not be active for 180p no matter of available bitrate.
+  video_source_.IncomingCapturedFrame(CreateFrame(1, 1280, 720));
+  WaitForEncodedFrame(1);
+
+  video_stream_encoder_->Stop();
+}
+
 TEST_F(VideoStreamEncoderTest, InitialFrameDropActivatesWhenLayersChange) {
   const DataRate kLowTargetBitrate = DataRate::KilobitsPerSec(400);
   // Set simulcast.
@@ -8784,6 +8827,9 @@ class VideoStreamEncoderWithRealEncoderTest
             mock_encoder_factory_for_multiplex_.get(), SdpVideoFormat("VP8"),
             false);
         break;
+      case kVideoCodecH265:
+        // TODO(bugs.webrtc.org/13485): Use a fake encoder
+        break;
       default:
         RTC_DCHECK_NOTREACHED();
     }
@@ -9511,7 +9557,7 @@ TEST(VideoStreamEncoderFrameCadenceTest,
       "WebRTC-ZeroHertzScreenshare/Enabled/");
   auto adapter = FrameCadenceAdapterInterface::Create(
       factory.GetTimeController()->GetClock(), encoder_queue.get(),
-      field_trials);
+      /*metronome=*/nullptr, /*worker_queue=*/nullptr, field_trials);
   FrameCadenceAdapterInterface* adapter_ptr = adapter.get();
 
   MockVideoSourceInterface mock_source;
@@ -9537,6 +9583,62 @@ TEST(VideoStreamEncoderFrameCadenceTest,
       TimeDelta::Seconds(1) *
       FrameCadenceAdapterInterface::kOnDiscardedFrameRefreshFramePeriod /
       kMaxFps);
+}
+
+class VideoStreamEncoderFrameCadenceRestrictionTest : public ::testing::Test {
+ public:
+  VideoStreamEncoderFrameCadenceRestrictionTest()
+      : adapter_ptr_(adapter_.get()),
+        fake_resource_(FakeResource::Create("FakeResource")),
+        video_stream_encoder_(
+            factory_.Create(std::move(adapter_), &encoder_queue_)) {}
+
+  ~VideoStreamEncoderFrameCadenceRestrictionTest() {
+    factory_.DepleteTaskQueues();
+  }
+
+  void UpdateVideoSourceRestrictions(VideoSourceRestrictions restrictions) {
+    encoder_queue_->PostTask([this, restrictions] {
+      RTC_DCHECK_RUN_ON(encoder_queue_);
+      video_stream_encoder_->OnVideoSourceRestrictionsUpdated(
+          restrictions, VideoAdaptationCounters(), fake_resource_,
+          VideoSourceRestrictions());
+    });
+  }
+
+ protected:
+  SimpleVideoStreamEncoderFactory factory_;
+  std::unique_ptr<NiceMock<MockFrameCadenceAdapter>> adapter_{
+      std::make_unique<NiceMock<MockFrameCadenceAdapter>>()};
+  NiceMock<MockFrameCadenceAdapter>* adapter_ptr_;
+  TaskQueueBase* encoder_queue_{nullptr};
+  rtc::scoped_refptr<FakeResource> fake_resource_;
+  VideoSourceRestrictions restrictions_;
+  std::unique_ptr<SimpleVideoStreamEncoderFactory::AdaptedVideoStreamEncoder>
+      video_stream_encoder_;
+};
+
+TEST_F(VideoStreamEncoderFrameCadenceRestrictionTest,
+       UpdatesVideoSourceRestrictionsUnRestricted) {
+  EXPECT_CALL(*adapter_ptr_, UpdateVideoSourceRestrictions(Eq(absl::nullopt)));
+  UpdateVideoSourceRestrictions(VideoSourceRestrictions());
+}
+
+TEST_F(VideoStreamEncoderFrameCadenceRestrictionTest,
+       UpdatesVideoSourceRestrictionsWithMaxFrameRateRestriction) {
+  restrictions_.set_max_frame_rate(20);
+  EXPECT_CALL(*adapter_ptr_, UpdateVideoSourceRestrictions(Optional(20)));
+  UpdateVideoSourceRestrictions(restrictions_);
+}
+
+TEST_F(VideoStreamEncoderFrameCadenceRestrictionTest,
+       UpdatesVideoSourceRestrictionsWithoutMaxFrameRateRestriction) {
+  // Restrictions in resolution count as restriction updated, even though the
+  // FPS is unlimited.
+  restrictions_.set_max_pixels_per_frame(99);
+  restrictions_.set_target_pixels_per_frame(101);
+  EXPECT_CALL(*adapter_ptr_, UpdateVideoSourceRestrictions(Eq(absl::nullopt)));
+  UpdateVideoSourceRestrictions(restrictions_);
 }
 
 }  // namespace webrtc

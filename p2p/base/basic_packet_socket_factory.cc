@@ -16,8 +16,8 @@
 
 #include "absl/memory/memory.h"
 #include "api/async_dns_resolver.h"
-#include "api/wrapping_async_dns_resolver.h"
 #include "p2p/base/async_stun_tcp_socket.h"
+#include "rtc_base/async_dns_resolver.h"
 #include "rtc_base/async_tcp_socket.h"
 #include "rtc_base/async_udp_socket.h"
 #include "rtc_base/checks.h"
@@ -197,19 +197,10 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateClientTcpSocket(
   return tcp_socket;
 }
 
-#if 0
-AsyncResolverInterface* BasicPacketSocketFactory::CreateAsyncResolver() {
-  // --twinlife 2023-07-11: provide hostname resolution
-  RTC_LOG(LS_ERROR) << "CreateAsyncResolver() without factory.";
-  // --twinlife 2023-07-11: provide hostname resolution
-  return new AsyncResolver();
-}
-#endif
-
 std::unique_ptr<webrtc::AsyncDnsResolverInterface>
 BasicPacketSocketFactory::CreateAsyncDnsResolver() {
   // --twinlife 2023-07-11: provide hostname resolution
-  return std::unique_ptr<webrtc::AsyncDnsResolverInterface>(async_resolver_factory_->Create());
+  return std::make_unique<webrtc::AsyncDnsResolver>(async_resolver_factory_->Create());
   // --twinlife 2023-07-11: provide hostname resolution
 }
 
