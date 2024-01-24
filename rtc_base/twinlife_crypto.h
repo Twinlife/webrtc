@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2023 twinlife SA.
+ *  Copyright (c) 2023-2024 twinlife SA.
  *
  *  All Rights Reserved.
  *
@@ -30,21 +30,25 @@
 namespace twinlife {
   class Crypto {
   public:
+    enum Format {
+      BINARY,
+      BASE64
+    };
     // Create a private/public keypair for ECDSA (use prime256v1 EC).
     static EVP_PKEY* create();
 
-    // Create the instance by importing a DER BASE64 public key.  Returns null if the format is invalid.
-    static EVP_PKEY* importPublicKey(const unsigned char* pubKey, size_t pubKeyLength);
+    // Create the instance by importing a DER binary or BASE64 public key.  Returns null if the format is invalid.
+    static EVP_PKEY* importPublicKey(enum Format format, const unsigned char* pubKey, size_t pubKeyLength);
 
-    // Create the instance by importing a DER binary private key.  Returns null if the format is invalid.
-    static EVP_PKEY* importPrivateKey(const unsigned char* privateKey, size_t privateKeyLength);
+    // Create the instance by importing a DER binary or BASE64 private key.  Returns null if the format is invalid.
+    static EVP_PKEY* importPrivateKey(enum Format format, const unsigned char* privateKey, size_t privateKeyLength);
 
     // Export the public key in DER base64 in the given buffer and return the length of exported public key.
-    int exportPublicKey(unsigned char* buffer, size_t maxLength);
+    int exportPublicKey(enum Format format, unsigned char* buffer, size_t maxLength);
 
     // Export the priviate key in DER in the given buffer (no base64 encoding)
     // and return the length of exported private key.
-    int exportPrivateKey(unsigned char* buffer, size_t maxLength);
+    int exportPrivateKey(enum Format format, unsigned char* buffer, size_t maxLength);
 
     // Sign the content of the data buffer with the private key and encode the ECDSA signature in Base64
     // in the signature buffer.  Return the length of the signature or a negative error code.

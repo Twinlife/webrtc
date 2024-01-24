@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2023 twinlife SA.
+ *  Copyright (c) 2023-2024 twinlife SA.
  *
  *  All Rights Reserved.
  *
@@ -26,11 +26,11 @@ public:
   ~Crypto() {}
 
   // Export the public key in DER base64 in the given buffer and return the length of exported public key.
-  ScopedJavaLocalRef<jbyteArray> GetPublicKey(JNIEnv *env);
+  ScopedJavaLocalRef<jbyteArray> GetPublicKey(JNIEnv *env, jboolean useBase64);
 
   // Export the priviate key in DER in the given buffer (no base64 encoding)
   // and return the length of exported private key.
-  ScopedJavaLocalRef<jbyteArray> GetPrivateKey(JNIEnv *env);
+  ScopedJavaLocalRef<jbyteArray> GetPrivateKey(JNIEnv *env, jboolean useBase64);
 
   // Sign the content of the data buffer with the private key and encode the ECDSA signature in Base64
   // in the signature buffer.  Return the length of the signature or a negative error code.

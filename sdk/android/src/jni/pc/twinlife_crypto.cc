@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2023 twinlife SA.
+ *  Copyright (c) 2023-2024 twinlife SA.
  *
  *  All Rights Reserved.
  *
@@ -21,10 +21,11 @@ namespace webrtc {
 namespace jni {
 
   // Export the public key in DER base64 in the given buffer and return the length of exported public key.
-  ScopedJavaLocalRef<jbyteArray> Crypto::GetPublicKey(JNIEnv *env) {
+  ScopedJavaLocalRef<jbyteArray> Crypto::GetPublicKey(JNIEnv *env, jboolean useBase64) {
     unsigned char buffer[TWINLIFE_MAX_PUBKEY_LENGTH];
 
-    int length = exportPublicKey(buffer, sizeof(buffer));
+    Crypto::Format format = useBase64 ? Crypto::Format::BASE64 : Crypto::Format::BINARY;
+    int length = exportPublicKey(format, buffer, sizeof(buffer));
     if (length <= 0) {
       return nullptr;
     }
@@ -38,10 +39,11 @@ namespace jni {
 
   // Export the private key in DER in the given buffer (no base64 encoding)
   // and return the length of exported private key.
-  ScopedJavaLocalRef<jbyteArray> Crypto::GetPrivateKey(JNIEnv *env) {
+  ScopedJavaLocalRef<jbyteArray> Crypto::GetPrivateKey(JNIEnv *env, jboolean useBase64) {
     unsigned char buffer[TWINLIFE_MAX_PUBKEY_LENGTH];
 
-    int length = exportPrivateKey(buffer, sizeof(buffer));
+    Crypto::Format format = useBase64 ? Crypto::Format::BASE64 : Crypto::Format::BINARY;
+    int length = exportPrivateKey(format, buffer, sizeof(buffer));
     if (length <= 0) {
       return nullptr;
     }
@@ -199,11 +201,13 @@ static base::android::ScopedJavaLocalRef<jobject> JNI_Crypto_Create(JNIEnv* env)
 }
 
 static base::android::ScopedJavaLocalRef<jobject> JNI_Crypto_ImportPrivateKey(JNIEnv* env, const
-                                                                              base::android::JavaParamRef<jbyteArray>& privateKey) {
+                                                                              base::android::JavaParamRef<jbyteArray>& privateKey,
+                                                                              jboolean isBase64) {
   jbyte* buffer = env->GetByteArrayElements(privateKey.obj(), nullptr);
   size_t length = env->GetArrayLength(privateKey.obj());
 
-  EVP_PKEY *pkey = twinlife::Crypto::importPrivateKey((const unsigned char*) buffer, length);
+  Crypto::Format format = isBase64 ? Crypto::Format::BASE64 : Crypto::Format::BINARY;
+  EVP_PKEY *pkey = twinlife::Crypto::importPrivateKey(format, (const unsigned char*) buffer, length);
   env->ReleaseByteArrayElements(privateKey.obj(), buffer, JNI_ABORT);  
 
   Crypto *crypto;
@@ -216,12 +220,14 @@ static base::android::ScopedJavaLocalRef<jobject> JNI_Crypto_ImportPrivateKey(JN
 }
 
 static base::android::ScopedJavaLocalRef<jobject> JNI_Crypto_ImportPublicKey(JNIEnv* env, const
-                                                                             base::android::JavaParamRef<jbyteArray>& privateKey) {
+                                                                             base::android::JavaParamRef<jbyteArray>& privateKey,
+                                                                             jboolean isBase64) {
   jbyte* buffer = env->GetByteArrayElements(privateKey.obj(), nullptr);
   size_t length = env->GetArrayLength(privateKey.obj());
 
-  EVP_PKEY *pkey = twinlife::Crypto::importPublicKey((const unsigned char*) buffer, length);
-  env->ReleaseByteArrayElements(privateKey.obj(), buffer, JNI_ABORT);  
+  Crypto::Format format = isBase64 ? Crypto::Format::BASE64 : Crypto::Format::BINARY;
+  EVP_PKEY *pkey = twinlife::Crypto::importPublicKey(format, (const unsigned char*) buffer, length);
+  env->ReleaseByteArrayElements(privateKey.obj(), buffer, JNI_ABORT);
 
   Crypto *crypto;
   if (pkey) {

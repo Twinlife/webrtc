@@ -13,6 +13,10 @@ public class Crypto {
     public static final int AEAD_FAIL = (-7);
     public static final int NONCE_ERROR = (-8);
 
+    public static final int NONCE_LENGTH = 12;
+    public static final int MAX_KEY_LENGTH = 256;
+    public static final int MAX_SIG_LENGTH = 128;
+
     @CalledByNative
     public Crypto(long nativeCrypto) {
         this.nativeCrypto = nativeCrypto;
@@ -22,22 +26,22 @@ public class Crypto {
         return nativeCreate();
     }
 
-    public static Crypto importPublicKey(byte[] pubKey) {
-        return nativeImportPublicKey(pubKey);
+    public static Crypto importPublicKey(byte[] pubKey, boolean isBase64) {
+        return nativeImportPublicKey(pubKey, isBase64);
     }
 
-    public static Crypto importPrivateKey(byte[] privateKey) {
-        return nativeImportPrivateKey(privateKey);
+    public static Crypto importPrivateKey(byte[] privateKey, boolean isBase64) {
+        return nativeImportPrivateKey(privateKey, isBase64);
     }
 
-    public byte[] getPublicKey() {
+    public byte[] getPublicKey(boolean useBase64) {
         checkCryptoExists();
-        return nativeGetPublicKey(nativeCrypto);
+        return nativeGetPublicKey(nativeCrypto, useBase64);
     }
 
-    public byte[] getPrivateKey() {
+    public byte[] getPrivateKey(boolean useBase64) {
         checkCryptoExists();
-        return nativeGetPrivateKey(nativeCrypto);
+        return nativeGetPrivateKey(nativeCrypto, useBase64);
     }
 
     public int bind(Crypto peerPublicKey, byte[] nonce, int maxIncrement) {
@@ -53,7 +57,7 @@ public class Crypto {
 
     public int newNonce(byte[] nonce, int maxIncrement) {
         checkCryptoExists();
-        return nativeNewNonce(nativeCrypto, nonce, maxIncremnet);        
+        return nativeNewNonce(nativeCrypto, nonce, maxIncrement);
     }
 
     public int signECDSA(byte[] data, byte[] signature) {
@@ -91,10 +95,10 @@ public class Crypto {
     }
 
     private static native Crypto nativeCreate();
-    private static native Crypto nativeImportPublicKey(byte[] pubKey);
-    private static native Crypto nativeImportPrivateKey(byte[] privateKey);
-    private static native byte[] nativeGetPublicKey(long nativeCrypto);
-    private static native byte[] nativeGetPrivateKey(long nativeCrypto);
+    private static native Crypto nativeImportPublicKey(byte[] pubKey, boolean isBase64);
+    private static native Crypto nativeImportPrivateKey(byte[] privateKey, boolean isBase64);
+    private static native byte[] nativeGetPublicKey(long nativeCrypto, boolean useBase64);
+    private static native byte[] nativeGetPrivateKey(long nativeCrypto, boolean useBase64);
     private static native int nativeBind(long nativeCrypto, long nativeBindCrypto, byte[] nonce, int maxIncrement); // 
     private static native int nativeUnbind(long nativeCrypto);
     private static native int nativeNewNonce(long nativeCrypto, byte[] nonce, int maxIncrement);

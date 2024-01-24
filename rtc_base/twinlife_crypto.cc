@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2023 twinlife SA.
+ *  Copyright (c) 2023-2024 twinlife SA.
  *
  *  All Rights Reserved.
  *
@@ -57,7 +57,7 @@ EVP_PKEY* Crypto::create()
   return pkey;
 }
 
-EVP_PKEY* Crypto::importPublicKey(const unsigned char* pubKey, size_t pubKeyLength)
+EVP_PKEY* Crypto::importPublicKey(enum Format format, const unsigned char* pubKey, size_t pubKeyLength)
 {
   unsigned char buffer[TWINLIFE_MAX_PUBKEY_LENGTH];
   size_t length;
@@ -65,12 +65,16 @@ EVP_PKEY* Crypto::importPublicKey(const unsigned char* pubKey, size_t pubKeyLeng
   if (!pubKey || pubKeyLength <= 0 || pubKeyLength > TWINLIFE_MAX_SIZE) {
     return nullptr;
   }
-  if (EVP_DecodeBase64(buffer, &length, sizeof(buffer), pubKey, pubKeyLength) != 1) {
-    return nullptr;
-  }
 
   CBS cbs;
-  CBS_init(&cbs, buffer, length);
+  if (format == Format::BASE64) {
+    if (EVP_DecodeBase64(buffer, &length, sizeof(buffer), pubKey, pubKeyLength) != 1) {
+      return nullptr;
+    }
+    CBS_init(&cbs, buffer, length);
+  } else {
+    CBS_init(&cbs, pubKey, pubKeyLength);
+  }
 
   EVP_PKEY* pkey = EVP_parse_public_key(&cbs);
   if (!pkey) {
@@ -85,14 +89,23 @@ EVP_PKEY* Crypto::importPublicKey(const unsigned char* pubKey, size_t pubKeyLeng
   return pkey;
 }
 
-EVP_PKEY* Crypto::importPrivateKey(const unsigned char* privateKey, size_t privateKeyLength)
+EVP_PKEY* Crypto::importPrivateKey(enum Format format, const unsigned char* privateKey, size_t privateKeyLength)
 {
   if (!privateKey || privateKeyLength <= 0 || privateKeyLength > TWINLIFE_MAX_SIZE) {
     return nullptr;
   }
 
+  unsigned char buffer[TWINLIFE_MAX_PUBKEY_LENGTH];
+  size_t length;
   CBS cbs;
-  CBS_init(&cbs, privateKey, privateKeyLength);
+  if (format == Format::BASE64) {
+    if (EVP_DecodeBase64(buffer, &length, sizeof(buffer), privateKey, privateKeyLength) != 1) {
+      return nullptr;
+    }
+    CBS_init(&cbs, buffer, length);
+  } else {
+    CBS_init(&cbs, privateKey, privateKeyLength);
+  }
 
   EVP_PKEY* pkey = EVP_parse_private_key(&cbs);
   if (!pkey) {
@@ -107,35 +120,43 @@ EVP_PKEY* Crypto::importPrivateKey(const unsigned char* privateKey, size_t priva
   return pkey;
 }
 
-int Crypto::exportPublicKey(unsigned char* buffer, size_t maxLength)
+int Crypto::exportPublicKey(enum Format format, unsigned char* buffer, size_t maxLength)
 {
-  CBB cbb;
-  uint8_t *data;
-  size_t size;
-
   if (!buffer || maxLength <= 0) {
     return TWINLIFE_BAD_PARAM;
   }
 
-  CBB_init(&cbb, TWINLIFE_MAX_SIZE);
-  if (EVP_marshal_public_key(&cbb, pkey_) != 1) {
-    CBB_cleanup(&cbb);
-    return TWINLIFE_TOO_SMALL;
-  }
-  CBB_finish(&cbb, &data, &size);
+  CBB cbb;
+  uint8_t *data;
+  size_t size;
+  if (format == Format::BASE64) {
+    CBB_init(&cbb, TWINLIFE_MAX_SIZE);
+    if (EVP_marshal_public_key(&cbb, pkey_) != 1) {
+      CBB_cleanup(&cbb);
+      return TWINLIFE_TOO_SMALL;
+    }
+    CBB_finish(&cbb, &data, &size);
 
-  // Verify we have enough space for BASE64 (+5 is for /3 rounding + 1 for NUL).
-  if (4 * (size / 3) + 5 >= maxLength) {
+    // Verify we have enough space for BASE64 (+5 is for /3 rounding + 1 for NUL).
+    if (4 * (size / 3) + 5 >= maxLength) {
+      OPENSSL_free(data);
+      return TWINLIFE_TOO_SMALL;
+    }
+
+    int result = EVP_EncodeBlock(buffer, data, size);
     OPENSSL_free(data);
-    return TWINLIFE_TOO_SMALL;
+    return result;
+  } else {
+    CBB_init_fixed(&cbb, buffer, maxLength);
+    if (EVP_marshal_public_key(&cbb, pkey_) != 1) {
+      return TWINLIFE_TOO_SMALL;
+    }
+    CBB_finish(&cbb, &data, &size);
+    return size;
   }
-
-  int result = EVP_EncodeBlock(buffer, data, size);
-  OPENSSL_free(data);
-  return result;
 }
 
-int Crypto::exportPrivateKey(unsigned char* buffer, size_t maxLength)
+int Crypto::exportPrivateKey(enum Format format, unsigned char* buffer, size_t maxLength)
 {
   CBB cbb;
   uint8_t *data;
@@ -144,13 +165,31 @@ int Crypto::exportPrivateKey(unsigned char* buffer, size_t maxLength)
   if (!buffer || maxLength <= 0) {
     return TWINLIFE_BAD_PARAM;
   }
-  CBB_init_fixed(&cbb, buffer, maxLength);
-  if (EVP_marshal_private_key(&cbb, pkey_) != 1) {
-    return TWINLIFE_TOO_SMALL;
-  }
-  CBB_finish(&cbb, &data, &size);
+  if (format == Format::BASE64) {
+    CBB_init(&cbb, TWINLIFE_MAX_SIZE);
+    if (EVP_marshal_private_key(&cbb, pkey_) != 1) {
+      CBB_cleanup(&cbb);
+      return TWINLIFE_TOO_SMALL;
+    }
+    CBB_finish(&cbb, &data, &size);
 
-  return size;
+    // Verify we have enough space for BASE64 (+5 is for /3 rounding + 1 for NUL).
+    if (4 * (size / 3) + 5 >= maxLength) {
+      OPENSSL_free(data);
+      return TWINLIFE_TOO_SMALL;
+    }
+
+    int result = EVP_EncodeBlock(buffer, data, size);
+    OPENSSL_free(data);
+    return result;
+  } else {
+    CBB_init_fixed(&cbb, buffer, maxLength);
+    if (EVP_marshal_private_key(&cbb, pkey_) != 1) {
+      return TWINLIFE_TOO_SMALL;
+    }
+    CBB_finish(&cbb, &data, &size);
+    return size;
+  }
 }
 
 int Crypto::signECDSA(const unsigned char* data, size_t len, unsigned char* signature, size_t maxLength)
