@@ -40,7 +40,6 @@
 #include "sdk/android/src/jni/pc/ssl_certificate_verifier_wrapper.h"
 #include "sdk/android/src/jni/pc/video.h"
 #include "system_wrappers/include/field_trial.h"
-#include "p2p/base/basic_async_resolver_factory.h"  // --twinlife 2023-07-11: provide hostname resolution
 
 namespace webrtc {
 namespace jni {
@@ -271,22 +270,18 @@ ScopedJavaLocalRef<jobject> CreatePeerConnectionFactoryForJava(
   dependencies.worker_thread = worker_thread.get();
   dependencies.signaling_thread = signaling_thread.get();
   dependencies.task_queue_factory = CreateDefaultTaskQueueFactory();
-#ifdef TWINLIFE
   // --twinlife 2023-07-11: provide hostname resolution
-  std::unique_ptr<BasicAsyncResolverFactory> async_resolver = std::make_unique<BasicAsyncResolverFactory>();
   if (!IsNull(jni, jhost_addresses)) {
     std::vector<webrtc::StaticHostname> hostnames;
-    JavaToNativeStaticHostnames(jni, jhost_addresses, hostnames);
-    async_resolver->setHostnames(hostnames);
-  }
-  dependencies.async_resolver_factory = std::make_unique<WrappingAsyncDnsResolverFactory>(std::move(async_resolver));
-  if (!(options && options->disable_network_monitor)) {
-    dependencies.network_monitor_factory =
-        std::make_unique<AndroidNetworkMonitorFactory>();
+    JavaToNativeStaticHostnames(jni, jhost_addresses, dependencies.hostnames);
   }
   // --twinlife 2023-07-11: provide hostname resolution
 
   // --twinlife-- 2022-10-24: If there is no audio module, create the
+  if (!(options && options->disable_network_monitor)) {
+    dependencies.network_monitor_factory =
+        std::make_unique<AndroidNetworkMonitorFactory>();
+  }
   // factory without any media support (see objc, initWithNoMedia).
   if (!audio_device_module) {
     rtc::scoped_refptr<PeerConnectionFactoryInterface> factory =
@@ -304,9 +299,6 @@ ScopedJavaLocalRef<jobject> CreatePeerConnectionFactoryForJava(
   }
   // --twinlife-- 2022-10-24
 
-  dependencies.call_factory = CreateCallFactory();
-  // SCz: old dependencies.event_log_factory = std::make_unique<RtcEventLogFactory>(
-  //    dependencies.task_queue_factory.get());
   dependencies.event_log_factory = std::make_unique<RtcEventLogFactory>();
   dependencies.fec_controller_factory = std::move(fec_controller_factory);
   dependencies.network_controller_factory =

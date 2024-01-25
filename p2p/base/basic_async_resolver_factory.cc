@@ -21,14 +21,10 @@
 namespace webrtc {
 
 // --twinlife 2023-07-11: provide hostname resolution
-void BasicAsyncResolverFactory::setHostnames(const std::vector<webrtc::StaticHostname> hostnames) {
+void BasicAsyncDnsResolverFactory::setHostnames(const std::vector<webrtc::StaticHostname>& hostnames) {
 
   for (const webrtc::StaticHostname& host : hostnames) {
-    rtc::StaticHostname h;
-    h.hostname = host.hostname;
-    h.ipv4 = host.ipv4;
-    h.ipv6 = host.ipv6;
-    hostnames_.push_back(h);
+    hostnames_.push_back(host);
   }
 }
 // --twinlife 2023-07-11: provide hostname resolution

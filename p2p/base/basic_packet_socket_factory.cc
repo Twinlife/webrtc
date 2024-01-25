@@ -31,8 +31,8 @@ namespace rtc {
 // --twinlife 2023-07-11: provide hostname resolution
 BasicPacketSocketFactory::BasicPacketSocketFactory(
     SocketFactory* socket_factory,
-    webrtc::AsyncDnsResolverFactoryInterface* async_resolver_factory)
-  : socket_factory_(socket_factory), async_resolver_factory_(async_resolver_factory) {
+    const std::vector<webrtc::StaticHostname>& hostnames)
+  : socket_factory_(socket_factory), hostnames_(hostnames) {
 }
 // --twinlife 2023-07-11: provide hostname resolution
 
@@ -200,7 +200,7 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateClientTcpSocket(
 std::unique_ptr<webrtc::AsyncDnsResolverInterface>
 BasicPacketSocketFactory::CreateAsyncDnsResolver() {
   // --twinlife 2023-07-11: provide hostname resolution
-  return std::make_unique<webrtc::AsyncDnsResolver>(async_resolver_factory_->Create());
+  return std::make_unique<webrtc::AsyncDnsResolver>(&hostnames_);
   // --twinlife 2023-07-11: provide hostname resolution
 }
 

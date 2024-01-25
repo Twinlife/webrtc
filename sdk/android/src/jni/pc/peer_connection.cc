@@ -295,9 +295,6 @@ void JavaToNativeRTCConfiguration(
   rtc_config->crypto_options =
       JavaToNativeOptionalCryptoOptions(jni, j_crypto_options);
 
-  rtc_config->allow_codec_switching = JavaToNativeOptionalBool(
-      jni, Java_RTCConfiguration_getAllowCodecSwitching(jni, j_rtc_config));
-  
   // --twinlife-- 180202
   ScopedJavaLocalRef<jstring> j_proxy_address =
       Java_RTCConfiguration_getProxyAddress(jni, j_rtc_config);

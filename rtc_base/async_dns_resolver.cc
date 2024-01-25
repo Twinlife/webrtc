@@ -131,6 +131,10 @@ class AsyncDnsResolver::State : public rtc::RefCountedBase {
 
 AsyncDnsResolver::AsyncDnsResolver() : state_(State::Create()) {}
 
+// --twinlife-- 2024
+AsyncDnsResolver::AsyncDnsResolver(const std::vector<webrtc::StaticHostname> *hostnames) : state_(State::Create()), hostnames_(hostnames) {}
+// --twinlife-- 2024
+  
 AsyncDnsResolver::~AsyncDnsResolver() {
   state_->Kill();
 }
@@ -147,6 +151,39 @@ void AsyncDnsResolver::Start(const rtc::SocketAddress& addr,
   RTC_DCHECK_RUN_ON(&result_.sequence_checker_);
   result_.addr_ = addr;
   callback_ = std::move(callback);
+
+  // --twinlife 2023-07-11: provide hostname resolution
+  if (hostnames_) {
+    for (const webrtc::StaticHostname& hostname : *hostnames_) {
+      if (hostname.hostname == addr.hostname()) {
+        std::vector<rtc::IPAddress> addresses;
+        if ((family == AF_INET || family == AF_UNSPEC) && hostname.ipv4.family() == AF_INET) {
+          addresses.push_back(hostname.ipv4);
+        }
+        if ((family == AF_INET6 || family == AF_UNSPEC) && hostname.ipv6.family() == AF_INET6) {
+          addresses.push_back(hostname.ipv6);
+        }
+        int error = 0;
+
+        // We assume that the caller task queue is still around if the
+        // AsyncDnsResolver has not been destroyed.
+        state_->Finish([this, error, flag = safety_.flag(), caller_task_queue = webrtc::TaskQueueBase::Current(),
+                        addresses = std::move(addresses)]() {
+          caller_task_queue->PostTask(
+          SafeTask(flag, [this, error, addresses = std::move(addresses)] {
+            RTC_DCHECK_RUN_ON(&result_.sequence_checker_);
+            result_.addresses_ = addresses;
+            result_.error_ = error;
+            callback_();
+          }));
+        });
+        return;
+      }
+    }
+    RTC_LOG(LS_INFO) << "Static hostname not found " << addr.ToString();
+  }
+  // --twinlife 2023-07-11: provide hostname resolution
+
   auto thread_function = [this, addr, family, flag = safety_.flag(),
                           caller_task_queue = webrtc::TaskQueueBase::Current(),
                           state = state_] {

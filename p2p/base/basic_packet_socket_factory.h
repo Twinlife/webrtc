@@ -33,7 +33,7 @@ class RTC_EXPORT BasicPacketSocketFactory : public PacketSocketFactory {
  public:
   // --twinlife 2023-07-11: provide hostname resolution
   explicit BasicPacketSocketFactory(SocketFactory* socket_factory,
-                                    webrtc::AsyncDnsResolverFactoryInterface *async_resolver_factory);
+                                    const std::vector<webrtc::StaticHostname>& hostnames);
   // --twinlife 2023-07-11: provide hostname resolution
   ~BasicPacketSocketFactory() override;
 
@@ -62,7 +62,7 @@ class RTC_EXPORT BasicPacketSocketFactory : public PacketSocketFactory {
 
   SocketFactory* socket_factory_;
   // --twinlife 2023-07-11: provide hostname resolution
-  webrtc::AsyncDnsResolverFactoryInterface* async_resolver_factory_;
+  const std::vector<webrtc::StaticHostname> hostnames_;
   // --twinlife 2023-07-11: provide hostname resolution
 };
 

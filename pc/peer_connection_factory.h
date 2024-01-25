@@ -150,7 +150,7 @@ class PeerConnectionFactory : public PeerConnectionFactoryInterface {
   std::unique_ptr<Metronome> decode_metronome_ RTC_GUARDED_BY(worker_thread());
   std::unique_ptr<Metronome> encode_metronome_ RTC_GUARDED_BY(worker_thread());
   // --twinlife 2023-07-11: provide hostname resolution
-  std::unique_ptr<AsyncDnsResolverFactoryInterface> async_resolver_factory;
+  std::vector<webrtc::StaticHostname> hostnames_;
   // --twinlife 2023-07-11: provide hostname resolution
 };
 

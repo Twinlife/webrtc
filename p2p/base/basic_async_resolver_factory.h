@@ -23,9 +23,9 @@ namespace webrtc {
 class BasicAsyncDnsResolverFactory final
     : public AsyncDnsResolverFactoryInterface {
   // --twinlife 2023-07-11: provide hostname resolution
-  std::vector<rtc::StaticHostname> hostnames_;
+  std::vector<webrtc::StaticHostname> hostnames_;
  public:
-  void setHostnames(const std::vector<webrtc::StaticHostname> hostnames);
+  void setHostnames(const std::vector<webrtc::StaticHostname>& hostnames);
   // --twinlife 2023-07-11: provide hostname resolution
   BasicAsyncDnsResolverFactory() = default;
 

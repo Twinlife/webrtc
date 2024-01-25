@@ -159,7 +159,7 @@ ConnectionContext::ConnectionContext(
   if (!default_socket_factory_) {
     // --twinlife 2023-07-11: provide hostname resolution
     default_socket_factory_ =
-        std::make_unique<rtc::BasicPacketSocketFactory>(socket_factory, dependencies->async_resolver_factory.get());
+        std::make_unique<rtc::BasicPacketSocketFactory>(socket_factory, dependencies->hostnames);
     // --twinlife 2023-07-11: provide hostname resolution
   }
   // Set warning levels on the threads, to give warnings when response

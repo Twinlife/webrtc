@@ -581,14 +581,6 @@ RTCErrorOr<rtc::scoped_refptr<PeerConnection>> PeerConnection::Create(
       configuration.sdp_semantics == SdpSemantics::kUnifiedPlan;
   bool dtls_enabled = DtlsEnabled(configuration, options, dependencies);
 
-  if (!dependencies.async_dns_resolver_factory) {
-      dependencies.async_dns_resolver_factory =
-          std::make_unique<BasicAsyncDnsResolverFactory>();
-    // --twinlife 2023-07-11: provide hostname resolution
-    ((webrtc::BasicAsyncResolverFactory *)dependencies.async_resolver_factory.get())->setHostnames(configuration.host_addresses);
-    // --twinlife 2023-07-11: provide hostname resolution
-  }
-
   // The PeerConnection constructor consumes some, but not all, dependencies.
   auto pc = rtc::make_ref_counted<PeerConnection>(
       env, context, options, is_unified_plan, std::move(call), dependencies,

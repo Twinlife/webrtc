@@ -1472,6 +1472,7 @@ struct RTC_EXPORT PeerConnectionFactoryDependencies final {
   // `EnableMedia(PeerConnectionFactoryDependencies&)`. Definition of the
   // `MediaFactory` interface is a webrtc implementation detail.
   std::unique_ptr<MediaFactory> media_factory;
+  std::vector<webrtc::StaticHostname> hostnames;
 };
 
 // PeerConnectionFactoryInterface is the factory interface used for creating

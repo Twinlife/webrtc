@@ -41,6 +41,9 @@ class AsyncDnsResolverResultImpl : public AsyncDnsResolverResult {
 class RTC_EXPORT AsyncDnsResolver : public AsyncDnsResolverInterface {
  public:
   AsyncDnsResolver();
+  // --twinlife-- 2024
+  AsyncDnsResolver(const std::vector<webrtc::StaticHostname> *hostnames);
+  // --twinlife-- 2024
   ~AsyncDnsResolver();
   // Start address resolution of the hostname in `addr`.
   void Start(const rtc::SocketAddress& addr,
@@ -57,6 +60,9 @@ class RTC_EXPORT AsyncDnsResolver : public AsyncDnsResolverInterface {
   rtc::scoped_refptr<State> state_;  // To check for "this" going away
   AsyncDnsResolverResultImpl result_;
   absl::AnyInvocable<void()> callback_;
+  // --twinlife-- 2024
+  const std::vector<webrtc::StaticHostname> *hostnames_;
+  // --twinlife-- 2024
 };
 
 }  // namespace webrtc

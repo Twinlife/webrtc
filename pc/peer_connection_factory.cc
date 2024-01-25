@@ -104,8 +104,8 @@ PeerConnectionFactory::PeerConnectionFactory(
               ? std::move(dependencies->transport_controller_send_factory)
               : std::make_unique<RtpTransportControllerSendFactory>()),
       decode_metronome_(std::move(dependencies->decode_metronome)),
-      encode_metronome_(std::move(dependencies->encode_metronome)) {}
-      async_resolver_factory(std::move(dependencies->async_resolver_factory)){} // --twinlife 2023-07-11: provide hostname resolution
+      encode_metronome_(std::move(dependencies->encode_metronome)),
+      hostnames_(dependencies->hostnames){} // --twinlife 2023-07-11: provide hostname resolution
 
 PeerConnectionFactory::PeerConnectionFactory(
     PeerConnectionFactoryDependencies dependencies)
