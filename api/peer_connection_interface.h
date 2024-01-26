@@ -1448,7 +1448,6 @@ struct RTC_EXPORT PeerConnectionFactoryDependencies final {
   std::unique_ptr<FieldTrialsView> trials;
   std::unique_ptr<RtpTransportControllerSendFactoryInterface>
       transport_controller_send_factory;
-  // SCz was removed ? std::unique_ptr<AsyncDnsResolverFactoryInterface> async_resolver_factory;
   // Metronome used for decoding, must be called on the worker thread.
   std::unique_ptr<Metronome> decode_metronome;
   // Metronome used for encoding, must be called on the worker thread.

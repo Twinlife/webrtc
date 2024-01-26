@@ -254,16 +254,6 @@ PeerConnectionFactory::CreatePeerConnectionOrError(
   }
   // --twinlife-- 180202
 
-#if 0 // SCz removed on main ?
-  if (!dependencies.async_resolver_factory) {
-    dependencies.async_resolver_factory =
-        std::make_unique<webrtc::BasicAsyncResolverFactory>();
-    // --twinlife 2023-07-11: provide hostname resolution
-    ((webrtc::BasicAsyncResolverFactory *)dependencies.async_resolver_factory.get())->setHostnames(configuration.host_addresses);
-    // --twinlife 2023-07-11: provide hostname resolution
-  }
-
-#endif
   if (!dependencies.ice_transport_factory) {
     dependencies.ice_transport_factory =
         std::make_unique<DefaultIceTransportFactory>();
