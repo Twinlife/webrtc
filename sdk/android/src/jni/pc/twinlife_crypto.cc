@@ -13,12 +13,21 @@
 #include <utility>
 
 #include "sdk/android/generated_peerconnection_jni/Crypto_jni.h"
+#include "sdk/android/generated_peerconnection_jni/Config_jni.h"
 #include "sdk/android/native_api/jni/java_types.h"
 #include "sdk/android/src/jni/jni_helpers.h"
 #include "sdk/android/src/jni/pc/rtp_parameters.h"
 
 namespace webrtc {
 namespace jni {
+
+  // Obfuscate or deobfuscate the data:
+  // - obfuscate data + optional Base64 encoding
+  // - optional Base64 decoding + deobfuscate data
+  ScopedJavaLocalRef<jbyteArray> JNI_Config_Get(JNIEnv* env, jint mode,
+						const JavaParamRef<jbyteArray>& data) {
+     return nullptr;
+  }
 
   // Export the public key in DER base64 in the given buffer and return the length of exported public key.
   ScopedJavaLocalRef<jbyteArray> Crypto::GetPublicKey(JNIEnv *env, jboolean useBase64) {
@@ -131,54 +140,34 @@ namespace jni {
   // Only the data buffer is encrypted.  The nonce buffer will be filled with a new nonce of 12 bytes.
   // Return the length of the output buffer or a negative error code.
   jint Crypto::EncryptAEAD(JNIEnv *env, const JavaParamRef<jbyteArray>& data,
-                           const JavaParamRef<jbyteArray>& auth, const JavaParamRef<jbyteArray>& nonce,
+                           const JavaParamRef<jbyteArray>& auth,
                            const JavaParamRef<jbyteArray>& buffer) {
     jbyte* dataBuffer = env->GetByteArrayElements(data.obj(), nullptr);
     size_t dataLength = env->GetArrayLength(data.obj());
     jbyte* authBuffer = env->GetByteArrayElements(auth.obj(), nullptr);
     size_t authLength = env->GetArrayLength(auth.obj());
-    jbyte* nonceBuffer = env->GetByteArrayElements(nonce.obj(), nullptr);
-    size_t nonceLength = env->GetArrayLength(nonce.obj());
     jbyte* resultBuffer = env->GetByteArrayElements(buffer.obj(), nullptr);
     size_t resultLength = env->GetArrayLength(buffer.obj());
 
-    int result;
-    if (nonceLength != TWINLIFE_NONCE_LENGTH) {
-      result = TWINLIFE_BAD_PARAM;
-    } else {
-      result = encryptAEAD((const unsigned char*) dataBuffer, dataLength, (const unsigned char *)authBuffer, authLength,
-                           (unsigned char*) nonceBuffer, (unsigned char*) resultBuffer, resultLength);
-    }
+    int result = encryptAEAD((const unsigned char*) dataBuffer, dataLength, (const unsigned char *)authBuffer, authLength,
+                             (unsigned char*) resultBuffer, resultLength);
     env->ReleaseByteArrayElements(data.obj(), dataBuffer, JNI_ABORT);
     env->ReleaseByteArrayElements(auth.obj(), authBuffer, JNI_ABORT);
-    env->ReleaseByteArrayElements(nonce.obj(), nonceBuffer, 0);
     env->ReleaseByteArrayElements(buffer.obj(), resultBuffer, 0);
     return result;
   }
 
     // Decrypt and verify the data with AES256-GCM.  Only the encryptedData buffer is decrypted.
-  jint Crypto::DecryptAEAD(JNIEnv *env, const JavaParamRef<jbyteArray>& encryptedData,
-                           const JavaParamRef<jbyteArray>& auth, const JavaParamRef<jbyteArray>& nonce,
+  jint Crypto::DecryptAEAD(JNIEnv *env, const JavaParamRef<jbyteArray>& encryptedData, const jint authLength,
                            const JavaParamRef<jbyteArray>& buffer) {
     jbyte* dataBuffer = env->GetByteArrayElements(encryptedData.obj(), nullptr);
     size_t dataLength = env->GetArrayLength(encryptedData.obj());
-    jbyte* authBuffer = env->GetByteArrayElements(auth.obj(), nullptr);
-    size_t authLength = env->GetArrayLength(auth.obj());
-    jbyte* nonceBuffer = env->GetByteArrayElements(nonce.obj(), nullptr);
-    size_t nonceLength = env->GetArrayLength(nonce.obj());
     jbyte* resultBuffer = env->GetByteArrayElements(buffer.obj(), nullptr);
     size_t resultLength = env->GetArrayLength(buffer.obj());
 
-    int result;
-    if (nonceLength != TWINLIFE_NONCE_LENGTH) {
-      result = TWINLIFE_BAD_PARAM;
-    } else {
-      result = decryptAEAD((const unsigned char*) dataBuffer, dataLength, (const unsigned char *)authBuffer, authLength,
-                           (const unsigned char*) nonceBuffer, (unsigned char*) resultBuffer, resultLength);      
-    }
+    int result = decryptAEAD((const unsigned char*) dataBuffer, dataLength, authLength,
+                             (unsigned char*) resultBuffer, resultLength);      
     env->ReleaseByteArrayElements(encryptedData.obj(), dataBuffer, JNI_ABORT);
-    env->ReleaseByteArrayElements(auth.obj(), authBuffer, JNI_ABORT);
-    env->ReleaseByteArrayElements(nonce.obj(), nonceBuffer, JNI_ABORT);
     env->ReleaseByteArrayElements(buffer.obj(), resultBuffer, 0);
     return result;
   }
@@ -207,7 +196,7 @@ static base::android::ScopedJavaLocalRef<jobject> JNI_Crypto_ImportPrivateKey(JN
   size_t length = env->GetArrayLength(privateKey.obj());
 
   Crypto::Format format = isBase64 ? Crypto::Format::BASE64 : Crypto::Format::BINARY;
-  EVP_PKEY *pkey = twinlife::Crypto::importPrivateKey(format, (const unsigned char*) buffer, length);
+  EVP_PKEY *pkey = twinlife::Crypto::importPrivateKey(format, (unsigned char*) buffer, length);
   env->ReleaseByteArrayElements(privateKey.obj(), buffer, JNI_ABORT);  
 
   Crypto *crypto;
@@ -226,7 +215,7 @@ static base::android::ScopedJavaLocalRef<jobject> JNI_Crypto_ImportPublicKey(JNI
   size_t length = env->GetArrayLength(privateKey.obj());
 
   Crypto::Format format = isBase64 ? Crypto::Format::BASE64 : Crypto::Format::BINARY;
-  EVP_PKEY *pkey = twinlife::Crypto::importPublicKey(format, (const unsigned char*) buffer, length);
+  EVP_PKEY *pkey = twinlife::Crypto::importPublicKey(format, (unsigned char*) buffer, length);
   env->ReleaseByteArrayElements(privateKey.obj(), buffer, JNI_ABORT);
 
   Crypto *crypto;

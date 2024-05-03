@@ -57,7 +57,7 @@ EVP_PKEY* Crypto::create()
   return pkey;
 }
 
-EVP_PKEY* Crypto::importPublicKey(enum Format format, const unsigned char* pubKey, size_t pubKeyLength)
+EVP_PKEY* Crypto::importPublicKey(enum Format format, unsigned char* pubKey, size_t pubKeyLength)
 {
   unsigned char buffer[TWINLIFE_MAX_PUBKEY_LENGTH];
   size_t length;
@@ -68,6 +68,14 @@ EVP_PKEY* Crypto::importPublicKey(enum Format format, const unsigned char* pubKe
 
   CBS cbs;
   if (format == Format::BASE64) {
+    // Switch Base64URL to Base64
+    for (size_t i = 0; i < pubKeyLength; i++) {
+      if (pubKey[i] == '_') {
+        pubKey[i] = '/';
+      } else if (pubKey[i] == '-') {
+        pubKey[i] = '+';
+      }
+    }
     if (EVP_DecodeBase64(buffer, &length, sizeof(buffer), pubKey, pubKeyLength) != 1) {
       return nullptr;
     }
@@ -89,7 +97,7 @@ EVP_PKEY* Crypto::importPublicKey(enum Format format, const unsigned char* pubKe
   return pkey;
 }
 
-EVP_PKEY* Crypto::importPrivateKey(enum Format format, const unsigned char* privateKey, size_t privateKeyLength)
+EVP_PKEY* Crypto::importPrivateKey(enum Format format, unsigned char* privateKey, size_t privateKeyLength)
 {
   if (!privateKey || privateKeyLength <= 0 || privateKeyLength > TWINLIFE_MAX_SIZE) {
     return nullptr;
@@ -99,6 +107,14 @@ EVP_PKEY* Crypto::importPrivateKey(enum Format format, const unsigned char* priv
   size_t length;
   CBS cbs;
   if (format == Format::BASE64) {
+    // Switch Base64URL to Base64
+    for (size_t i = 0; i < privateKeyLength; i++) {
+      if (privateKey[i] == '_') {
+        privateKey[i] = '/';
+      } else if (privateKey[i] == '-') {
+        privateKey[i] = '+';
+      }
+    }
     if (EVP_DecodeBase64(buffer, &length, sizeof(buffer), privateKey, privateKeyLength) != 1) {
       return nullptr;
     }
@@ -145,6 +161,16 @@ int Crypto::exportPublicKey(enum Format format, unsigned char* buffer, size_t ma
 
     int result = EVP_EncodeBlock(buffer, data, size);
     OPENSSL_free(data);
+    if (result > 0) {
+      // Switch to Base64URL
+      for (int i = 0; i < result; i++) {
+        if (buffer[i] == '/') {
+          buffer[i] = '_';
+        } else if (buffer[i] == '+') {
+          buffer[i] = '-';
+        }
+      }
+    }
     return result;
   } else {
     CBB_init_fixed(&cbb, buffer, maxLength);
@@ -181,6 +207,16 @@ int Crypto::exportPrivateKey(enum Format format, unsigned char* buffer, size_t m
 
     int result = EVP_EncodeBlock(buffer, data, size);
     OPENSSL_free(data);
+    if (result > 0) {
+      // Switch to Base64URL
+      for (int i = 0; i < result; i++) {
+        if (buffer[i] == '/') {
+          buffer[i] = '_';
+        } else if (buffer[i] == '+') {
+          buffer[i] = '-';
+        }
+      }
+    }
     return result;
   } else {
     CBB_init_fixed(&cbb, buffer, maxLength);
@@ -346,7 +382,7 @@ void Crypto::newNonce(const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxI
 }
 
 int Crypto::encryptAEAD(const unsigned char* data, size_t len, const unsigned char* auth, size_t authLength,
-                        unsigned char* nonce, unsigned char* buffer, size_t maxLength)
+                        unsigned char* buffer, size_t maxLength)
 {
   if (!aead_) {
     return TWINLIFE_BAD_PARAM;
@@ -356,24 +392,34 @@ int Crypto::encryptAEAD(const unsigned char* data, size_t len, const unsigned ch
   if (v >= maxIncrement_) {
     return TWINLIFE_NONCE_ERROR;
   }
-  memcpy(nonce, nonce_, sizeof(nonce_));
-  nonce[TWINLIFE_NONCE_LENGTH - 1] = v;
+  if (maxLength <= authLength + sizeof(nonce_)) {
+    return TWINLIFE_TOO_SMALL;
+  }
+  memcpy(buffer, auth, authLength);
+  memcpy(&buffer[authLength], nonce_, sizeof(nonce_));
+  buffer[authLength + TWINLIFE_NONCE_LENGTH - 1] = v;
 
   size_t outLength;
-  int result = EVP_AEAD_CTX_seal(aead_, buffer, &outLength, maxLength, nonce, sizeof(nonce_), data, len, auth, authLength);
-  return result <= 0 ? TWINLIFE_AEAD_FAIL : outLength;
+  int result = EVP_AEAD_CTX_seal(aead_, &buffer[authLength + sizeof(nonce_)], &outLength,
+                                 maxLength - authLength - sizeof(nonce_),
+                                 &buffer[authLength], sizeof(nonce_),
+                                 data, len, auth, authLength);
+  return result <= 0 ? TWINLIFE_AEAD_FAIL : authLength + sizeof(nonce_) + outLength;
 }
 
-int Crypto::decryptAEAD(const unsigned char* encryptedData, size_t len,
-                        const unsigned char* auth, size_t authLength,
-                        const unsigned char* nonce, unsigned char* buffer, size_t maxLength)
+int Crypto::decryptAEAD(const unsigned char* data, size_t len, size_t authLength,
+                        unsigned char* buffer, size_t maxLength)
 {
   if (!aead_) {
     return TWINLIFE_BAD_PARAM;
   }
+  if (len <= authLength + sizeof(nonce_)) {
+    return TWINLIFE_TOO_SMALL;
+  }
 
   size_t outLength;
-  int result = EVP_AEAD_CTX_open(aead_, buffer, &outLength, maxLength, nonce, sizeof(nonce_), encryptedData, len, auth, authLength);
+  int result = EVP_AEAD_CTX_open(aead_, buffer, &outLength, maxLength, &data[authLength], sizeof(nonce_),
+                                 &data[authLength + sizeof(nonce_)], len - authLength - sizeof(nonce_), data, authLength);
   return result <= 0 ? TWINLIFE_AEAD_FAIL : outLength;
 }
 

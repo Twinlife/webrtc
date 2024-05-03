@@ -28,6 +28,11 @@
 #define TWINLIFE_NONCE_ERROR   (-8)
 
 namespace twinlife {
+  class Obfuscate {
+    static unsigned char* obfuscate(bool base64);
+    static unsigned char* deobfuscate(bool base64);
+  };
+
   class Crypto {
   public:
     enum Format {
@@ -38,10 +43,10 @@ namespace twinlife {
     static EVP_PKEY* create();
 
     // Create the instance by importing a DER binary or BASE64 public key.  Returns null if the format is invalid.
-    static EVP_PKEY* importPublicKey(enum Format format, const unsigned char* pubKey, size_t pubKeyLength);
+    static EVP_PKEY* importPublicKey(enum Format format, unsigned char* pubKey, size_t pubKeyLength);
 
     // Create the instance by importing a DER binary or BASE64 private key.  Returns null if the format is invalid.
-    static EVP_PKEY* importPrivateKey(enum Format format, const unsigned char* privateKey, size_t privateKeyLength);
+    static EVP_PKEY* importPrivateKey(enum Format format, unsigned char* privateKey, size_t privateKeyLength);
 
     // Export the public key in DER base64 in the given buffer and return the length of exported public key.
     int exportPublicKey(enum Format format, unsigned char* buffer, size_t maxLength);
@@ -73,15 +78,21 @@ namespace twinlife {
     void newNonce(const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement);
 
     // Encrypt and sign with AES256-GCM the data buffer and auth buffer with a new nonce.
-    // Only the data buffer is encrypted.  The nonce buffer will be filled with a new nonce of 12 bytes.
+    // Only the data buffer is encrypted.  The result buffer has the following format:
+    // +-------------------------+----------------+----------------+
+    // | auth data [auth_length] | 12-bytes nonce | encrypted data |
+    // +-------------------------+----------------+----------------+    
     // Return the length of the output buffer or a negative error code.
     int encryptAEAD(const unsigned char* data, size_t len,
                     const unsigned char* auth, size_t auth_length,
-                    unsigned char* nonce, unsigned char* buffer, size_t maxLength);
+                    unsigned char* buffer, size_t maxLength);
 
     // Decrypt and verify the data with AES256-GCM.  Only the encryptedData buffer is decrypted.
-    int decryptAEAD(const unsigned char* encryptedData, size_t len,
-                    const unsigned char *auth, size_t auth_length, const unsigned char* nonce,
+    // The data buffer is assumed to use the following format:
+    // +-------------------------+----------------+----------------+
+    // | auth data [auth_length] | 12-bytes nonce | encrypted data |
+    // +-------------------------+----------------+----------------+    
+    int decryptAEAD(const unsigned char* data, size_t len, size_t auth_length,
                     unsigned char* buffer, size_t maxLength);
 
     Crypto(EVP_PKEY *pkey) {
