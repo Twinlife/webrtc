@@ -13,7 +13,7 @@
 #include <utility>
 
 #include "sdk/android/generated_peerconnection_jni/Crypto_jni.h"
-#include "sdk/android/generated_peerconnection_jni/Config_jni.h"
+// #include "sdk/android/generated_peerconnection_jni/Config_jni.h"
 #include "sdk/android/native_api/jni/java_types.h"
 #include "sdk/android/src/jni/jni_helpers.h"
 #include "sdk/android/src/jni/pc/rtp_parameters.h"

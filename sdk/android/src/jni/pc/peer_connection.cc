@@ -295,6 +295,7 @@ void JavaToNativeRTCConfiguration(
   rtc_config->crypto_options =
       JavaToNativeOptionalCryptoOptions(jni, j_crypto_options);
 
+#if 0
   // --twinlife-- 180202
   ScopedJavaLocalRef<jstring> j_proxy_address =
       Java_RTCConfiguration_getProxyAddress(jni, j_rtc_config);
@@ -327,6 +328,7 @@ void JavaToNativeRTCConfiguration(
       CHECK_EXCEPTION(jni) << "error during JavaToNativeStringMap";
     }
   }
+#endif
   // --twinlife-- 180202
   // --twinlife 2023-07-11: provide hostname resolution
   ScopedJavaLocalRef<jobject> j_hostAddresses =

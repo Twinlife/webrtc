@@ -503,9 +503,6 @@ bool PeerConnectionInterface::RTCConfiguration::operator==(
          active_reset_srtp_params == o.active_reset_srtp_params &&
          crypto_options == o.crypto_options &&
          offer_extmap_allow_mixed == o.offer_extmap_allow_mixed &&
-         // --twinlife-- 180202
-         proxy_info == o.proxy_info &&
-         // --twinlife-- 180202
          // --twinlife 2023-07-11: provide hostname resolution
          host_addresses == o.host_addresses &&
          // --twinlife 2023-07-11: provide hostname resolution

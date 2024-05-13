@@ -249,9 +249,9 @@ PeerConnectionFactory::CreatePeerConnectionOrError(
         configuration.port_allocator_config.flags);
   }
   // --twinlife-- 180202
-  if (configuration.proxy_info.type != rtc::PROXY_NONE) {
-    dependencies.allocator->set_proxy("webrtc", configuration.proxy_info);
-  }
+  // if (configuration.proxy_info.type != rtc::PROXY_NONE) {
+  //  dependencies.allocator->set_proxy("webrtc", configuration.proxy_info);
+  // }
   // --twinlife-- 180202
 
   if (!dependencies.ice_transport_factory) {

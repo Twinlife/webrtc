@@ -859,7 +859,7 @@ public class PeerConnection {
     }
 
     // --twinlife-- 180203
-    @Nullable
+    /* @Nullable
     @CalledByNative("RTCConfiguration")
     String getProxyAddress() {
       return proxyAddress;
@@ -886,7 +886,7 @@ public class PeerConnection {
     @CalledByNative("RTCConfiguration")
     Map getProxyPaths() {
       return proxyPaths;
-    }
+    }*/
     // --twinlife-- 180203
 
     // --twinlife 2023-07-11: provide hostname resolution
