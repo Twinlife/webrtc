@@ -136,7 +136,7 @@ std::vector<webrtc::VideoStream> EncoderStreamFactory::CreateEncoderStreams(
                 encoder_config.number_of_streams);
 
   const absl::optional<webrtc::DataRate> experimental_min_bitrate =
-      GetExperimentalMinVideoBitrate(encoder_config.codec_type);
+      GetExperimentalMinVideoBitrate(trials_, encoder_config.codec_type);
 
   bool is_simulcast = (encoder_config.number_of_streams > 1);
   // If scalability mode was specified, don't treat {active,inactive,inactive}
@@ -320,7 +320,8 @@ EncoderStreamFactory::CreateSimulcastOrConferenceModeScreenshareStreams(
                               encoder_config.number_of_streams, width, height,
                               encoder_config.bitrate_priority, max_qp_,
                               is_screenshare_ && conference_mode_,
-                              temporal_layers_supported, trials_);
+                              temporal_layers_supported, trials_,
+                              encoder_config.codec_type);
   // Allow an experiment to override the minimum bitrate for the lowest
   // spatial layer. The experiment's configuration has the lowest priority.
   if (experimental_min_bitrate) {
@@ -339,16 +340,19 @@ EncoderStreamFactory::CreateSimulcastOrConferenceModeScreenshareStreams(
     default_scale_factors_used = IsScaleFactorsPowerOfTwo(encoder_config);
   }
   const bool norm_size_configured =
-      webrtc::NormalizeSimulcastSizeExperiment::GetBase2Exponent().has_value();
+      webrtc::NormalizeSimulcastSizeExperiment::GetBase2Exponent(trials_)
+          .has_value();
   const int normalized_width =
       (default_scale_factors_used || norm_size_configured) &&
               (width >= kMinLayerSize)
-          ? NormalizeSimulcastSize(width, encoder_config.number_of_streams)
+          ? NormalizeSimulcastSize(trials_, width,
+                                   encoder_config.number_of_streams)
           : width;
   const int normalized_height =
       (default_scale_factors_used || norm_size_configured) &&
               (height >= kMinLayerSize)
-          ? NormalizeSimulcastSize(height, encoder_config.number_of_streams)
+          ? NormalizeSimulcastSize(trials_, height,
+                                   encoder_config.number_of_streams)
           : height;
   for (size_t i = 0; i < layers.size(); ++i) {
     layers[i].active = encoder_config.simulcast_layers[i].active;

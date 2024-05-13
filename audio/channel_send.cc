@@ -413,8 +413,6 @@ ChannelSend::ChannelSend(
   configuration.report_block_data_observer = this;
   configuration.network_link_rtcp_observer =
       transport_controller->GetRtcpObserver();
-  configuration.transport_feedback_callback =
-      transport_controller->transport_feedback_observer();
   configuration.clock = (clock ? clock : Clock::GetRealTimeClock());
   configuration.audio = true;
   configuration.outgoing_transport = rtp_transport;
@@ -643,9 +641,9 @@ void ChannelSend::SetSendAudioLevelIndicationStatus(bool enable, int id) {
   RTC_DCHECK_RUN_ON(&worker_thread_checker_);
   include_audio_level_indication_.store(enable);
   if (enable) {
-    rtp_rtcp_->RegisterRtpHeaderExtension(AudioLevel::Uri(), id);
+    rtp_rtcp_->RegisterRtpHeaderExtension(AudioLevelExtension::Uri(), id);
   } else {
-    rtp_rtcp_->DeregisterSendRtpHeaderExtension(AudioLevel::Uri());
+    rtp_rtcp_->DeregisterSendRtpHeaderExtension(AudioLevelExtension::Uri());
   }
 }
 
