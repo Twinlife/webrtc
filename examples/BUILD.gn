@@ -226,7 +226,7 @@ if (is_android) {
       "../sdk/android:video_java",
       "//third_party/androidx:androidx_test_monitor_java",
       "//third_party/androidx:androidx_test_runner_java",
-      "//third_party/junit",
+      # "//third_party/junit",
     ]
   }
 }
@@ -932,8 +932,8 @@ if (is_android) {
     deps = [
       ":AppRTCMobile_javalib",
       "../sdk/android:peerconnection_java",
-      "//third_party/androidx:androidx_test_core_java",
-      "//third_party/google-truth:google_truth_java",
+      # "//third_party/androidx:androidx_test_core_java",
+      # "//third_party/google-truth:google_truth_java",
     ]
 
     additional_jar_files = [ [
