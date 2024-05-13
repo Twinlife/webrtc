@@ -456,7 +456,7 @@ void CallPerfTest::TestCaptureNtpTime(
       }
 
       FrameCaptureTimeList::iterator iter =
-          capture_time_list_.find(video_frame.timestamp());
+          capture_time_list_.find(video_frame.rtp_timestamp());
       EXPECT_TRUE(iter != capture_time_list_.end());
 
       // The real capture time has been wrapped to uint32_t before converted
@@ -585,32 +585,34 @@ TEST_F(CallPerfTest, ReceivesCpuOveruseAndUnderuse) {
     // TODO(sprang): Add integration test for maintain-framerate mode?
     void OnSinkWantsChanged(rtc::VideoSinkInterface<VideoFrame>* sink,
                             const rtc::VideoSinkWants& wants) override {
-      // The sink wants can change either because an adaptation happened (i.e.
-      // the pixels or frame rate changed) or for other reasons, such as encoded
-      // resolutions being communicated (happens whenever we capture a new frame
-      // size). In this test, we only care about adaptations.
+      RTC_LOG(LS_INFO) << "OnSinkWantsChanged fps:" << wants.max_framerate_fps
+                       << " max_pixel_count " << wants.max_pixel_count
+                       << " target_pixel_count"
+                       << wants.target_pixel_count.value_or(-1);
+      // The sink wants can change either because an adaptation happened
+      // (i.e. the pixels or frame rate changed) or for other reasons, such
+      // as encoded resolutions being communicated (happens whenever we
+      // capture a new frame size). In this test, we only care about
+      // adaptations.
       bool did_adapt =
           last_wants_.max_pixel_count != wants.max_pixel_count ||
           last_wants_.target_pixel_count != wants.target_pixel_count ||
           last_wants_.max_framerate_fps != wants.max_framerate_fps;
       last_wants_ = wants;
       if (!did_adapt) {
+        if (test_phase_ == TestPhase::kInit) {
+          test_phase_ = TestPhase::kStart;
+        }
         return;
       }
       // At kStart expect CPU overuse. Then expect CPU underuse when the encoder
       // delay has been decreased.
       switch (test_phase_) {
         case TestPhase::kInit:
-          // Max framerate should be set initially.
-          if (wants.max_framerate_fps != std::numeric_limits<int>::max() &&
-              wants.max_pixel_count == std::numeric_limits<int>::max()) {
-            test_phase_ = TestPhase::kStart;
-          } else {
-            ADD_FAILURE() << "Got unexpected adaptation request, max res = "
-                          << wants.max_pixel_count << ", target res = "
-                          << wants.target_pixel_count.value_or(-1)
-                          << ", max fps = " << wants.max_framerate_fps;
-          }
+          ADD_FAILURE() << "Got unexpected adaptation request, max res = "
+                        << wants.max_pixel_count << ", target res = "
+                        << wants.target_pixel_count.value_or(-1)
+                        << ", max fps = " << wants.max_framerate_fps;
           break;
         case TestPhase::kStart:
           if (wants.max_pixel_count < std::numeric_limits<int>::max()) {
@@ -1186,9 +1188,10 @@ void CallPerfTest::TestEncodeFramerate(VideoEncoderFactory* encoder_factory,
 TEST_F(CallPerfTest, TestEncodeFramerateVp8Simulcast) {
   InternalEncoderFactory internal_encoder_factory;
   test::FunctionVideoEncoderFactory encoder_factory(
-      [&internal_encoder_factory]() {
+      [&internal_encoder_factory](const Environment& env,
+                                  const SdpVideoFormat& format) {
         return std::make_unique<SimulcastEncoderAdapter>(
-            &internal_encoder_factory, SdpVideoFormat("VP8"));
+            env, &internal_encoder_factory, nullptr, SdpVideoFormat::VP8());
       });
 
   TestEncodeFramerate(&encoder_factory, "VP8",
@@ -1198,9 +1201,10 @@ TEST_F(CallPerfTest, TestEncodeFramerateVp8Simulcast) {
 TEST_F(CallPerfTest, TestEncodeFramerateVp8SimulcastLowerInputFps) {
   InternalEncoderFactory internal_encoder_factory;
   test::FunctionVideoEncoderFactory encoder_factory(
-      [&internal_encoder_factory]() {
+      [&internal_encoder_factory](const Environment& env,
+                                  const SdpVideoFormat& format) {
         return std::make_unique<SimulcastEncoderAdapter>(
-            &internal_encoder_factory, SdpVideoFormat("VP8"));
+            env, &internal_encoder_factory, nullptr, SdpVideoFormat::VP8());
       });
 
   TestEncodeFramerate(&encoder_factory, "VP8",

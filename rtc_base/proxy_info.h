@@ -11,40 +11,9 @@
 #ifndef RTC_BASE_PROXY_INFO_H_
 #define RTC_BASE_PROXY_INFO_H_
 
-#include <string>
-// --twinlife-- 211109
-#include <map>
-// --twinlife-- 211109
-
-#include "rtc_base/crypt_string.h"
-#include "rtc_base/socket_address.h"
-
 namespace rtc {
-
-enum ProxyType { PROXY_NONE, PROXY_HTTPS, PROXY_SOCKS5, PROXY_UNKNOWN };
-const char* ProxyToString(ProxyType proxy);
-
-struct ProxyInfo {
-  ProxyType type;
-  SocketAddress address;
-  std::string autoconfig_url;
-  bool autodetect;
-  std::string bypass_list;
-  std::string username;
-  CryptString password;
-  // --twinlife-- 211109
-  std::map<std::string, std::string> paths;
-  // --twinlife-- 211109
-
-  ProxyInfo();
-  // --twinlife-- 190102
-  ProxyInfo(const ProxyInfo& proxyInfo);
-  // --twinlife-- 190102
-  ~ProxyInfo();
-  // --twinlife-- 180202
-  bool operator==(const ProxyInfo& proxyInfo) const;
-  // --twinlife-- 180202
-};
+// TODO(tommi): Remove.
+struct ProxyInfo {};
 
 }  // namespace rtc
 

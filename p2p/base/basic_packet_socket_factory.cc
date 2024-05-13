@@ -123,29 +123,6 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateClientTcpSocket(
                       << socket->GetError();
   }
 
-  // If using a proxy, wrap the socket in a proxy socket.
-  if (proxy_info.type == PROXY_SOCKS5) {
-    socket = new AsyncSocksProxySocket(
-        socket, proxy_info.address, proxy_info.username, proxy_info.password);
-  } else if (proxy_info.type == PROXY_HTTPS) {
-    // --twinlife-- 211109
-    if (!proxy_info.paths.empty()) {
-      auto iterator = proxy_info.paths.find(remote_address.ToString());
-      if (iterator == proxy_info.paths.end()) {
-	delete socket;
-	return NULL;
-      }
-    }
-    // --twinlife-- 211109
-    socket =
-        new AsyncHttpsProxySocket(socket, user_agent, proxy_info.address,
-                                  proxy_info.username, proxy_info.password,
-				  // --twinlife-- 211109
-				  proxy_info.paths);
-				  // --twinlife-- 211109
-
-  }
-
   // Assert that at most one TLS option is used.
   int tlsOpts = tcp_options.opts & (PacketSocketFactory::OPT_TLS |
                                     PacketSocketFactory::OPT_TLS_FAKE |
