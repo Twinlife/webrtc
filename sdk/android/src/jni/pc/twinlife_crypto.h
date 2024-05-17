@@ -22,7 +22,7 @@ namespace jni {
 
 class Crypto : public twinlife::Crypto {
 public:
-  Crypto(EVP_PKEY *pkey) : twinlife::Crypto(pkey) {}
+  Crypto(twinlife::Crypto::Kind kind, EVP_PKEY *pkey) : twinlife::Crypto(kind, pkey) {}
   ~Crypto() {}
 
   // Export the public key in DER base64 in the given buffer and return the length of exported public key.
@@ -34,11 +34,11 @@ public:
 
   // Sign the content of the data buffer with the private key and encode the ECDSA signature in Base64
   // in the signature buffer.  Return the length of the signature or a negative error code.
-  jint SignECDSA(JNIEnv *env, const JavaParamRef<jbyteArray>& data, const JavaParamRef<jbyteArray>& signature);
+  jint Sign(JNIEnv *env, const JavaParamRef<jbyteArray>& data, const JavaParamRef<jbyteArray>& signature, jboolean useBase64);
 
     // Verify with the public key that the data buffer corresponds to the Base64 ECDSA signature.
     // Returns 1 if the signature is verified, 0 if the data does not match or a negative error code.
-  jint VerifyECDSA(JNIEnv *env, const JavaParamRef<jbyteArray>& data, const JavaParamRef<jbyteArray>& signature);
+  jint Verify(JNIEnv *env, const JavaParamRef<jbyteArray>& data, const JavaParamRef<jbyteArray>& signature, jboolean useBase64);
 
     // Prepare for use of AEAD with the peer's public key.  Derive a shared secret based on the private key
     // and peer's public key, compute the SHA256 digest of that secret, setup the AEAD internal context

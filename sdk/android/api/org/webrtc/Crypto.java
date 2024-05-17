@@ -1,5 +1,7 @@
 package org.webrtc;
 
+import androidx.annotation.NonNull;
+
 public class Crypto {
     private long nativeCrypto; // pointer to the webrtc::jni::Crypto* instance
 
@@ -17,21 +19,28 @@ public class Crypto {
     public static final int MAX_KEY_LENGTH = 256;
     public static final int MAX_SIG_LENGTH = 128;
 
+    public enum Kind {
+        ECDSA,
+        ED25519,
+        X25519_AES_GCM,
+        X25519_CHACHA20_POLY1305
+    };
+
     @CalledByNative
     public Crypto(long nativeCrypto) {
         this.nativeCrypto = nativeCrypto;
     }
 
-    public static Crypto create() {
-        return nativeCreate();
+    public static Crypto create(@NonNull Kind kind) {
+        return nativeCreate(kind.ordinal());
     }
 
-    public static Crypto importPublicKey(byte[] pubKey, boolean isBase64) {
-        return nativeImportPublicKey(pubKey, isBase64);
+    public static Crypto importPublicKey(@NonNull Kind kind, byte[] pubKey, boolean isBase64) {
+        return nativeImportPublicKey(kind.ordinal(), pubKey, isBase64);
     }
 
-    public static Crypto importPrivateKey(byte[] privateKey, boolean isBase64) {
-        return nativeImportPrivateKey(privateKey, isBase64);
+    public static Crypto importPrivateKey(@NonNull Kind kind, byte[] privateKey, boolean isBase64) {
+        return nativeImportPrivateKey(kind.ordinal(), privateKey, isBase64);
     }
 
     public byte[] getPublicKey(boolean useBase64) {
@@ -93,9 +102,9 @@ public class Crypto {
      * @param signature the output signature buffer (Must be large enough).
      * @return Return the length of the signature or a negative error code.
      */
-    public int signECDSA(byte[] data, byte[] signature) {
+    public int sign(byte[] data, byte[] signature, boolean isBase64) {
         checkCryptoExists();
-        return nativeSignECDSA(nativeCrypto, data, signature);
+        return nativeSign(nativeCrypto, data, signature, isBase64);
     }
 
     /**
@@ -105,9 +114,9 @@ public class Crypto {
      * @param signature the signature.
      * @return 1 if the signature is verified, 0 if the data does not match or a negative error code.
      */
-    public int verifyECDSA(byte[] data, byte[] signature) {
+    public int verify(byte[] data, byte[] signature, boolean isBase64) {
         checkCryptoExists();
-        return nativeVerifyECDSA(nativeCrypto, data, signature);
+        return nativeVerify(nativeCrypto, data, signature, isBase64);
     }
 
     /**
@@ -153,16 +162,16 @@ public class Crypto {
         }
     }
 
-    private static native Crypto nativeCreate();
-    private static native Crypto nativeImportPublicKey(byte[] pubKey, boolean isBase64);
-    private static native Crypto nativeImportPrivateKey(byte[] privateKey, boolean isBase64);
+    private static native Crypto nativeCreate(int kind);
+    private static native Crypto nativeImportPublicKey(int kind, byte[] pubKey, boolean isBase64);
+    private static native Crypto nativeImportPrivateKey(int kind, byte[] privateKey, boolean isBase64);
     private static native byte[] nativeGetPublicKey(long nativeCrypto, boolean useBase64);
     private static native byte[] nativeGetPrivateKey(long nativeCrypto, boolean useBase64);
     private static native int nativeBind(long nativeCrypto, long nativeBindCrypto, byte[] nonce, int maxIncrement); // 
     private static native int nativeUnbind(long nativeCrypto);
     private static native int nativeNewNonce(long nativeCrypto, byte[] nonce, int maxIncrement);
-    private static native int nativeSignECDSA(long nativeCrypto, byte[] data, byte[] signature);
-    private static native int nativeVerifyECDSA(long nativeCrypto, byte[] data, byte[] signature);
+    private static native int nativeSign(long nativeCrypto, byte[] data, byte[] signature, boolean isBase64);
+    private static native int nativeVerify(long nativeCrypto, byte[] data, byte[] signature, boolean isBase64);
     private static native int nativeEncryptAEAD(long nativeCrypto, byte[] data, byte[] auth, byte[] output);
     private static native int nativeDecryptAEAD(long nativeCrypto, byte[] data, int authLength, byte[] output);
     private static native void nativeDispose(long nativeCrypto);
