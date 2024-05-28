@@ -262,10 +262,16 @@ PeerConnectionFactory::CreatePeerConnectionOrError(
   dependencies.allocator->SetNetworkIgnoreMask(options().network_ignore_mask);
   dependencies.allocator->SetVpnList(configuration.vpn_list);
 
-  std::unique_ptr<Call> call =
-      worker_thread()->BlockingCall([this, &env, &configuration] {
+  // --twinlife-- 2024-05-28: small optimization for P2P without media
+  std::unique_ptr<Call> call;
+  if (media_engine()) {
+      call = worker_thread()->BlockingCall([this, &env, &configuration] {
         return CreateCall_w(env, configuration);
       });
+  } else {
+    call = nullptr;
+  }
+  // --twinlife-- 2024-05-28: small optimization for P2P without media
 
   auto result = PeerConnection::Create(env, context_, options_, std::move(call),
                                        configuration, std::move(dependencies));
