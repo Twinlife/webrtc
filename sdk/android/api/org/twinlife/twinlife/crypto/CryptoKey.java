@@ -2,6 +2,8 @@ package org.twinlife.twinlife.crypto;
 
 import androidx.annotation.NonNull;
 
+import org.webrtc.CalledByNative;
+
 public class CryptoKey {
     private long nativeCrypto; // pointer to the webrtc::jni::Crypto* instance
 
