@@ -2,7 +2,7 @@ package org.webrtc;
 
 import androidx.annotation.NonNull;
 
-public class Crypto {
+public class CryptoBox {
     private long nativeCrypto; // pointer to the webrtc::jni::Crypto* instance
 
     // Error codes as defined in twinlife_crypto.h
@@ -20,37 +20,17 @@ public class Crypto {
     public static final int MAX_SIG_LENGTH = 128;
 
     public enum Kind {
-        ECDSA,
-        ED25519,
-        X25519_AES_GCM,
-        X25519_CHACHA20_POLY1305
+        AES_GCM,
+        CHACHA20_POLY1305
     };
 
     @CalledByNative
-    public Crypto(long nativeCrypto) {
-        this.nativeCrypto = nativeCrypto;
+    public CryptoBox(long nativeCryptoBox) {
+        this.nativeCrypto = nativeCryptoBox;
     }
 
-    public static Crypto create(@NonNull Kind kind) {
+    public static CryptoBox create(@NonNull Kind kind) {
         return nativeCreate(kind.ordinal());
-    }
-
-    public static Crypto importPublicKey(@NonNull Kind kind, byte[] pubKey, boolean isBase64) {
-        return nativeImportPublicKey(kind.ordinal(), pubKey, isBase64);
-    }
-
-    public static Crypto importPrivateKey(@NonNull Kind kind, byte[] privateKey, boolean isBase64) {
-        return nativeImportPrivateKey(kind.ordinal(), privateKey, isBase64);
-    }
-
-    public byte[] getPublicKey(boolean useBase64) {
-        checkCryptoExists();
-        return nativeGetPublicKey(nativeCrypto, useBase64);
-    }
-
-    public byte[] getPrivateKey(boolean useBase64) {
-        checkCryptoExists();
-        return nativeGetPrivateKey(nativeCrypto, useBase64);
     }
 
     /**
@@ -65,10 +45,16 @@ public class Crypto {
      * @param maxIncrement
      * @return 0 or an error code.
      */
-    public int bind(Crypto peerPublicKey, byte[] nonce, int maxIncrement) {
+    public int bind(@NonNull CryptoKey privateKey, @NonNull CryptoKey peerPublicKey, @NonNull byte[] nonce, int maxIncrement) {
         checkCryptoExists();
+        privateKey.checkCryptoExists();
         peerPublicKey.checkCryptoExists();
-        return nativeBind(nativeCrypto, peerPublicKey.nativeCrypto, nonce, maxIncrement);
+        return nativeBind(nativeCrypto, privateKey.internalCrypto(), peerPublicKey.internalCrypto(), nonce, maxIncrement);
+    }
+
+    public int bind(@NonNull byte[] key, @NonNull byte[] nonce, int maxIncrement) {
+        checkCryptoExists();
+        return nativeBindSecret(nativeCrypto, key, nonce, maxIncrement);
     }
 
     /**
@@ -92,31 +78,6 @@ public class Crypto {
     public int newNonce(byte[] nonce, int maxIncrement) {
         checkCryptoExists();
         return nativeNewNonce(nativeCrypto, nonce, maxIncrement);
-    }
-
-    /**
-     * Sign the content of the data buffer with the private key and encode the ECDSA signature in Base64
-     * in the signature buffer.
-     *
-     * @param data the data buffer to verify.
-     * @param signature the output signature buffer (Must be large enough).
-     * @return Return the length of the signature or a negative error code.
-     */
-    public int sign(byte[] data, byte[] signature, boolean isBase64) {
-        checkCryptoExists();
-        return nativeSign(nativeCrypto, data, signature, isBase64);
-    }
-
-    /**
-     * Verify with the public key that the data buffer corresponds to the Base64 ECDSA signature.
-     *
-     * @param data the data buffer to verify.
-     * @param signature the signature.
-     * @return 1 if the signature is verified, 0 if the data does not match or a negative error code.
-     */
-    public int verify(byte[] data, byte[] signature, boolean isBase64) {
-        checkCryptoExists();
-        return nativeVerify(nativeCrypto, data, signature, isBase64);
     }
 
     /**
@@ -158,21 +119,16 @@ public class Crypto {
 
     private void checkCryptoExists() {
         if (nativeCrypto == 0) {
-            throw new IllegalStateException("Crypto has been disposed.");
+            throw new IllegalStateException("CryptoBox has been disposed.");
         }
     }
 
-    private static native Crypto nativeCreate(int kind);
-    private static native Crypto nativeImportPublicKey(int kind, byte[] pubKey, boolean isBase64);
-    private static native Crypto nativeImportPrivateKey(int kind, byte[] privateKey, boolean isBase64);
-    private static native byte[] nativeGetPublicKey(long nativeCrypto, boolean useBase64);
-    private static native byte[] nativeGetPrivateKey(long nativeCrypto, boolean useBase64);
-    private static native int nativeBind(long nativeCrypto, long nativeBindCrypto, byte[] nonce, int maxIncrement); // 
-    private static native int nativeUnbind(long nativeCrypto);
-    private static native int nativeNewNonce(long nativeCrypto, byte[] nonce, int maxIncrement);
-    private static native int nativeSign(long nativeCrypto, byte[] data, byte[] signature, boolean isBase64);
-    private static native int nativeVerify(long nativeCrypto, byte[] data, byte[] signature, boolean isBase64);
-    private static native int nativeEncryptAEAD(long nativeCrypto, byte[] data, byte[] auth, byte[] output);
-    private static native int nativeDecryptAEAD(long nativeCrypto, byte[] data, int authLength, byte[] output);
-    private static native void nativeDispose(long nativeCrypto);
+    private static native CryptoBox nativeCreate(int kind);
+    private static native int nativeBind(long nativeCryptoBox, long nativePrivateCryptoKey, long nativeBindCrypto, byte[] nonce, int maxIncrement);
+    private static native int nativeBindSecret(long nativeCryptoBox, byte[] key, byte[] nonce, int maxIncrement);
+    private static native int nativeUnbind(long nativeCryptoBox);
+    private static native int nativeNewNonce(long nativeCryptoBox, byte[] nonce, int maxIncrement);
+    private static native int nativeEncryptAEAD(long nativeCryptoBox, byte[] data, byte[] auth, byte[] output);
+    private static native int nativeDecryptAEAD(long nativeCryptoBox, byte[] data, int authLength, byte[] output);
+    private static native void nativeDispose(long nativeCryptoBox);
 }

@@ -15,15 +15,16 @@
 #include "rtc_base/twinlife_crypto.h"
 #include "sdk/android/native_api/jni/scoped_java_ref.h"
 
-using twinlife::Crypto;
+using twinlife::CryptoKey;
+using twinlife::CryptoBox;
 
 namespace webrtc {
 namespace jni {
 
-class Crypto : public twinlife::Crypto {
+class CryptoKey : public twinlife::CryptoKey {
 public:
-  Crypto(twinlife::Crypto::Kind kind, EVP_PKEY *pkey) : twinlife::Crypto(kind, pkey) {}
-  ~Crypto() {}
+  CryptoKey(twinlife::CryptoKey::Kind kind, EVP_PKEY *pkey) : twinlife::CryptoKey(kind, pkey) {}
+  ~CryptoKey() {}
 
   // Export the public key in DER base64 in the given buffer and return the length of exported public key.
   ScopedJavaLocalRef<jbyteArray> GetPublicKey(JNIEnv *env, jboolean useBase64);
@@ -40,12 +41,22 @@ public:
     // Returns 1 if the signature is verified, 0 if the data does not match or a negative error code.
   jint Verify(JNIEnv *env, const JavaParamRef<jbyteArray>& data, const JavaParamRef<jbyteArray>& signature, jboolean useBase64);
 
+  void Dispose(JNIEnv *env);
+};
+
+class CryptoBox : public twinlife::CryptoBox {
+public:
+  CryptoBox(twinlife::CryptoBox::Kind kind) : twinlife::CryptoBox(kind) {}
+  ~CryptoBox() {}
+
     // Prepare for use of AEAD with the peer's public key.  Derive a shared secret based on the private key
     // and peer's public key, compute the SHA256 digest of that secret, setup the AEAD internal context
     // to be ready to use `encryptAEAD` or `decryptAEAD`.  The `bind` is a costly operation compared
     // to encryption and decryption.  The encryption nonce is pre-initialized with the given buffer
     // and will be incremented before each encryptAEAD() a maximum of `maxIncrement` times.
-  jint Bind(JNIEnv *env, jlong peerPublicKey, const JavaParamRef<jbyteArray>& nonce, jint maxIncrement);
+  jint Bind(JNIEnv *env, jlong privateKey, jlong peerPublicKey, const JavaParamRef<jbyteArray>& nonce, jint maxIncrement);
+
+  jint BindSecret(JNIEnv *env, const JavaParamRef<jbyteArray>& key, const JavaParamRef<jbyteArray>& nonce, jint maxIncrement);
 
     // Unbind with peer's public key and release the AEAD context.  This operation must be called when
     // encryption and decryption are not necessary any more.
@@ -66,10 +77,14 @@ public:
 
   void Dispose(JNIEnv *env);
 };
-
-ScopedJavaLocalRef<jobject> NativeToJavaCrypto(
+  
+ScopedJavaLocalRef<jobject> NativeToJavaCryptoKey(
     JNIEnv* env,
-    twinlife::Crypto *crypto);
+    twinlife::CryptoKey *crypto);
+
+ScopedJavaLocalRef<jobject> NativeToJavaCryptoBox(
+    JNIEnv* env,
+    twinlife::CryptoBox *crypto);
 
 }  // namespace jni
 }  // namespace webrtc

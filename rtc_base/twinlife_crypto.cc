@@ -27,7 +27,7 @@
 
 NAMESPACE
 
-int Crypto::digest(const unsigned char* data, int len, unsigned char digest[EVP_MAX_MD_SIZE])
+int CryptoKey::digest(const unsigned char* data, int len, unsigned char digest[EVP_MAX_MD_SIZE])
 {
   unsigned int digest_len = EVP_MAX_MD_SIZE;
   EVP_MD_CTX* ctx = EVP_MD_CTX_new();
@@ -41,7 +41,7 @@ int Crypto::digest(const unsigned char* data, int len, unsigned char digest[EVP_
   return digest_len;
 }
 
-EVP_PKEY* Crypto::create(enum Kind kind)
+EVP_PKEY* CryptoKey::create(enum Kind kind)
 {
   EVP_PKEY *pkey;
   switch (kind) {
@@ -69,8 +69,7 @@ EVP_PKEY* Crypto::create(enum Kind kind)
     break;
   }
 
-  case X25519_AES_GCM:
-  case X25519_CHACHA20_POLY1305: {
+  case X25519: {
     uint8_t pubKey[X25519_PUBLIC_VALUE_LEN];
     uint8_t privKey[X25519_PRIVATE_KEY_LEN];
 
@@ -86,7 +85,7 @@ EVP_PKEY* Crypto::create(enum Kind kind)
   return pkey;
 }
 
-int Crypto::decodeBase64(unsigned char* key, size_t length, unsigned char buffer[TWINLIFE_MAX_SIZE]) {
+int CryptoKey::decodeBase64(unsigned char* key, size_t length, unsigned char buffer[TWINLIFE_MAX_SIZE]) {
 
   // Switch Base64URL to Base64
   for (size_t i = 0; i < length; i++) {
@@ -104,7 +103,7 @@ int Crypto::decodeBase64(unsigned char* key, size_t length, unsigned char buffer
   return decodedLength;
 }
 
-int Crypto::encodeBase64(const unsigned char* data, size_t length, unsigned char *buffer, size_t maxLength)
+int CryptoKey::encodeBase64(const unsigned char* data, size_t length, unsigned char *buffer, size_t maxLength)
 {
   // Verify we have enough space for BASE64 (+5 is for /3 rounding + 1 for NUL).
   if (4 * (length / 3) + 5 >= maxLength) {
@@ -128,7 +127,7 @@ int Crypto::encodeBase64(const unsigned char* data, size_t length, unsigned char
   return result;
 }
 
-EVP_PKEY* Crypto::importPublicKey(enum Format format, enum Kind kind,
+EVP_PKEY* CryptoKey::importPublicKey(enum Format format, enum Kind kind,
                                   unsigned char* pubKey, size_t pubKeyLength)
 {
   if (!pubKey || pubKeyLength <= 0 || pubKeyLength > TWINLIFE_MAX_SIZE) {
@@ -139,7 +138,7 @@ EVP_PKEY* Crypto::importPublicKey(enum Format format, enum Kind kind,
   size_t length;
   const unsigned char* p;
   if (format == Format::BASE64) {
-    length = Crypto::decodeBase64(pubKey, pubKeyLength, buffer);
+    length = CryptoKey::decodeBase64(pubKey, pubKeyLength, buffer);
     if (length <= 0) {
       return nullptr;
     }
@@ -170,8 +169,7 @@ EVP_PKEY* Crypto::importPublicKey(enum Format format, enum Kind kind,
     pkey = EVP_PKEY_new_raw_public_key(EVP_PKEY_ED25519, nullptr, p, length);
     break;
 
-  case X25519_AES_GCM:
-  case X25519_CHACHA20_POLY1305:
+  case X25519:
     if (length != 32) {
       return nullptr;
     }
@@ -185,7 +183,7 @@ EVP_PKEY* Crypto::importPublicKey(enum Format format, enum Kind kind,
   return pkey;
 }
 
-EVP_PKEY* Crypto::importPrivateKey(enum Format format, enum Kind kind,
+EVP_PKEY* CryptoKey::importPrivateKey(enum Format format, enum Kind kind,
                                    unsigned char* privateKey, size_t privateKeyLength)
 {
   if (!privateKey || privateKeyLength <= 0 || privateKeyLength > TWINLIFE_MAX_SIZE) {
@@ -196,7 +194,7 @@ EVP_PKEY* Crypto::importPrivateKey(enum Format format, enum Kind kind,
   size_t length;
   const unsigned char* p;
   if (format == Format::BASE64) {
-    length = Crypto::decodeBase64(privateKey, privateKeyLength, buffer);
+    length = CryptoKey::decodeBase64(privateKey, privateKeyLength, buffer);
     if (length <= 0) {
       return nullptr;
     }
@@ -228,8 +226,7 @@ EVP_PKEY* Crypto::importPrivateKey(enum Format format, enum Kind kind,
     break;
   }
 
-  case X25519_AES_GCM:
-  case X25519_CHACHA20_POLY1305:
+  case X25519:
     if (length != 32) {
       return nullptr;
     }
@@ -243,7 +240,7 @@ EVP_PKEY* Crypto::importPrivateKey(enum Format format, enum Kind kind,
   return pkey;
 }
 
-int Crypto::exportPublicKey(enum Format format, unsigned char* buffer, size_t maxLength)
+int CryptoKey::exportPublicKey(enum Format format, unsigned char* buffer, size_t maxLength)
 {
   if (!buffer || maxLength <= 0) {
     return TWINLIFE_BAD_PARAM;
@@ -293,7 +290,7 @@ int Crypto::exportPublicKey(enum Format format, unsigned char* buffer, size_t ma
   return encodeBase64(tmp, size, buffer, maxLength);
 }
 
-int Crypto::exportPrivateKey(enum Format format, unsigned char* buffer, size_t maxLength)
+int CryptoKey::exportPrivateKey(enum Format format, unsigned char* buffer, size_t maxLength)
 {
   CBB cbb;
   uint8_t *data;
@@ -327,7 +324,7 @@ int Crypto::exportPrivateKey(enum Format format, unsigned char* buffer, size_t m
   }
 }
 
-int Crypto::signECDSA(enum Format format, const unsigned char* data, size_t len,
+int CryptoKey::signECDSA(enum Format format, const unsigned char* data, size_t len,
                       unsigned char* signature, size_t maxLength)
 {
   if (!data || !signature || len <= 0 || maxLength <= 0) {
@@ -339,7 +336,7 @@ int Crypto::signECDSA(enum Format format, const unsigned char* data, size_t len,
 
   unsigned char digest[EVP_MAX_MD_SIZE];
   memset(digest, 0, sizeof(digest));
-  int digest_len = Crypto::digest(data, len, digest);
+  int digest_len = CryptoKey::digest(data, len, digest);
   if (digest_len <= 0) {
     return TWINLIFE_BAD_ALLOC;
   }
@@ -387,7 +384,7 @@ int Crypto::signECDSA(enum Format format, const unsigned char* data, size_t len,
   }
 }
 
-int Crypto::sign(enum Format format, const unsigned char* data, size_t len,
+int CryptoKey::sign(enum Format format, const unsigned char* data, size_t len,
                  unsigned char* signature, size_t maxLength)
 {
   switch (kind_) {
@@ -402,7 +399,7 @@ int Crypto::sign(enum Format format, const unsigned char* data, size_t len,
   }
 }
 
-int Crypto::signED25519(enum Format format, const unsigned char* data, size_t len,
+int CryptoKey::signED25519(enum Format format, const unsigned char* data, size_t len,
                         unsigned char* signature, size_t maxLength)
 {
   if (!data || !signature || len <= 0 || maxLength <= 0) {
@@ -441,7 +438,7 @@ int Crypto::signED25519(enum Format format, const unsigned char* data, size_t le
   }
 }
 
-int Crypto::verify(enum Format format, const unsigned char* data, size_t len,
+int CryptoKey::verify(enum Format format, const unsigned char* data, size_t len,
                    const unsigned char* signature, size_t signatureLength)
 {
   switch (kind_) {
@@ -456,7 +453,7 @@ int Crypto::verify(enum Format format, const unsigned char* data, size_t len,
   }
 }
 
-int Crypto::verifyECDSA(enum Format format, const unsigned char* data, size_t len,
+int CryptoKey::verifyECDSA(enum Format format, const unsigned char* data, size_t len,
                         const unsigned char* signature, size_t signatureLength)
 {
   if (!data || !signature || len <= 0 || signatureLength <= 0) {
@@ -464,7 +461,7 @@ int Crypto::verifyECDSA(enum Format format, const unsigned char* data, size_t le
   }
 
   unsigned char digest[EVP_MAX_MD_SIZE];
-  int digest_len = Crypto::digest(data, len, digest);
+  int digest_len = CryptoKey::digest(data, len, digest);
   if (digest_len <= 0) {
     return TWINLIFE_BAD_ALLOC;
   }
@@ -502,7 +499,7 @@ int Crypto::verifyECDSA(enum Format format, const unsigned char* data, size_t le
   return result;
 }
 
-int Crypto::verifyED25519(enum Format format, const unsigned char* data, size_t len,
+int CryptoKey::verifyED25519(enum Format format, const unsigned char* data, size_t len,
                           const unsigned char* signature, size_t signatureLength)
 {
   if (!data || !signature || len <= 0 || signatureLength <= 0) {
@@ -539,16 +536,21 @@ int Crypto::verifyED25519(enum Format format, const unsigned char* data, size_t 
   return result;
 }
 
-int Crypto::createSharedSecret(const Crypto* peerPublicKey, unsigned char* key, size_t keyLength)
+CryptoKey::~CryptoKey()
 {
-  if (!peerPublicKey || !key || keyLength <= 0) {
+   EVP_PKEY_free(pkey_);
+}
+
+int CryptoBox::createSharedSecret(const CryptoKey *privateKey, const CryptoKey* peerPublicKey, unsigned char* key, size_t keyLength)
+{
+  if (!privateKey || !peerPublicKey || !key || keyLength <= 0) {
     return TWINLIFE_BAD_PARAM;
   }
-  if (!pkey_ || !peerPublicKey->pkey_) {
+  if (!privateKey->pkey_ || !peerPublicKey->pkey_ || privateKey->kind_ != peerPublicKey->kind_) {
     return TWINLIFE_BAD_EC_KEY;
   }
 
-  EVP_PKEY_CTX *keyCtx = EVP_PKEY_CTX_new(pkey_, nullptr);
+  EVP_PKEY_CTX *keyCtx = EVP_PKEY_CTX_new(privateKey->pkey_, nullptr);
   if (!keyCtx) {
     return TWINLIFE_BAD_ALLOC;
   }
@@ -569,60 +571,65 @@ int Crypto::createSharedSecret(const Crypto* peerPublicKey, unsigned char* key, 
   }
   EVP_PKEY_CTX_free(keyCtx);
 
-  return Crypto::digest(key, keyLength, key);
+  return CryptoKey::digest(key, keyLength, key);
 }
 
-int Crypto::bind(const Crypto *peerPublicKey, const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement) {
+int CryptoBox::bind(const CryptoKey *privateKey, const CryptoKey *peerPublicKey,
+                    const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement) {
 
-  if (!pkey_ || !peerPublicKey->pkey_) {
-    return TWINLIFE_BAD_EC_KEY;
-  }
-
-  unbind();
   unsigned char* key = (unsigned char*)OPENSSL_malloc(TWINLIFE_MAX_SECRET_SIZE);
   if (!key) {
     return TWINLIFE_BAD_ALLOC;
   }
 
-  int keyLength = createSharedSecret(peerPublicKey, key, TWINLIFE_MAX_SECRET_SIZE);
+  int keyLength = createSharedSecret(privateKey, peerPublicKey, key, TWINLIFE_MAX_SECRET_SIZE);
   if (keyLength <= 0) {
     OPENSSL_free(key);
     return TWINLIFE_BAD_PARAM;
   }
+
+  int result = bind(key, keyLength, nonce, maxIncrement);
+  OPENSSL_free(key);
+  return result;
+}
+
+int CryptoBox::bind(const unsigned char *key, size_t keyLength, const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement) {
+
+  unbind();
   newNonce(nonce, maxIncrement);
 
   const EVP_AEAD *aead;
   switch (kind_) {
-  case ECDSA:
-  case X25519_AES_GCM:
+  case AES_GCM:
     aead = EVP_aead_aes_256_gcm();
     break;
 
-  case X25519_CHACHA20_POLY1305:
+  case CHACHA20_POLY1305:
     aead = EVP_aead_chacha20_poly1305();
     break;
 
-  case ED25519:
+  default:
     return TWINLIFE_BAD_EC_KEY;
   }
 
   aead_ = EVP_AEAD_CTX_new(aead, key, keyLength, EVP_AEAD_DEFAULT_TAG_LENGTH);
-  OPENSSL_free(key);
   return aead_ ? 1 : TWINLIFE_BAD_ALLOC;
 }
 
-void Crypto::unbind() {
+void CryptoBox::unbind() {
   if (aead_) {
     EVP_AEAD_CTX_free(aead_);
     aead_ = nullptr;
   }
 }
 
-void Crypto::newNonce(const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement)
+void CryptoBox::newNonce(const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement)
 {
   memcpy(nonce_, nonce, TWINLIFE_NONCE_LENGTH);
 
   // Limit maxIncrement to 128 max to force a call to newNonce().
+  // We only take into account 1 byte for the counter when creating a new nonce.
+  // Note: we rely on upper layers to provide us a different nonce for other bits.
   if (maxIncrement > 128) {
     maxIncrement = 128;
   }
@@ -637,8 +644,8 @@ void Crypto::newNonce(const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxI
   nonceVal_ = 0;
 }
 
-int Crypto::encryptAEAD(const unsigned char* data, size_t len, const unsigned char* auth, size_t authLength,
-                        unsigned char* buffer, size_t maxLength)
+int CryptoBox::encryptAEAD(const unsigned char* data, size_t len, const unsigned char* auth, size_t authLength,
+                           unsigned char* buffer, size_t maxLength)
 {
   if (!aead_) {
     return TWINLIFE_BAD_PARAM;
@@ -651,6 +658,8 @@ int Crypto::encryptAEAD(const unsigned char* data, size_t len, const unsigned ch
   if (maxLength <= authLength + sizeof(nonce_)) {
     return TWINLIFE_TOO_SMALL;
   }
+
+  // Copy auth buffer to target buffer, then append the nonce.
   memcpy(buffer, auth, authLength);
   memcpy(&buffer[authLength], nonce_, sizeof(nonce_));
   buffer[authLength + TWINLIFE_NONCE_LENGTH - 1] ^= (unsigned char) (v & incrementMask_);
@@ -663,8 +672,8 @@ int Crypto::encryptAEAD(const unsigned char* data, size_t len, const unsigned ch
   return result <= 0 ? TWINLIFE_AEAD_FAIL : authLength + sizeof(nonce_) + outLength;
 }
 
-int Crypto::decryptAEAD(const unsigned char* data, size_t len, size_t authLength,
-                        unsigned char* buffer, size_t maxLength)
+int CryptoBox::decryptAEAD(const unsigned char* data, size_t len, size_t authLength,
+                           unsigned char* buffer, size_t maxLength)
 {
   if (!aead_) {
     return TWINLIFE_BAD_PARAM;
@@ -679,9 +688,8 @@ int Crypto::decryptAEAD(const unsigned char* data, size_t len, size_t authLength
   return result <= 0 ? TWINLIFE_AEAD_FAIL : outLength;
 }
 
-Crypto::~Crypto()
+CryptoBox::~CryptoBox()
 {
-   EVP_PKEY_free(pkey_);
    if (aead_) {
      EVP_AEAD_CTX_free(aead_);
    }

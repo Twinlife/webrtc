@@ -311,8 +311,9 @@ if (is_android) {
       "src/java/org/webrtc/NativeCapturerObserver.java",
       "src/java/org/webrtc/NativeLibrary.java",
 
-      # -twinlife- 2023-10-04: add Crypto.java
-      "api/org/webrtc/Crypto.java",
+      # -twinlife- 2023-10-04: add CryptoKey.java
+      "api/org/twinlife/twinlife/crypto/CryptoKey.java",
+      "api/org/twinlife/twinlife/crypto/CryptoBox.java"
     ]
 
     deps = [
@@ -1430,7 +1431,10 @@ if (current_os == "linux" || is_android) {
       "api/org/webrtc/StatsObserver.java",
       "api/org/webrtc/StatsReport.java",
       "api/org/webrtc/TurnCustomizer.java",
-      "api/org/webrtc/Crypto.java",
+
+      # -twinlife- 2023-10-04: add CryptoKey.java
+      "api/org/twinlife/twinlife/crypto/CryptoKey.java",
+      "api/org/twinlife/twinlife/crypto/CryptoBox.java"
     ]
     namespace = "webrtc::jni"
     jni_generator_include = "//sdk/android/src/jni/jni_generator_helper.h"

@@ -34,7 +34,7 @@ namespace twinlife {
     static unsigned char* deobfuscate(bool base64);
   };
 
-  class Crypto {
+  class CryptoKey {
   public:
     enum Format {
       BINARY,
@@ -43,8 +43,7 @@ namespace twinlife {
     enum Kind {
       ECDSA,
       ED25519,
-      X25519_AES_GCM,
-      X25519_CHACHA20_POLY1305
+      X25519
     };
     // Create a private/public keypair for:
     // - ECDSA (use prime256v1 EC).
@@ -52,7 +51,7 @@ namespace twinlife {
     // - X25519
     template <typename T>
     static T* create(enum Kind kind) {
-      EVP_PKEY *pkey = Crypto::create(kind);
+      EVP_PKEY *pkey = CryptoKey::create(kind);
       if (pkey) {
         return new T(kind, pkey);
       } else {
@@ -65,7 +64,7 @@ namespace twinlife {
     template <typename T>
     static T* importPublicKey(enum Format format, enum Kind kind,
                               unsigned char* pubKey, size_t pubKeyLength) {
-      EVP_PKEY *pkey = Crypto::importPublicKey(format, kind, pubKey, pubKeyLength);
+      EVP_PKEY *pkey = CryptoKey::importPublicKey(format, kind, pubKey, pubKeyLength);
       if (pkey) {
         return new T(kind, pkey);
       } else {
@@ -78,7 +77,7 @@ namespace twinlife {
     template <typename T>
     static T* importPrivateKey(enum Format format, enum Kind kind,
                                unsigned char* privateKey, size_t privateKeyLength) {
-      EVP_PKEY *pkey = Crypto::importPrivateKey(format, kind, privateKey, privateKeyLength);
+      EVP_PKEY *pkey = CryptoKey::importPrivateKey(format, kind, privateKey, privateKeyLength);
       if (pkey) {
         return new T(kind, pkey);
       } else {
@@ -108,13 +107,67 @@ namespace twinlife {
     int verifyED25519(enum Format format, const unsigned char* data, size_t len,
                       const unsigned char* signature, size_t signatureLength);
 
+    ~CryptoKey();
+
+    // Forbid copy and assignment.
+    CryptoKey(const CryptoKey&) = delete;
+    CryptoKey& operator=(const CryptoKey&) = delete;
+
+  protected:
+    // Creation allowed only from create(), importPublicKey() or importPrivateKey().
+    CryptoKey(enum Kind kind, EVP_PKEY *pkey) : kind_(kind) {
+      pkey_ = pkey;
+    }
+
+  private:
+    friend class CryptoBox;
+
+    static EVP_PKEY* create(enum Kind kind);
+    static EVP_PKEY* importPublicKey(enum Format format, enum Kind kind,
+                                     unsigned char* pubKey, size_t pubKeyLength);
+    static EVP_PKEY* importPrivateKey(enum Format format, enum Kind kind,
+                                      unsigned char* privateKey, size_t privateKeyLength);
+
+    const Kind kind_;
+    EVP_PKEY* pkey_;
+
+    static int digest(const unsigned char* data, int len, unsigned char digest[EVP_MAX_MD_SIZE]);
+
+    // Convert in place the Base64URL `key` into Base64 alphabet and decode the Base64 result in `buffer`.
+    // Return the length of the decoded data.
+    static int decodeBase64(unsigned char* key, size_t length, unsigned char buffer[TWINLIFE_MAX_SIZE]);
+
+    // Encode the data in Base64 URL in the target buffer.
+    // Return the length of the encoded data or a negative error code.
+    static int encodeBase64(const unsigned char* data, size_t length, unsigned char *buffer, size_t maxLength);
+  };
+
+  class CryptoBox {
+  public:
+    enum Kind {
+      AES_GCM,
+      CHACHA20_POLY1305
+    };
+
+    // Create the encrypt/decrypt box.
+    template <typename T>
+    static T* create(enum Kind kind) {
+      return new T(kind);
+    }
+
     // Prepare for use of AEAD with the peer's public key.  Derive a shared secret based on the private key
     // and peer's public key, compute the SHA256 digest of that secret, setup the AEAD internal context
     // to be ready to use `encryptAEAD` or `decryptAEAD`.  The `bind` is a costly operation compared
     // to encryption and decryption.  The encryption nonce is pre-initialized with the given buffer
     // and will be incremented before each encryptAEAD() a maximum of `maxIncrement` times.
     // Returns 1 when the operation succeeds or an error code.
-    int bind(const Crypto *peerPublicKey, const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement);
+    int bind(const CryptoKey *privateKey, const CryptoKey *peerPublicKey,
+             const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement);
+
+    // Prepare for use of AEAD with the secret key given in key and with the given length.
+    // The encryption nonce is pre-initialized with the given buffer.
+    // Returns 1 when the operation succeeds or an error code.
+    int bind(const unsigned char *key, size_t keyLength, const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement);
 
     // Unbind with peer's public key and release the AEAD context.  This operation must be called when
     // encryption and decryption are not necessary any more.
@@ -141,51 +194,33 @@ namespace twinlife {
     int decryptAEAD(const unsigned char* data, size_t len, size_t auth_length,
                     unsigned char* buffer, size_t maxLength);
 
-    ~Crypto();
+    ~CryptoBox();
 
     // Forbid copy and assignment.
-    Crypto(const Crypto&) = delete;
-    Crypto& operator=(const Crypto&) = delete;
+    CryptoBox(const CryptoBox&) = delete;
+    CryptoBox& operator=(const CryptoBox&) = delete;
 
   protected:
-    // Creation allowed only from create(), importPublicKey() or importPrivateKey().
-    Crypto(enum Kind kind, EVP_PKEY *pkey) : kind_(kind) {
-      pkey_ = pkey;
-      aead_ = nullptr;
+    CryptoBox(enum Kind kind) : kind_(kind) {
+      aead_ = 0;
       maxIncrement_ = 0;
       nonceVal_ = 0;
       incrementMask_ = 0;
     }
 
   private:
-    static EVP_PKEY* create(enum Kind kind);
-    static EVP_PKEY* importPublicKey(enum Format format, enum Kind kind,
-                                     unsigned char* pubKey, size_t pubKeyLength);
-    static EVP_PKEY* importPrivateKey(enum Format format, enum Kind kind,
-                                      unsigned char* privateKey, size_t privateKeyLength);
-
     const Kind kind_;
-    EVP_PKEY* pkey_;
     EVP_AEAD_CTX *aead_;
     unsigned char nonce_[TWINLIFE_NONCE_LENGTH];
     unsigned int maxIncrement_;
     std::atomic<unsigned int> nonceVal_;
     unsigned int incrementMask_;
 
-    static int digest(const unsigned char* data, int len, unsigned char digest[EVP_MAX_MD_SIZE]);
-
-    // Convert in place the Base64URL `key` into Base64 alphabet and decode the Base64 result in `buffer`.
-    // Return the length of the decoded data.
-    static int decodeBase64(unsigned char* key, size_t length, unsigned char buffer[TWINLIFE_MAX_SIZE]);
-
-    // Encode the data in Base64 URL in the target buffer.
-    // Return the length of the encoded data or a negative error code.
-    static int encodeBase64(const unsigned char* data, size_t length, unsigned char *buffer, size_t maxLength);
-
     // Derive a shared secret based on the private key and peer's public key, compute the SHA256 digest of that
     // secret and return it in the `key` buffer.  The `key` buffer must be allocated by using OPENSSL_malloc()
     // for security constraints (key will be cleared when buffer is released).
-    int createSharedSecret(const Crypto* peerPublicKey, unsigned char* key, size_t keyLength);
+    int createSharedSecret(const CryptoKey *privateKey, const CryptoKey* peerPublicKey,
+                           unsigned char* key, size_t keyLength);
   };
 }
 

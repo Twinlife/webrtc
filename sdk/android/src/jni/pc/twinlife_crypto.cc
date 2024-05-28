@@ -12,7 +12,8 @@
 #include <memory>
 #include <utility>
 
-#include "sdk/android/generated_peerconnection_jni/Crypto_jni.h"
+#include "sdk/android/generated_peerconnection_jni/CryptoKey_jni.h"
+#include "sdk/android/generated_peerconnection_jni/CryptoBox_jni.h"
 // #include "sdk/android/generated_peerconnection_jni/Config_jni.h"
 #include "sdk/android/native_api/jni/java_types.h"
 #include "sdk/android/src/jni/jni_helpers.h"
@@ -30,10 +31,10 @@ namespace jni {
   }
 
   // Export the public key in DER base64 in the given buffer and return the length of exported public key.
-  ScopedJavaLocalRef<jbyteArray> Crypto::GetPublicKey(JNIEnv *env, jboolean useBase64) {
+  ScopedJavaLocalRef<jbyteArray> CryptoKey::GetPublicKey(JNIEnv *env, jboolean useBase64) {
     unsigned char buffer[TWINLIFE_MAX_PUBKEY_LENGTH];
 
-    Crypto::Format format = useBase64 ? Crypto::Format::BASE64 : Crypto::Format::BINARY;
+    CryptoKey::Format format = useBase64 ? CryptoKey::Format::BASE64 : CryptoKey::Format::BINARY;
     int length = exportPublicKey(format, buffer, sizeof(buffer));
     if (length <= 0) {
       return nullptr;
@@ -48,10 +49,10 @@ namespace jni {
 
   // Export the private key in DER in the given buffer (no base64 encoding)
   // and return the length of exported private key.
-  ScopedJavaLocalRef<jbyteArray> Crypto::GetPrivateKey(JNIEnv *env, jboolean useBase64) {
+  ScopedJavaLocalRef<jbyteArray> CryptoKey::GetPrivateKey(JNIEnv *env, jboolean useBase64) {
     unsigned char buffer[TWINLIFE_MAX_SIZE];
 
-    Crypto::Format format = useBase64 ? Crypto::Format::BASE64 : Crypto::Format::BINARY;
+    CryptoKey::Format format = useBase64 ? CryptoKey::Format::BASE64 : CryptoKey::Format::BINARY;
     int length = exportPrivateKey(format, buffer, sizeof(buffer));
     if (length <= 0) {
       return nullptr;
@@ -66,12 +67,12 @@ namespace jni {
 
     // Sign the content of the data buffer with the private key and encode the ECDSA signature in Base64
     // in the signature buffer.  Return the length of the signature or a negative error code.
-  jint Crypto::Sign(JNIEnv *env, const JavaParamRef<jbyteArray>& data, const JavaParamRef<jbyteArray>& signature, jboolean useBase64) {
+  jint CryptoKey::Sign(JNIEnv *env, const JavaParamRef<jbyteArray>& data, const JavaParamRef<jbyteArray>& signature, jboolean useBase64) {
     jbyte* buffer = env->GetByteArrayElements(data.obj(), nullptr);
     size_t length = env->GetArrayLength(data.obj());
     jbyte* signBuffer = env->GetByteArrayElements(signature.obj(), nullptr);
     size_t signLength = env->GetArrayLength(signature.obj());
-    Crypto::Format format = useBase64 ? Crypto::Format::BASE64 : Crypto::Format::BINARY;
+    CryptoKey::Format format = useBase64 ? CryptoKey::Format::BASE64 : CryptoKey::Format::BINARY;
 
     int result = sign(format, (const unsigned char*) buffer, length, (unsigned char*) signBuffer, signLength);
     env->ReleaseByteArrayElements(data.obj(), buffer, JNI_ABORT);
@@ -81,12 +82,12 @@ namespace jni {
 
   // Verify with the public key that the data buffer corresponds to the Base64 ECDSA signature.
   // Returns 1 if the signature is verified, 0 if the data does not match or a negative error code.
-  jint Crypto::Verify(JNIEnv *env, const JavaParamRef<jbyteArray>& data, const JavaParamRef<jbyteArray>& signature, jboolean useBase64) {
+  jint CryptoKey::Verify(JNIEnv *env, const JavaParamRef<jbyteArray>& data, const JavaParamRef<jbyteArray>& signature, jboolean useBase64) {
     jbyte* buffer = env->GetByteArrayElements(data.obj(), nullptr);
     size_t length = env->GetArrayLength(data.obj());
     jbyte* signBuffer = env->GetByteArrayElements(signature.obj(), nullptr);
     size_t signLength = env->GetArrayLength(signature.obj());
-    Crypto::Format format = useBase64 ? Crypto::Format::BASE64 : Crypto::Format::BINARY;
+    CryptoKey::Format format = useBase64 ? CryptoKey::Format::BASE64 : CryptoKey::Format::BINARY;
 
     int result = verify(format, (const unsigned char*) buffer, length, (const unsigned char*) signBuffer, signLength);
     env->ReleaseByteArrayElements(data.obj(), buffer, JNI_ABORT);
@@ -99,8 +100,9 @@ namespace jni {
   // to be ready to use `encryptAEAD` or `decryptAEAD`.  The `bind` is a costly operation compared
   // to encryption and decryption.  The encryption nonce is pre-initialized with the given buffer
   // and will be incremented before each encryptAEAD() a maximum of `maxIncrement` times.
-  jint Crypto::Bind(JNIEnv *env, jlong peerPublicKey, const JavaParamRef<jbyteArray>& nonce, jint maxIncrement) {
-    Crypto* peer = reinterpret_cast<Crypto*>(peerPublicKey);
+  jint CryptoBox::Bind(JNIEnv *env, jlong privateKey, jlong peerPublicKey, const JavaParamRef<jbyteArray>& nonce, jint maxIncrement) {
+    CryptoKey* key = reinterpret_cast<CryptoKey*>(privateKey);
+    CryptoKey* peer = reinterpret_cast<CryptoKey*>(peerPublicKey);
     jbyte* nonceBuffer = env->GetByteArrayElements(nonce.obj(), nullptr);
     size_t nonceLength = env->GetArrayLength(nonce.obj());
 
@@ -109,21 +111,40 @@ namespace jni {
     if (nonceLength != TWINLIFE_NONCE_LENGTH) {
       result = TWINLIFE_BAD_PARAM;
     } else {
-      result = bind(peer, (const unsigned char*) nonceBuffer, maxIncrement);
+      result = bind(key, peer, (const unsigned char*) nonceBuffer, maxIncrement);
     }
     env->ReleaseByteArrayElements(nonce.obj(), nonceBuffer, JNI_ABORT);
     return result;
   }
 
+  jint CryptoBox::BindSecret(JNIEnv *env, const JavaParamRef<jbyteArray>& key,
+                             const JavaParamRef<jbyteArray>& nonce, jint maxIncrement) {
+    jbyte* keyBuffer = env->GetByteArrayElements(key.obj(), nullptr);
+    size_t keyLength = env->GetArrayLength(key.obj());
+    jbyte* nonceBuffer = env->GetByteArrayElements(nonce.obj(), nullptr);
+    size_t nonceLength = env->GetArrayLength(nonce.obj());
+
+    // CHECK_NATIVE_PTR(env, jcaller, native, "Bind", 0);
+    int result;
+    if (nonceLength != TWINLIFE_NONCE_LENGTH) {
+      result = TWINLIFE_BAD_PARAM;
+    } else {
+      result = bind((const unsigned char *)keyBuffer, keyLength, (const unsigned char*) nonceBuffer, maxIncrement);
+    }
+    env->ReleaseByteArrayElements(nonce.obj(), nonceBuffer, JNI_ABORT);
+    env->ReleaseByteArrayElements(key.obj(), keyBuffer, JNI_ABORT);
+    return result;    
+  }
+
     // Unbind with peer's public key and release the AEAD context.  This operation must be called when
     // encryption and decryption are not necessary any more.
-  jint Crypto::Unbind(JNIEnv *env) {
+  jint CryptoBox::Unbind(JNIEnv *env) {
     unbind();
     return 0;
   }
 
   // Setup a new nonce for encryptAEAD().
-  jint Crypto::NewNonce(JNIEnv *env, const JavaParamRef<jbyteArray>& nonce, jint maxIncrement) {
+  jint CryptoBox::NewNonce(JNIEnv *env, const JavaParamRef<jbyteArray>& nonce, jint maxIncrement) {
     jbyte* buffer = env->GetByteArrayElements(nonce.obj(), nullptr);
     size_t nonceLength = env->GetArrayLength(nonce.obj());
 
@@ -141,7 +162,7 @@ namespace jni {
   // Encrypt and sign with AES256-GCM the data buffer and auth buffer with a new nonce.
   // Only the data buffer is encrypted.  The nonce buffer will be filled with a new nonce of 12 bytes.
   // Return the length of the output buffer or a negative error code.
-  jint Crypto::EncryptAEAD(JNIEnv *env, const JavaParamRef<jbyteArray>& data,
+  jint CryptoBox::EncryptAEAD(JNIEnv *env, const JavaParamRef<jbyteArray>& data,
                            const JavaParamRef<jbyteArray>& auth,
                            const JavaParamRef<jbyteArray>& buffer) {
     jbyte* dataBuffer = env->GetByteArrayElements(data.obj(), nullptr);
@@ -160,8 +181,8 @@ namespace jni {
   }
 
     // Decrypt and verify the data with AES256-GCM.  Only the encryptedData buffer is decrypted.
-  jint Crypto::DecryptAEAD(JNIEnv *env, const JavaParamRef<jbyteArray>& encryptedData, const jint authLength,
-                           const JavaParamRef<jbyteArray>& buffer) {
+  jint CryptoBox::DecryptAEAD(JNIEnv *env, const JavaParamRef<jbyteArray>& encryptedData, const jint authLength,
+                              const JavaParamRef<jbyteArray>& buffer) {
     jbyte* dataBuffer = env->GetByteArrayElements(encryptedData.obj(), nullptr);
     size_t dataLength = env->GetArrayLength(encryptedData.obj());
     jbyte* resultBuffer = env->GetByteArrayElements(buffer.obj(), nullptr);
@@ -174,42 +195,52 @@ namespace jni {
     return result;
   }
 
-  void Crypto::Dispose(JNIEnv *env) {
+  void CryptoKey::Dispose(JNIEnv *env) {
     delete this;
   }
   
-  static base::android::ScopedJavaLocalRef<jobject> JNI_Crypto_Create(JNIEnv* env, jint kind) {
+  void CryptoBox::Dispose(JNIEnv *env) {
+    delete this;
+  }
+  
+  static base::android::ScopedJavaLocalRef<jobject> JNI_CryptoKey_Create(JNIEnv* env, jint kind) {
 
-    Crypto *crypto = Crypto::create<Crypto>((Crypto::Kind)kind);
-    return Java_Crypto_Constructor(env, NativeToJavaPointer(crypto));
-}
+    CryptoKey *crypto = CryptoKey::create<CryptoKey>((CryptoKey::Kind)kind);
+    return Java_CryptoKey_Constructor(env, NativeToJavaPointer(crypto));
+  }
 
-static base::android::ScopedJavaLocalRef<jobject> JNI_Crypto_ImportPrivateKey(JNIEnv* env,
-                                                                              jint kind,
-                                                                              const base::android::JavaParamRef<jbyteArray>& privateKey,
-                                                                              jboolean isBase64) {
+  static base::android::ScopedJavaLocalRef<jobject> JNI_CryptoBox_Create(JNIEnv* env, jint kind) {
+
+    CryptoBox *crypto = CryptoBox::create<CryptoBox>((CryptoBox::Kind)kind);
+    return Java_CryptoBox_Constructor(env, NativeToJavaPointer(crypto));
+  }
+
+static base::android::ScopedJavaLocalRef<jobject> JNI_CryptoKey_ImportPrivateKey(JNIEnv* env,
+                                                                                 jint kind,
+                                                                                 const base::android::JavaParamRef<jbyteArray>& privateKey,
+                                                                                 jboolean isBase64) {
   jbyte* buffer = env->GetByteArrayElements(privateKey.obj(), nullptr);
   size_t length = env->GetArrayLength(privateKey.obj());
 
-  Crypto::Format format = isBase64 ? Crypto::Format::BASE64 : Crypto::Format::BINARY;
-  Crypto *crypto = twinlife::Crypto::importPrivateKey<Crypto>(format, (Crypto::Kind)kind, (unsigned char*) buffer, length);
+  CryptoKey::Format format = isBase64 ? CryptoKey::Format::BASE64 : CryptoKey::Format::BINARY;
+  CryptoKey *crypto = twinlife::CryptoKey::importPrivateKey<CryptoKey>(format, (CryptoKey::Kind)kind, (unsigned char*) buffer, length);
   env->ReleaseByteArrayElements(privateKey.obj(), buffer, JNI_ABORT);  
 
-  return Java_Crypto_Constructor(env, NativeToJavaPointer(crypto));
+  return Java_CryptoKey_Constructor(env, NativeToJavaPointer(crypto));
 }
 
-static base::android::ScopedJavaLocalRef<jobject> JNI_Crypto_ImportPublicKey(JNIEnv* env,
-                                                                             jint kind,
-                                                                             const base::android::JavaParamRef<jbyteArray>& publicKey,
-                                                                             jboolean isBase64) {
+static base::android::ScopedJavaLocalRef<jobject> JNI_CryptoKey_ImportPublicKey(JNIEnv* env,
+                                                                                jint kind,
+                                                                                const base::android::JavaParamRef<jbyteArray>& publicKey,
+                                                                                jboolean isBase64) {
   jbyte* buffer = env->GetByteArrayElements(publicKey.obj(), nullptr);
   size_t length = env->GetArrayLength(publicKey.obj());
 
-  Crypto::Format format = isBase64 ? Crypto::Format::BASE64 : Crypto::Format::BINARY;
-  Crypto *crypto = twinlife::Crypto::importPublicKey<Crypto>(format, (Crypto::Kind)kind, (unsigned char*) buffer, length);
+  CryptoKey::Format format = isBase64 ? CryptoKey::Format::BASE64 : CryptoKey::Format::BINARY;
+  CryptoKey *crypto = twinlife::CryptoKey::importPublicKey<CryptoKey>(format, (CryptoKey::Kind)kind, (unsigned char*) buffer, length);
   env->ReleaseByteArrayElements(publicKey.obj(), buffer, JNI_ABORT);
 
-  return Java_Crypto_Constructor(env, NativeToJavaPointer(crypto));
+  return Java_CryptoKey_Constructor(env, NativeToJavaPointer(crypto));
 }
   
 }  // namespace jni
