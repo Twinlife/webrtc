@@ -37,13 +37,13 @@ namespace twinlife {
   class CryptoKey {
   public:
     enum Format {
-      BINARY,
-      BASE64
+      BINARY = 0,
+      BASE64 = 1
     };
     enum Kind {
-      ECDSA,
-      ED25519,
-      X25519
+      ECDSA = 0,
+      ED25519 = 1,
+      X25519 = 2
     };
     // Create a private/public keypair for:
     // - ECDSA (use prime256v1 EC).
@@ -85,12 +85,12 @@ namespace twinlife {
       }
     }
 
-    // Export the public key in DER base64 in the given buffer and return the length of exported public key.
-    int exportPublicKey(enum Format format, unsigned char* buffer, size_t maxLength);
+    // Export the public key in binary or base64url in the given buffer and return the length of exported public key.
+    int exportPublicKey(enum Format format, unsigned char* buffer, size_t maxLength) const;
 
-    // Export the priviate key in DER in the given buffer (no base64 encoding)
+    // Export the priviate key in binary or base64url in the given buffer
     // and return the length of exported private key.
-    int exportPrivateKey(enum Format format, unsigned char* buffer, size_t maxLength);
+    int exportPrivateKey(enum Format format, unsigned char* buffer, size_t maxLength) const;
 
     // Sign the content of the data buffer with the private key and encode the ECDSA signature in Base64
     // in the signature buffer.  Return the length of the signature or a negative error code.
@@ -145,8 +145,8 @@ namespace twinlife {
   class CryptoBox {
   public:
     enum Kind {
-      AES_GCM,
-      CHACHA20_POLY1305
+      AES_GCM = 0,
+      CHACHA20_POLY1305 = 1
     };
 
     // Create the encrypt/decrypt box.
@@ -156,43 +156,38 @@ namespace twinlife {
     }
 
     // Prepare for use of AEAD with the peer's public key.  Derive a shared secret based on the private key
-    // and peer's public key, compute the SHA256 digest of that secret, setup the AEAD internal context
-    // to be ready to use `encryptAEAD` or `decryptAEAD`.  The `bind` is a costly operation compared
-    // to encryption and decryption.  The encryption nonce is pre-initialized with the given buffer
-    // and will be incremented before each encryptAEAD() a maximum of `maxIncrement` times.
+    // and peer's public key, compute the HMAC(sharedSecret, {salt || pubKeyA || pubKeyB}) digest,
+    // setup the AEAD internal context to be ready to use `encryptAEAD` or `decryptAEAD`.
+    // The `bind` is a costly operation compared to encryption and decryption.
     // Returns 1 when the operation succeeds or an error code.
-    int bind(const CryptoKey *privateKey, const CryptoKey *peerPublicKey,
-             const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement);
+    int bind(bool direction, const CryptoKey *privateKey, const CryptoKey *peerPublicKey,
+             const unsigned char *salt, size_t saltLength);
 
     // Prepare for use of AEAD with the secret key given in key and with the given length.
-    // The encryption nonce is pre-initialized with the given buffer.
     // Returns 1 when the operation succeeds or an error code.
-    int bind(const unsigned char *key, size_t keyLength, const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement);
+    int bind(const unsigned char *key, size_t keyLength);
 
     // Unbind with peer's public key and release the AEAD context.  This operation must be called when
     // encryption and decryption are not necessary any more.
     void unbind();
 
-    // Setup a new nonce for encryptAEAD().
-    void newNonce(const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement);
-
     // Encrypt and sign with AES256-GCM the data buffer and auth buffer with a new nonce.
     // Only the data buffer is encrypted.  The result buffer has the following format:
-    // +-------------------------+----------------+----------------+
-    // | auth data [auth_length] | 12-bytes nonce | encrypted data |
-    // +-------------------------+----------------+----------------+    
+    // +-------------------------+----------------+
+    // | auth data [auth_length] | encrypted data |
+    // +-------------------------+----------------+    
     // Return the length of the output buffer or a negative error code.
     int encryptAEAD(const unsigned char* data, size_t len,
                     const unsigned char* auth, size_t auth_length,
-                    unsigned char* buffer, size_t maxLength);
+                    uint64_t nonce, unsigned char* buffer, size_t maxLength);
 
     // Decrypt and verify the data with AES256-GCM.  Only the encryptedData buffer is decrypted.
     // The data buffer is assumed to use the following format:
-    // +-------------------------+----------------+----------------+
-    // | auth data [auth_length] | 12-bytes nonce | encrypted data |
-    // +-------------------------+----------------+----------------+    
+    // +-------------------------+----------------+
+    // | auth data [auth_length] | encrypted data |
+    // +-------------------------+----------------+    
     int decryptAEAD(const unsigned char* data, size_t len, size_t auth_length,
-                    unsigned char* buffer, size_t maxLength);
+                    uint64_t nonce, unsigned char* buffer, size_t maxLength);
 
     ~CryptoBox();
 
@@ -203,24 +198,25 @@ namespace twinlife {
   protected:
     CryptoBox(enum Kind kind) : kind_(kind) {
       aead_ = 0;
-      maxIncrement_ = 0;
-      nonceVal_ = 0;
-      incrementMask_ = 0;
     }
 
   private:
     const Kind kind_;
     EVP_AEAD_CTX *aead_;
-    unsigned char nonce_[TWINLIFE_NONCE_LENGTH];
-    unsigned int maxIncrement_;
-    std::atomic<unsigned int> nonceVal_;
-    unsigned int incrementMask_;
 
-    // Derive a shared secret based on the private key and peer's public key, compute the SHA256 digest of that
-    // secret and return it in the `key` buffer.  The `key` buffer must be allocated by using OPENSSL_malloc()
+    // Derive a shared secret based on the private key and peer's public key, compute the
+    // HMAC(sharedSecret, {salt || pubKeyA || pubKeyB}) digest and return it in the `key` buffer.
+    // The `key` buffer must be allocated by using OPENSSL_malloc()
     // for security constraints (key will be cleared when buffer is released).
-    int createSharedSecret(const CryptoKey *privateKey, const CryptoKey* peerPublicKey,
+    int createSharedSecret(bool direction, const CryptoKey *privateKey, const CryptoKey* peerPublicKey,
+                           const unsigned char* salt, size_t saltLength,
                            unsigned char* key, size_t keyLength);
+
+    static int HKDF(unsigned char* buffer, size_t sharedKeyLength,
+                    const CryptoKey* firstKey, const CryptoKey* secondKey,
+                    const unsigned char* salt, size_t saltLength,
+                    unsigned char* key, size_t keyLength);
+    static void makeNonce(unsigned char *nonce, size_t nonceLength, uint64_t nonceSequence);
   };
 }
 

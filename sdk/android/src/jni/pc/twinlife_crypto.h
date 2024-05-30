@@ -54,25 +54,22 @@ public:
     // to be ready to use `encryptAEAD` or `decryptAEAD`.  The `bind` is a costly operation compared
     // to encryption and decryption.  The encryption nonce is pre-initialized with the given buffer
     // and will be incremented before each encryptAEAD() a maximum of `maxIncrement` times.
-  jint Bind(JNIEnv *env, jlong privateKey, jlong peerPublicKey, const JavaParamRef<jbyteArray>& nonce, jint maxIncrement);
+  jint Bind(JNIEnv *env, jboolean encrypt, jlong privateKey, jlong peerPublicKey, const JavaParamRef<jbyteArray>& salt);
 
-  jint BindSecret(JNIEnv *env, const JavaParamRef<jbyteArray>& key, const JavaParamRef<jbyteArray>& nonce, jint maxIncrement);
+  jint BindSecret(JNIEnv *env, const JavaParamRef<jbyteArray>& key);
 
     // Unbind with peer's public key and release the AEAD context.  This operation must be called when
     // encryption and decryption are not necessary any more.
   jint Unbind(JNIEnv *env);
 
-    // Setup a new nonce for encryptAEAD().
-  jint NewNonce(JNIEnv *env, const JavaParamRef<jbyteArray>& nonce, jint maxIncrement);
-
     // Encrypt and sign with AES256-GCM the data buffer and auth buffer with a new nonce.
     // Only the data buffer is encrypted.  The nonce buffer will be filled with a new nonce of 12 bytes.
     // Return the length of the output buffer or a negative error code.
-  jint EncryptAEAD(JNIEnv *env, const JavaParamRef<jbyteArray>& data,
+  jint EncryptAEAD(JNIEnv *env, jlong nonceSequence, const JavaParamRef<jbyteArray>& data,
                    const JavaParamRef<jbyteArray>& auth, const JavaParamRef<jbyteArray>& buffer);
 
     // Decrypt and verify the data with AES256-GCM.  Only the encryptedData buffer is decrypted.
-  jint DecryptAEAD(JNIEnv *env, const JavaParamRef<jbyteArray>& data, const jint authLength,
+  jint DecryptAEAD(JNIEnv *env, jlong nonceSequence, const JavaParamRef<jbyteArray>& data, const jint authLength,
                    const JavaParamRef<jbyteArray>& buffer);
 
   void Dispose(JNIEnv *env);

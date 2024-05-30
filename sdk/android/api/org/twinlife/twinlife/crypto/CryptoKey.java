@@ -1,11 +1,15 @@
 package org.twinlife.twinlife.crypto;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import org.webrtc.CalledByNative;
 
+/**
+ * Class to hold a public/private key and provide operations to sign or verify a signature.
+ */
 public class CryptoKey {
-    private long nativeCrypto; // pointer to the webrtc::jni::Crypto* instance
+    private long nativeCrypto; // pointer to the webrtc::jni::CryptoKey* instance
 
     // Error codes as defined in twinlife_crypto.h
     public static final int BAD_PARAM = (-1);
@@ -17,7 +21,6 @@ public class CryptoKey {
     public static final int AEAD_FAIL = (-7);
     public static final int NONCE_ERROR = (-8);
 
-    public static final int NONCE_LENGTH = 12;
     public static final int MAX_KEY_LENGTH = 256;
     public static final int MAX_SIG_LENGTH = 128;
 
@@ -32,23 +35,63 @@ public class CryptoKey {
         this.nativeCrypto = nativeCrypto;
     }
 
+    /**
+     * Create and generate a new private/public keypair of the specified kind.
+     *
+     * @param kind the kind of private/public key to generate.
+     * @return the new private/public keypair.
+     */
     public static CryptoKey create(@NonNull Kind kind) {
         return nativeCreate(kind.ordinal());
     }
 
-    public static CryptoKey importPublicKey(@NonNull Kind kind, byte[] pubKey, boolean isBase64) {
+    /**
+     * Import a public key of the specified type.  The public key is either encoded in binary
+     * or Base64url.
+     *
+     * @param kind the kind of public key to generate.
+     * @param pubKey the public key as binary or base64url.
+     * @param isBase64 true if the key is encoded in base64url.
+     * @return the public key or null if it was invalid.
+     */
+    @Nullable
+    public static CryptoKey importPublicKey(@NonNull Kind kind, @NonNull byte[] pubKey, boolean isBase64) {
         return nativeImportPublicKey(kind.ordinal(), pubKey, isBase64);
     }
 
-    public static CryptoKey importPrivateKey(@NonNull Kind kind, byte[] privateKey, boolean isBase64) {
+    /**
+     * Import a private/public keypair of the specified type.  The private key is either encoded in binary
+     * or Base64url.
+     *
+     * @param kind the kind of keypair to generate.
+     * @param privateKey the private key as binary or base64url.
+     * @param isBase64 true if the key is encoded in base64url.
+     * @return the private/public keypair or null if it was invalid.
+     */
+    @Nullable
+    public static CryptoKey importPrivateKey(@NonNull Kind kind, @NonNull byte[] privateKey, boolean isBase64) {
         return nativeImportPrivateKey(kind.ordinal(), privateKey, isBase64);
     }
 
+    /**
+     * Get the public key either in binary or encoded in base64url.
+     *
+     * @param useBase64 true to encode the public key in base64url.
+     * @return the public key or null.
+     */
+    @Nullable
     public byte[] getPublicKey(boolean useBase64) {
         checkCryptoExists();
         return nativeGetPublicKey(nativeCrypto, useBase64);
     }
 
+    /**
+     * Get the private key either in binary or encoded in base64url.
+     *
+     * @param useBase64 true to encode the private key in base64url.
+     * @return the private key or null.
+     */
+    @Nullable
     public byte[] getPrivateKey(boolean useBase64) {
         checkCryptoExists();
         return nativeGetPrivateKey(nativeCrypto, useBase64);
@@ -60,25 +103,30 @@ public class CryptoKey {
      *
      * @param data the data buffer to verify.
      * @param signature the output signature buffer (Must be large enough).
+     * @param isBase64 true if the signature must be encoded in base64url.
      * @return Return the length of the signature or a negative error code.
      */
-    public int sign(byte[] data, byte[] signature, boolean isBase64) {
+    public int sign(@NonNull byte[] data, @NonNull byte[] signature, boolean isBase64) {
         checkCryptoExists();
         return nativeSign(nativeCrypto, data, signature, isBase64);
     }
 
     /**
-     * Verify with the public key that the data buffer corresponds to the Base64 ECDSA signature.
+     * Verify with the public key that the data buffer corresponds to the signature.
      *
      * @param data the data buffer to verify.
      * @param signature the signature.
+     * @param isBase64 true if the signature is encoded in base64url.
      * @return 1 if the signature is verified, 0 if the data does not match or a negative error code.
      */
-    public int verify(byte[] data, byte[] signature, boolean isBase64) {
+    public int verify(@NonNull byte[] data, @NonNull byte[] signature, boolean isBase64) {
         checkCryptoExists();
         return nativeVerify(nativeCrypto, data, signature, isBase64);
     }
 
+    /**
+     * Release the internal memory allocated for the public/private keypair.
+     */
     public void dispose() {
         long n = nativeCrypto;
         if (n != 0) {

@@ -100,38 +100,23 @@ namespace jni {
   // to be ready to use `encryptAEAD` or `decryptAEAD`.  The `bind` is a costly operation compared
   // to encryption and decryption.  The encryption nonce is pre-initialized with the given buffer
   // and will be incremented before each encryptAEAD() a maximum of `maxIncrement` times.
-  jint CryptoBox::Bind(JNIEnv *env, jlong privateKey, jlong peerPublicKey, const JavaParamRef<jbyteArray>& nonce, jint maxIncrement) {
+  jint CryptoBox::Bind(JNIEnv *env, jboolean direction, jlong privateKey, jlong peerPublicKey, const JavaParamRef<jbyteArray>& salt) {
     CryptoKey* key = reinterpret_cast<CryptoKey*>(privateKey);
     CryptoKey* peer = reinterpret_cast<CryptoKey*>(peerPublicKey);
-    jbyte* nonceBuffer = env->GetByteArrayElements(nonce.obj(), nullptr);
-    size_t nonceLength = env->GetArrayLength(nonce.obj());
+    jbyte* saltBuffer = env->GetByteArrayElements(salt.obj(), nullptr);
+    size_t saltLength = env->GetArrayLength(salt.obj());
 
     // CHECK_NATIVE_PTR(env, jcaller, native, "Bind", 0);
-    int result;
-    if (nonceLength != TWINLIFE_NONCE_LENGTH) {
-      result = TWINLIFE_BAD_PARAM;
-    } else {
-      result = bind(key, peer, (const unsigned char*) nonceBuffer, maxIncrement);
-    }
-    env->ReleaseByteArrayElements(nonce.obj(), nonceBuffer, JNI_ABORT);
+    int result = bind(direction, key, peer, (const unsigned char*) saltBuffer, saltLength);
+    env->ReleaseByteArrayElements(salt.obj(), saltBuffer, JNI_ABORT);
     return result;
   }
 
-  jint CryptoBox::BindSecret(JNIEnv *env, const JavaParamRef<jbyteArray>& key,
-                             const JavaParamRef<jbyteArray>& nonce, jint maxIncrement) {
+  jint CryptoBox::BindSecret(JNIEnv *env, const JavaParamRef<jbyteArray>& key) {
     jbyte* keyBuffer = env->GetByteArrayElements(key.obj(), nullptr);
     size_t keyLength = env->GetArrayLength(key.obj());
-    jbyte* nonceBuffer = env->GetByteArrayElements(nonce.obj(), nullptr);
-    size_t nonceLength = env->GetArrayLength(nonce.obj());
 
-    // CHECK_NATIVE_PTR(env, jcaller, native, "Bind", 0);
-    int result;
-    if (nonceLength != TWINLIFE_NONCE_LENGTH) {
-      result = TWINLIFE_BAD_PARAM;
-    } else {
-      result = bind((const unsigned char *)keyBuffer, keyLength, (const unsigned char*) nonceBuffer, maxIncrement);
-    }
-    env->ReleaseByteArrayElements(nonce.obj(), nonceBuffer, JNI_ABORT);
+    int result = bind((const unsigned char *)keyBuffer, keyLength);
     env->ReleaseByteArrayElements(key.obj(), keyBuffer, JNI_ABORT);
     return result;    
   }
@@ -143,28 +128,12 @@ namespace jni {
     return 0;
   }
 
-  // Setup a new nonce for encryptAEAD().
-  jint CryptoBox::NewNonce(JNIEnv *env, const JavaParamRef<jbyteArray>& nonce, jint maxIncrement) {
-    jbyte* buffer = env->GetByteArrayElements(nonce.obj(), nullptr);
-    size_t nonceLength = env->GetArrayLength(nonce.obj());
-
-    int result;
-    if (nonceLength != TWINLIFE_NONCE_LENGTH) {
-      result = TWINLIFE_BAD_PARAM;
-    } else {
-      newNonce((const unsigned char*) buffer, maxIncrement);
-      result = 0;
-    }
-    env->ReleaseByteArrayElements(nonce.obj(), buffer, JNI_ABORT);
-    return result;
-  }
-
   // Encrypt and sign with AES256-GCM the data buffer and auth buffer with a new nonce.
   // Only the data buffer is encrypted.  The nonce buffer will be filled with a new nonce of 12 bytes.
   // Return the length of the output buffer or a negative error code.
-  jint CryptoBox::EncryptAEAD(JNIEnv *env, const JavaParamRef<jbyteArray>& data,
-                           const JavaParamRef<jbyteArray>& auth,
-                           const JavaParamRef<jbyteArray>& buffer) {
+  jint CryptoBox::EncryptAEAD(JNIEnv *env, jlong nonceSequence, const JavaParamRef<jbyteArray>& data,
+                              const JavaParamRef<jbyteArray>& auth,
+                              const JavaParamRef<jbyteArray>& buffer) {
     jbyte* dataBuffer = env->GetByteArrayElements(data.obj(), nullptr);
     size_t dataLength = env->GetArrayLength(data.obj());
     jbyte* authBuffer = env->GetByteArrayElements(auth.obj(), nullptr);
@@ -173,7 +142,7 @@ namespace jni {
     size_t resultLength = env->GetArrayLength(buffer.obj());
 
     int result = encryptAEAD((const unsigned char*) dataBuffer, dataLength, (const unsigned char *)authBuffer, authLength,
-                             (unsigned char*) resultBuffer, resultLength);
+                             nonceSequence, (unsigned char*) resultBuffer, resultLength);
     env->ReleaseByteArrayElements(data.obj(), dataBuffer, JNI_ABORT);
     env->ReleaseByteArrayElements(auth.obj(), authBuffer, JNI_ABORT);
     env->ReleaseByteArrayElements(buffer.obj(), resultBuffer, 0);
@@ -181,14 +150,14 @@ namespace jni {
   }
 
     // Decrypt and verify the data with AES256-GCM.  Only the encryptedData buffer is decrypted.
-  jint CryptoBox::DecryptAEAD(JNIEnv *env, const JavaParamRef<jbyteArray>& encryptedData, const jint authLength,
-                              const JavaParamRef<jbyteArray>& buffer) {
+  jint CryptoBox::DecryptAEAD(JNIEnv *env, jlong nonceSequence, const JavaParamRef<jbyteArray>& encryptedData,
+                              const jint authLength, const JavaParamRef<jbyteArray>& buffer) {
     jbyte* dataBuffer = env->GetByteArrayElements(encryptedData.obj(), nullptr);
     size_t dataLength = env->GetArrayLength(encryptedData.obj());
     jbyte* resultBuffer = env->GetByteArrayElements(buffer.obj(), nullptr);
     size_t resultLength = env->GetArrayLength(buffer.obj());
 
-    int result = decryptAEAD((const unsigned char*) dataBuffer, dataLength, authLength,
+    int result = decryptAEAD((const unsigned char*) dataBuffer, dataLength, authLength, nonceSequence,
                              (unsigned char*) resultBuffer, resultLength);      
     env->ReleaseByteArrayElements(encryptedData.obj(), dataBuffer, JNI_ABORT);
     env->ReleaseByteArrayElements(buffer.obj(), resultBuffer, 0);

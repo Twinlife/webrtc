@@ -14,6 +14,7 @@
 #include <openssl/bn.h>
 #include <openssl/ec.h>
 #include <openssl/ecdsa.h>
+#include <openssl/hmac.h>
 #include <openssl/curve25519.h>
 #include <openssl/bytestring.h>
 #include <openssl/mem.h>
@@ -240,7 +241,7 @@ EVP_PKEY* CryptoKey::importPrivateKey(enum Format format, enum Kind kind,
   return pkey;
 }
 
-int CryptoKey::exportPublicKey(enum Format format, unsigned char* buffer, size_t maxLength)
+int CryptoKey::exportPublicKey(enum Format format, unsigned char* buffer, size_t maxLength) const
 {
   if (!buffer || maxLength <= 0) {
     return TWINLIFE_BAD_PARAM;
@@ -290,7 +291,7 @@ int CryptoKey::exportPublicKey(enum Format format, unsigned char* buffer, size_t
   return encodeBase64(tmp, size, buffer, maxLength);
 }
 
-int CryptoKey::exportPrivateKey(enum Format format, unsigned char* buffer, size_t maxLength)
+int CryptoKey::exportPrivateKey(enum Format format, unsigned char* buffer, size_t maxLength) const
 {
   CBB cbb;
   uint8_t *data;
@@ -541,9 +542,11 @@ CryptoKey::~CryptoKey()
    EVP_PKEY_free(pkey_);
 }
 
-int CryptoBox::createSharedSecret(const CryptoKey *privateKey, const CryptoKey* peerPublicKey, unsigned char* key, size_t keyLength)
+int CryptoBox::createSharedSecret(bool direction, const CryptoKey *privateKey, const CryptoKey* peerPublicKey,
+                                  const unsigned char* salt, size_t saltLength,
+                                  unsigned char* key, size_t keyLength)
 {
-  if (!privateKey || !peerPublicKey || !key || keyLength <= 0) {
+  if (!privateKey || !peerPublicKey || !key || keyLength <= 0 || !salt || saltLength <= 0) {
     return TWINLIFE_BAD_PARAM;
   }
   if (!privateKey->pkey_ || !peerPublicKey->pkey_ || privateKey->kind_ != peerPublicKey->kind_) {
@@ -565,38 +568,78 @@ int CryptoBox::createSharedSecret(const CryptoKey *privateKey, const CryptoKey* 
     return TWINLIFE_BAD_PARAM;
   }
 
-  if (EVP_PKEY_derive(keyCtx, key, &keyLength) <= 0) {
+  unsigned char* buffer = (unsigned char*)OPENSSL_malloc(TWINLIFE_MAX_SIZE);
+  size_t sharedKeyLength = TWINLIFE_MAX_SIZE;
+  if (EVP_PKEY_derive(keyCtx, buffer, &sharedKeyLength) <= 0) {
+    OPENSSL_free(buffer);
     EVP_PKEY_CTX_free(keyCtx);
     return TWINLIFE_BAD_PARAM;
   }
   EVP_PKEY_CTX_free(keyCtx);
 
-  return CryptoKey::digest(key, keyLength, key);
+  int result;
+  if (direction) {
+    result = HKDF(buffer, sharedKeyLength, privateKey, peerPublicKey, salt, saltLength, key, keyLength);
+  } else {
+    result = HKDF(buffer, sharedKeyLength, peerPublicKey, privateKey, salt, saltLength, key, keyLength);
+  }
+  OPENSSL_free(buffer);
+
+  return result;
 }
 
-int CryptoBox::bind(const CryptoKey *privateKey, const CryptoKey *peerPublicKey,
-                    const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement) {
+int CryptoBox::HKDF(unsigned char* buffer, size_t sharedKeyLength,
+                    const CryptoKey* firstKey, const CryptoKey* secondKey,
+                    const unsigned char* salt, size_t saltLength,
+                    unsigned char* key, size_t keyLength)
+{
+  // Build key with HKDF(sharedKey, { salt || pubKeyA || pubKeyB })
+  HMAC_CTX ctx;
+  HMAC_CTX_init(&ctx);
+
+  int result = HMAC_Init_ex(&ctx, buffer, sharedKeyLength, EVP_sha256(), NULL) &&
+    HMAC_Update(&ctx, salt, saltLength);
+
+  // Add our public keep and the peer's public key.
+  int len = firstKey->exportPublicKey(CryptoKey::Format::BINARY, buffer, TWINLIFE_MAX_SIZE);
+  if (result && len > 0 && HMAC_Update(&ctx, buffer, len)) {
+    unsigned int resultLength;
+    len = secondKey->exportPublicKey(CryptoKey::Format::BINARY, buffer, TWINLIFE_MAX_SIZE);
+    if (len > 0 && HMAC_Update(&ctx, buffer, len) && HMAC_Final(&ctx, key, &resultLength)) {
+      result = resultLength;
+    } else {
+      result = TWINLIFE_BAD_EC_KEY;
+    }      
+  } else {
+    result = TWINLIFE_BAD_EC_KEY;
+  }
+  HMAC_CTX_cleanup(&ctx);
+
+  return result;
+}
+
+int CryptoBox::bind(bool direction, const CryptoKey *privateKey, const CryptoKey *peerPublicKey,
+                    const unsigned char *salt, size_t saltLength) {
 
   unsigned char* key = (unsigned char*)OPENSSL_malloc(TWINLIFE_MAX_SECRET_SIZE);
   if (!key) {
     return TWINLIFE_BAD_ALLOC;
   }
 
-  int keyLength = createSharedSecret(privateKey, peerPublicKey, key, TWINLIFE_MAX_SECRET_SIZE);
+  int keyLength = createSharedSecret(direction, privateKey, peerPublicKey, salt, saltLength, key, TWINLIFE_MAX_SECRET_SIZE);
   if (keyLength <= 0) {
     OPENSSL_free(key);
     return TWINLIFE_BAD_PARAM;
   }
 
-  int result = bind(key, keyLength, nonce, maxIncrement);
+  int result = bind(key, keyLength);
   OPENSSL_free(key);
   return result;
 }
 
-int CryptoBox::bind(const unsigned char *key, size_t keyLength, const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement) {
+int CryptoBox::bind(const unsigned char *key, size_t keyLength) {
 
   unbind();
-  newNonce(nonce, maxIncrement);
 
   const EVP_AEAD *aead;
   switch (kind_) {
@@ -623,68 +666,56 @@ void CryptoBox::unbind() {
   }
 }
 
-void CryptoBox::newNonce(const unsigned char nonce[TWINLIFE_NONCE_LENGTH], int maxIncrement)
+ void CryptoBox::makeNonce(unsigned char *nonce, size_t nonceLength, uint64_t nonceSequence)
 {
-  memcpy(nonce_, nonce, TWINLIFE_NONCE_LENGTH);
+  CBB cbs;
 
-  // Limit maxIncrement to 128 max to force a call to newNonce().
-  // We only take into account 1 byte for the counter when creating a new nonce.
-  // Note: we rely on upper layers to provide us a different nonce for other bits.
-  if (maxIncrement > 128) {
-    maxIncrement = 128;
-  }
-  incrementMask_ = 0;
-  for (int i = 0; i <= 7; i++) {
-    incrementMask_ |= (1 << i);
-    if (maxIncrement < (1 << i)) {
-      break;
-    }
-  }
-  maxIncrement_ = maxIncrement;
-  nonceVal_ = 0;
+  CBB_init_fixed(&cbs, nonce, nonceLength);
+  CBB_add_u64(&cbs, nonceSequence);
+  CBB_add_u32(&cbs, nonceSequence);
 }
 
 int CryptoBox::encryptAEAD(const unsigned char* data, size_t len, const unsigned char* auth, size_t authLength,
-                           unsigned char* buffer, size_t maxLength)
+                           uint64_t nonceSequence, unsigned char* buffer, size_t maxLength)
 {
   if (!aead_) {
     return TWINLIFE_BAD_PARAM;
   }
 
-  unsigned int v = std::atomic_fetch_add<unsigned int>(&nonceVal_, 1);
-  if (v >= maxIncrement_ || (v & ~incrementMask_) != 0) {
-    return TWINLIFE_NONCE_ERROR;
-  }
-  if (maxLength <= authLength + sizeof(nonce_)) {
+  if (maxLength <= authLength) {
     return TWINLIFE_TOO_SMALL;
   }
 
-  // Copy auth buffer to target buffer, then append the nonce.
+  unsigned char nonce[TWINLIFE_NONCE_LENGTH];
+  makeNonce(nonce, sizeof(nonce), nonceSequence);
+
+  // Copy auth buffer to target buffer.
   memcpy(buffer, auth, authLength);
-  memcpy(&buffer[authLength], nonce_, sizeof(nonce_));
-  buffer[authLength + TWINLIFE_NONCE_LENGTH - 1] ^= (unsigned char) (v & incrementMask_);
 
   size_t outLength;
-  int result = EVP_AEAD_CTX_seal(aead_, &buffer[authLength + sizeof(nonce_)], &outLength,
-                                 maxLength - authLength - sizeof(nonce_),
-                                 &buffer[authLength], sizeof(nonce_),
+  int result = EVP_AEAD_CTX_seal(aead_, &buffer[authLength], &outLength,
+                                 maxLength - authLength,
+                                 nonce, sizeof(nonce),
                                  data, len, auth, authLength);
-  return result <= 0 ? TWINLIFE_AEAD_FAIL : authLength + sizeof(nonce_) + outLength;
+  return result <= 0 ? TWINLIFE_AEAD_FAIL : authLength + outLength;
 }
 
 int CryptoBox::decryptAEAD(const unsigned char* data, size_t len, size_t authLength,
-                           unsigned char* buffer, size_t maxLength)
+                           uint64_t nonceSequence, unsigned char* buffer, size_t maxLength)
 {
   if (!aead_) {
     return TWINLIFE_BAD_PARAM;
   }
-  if (len <= authLength + sizeof(nonce_)) {
+  if (len <= authLength) {
     return TWINLIFE_TOO_SMALL;
   }
 
+  unsigned char nonce[TWINLIFE_NONCE_LENGTH];
+  makeNonce(nonce, sizeof(nonce), nonceSequence);
+
   size_t outLength;
-  int result = EVP_AEAD_CTX_open(aead_, buffer, &outLength, maxLength, &data[authLength], sizeof(nonce_),
-                                 &data[authLength + sizeof(nonce_)], len - authLength - sizeof(nonce_), data, authLength);
+  int result = EVP_AEAD_CTX_open(aead_, buffer, &outLength, maxLength, nonce, sizeof(nonce),
+                                 &data[authLength], len - authLength, data, authLength);
   return result <= 0 ? TWINLIFE_AEAD_FAIL : outLength;
 }
 
