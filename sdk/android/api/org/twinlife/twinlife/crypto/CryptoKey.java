@@ -37,6 +37,16 @@ public class CryptoKey {
     }
 
     /**
+     * Check if the public/private key is valid.
+     *
+     * @return true if the public/private key is valid.
+     */
+    public boolean isValid() {
+
+        return nativeCrypto != 0;
+    }
+
+    /**
      * Create and generate a new private/public keypair of the specified kind.
      *
      * @param kind the kind of private/public key to generate.
