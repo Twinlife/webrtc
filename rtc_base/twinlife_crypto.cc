@@ -293,10 +293,6 @@ int CryptoKey::exportPublicKey(enum Format format, unsigned char* buffer, size_t
 
 int CryptoKey::exportPrivateKey(enum Format format, unsigned char* buffer, size_t maxLength) const
 {
-  CBB cbb;
-  uint8_t *data;
-  size_t size;
-
   if (!buffer || maxLength <= 0) {
     return TWINLIFE_BAD_PARAM;
   }
@@ -304,25 +300,52 @@ int CryptoKey::exportPrivateKey(enum Format format, unsigned char* buffer, size_
     return TWINLIFE_BAD_EC_KEY;
   }
 
+  unsigned char* p;
+  size_t size;
   if (format == Format::BASE64) {
-    CBB_init(&cbb, TWINLIFE_MAX_SIZE);
-    if (EVP_marshal_private_key(&cbb, pkey_) != 1) {
-      CBB_cleanup(&cbb);
-      return TWINLIFE_TOO_SMALL;
-    }
-    CBB_finish(&cbb, &data, &size);
-
-    int result = encodeBase64(data, size, buffer, maxLength);
-    OPENSSL_free(data);
-    return result;
+    p = (unsigned char*)OPENSSL_malloc(TWINLIFE_MAX_SIZE);
+    size = TWINLIFE_MAX_SIZE;
   } else {
-    CBB_init_fixed(&cbb, buffer, maxLength);
+    p = buffer;
+    size = maxLength;
+  }
+
+  switch (EVP_PKEY_id(pkey_)) {
+  case NID_ED25519:
+  case NID_X25519: {
+    if (EVP_PKEY_get_raw_private_key(pkey_, p, &size) != 1) {
+      if (p != buffer) {
+        OPENSSL_free(p);
+      }
+      return TWINLIFE_BAD_SIGNATURE;
+    }
+    break;
+  }
+
+  case NID_X9_62_id_ecPublicKey: {
+    CBB cbb;
+    uint8_t *data;
+    CBB_init_fixed(&cbb, p, size);
     if (EVP_marshal_private_key(&cbb, pkey_) != 1) {
+      if (p != buffer) {
+        OPENSSL_free(p);
+      }
       return TWINLIFE_TOO_SMALL;
     }
     CBB_finish(&cbb, &data, &size);
+    break;
+  }
+
+  default:
+    break;
+  }
+  if (format == Format::BINARY) {
     return size;
   }
+
+  int result = encodeBase64(p, size, buffer, maxLength);
+  OPENSSL_free(p);
+  return result;
 }
 
 int CryptoKey::signECDSA(enum Format format, const unsigned char* data, size_t len,

@@ -23,6 +23,7 @@ public class CryptoKey {
 
     public static final int MAX_KEY_LENGTH = 256;
     public static final int MAX_SIG_LENGTH = 128;
+    public static final int ECDSA_PUBKEY_LENGTH = 124;
 
     public enum Kind {
         ECDSA,

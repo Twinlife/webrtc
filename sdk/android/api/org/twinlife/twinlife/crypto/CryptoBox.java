@@ -20,6 +20,7 @@ public class CryptoBox {
     public static final int NONCE_ERROR = (-8);
 
     public static final int NONCE_LENGTH = 12;
+    public static final int KEY_LENGTH = 32;
 
     public enum Kind {
         AES_GCM,
