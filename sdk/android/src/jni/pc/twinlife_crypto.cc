@@ -95,6 +95,34 @@ namespace jni {
     return result;
   }
 
+  ScopedJavaLocalRef<jstring> CryptoKey::SignAuth(JNIEnv *env, jlong peerPublicKey,
+                                                  const JavaParamRef<jstring>& item,
+                                                  const JavaParamRef<jstring>& peerItem) {
+    std::string item1 = JavaToNativeString(env, item);
+    std::string item2 = JavaToNativeString(env, peerItem);
+    CryptoKey* pubKey = reinterpret_cast<CryptoKey*>(peerPublicKey);
+    unsigned char buf[TWINLIFE_MAX_SIZE];
+
+    int len = signAuth(pubKey, item1.data(), item2.data(), buf, sizeof(buf));
+    if (len <= 0) {
+      return NativeToJavaString(env, "");
+    }
+
+    return NativeToJavaString(env, (const char*)buf);
+  }
+
+  jint CryptoKey::VerifyAuth(JNIEnv *env, jlong peerPublicKey,
+                             const JavaParamRef<jstring>& item,
+                             const JavaParamRef<jstring>& peerItem,
+                             const JavaParamRef<jstring>& signature) {
+    std::string item1 = JavaToNativeString(env, item);
+    std::string item2 = JavaToNativeString(env, peerItem);
+    std::string sig = JavaToNativeString(env, signature);
+    CryptoKey* pubKey = reinterpret_cast<CryptoKey*>(peerPublicKey);
+
+    return (jint)verifyAuth(pubKey, item1.data(), item2.data(), sig.data());
+  }
+
   // Prepare for use of AEAD with the peer's public key.  Derive a shared secret based on the private key
   // and peer's public key, compute the SHA256 digest of that secret, setup the AEAD internal context
   // to be ready to use `encryptAEAD` or `decryptAEAD`.  The `bind` is a costly operation compared
@@ -211,6 +239,20 @@ static base::android::ScopedJavaLocalRef<jobject> JNI_CryptoKey_ImportPublicKey(
 
   return Java_CryptoKey_Constructor(env, NativeToJavaPointer(crypto));
 }
-  
+
+static ScopedJavaLocalRef<jbyteArray> JNI_CryptoKey_ExtractAuthPublicKey(JNIEnv* env,
+                                                                         const base::android::JavaParamRef<jstring>& signature) {
+  std::string sig = JavaToNativeString(env, signature);
+  unsigned char pubKey[TWINLIFE_MAX_SIZE];
+
+  int len = twinlife::CryptoKey::extractAuthPublicKey(sig.data(), pubKey, sizeof(pubKey));
+
+  ScopedJavaLocalRef<jbyteArray> result =
+      ScopedJavaLocalRef<jbyteArray>(env, env->NewByteArray(len));
+  env->SetByteArrayRegion(result.obj(), 0, len, (const jbyte *)pubKey);
+
+  return result;
+}
+
 }  // namespace jni
 }  // namespace webrtc

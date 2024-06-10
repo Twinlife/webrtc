@@ -28,6 +28,14 @@
 
 NAMESPACE
 
+void CryptoKey::xorBuffer(unsigned char* data, const unsigned char* src, size_t len)
+{
+  while (len > 0) {
+    *data++ ^= *src++;
+    len--;
+  }
+}
+
 int CryptoKey::digest(const unsigned char* data, int len, unsigned char digest[EVP_MAX_MD_SIZE])
 {
   unsigned int digest_len = EVP_MAX_MD_SIZE;
@@ -86,25 +94,37 @@ EVP_PKEY* CryptoKey::create(enum Kind kind)
   return pkey;
 }
 
-int CryptoKey::decodeBase64(unsigned char* key, size_t length, unsigned char buffer[TWINLIFE_MAX_SIZE]) {
+int CryptoKey::decodeBase64(const unsigned char* data, size_t length,
+                            unsigned char* buffer, size_t maxLength)
+{
+  if (length >= TWINLIFE_MAX_SIZE) {
+    return TWINLIFE_TOO_BIG;
+  }
 
   // Switch Base64URL to Base64
+  unsigned char tmp[TWINLIFE_MAX_SIZE];
   for (size_t i = 0; i < length; i++) {
-    if (key[i] == '_') {
-      key[i] = '/';
-    } else if (key[i] == '-') {
-      key[i] = '+';
+    if (data[i] == '_') {
+      tmp[i] = '/';
+    } else if (data[i] == '-') {
+      tmp[i] = '+';
+    } else {
+      tmp[i] = data[i];
     }
+  }
+  while ((length % 4) != 0) {
+    tmp[length] = '=';
+    length++;
   }
 
   size_t decodedLength;
-  if (EVP_DecodeBase64(buffer, &decodedLength, TWINLIFE_MAX_SIZE, key, length) != 1) {
+  if (EVP_DecodeBase64(buffer, &decodedLength, maxLength, tmp, length) != 1) {
     return TWINLIFE_BAD_PARAM;
   }
   return decodedLength;
 }
 
-int CryptoKey::encodeBase64(const unsigned char* data, size_t length, unsigned char *buffer, size_t maxLength)
+int CryptoKey::encodeBase64(const unsigned char* data, size_t length, unsigned char* buffer, size_t maxLength)
 {
   // Verify we have enough space for BASE64 (+5 is for /3 rounding + 1 for NUL).
   if (4 * (length / 3) + 5 >= maxLength) {
@@ -122,6 +142,8 @@ int CryptoKey::encodeBase64(const unsigned char* data, size_t length, unsigned c
       buffer[i] = '_';
     } else if (buffer[i] == '+') {
       buffer[i] = '-';
+    } else if (buffer[i] == '=') {
+      return i;
     }
   }
 
@@ -129,7 +151,7 @@ int CryptoKey::encodeBase64(const unsigned char* data, size_t length, unsigned c
 }
 
 EVP_PKEY* CryptoKey::importPublicKey(enum Format format, enum Kind kind,
-                                  unsigned char* pubKey, size_t pubKeyLength)
+                                     const unsigned char* pubKey, size_t pubKeyLength)
 {
   if (!pubKey || pubKeyLength <= 0 || pubKeyLength > TWINLIFE_MAX_SIZE) {
     return nullptr;
@@ -139,7 +161,7 @@ EVP_PKEY* CryptoKey::importPublicKey(enum Format format, enum Kind kind,
   size_t length;
   const unsigned char* p;
   if (format == Format::BASE64) {
-    length = CryptoKey::decodeBase64(pubKey, pubKeyLength, buffer);
+    length = CryptoKey::decodeBase64(pubKey, pubKeyLength, buffer, sizeof(buffer));
     if (length <= 0) {
       return nullptr;
     }
@@ -185,7 +207,7 @@ EVP_PKEY* CryptoKey::importPublicKey(enum Format format, enum Kind kind,
 }
 
 EVP_PKEY* CryptoKey::importPrivateKey(enum Format format, enum Kind kind,
-                                   unsigned char* privateKey, size_t privateKeyLength)
+                                      const unsigned char* privateKey, size_t privateKeyLength)
 {
   if (!privateKey || privateKeyLength <= 0 || privateKeyLength > TWINLIFE_MAX_SIZE) {
     return nullptr;
@@ -195,7 +217,7 @@ EVP_PKEY* CryptoKey::importPrivateKey(enum Format format, enum Kind kind,
   size_t length;
   const unsigned char* p;
   if (format == Format::BASE64) {
-    length = CryptoKey::decodeBase64(privateKey, privateKeyLength, buffer);
+    length = CryptoKey::decodeBase64(privateKey, privateKeyLength, buffer, sizeof(buffer));
     if (length <= 0) {
       return nullptr;
     }
@@ -463,7 +485,7 @@ int CryptoKey::signED25519(enum Format format, const unsigned char* data, size_t
 }
 
 int CryptoKey::verify(enum Format format, const unsigned char* data, size_t len,
-                   const unsigned char* signature, size_t signatureLength)
+                      const unsigned char* signature, size_t signatureLength)
 {
   switch (kind_) {
   case ED25519:
@@ -478,7 +500,7 @@ int CryptoKey::verify(enum Format format, const unsigned char* data, size_t len,
 }
 
 int CryptoKey::verifyECDSA(enum Format format, const unsigned char* data, size_t len,
-                        const unsigned char* signature, size_t signatureLength)
+                           const unsigned char* signature, size_t signatureLength)
 {
   if (!data || !signature || len <= 0 || signatureLength <= 0) {
     return TWINLIFE_BAD_PARAM;
@@ -502,7 +524,8 @@ int CryptoKey::verifyECDSA(enum Format format, const unsigned char* data, size_t
   size_t length;
   const unsigned char* p;
   if (format == Format::BASE64) {
-    if (EVP_DecodeBase64(buffer, &length, sizeof(buffer), signature, signatureLength) != 1) {
+    length = decodeBase64(signature, signatureLength, buffer, sizeof(buffer));
+    if (length <= 0) {
       return TWINLIFE_BAD_SIGNATURE;
     }
     p = buffer;
@@ -538,7 +561,8 @@ int CryptoKey::verifyED25519(enum Format format, const unsigned char* data, size
   size_t length;
   const unsigned char *p;
   if (format == Format::BASE64) {
-    if (EVP_DecodeBase64(buffer, &length, sizeof(buffer), signature, signatureLength) != 1) {
+    length = decodeBase64(signature, signatureLength, buffer, sizeof(buffer));
+    if (length <= 0) {
       return TWINLIFE_BAD_SIGNATURE;
     }
     p = buffer;
@@ -558,6 +582,153 @@ int CryptoKey::verifyED25519(enum Format format, const unsigned char* data, size
   EVP_MD_CTX_destroy(mdctx);
 
   return result;
+}
+
+int CryptoKey::hashAuth(const CryptoKey* peerPublicKey, const char* item, const char* peerItem, unsigned char* sha256)
+{
+  unsigned char buf[EVP_MAX_MD_SIZE];
+
+  if (!peerPublicKey || !item || !peerItem) {
+    return TWINLIFE_BAD_PARAM;
+  }
+
+  int len = digest((const unsigned char*)item, strlen(item), sha256);
+  if (len != 32) {
+    return TWINLIFE_BAD_PARAM;
+  }
+  len = digest((const unsigned char*)peerItem, strlen(peerItem), buf);
+  if (len != 32) {
+    return TWINLIFE_BAD_PARAM;
+  }
+  xorBuffer(sha256, buf, len);
+
+  unsigned char tmp[TWINLIFE_MAX_PUBKEY_LENGTH];
+  len = peerPublicKey->exportPublicKey(CryptoKey::Format::BINARY, tmp, sizeof(tmp));
+  if (len <= 0) {
+    return TWINLIFE_BAD_EC_KEY;
+  }
+  len = digest(tmp, len, buf);
+  xorBuffer(sha256, buf, len);
+
+  int pubKeyLen = this->exportPublicKey(CryptoKey::Format::BINARY, tmp, sizeof(tmp));
+  if (pubKeyLen <= 0) {
+    return TWINLIFE_BAD_EC_KEY;
+  }
+  len = digest(tmp, pubKeyLen, buf);
+  xorBuffer(sha256, buf, len);
+  return len;
+}
+
+int CryptoKey::signAuth(const CryptoKey* peerPublicKey, const char* item, const char* peerItem,
+                        unsigned char* signature, size_t maxLength)
+{
+  unsigned char sha256[32];
+
+  int len = this->hashAuth(peerPublicKey, item, peerItem, sha256);
+  if (len <= 0) {
+    return len;
+  }
+  if (!signature) {
+    return TWINLIFE_BAD_PARAM;
+  }
+  if (maxLength < TWINLIFE_MAX_SIZE) {
+    return TWINLIFE_TOO_SMALL;
+  }
+
+  int pos = CryptoKey::encodeBase64(sha256, len, signature, maxLength);
+  if (pos <= 0) {
+    return TWINLIFE_TOO_SMALL;
+  }
+  signature[pos++] = '.';
+
+  len = this->exportPublicKey(CryptoKey::Format::BASE64, &signature[pos], maxLength - pos);
+  if (len <= 0) {
+    return TWINLIFE_BAD_EC_KEY;
+  }
+  pos += len;
+  signature[pos++] = '.';
+
+  len = sign(Format::BASE64, sha256, 32, &signature[pos], maxLength - pos);
+  if (len <= 0) {
+    return len;
+  }
+  pos += len;
+  signature[pos] = 0;
+  return pos + 1;
+}
+
+int CryptoKey::verifyAuth(const CryptoKey* peerPublicKey, const char* item, const char* peerItem,
+                          const char* signature)
+{
+  unsigned char buf[TWINLIFE_MAX_SIZE];
+
+  if (!peerPublicKey || !signature) {
+    return TWINLIFE_BAD_PARAM;
+  }
+
+  const char* p = strchr(signature, '.');
+  if (!p) {
+    return TWINLIFE_BAD_SIGNATURE;
+  }
+  size_t len = (size_t) (p - signature);
+  if (len >= TWINLIFE_MAX_SIZE) {
+    return TWINLIFE_BAD_SIGNATURE;
+  }
+  const char* sigStart = strchr(&p[1], '.');
+  if (!sigStart) {
+    return TWINLIFE_BAD_SIGNATURE;
+  }
+
+  sigStart++;
+  memcpy(buf, signature, len);
+
+  unsigned char hash[TWINLIFE_MAX_SIZE];
+  len = decodeBase64(buf, len, hash, sizeof(hash));
+  if (len != 32) {
+    return TWINLIFE_BAD_SIGNATURE;
+  }
+
+  int result = verify(Format::BASE64, hash, len, (const unsigned char*)sigStart, strlen(sigStart));
+  if (result != 1) {
+    return TWINLIFE_BAD_SIGNATURE;
+  }
+  if (!item || !peerItem) {
+    return result;
+  }
+
+  // If item and peerItem are provided, verify that the hash matches.
+  len = this->hashAuth(peerPublicKey, item, peerItem, buf);
+  if (len != 32) {
+    return TWINLIFE_SIGN_ERROR;
+  }
+
+  return memcmp(buf, hash, 32) == 0 ? 1 : 0;
+}
+
+int CryptoKey::extractAuthPublicKey(const char* signature, unsigned char* pubKey, size_t maxLength)
+{
+  unsigned char buf[TWINLIFE_MAX_SIZE];
+
+  if (!pubKey || !signature) {
+    return TWINLIFE_BAD_PARAM;
+  }
+
+  const char* pubKeyStart = strchr(signature, '.');
+  if (!pubKeyStart) {
+    return TWINLIFE_BAD_SIGNATURE;
+  }
+  pubKeyStart++;
+  const char* sigStart = strchr(pubKeyStart, '.');
+  if (!sigStart) {
+    return TWINLIFE_BAD_SIGNATURE;
+  }
+  size_t len = (size_t) (sigStart - pubKeyStart);
+  if (len >= TWINLIFE_MAX_SIZE) {
+    return TWINLIFE_BAD_SIGNATURE;
+  }
+
+  memcpy(buf, pubKeyStart, len);
+  return CryptoKey::decodeBase64(buf, len, pubKey, maxLength);
 }
 
 CryptoKey::~CryptoKey()

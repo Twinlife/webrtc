@@ -40,6 +40,15 @@ public:
     // Verify with the public key that the data buffer corresponds to the Base64 ECDSA signature.
     // Returns 1 if the signature is verified, 0 if the data does not match or a negative error code.
   jint Verify(JNIEnv *env, const JavaParamRef<jbyteArray>& data, const JavaParamRef<jbyteArray>& signature, jboolean useBase64);
+ 
+  ScopedJavaLocalRef<jstring> SignAuth(JNIEnv *env, jlong peerPublicKey,
+                                 const JavaParamRef<jstring>& item,
+                                 const JavaParamRef<jstring>& peerItem);
+
+  jint VerifyAuth(JNIEnv *env, jlong peerPublicKey,
+                  const JavaParamRef<jstring>& item,
+                  const JavaParamRef<jstring>& peerItem,
+                  const JavaParamRef<jstring>& signature);
 
   void Dispose(JNIEnv *env);
 };

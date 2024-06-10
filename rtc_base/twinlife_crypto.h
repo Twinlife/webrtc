@@ -27,6 +27,7 @@
 #define TWINLIFE_BAD_SIGNATURE (-6)
 #define TWINLIFE_AEAD_FAIL     (-7)
 #define TWINLIFE_NONCE_ERROR   (-8)
+#define TWINLIFE_TOO_BIG       (-9)
 
 namespace twinlife {
   class Obfuscate {
@@ -63,7 +64,7 @@ namespace twinlife {
     // Returns null if the format is invalid.
     template <typename T>
     static T* importPublicKey(enum Format format, enum Kind kind,
-                              unsigned char* pubKey, size_t pubKeyLength) {
+                              const unsigned char* pubKey, size_t pubKeyLength) {
       EVP_PKEY *pkey = CryptoKey::importPublicKey(format, kind, pubKey, pubKeyLength);
       if (pkey) {
         return new T(kind, pkey);
@@ -76,7 +77,7 @@ namespace twinlife {
     // Returns null if the format is invalid.
     template <typename T>
     static T* importPrivateKey(enum Format format, enum Kind kind,
-                               unsigned char* privateKey, size_t privateKeyLength) {
+                               const unsigned char* privateKey, size_t privateKeyLength) {
       EVP_PKEY *pkey = CryptoKey::importPrivateKey(format, kind, privateKey, privateKeyLength);
       if (pkey) {
         return new T(kind, pkey);
@@ -107,6 +108,24 @@ namespace twinlife {
     int verifyED25519(enum Format format, const unsigned char* data, size_t len,
                       const unsigned char* signature, size_t signatureLength);
 
+    // Sign the two items to create an authenticate signature signed by our private key.
+    // The output signature has the following format:
+    //   <sha256>.<pubKey>.<sign(<sha256>, privKey>)>
+    // where the <sha256> is computed as follows:
+    //   SHA256(item) ^ SHA256(peerItem) ^ SHA256(pubKey-1) ^ SHA256(pubKey-2)
+    int signAuth(const CryptoKey* peerPublicKey, const char* item, const char* peerItem,
+                 unsigned char* signature, size_t maxLength);
+
+    // Verify the auth signature produced by signAuth.
+    // Return 1 if the signature is verified, 0 if there is a wrong signature or a negative error code.
+    int verifyAuth(const CryptoKey* peerPublicKey, const char* item, const char* peerItem,
+                   const char* signature);
+
+    // Helper function to extract from the signature the public key used.
+    // Note: extraction is necessary because we have to retrieve our private key as
+    // well as item and peerItem before calling verifyAuth().
+    static int extractAuthPublicKey(const char* signature, unsigned char* pubKey, size_t maxLength);
+
     ~CryptoKey();
 
     // Forbid copy and assignment.
@@ -122,24 +141,30 @@ namespace twinlife {
   private:
     friend class CryptoBox;
 
+    int hashAuth(const CryptoKey* peerPublicKey, const char* item, const char* peerItem, unsigned char* sha256);
+
     static EVP_PKEY* create(enum Kind kind);
     static EVP_PKEY* importPublicKey(enum Format format, enum Kind kind,
-                                     unsigned char* pubKey, size_t pubKeyLength);
+                                     const unsigned char* pubKey, size_t pubKeyLength);
     static EVP_PKEY* importPrivateKey(enum Format format, enum Kind kind,
-                                      unsigned char* privateKey, size_t privateKeyLength);
+                                      const unsigned char* privateKey, size_t privateKeyLength);
 
     const Kind kind_;
     EVP_PKEY* pkey_;
 
     static int digest(const unsigned char* data, int len, unsigned char digest[EVP_MAX_MD_SIZE]);
 
-    // Convert in place the Base64URL `key` into Base64 alphabet and decode the Base64 result in `buffer`.
+    // Convert the Base64URL `data` into Base64 alphabet and decode the Base64 result in `buffer`.
+    // Add necessary '=' that have been stripped.
     // Return the length of the decoded data.
-    static int decodeBase64(unsigned char* key, size_t length, unsigned char buffer[TWINLIFE_MAX_SIZE]);
+    static int decodeBase64(const unsigned char* data, size_t length,
+                            unsigned char* buffer, size_t maxLength);
 
-    // Encode the data in Base64 URL in the target buffer.
+    // Encode the data in Base64 URL in the target buffer.  The trailing '=' are removed.
     // Return the length of the encoded data or a negative error code.
-    static int encodeBase64(const unsigned char* data, size_t length, unsigned char *buffer, size_t maxLength);
+    static int encodeBase64(const unsigned char* data, size_t length, unsigned char* buffer, size_t maxLength);
+
+    static void xorBuffer(unsigned char* data, const unsigned char* src, size_t len);
   };
 
   class CryptoBox {

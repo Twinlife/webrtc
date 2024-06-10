@@ -20,6 +20,7 @@ public class CryptoKey {
     public static final int BAD_SIGNATURE = (-6);
     public static final int AEAD_FAIL = (-7);
     public static final int NONCE_ERROR = (-8);
+    public static final int TOO_BIG = (-9);
 
     public static final int MAX_KEY_LENGTH = 256;
     public static final int MAX_SIG_LENGTH = 128;
@@ -44,6 +45,15 @@ public class CryptoKey {
     public boolean isValid() {
 
         return nativeCrypto != 0;
+    }
+
+    /**
+     * Helper function to extract from the signature the public key used.
+     * Note: extraction is necessary because we have to retrieve our private key as
+     * well as item and peerItem before calling verifyAuth().
+     */
+    public static byte[] extractAuthPublicKey(@NonNull String signature) {
+        return nativeExtractAuthPublicKey(signature);
     }
 
     /**
@@ -136,6 +146,44 @@ public class CryptoKey {
     }
 
     /**
+     * Sign the two items to create an authenticate signature signed by our private key.
+     * The output signature has the following format:
+     *   <sha256>.<pubKey>.<sign(<sha256>, privKey>)>
+     * where the <sha256> is computed as follows:
+     *   SHA256(item) ^ SHA256(peerItem) ^ SHA256(pubKey-1) ^ SHA256(pubKey-2)
+     *
+     * @param peerPublicKey the peer public key
+     * @param item the item to sign
+     * @param peerItem the peer item to sign
+     * @return Return the signature or null if there is a problem
+     */
+    @Nullable
+    public String signAuth(@NonNull CryptoKey peerPublicKey, @NonNull String item, @NonNull String peerItem) {
+        checkCryptoExists();
+        peerPublicKey.checkCryptoExists();
+        return nativeSignAuth(nativeCrypto, peerPublicKey.nativeCrypto, item, peerItem);
+    }
+
+    /**
+     * Sign the two items to create an authenticate signature signed by our private key.
+     * The output signature has the following format:
+     *   <sha256>.<pubKey>.<sign(<sha256>, privKey>)>
+     * where the <sha256> is computed as follows:
+     *   SHA256(item) ^ SHA256(peerItem) ^ SHA256(pubKey-1) ^ SHA256(pubKey-2)
+     *
+     * @param peerPublicKey the peer public key
+     * @param item the item to sign
+     * @param peerItem the peer item to sign
+     * @return Return the signature or null if there is a problem
+     */
+    public int verifyAuth(@NonNull CryptoKey peerPublicKey, @Nullable String item, @Nullable String peerItem,
+                          @NonNull String signature) {
+        checkCryptoExists();
+        peerPublicKey.checkCryptoExists();
+        return nativeVerifyAuth(nativeCrypto, peerPublicKey.nativeCrypto, item, peerItem, signature);
+    }
+
+    /**
      * Release the internal memory allocated for the public/private keypair.
      */
     public void dispose() {
@@ -164,4 +212,7 @@ public class CryptoKey {
     private static native int nativeSign(long nativeCryptoKey, byte[] data, byte[] signature, boolean isBase64);
     private static native int nativeVerify(long nativeCryptoKey, byte[] data, byte[] signature, boolean isBase64);
     private static native void nativeDispose(long nativeCryptoKey);
+    private static native byte[] nativeExtractAuthPublicKey(String signature);
+    private static native String nativeSignAuth(long nativeCryptoKey, long peerPublicKey, String item, String peerItem);
+    private static native int nativeVerifyAuth(long nativeCryptoKey, long peerPublicKey, String item, String peerItem, String signature);
 }
