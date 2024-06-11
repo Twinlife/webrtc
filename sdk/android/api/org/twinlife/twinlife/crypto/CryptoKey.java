@@ -165,11 +165,7 @@ public class CryptoKey {
     }
 
     /**
-     * Sign the two items to create an authenticate signature signed by our private key.
-     * The output signature has the following format:
-     *   <sha256>.<pubKey>.<sign(<sha256>, privKey>)>
-     * where the <sha256> is computed as follows:
-     *   SHA256(item) ^ SHA256(peerItem) ^ SHA256(pubKey-1) ^ SHA256(pubKey-2)
+     * Verify the authenticate signature signed by the peer private key.
      *
      * @param peerPublicKey the peer public key
      * @param item the item to sign

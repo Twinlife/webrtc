@@ -86,8 +86,11 @@ public class CryptoBox {
     }
 
     /**
-     * Encrypt and sign with AES256-GCM the data buffer and auth buffer with a new nonce.
-     * Only the data buffer is encrypted.  The nonce buffer will be filled with a new nonce of 12 bytes.
+     * Encrypt and sign with AES256-GCM or ChaCha20-Poly1305 the data buffer and auth buffer with a new nonce sequence.
+     * Only the data buffer is encrypted.  The result buffer has the following format:
+     * +-------------------------+----------------+
+     * | auth data [auth_length] | encrypted data |
+     * +-------------------------+----------------+    
      *
      * @param nonceSequence
      * @param data
@@ -101,13 +104,17 @@ public class CryptoBox {
     }
 
     /**
-     * Decrypt and verify the data with AES256-GCM.  Only the encryptedData buffer is decrypted.
+     * Decrypt and verify the data with AES256-GCM or ChaCha20-Poly1305.  The data buffer is assumed
+     * to use the following format:
+     * +-------------------------+----------------+
+     * | data [auth_length]      | data encrypted |
+     * +-------------------------+----------------+    
      *
-     * @param encrypted
-     * @param auth
-     * @param nonce
-     * @param output
-     * @return
+     * @param nonceSequence the nonce sequence used for encryption.
+     * @param data the data buffer with the authenticate part followed by the encrypted part.
+     * @param authLength the length of the authenticate part.
+     * @param output the output buffer to store the decrypted part.
+     * @return the length of the decrypted part or an error code.
      */
     public int decryptAEAD(long nonceSequence, @NonNull byte[] data, int authLength, @NonNull byte[] output) {
         checkCryptoExists();
