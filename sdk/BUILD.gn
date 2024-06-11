@@ -1034,6 +1034,13 @@ if (is_ios || is_mac) {
         "objc/api/peerconnection/RTCVideoTrack+Private.h",
         "objc/api/peerconnection/RTCVideoTrack.h",
         "objc/api/peerconnection/RTCVideoTrack.mm",
+        # --twinlife-- 2024-06-11: Add CryptoBox and CrypoKey APIs
+        "objc/twinlife/TLCryptoBox.h",
+        "objc/twinlife/TLCryptoBox.mm",
+        "objc/twinlife/TLCryptoKey.h",
+        "objc/twinlife/TLCryptoKey+Private.h",
+        "objc/twinlife/TLCryptoKey.mm",
+        # --twinlife-- 2024-06-11: Add CryptoBox and CrypoKey APIs        
       ]
 
       configs += [
