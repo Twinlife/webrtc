@@ -9,10 +9,10 @@
 
 #import "TLCryptoKey.h"
 #import "TLCryptoKey+Private.h"
-
-#include "twinlife_crypto.h"
-#import "base/RTCLogging.h"
 #import "helpers/NSString+StdString.h"
+
+#include "rtc_base/twinlife_crypto.h"
+#include "rtc_base/logging.h"
 
 RTC_OBJC_EXPORT
 @implementation TLCryptoKey
@@ -47,7 +47,7 @@ RTC_OBJC_EXPORT
 
    twinlife::CryptoKey::Format format = isBase64 ? twinlife::CryptoKey::Format::BASE64 : twinlife::CryptoKey::Format::BINARY;
    twinlife::CryptoKey::Kind cKind = [TLCryptoKey toCryptoKind:kind];
-   twinlife::CryptoKey* cryptoKey = twinlife::CryptoKey::importPublicKey<twinlife::CryptoKey>(cKind, format, [pubKey bytes], [pubKey length]);
+   twinlife::CryptoKey* cryptoKey = twinlife::CryptoKey::importPublicKey<twinlife::CryptoKey>(format, cKind, (const unsigned char*)[pubKey bytes], (size_t)[pubKey length]);
    if (!cryptoKey) {
       RTC_LOG(LS_ERROR) << "invalid public key";
       return nil;
@@ -59,7 +59,7 @@ RTC_OBJC_EXPORT
 
    twinlife::CryptoKey::Format format = isBase64 ? twinlife::CryptoKey::Format::BASE64 : twinlife::CryptoKey::Format::BINARY;
    twinlife::CryptoKey::Kind cKind = [TLCryptoKey toCryptoKind:kind];
-   twinlife::CryptoKey* cryptoKey = twinlife::CryptoKey::importPrivateKey<twinlife::CryptoKey>(cKind, format, [privateKey bytes], [privateKey length]);
+   twinlife::CryptoKey* cryptoKey = twinlife::CryptoKey::importPrivateKey<twinlife::CryptoKey>(format, cKind, (const unsigned char*)[privateKey bytes], (size_t)[privateKey length]);
    if (!cryptoKey) {
       RTC_LOG(LS_ERROR) << "invalid private key";
       return nil;
@@ -86,7 +86,7 @@ RTC_OBJC_EXPORT
     if (len <= 0) {
         return nil;
     }
-    return [NSData initWithBytes:buf length:len];
+    return [NSData dataWithBytes:buf length:len];
 }
 
 - (nullable NSData *)publicKey:(BOOL)isBase64 {
@@ -117,7 +117,7 @@ RTC_OBJC_EXPORT
 
     unsigned char buf[TWINLIFE_MAX_SIZE];
     twinlife::CryptoKey::Format format = isBase64 ? twinlife::CryptoKey::Format::BASE64 : twinlife::CryptoKey::Format::BINARY;
-    int len = self.cryptoKey->sign(format, [data bytes], [data length], buf, sizeof(buf));
+    int len = self.cryptoKey->sign(format, (const unsigned char*)[data bytes], (size_t)[data length], buf, sizeof(buf));
     if (len <= 0) {
         RTC_LOG(LS_ERROR) << "cannot sign error " << len;
         return nil;
@@ -128,7 +128,7 @@ RTC_OBJC_EXPORT
 - (int)verifyWithData:(nonnull NSData *)data signature:(nonnull NSData *)signature isBase64:(BOOL)isBase64 {
 
     twinlife::CryptoKey::Format format = isBase64 ? twinlife::CryptoKey::Format::BASE64 : twinlife::CryptoKey::Format::BINARY;
-    return self.cryptoKey->verify(format, [data bytes], [data length], [signature bytes] [signature length]);
+    return self.cryptoKey->verify(format, (const unsigned char*)[data bytes], (size_t)[data length], (const unsigned char*)[signature bytes], (size_t)[signature length]);
 }
 
 - (nullable NSString *)signAuthWithKey:(nonnull TLCryptoKey *)peerPublicKey item:(nonnull NSString *)item peerItem:(nonnull NSString *)peerItem {

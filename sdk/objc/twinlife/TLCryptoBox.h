@@ -36,7 +36,7 @@ RTC_OBJC_EXPORT
 
 /// Unbind with peer's public key and release the AEAD context.  This operation must be called when
 /// encryption and decryption are not necessary any more.
-- (int)unbind;
+- (void)unbind;
 
 /// Encrypt and sign with AES256-GCM or ChaCha20-Poly1305 the data buffer and auth buffer with a new nonce sequence.
 /// Only the data buffer is encrypted.  The result buffer has the following format:

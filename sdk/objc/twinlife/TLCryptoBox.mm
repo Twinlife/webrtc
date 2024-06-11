@@ -9,17 +9,17 @@
 
 #import "TLCryptoBox.h"
 #import "TLCryptoKey+Private.h"
-
-#include "twinlife_crypto.h"
-#import "base/RTCLogging.h"
 #import "helpers/NSString+StdString.h"
+
+#include "rtc_base/twinlife_crypto.h"
+#include "rtc_base/logging.h"
 
 RTC_OBJC_EXPORT
 @interface TLCryptoBox ()
 
-+ (twinlife::CryptoKey::Kind)toCryptoKind:(TLCryptoKind)kind;
-
 @property (nonatomic, nullable) twinlife::CryptoBox *cryptoBox;
+
+- (nonnull instancetype)initWithCryptoBox:(twinlife::CryptoBox *)cryptoBox;
 
 @end
 
@@ -44,27 +44,27 @@ RTC_OBJC_EXPORT
 
 - (int)bindWithKey:(nonnull TLCryptoKey *)privateKey peerPublicKey:(nonnull TLCryptoKey *)publicKey encrypt:(BOOL)encrypt salt:(nonnull NSData *)salt {
 
-   return self.cryptoBox->bind(encrypt ? true : false, privateKey.cryptoKey, publicKey.cryptoKey, [salt bytes], [salt length]);
+   return self.cryptoBox->bind(encrypt ? true : false, privateKey.cryptoKey, publicKey.cryptoKey, (const unsigned char*)[salt bytes], (size_t)[salt length]);
 }
 
 - (int)bindWithKey:(nonnull NSData *)key {
 
-   return self.cryptoBox->bind([key bytes], [key length]);
+   return self.cryptoBox->bind((const unsigned char*)[key bytes], (size_t)[key length]);
 }
 
-- (int)unbind {
+- (void)unbind {
 
-    return self.cryptoBox->unbind();
+    self.cryptoBox->unbind();
 }
 
 - (int)encryptAEAD:(int64_t)nonceSequence data:(nonnull NSData *)data auth:(nonnull NSData *)auth output:(nonnull NSMutableData *)output {
 
-    return self.cryptoBox->encryptAEAD([data bytes], [data length], [auth bytes], [auth length], nonceSequence, [output bytes], [output length]);
+    return self.cryptoBox->encryptAEAD((const unsigned char*)[data bytes], (size_t)[data length], (const unsigned char*)[auth bytes], (size_t)[auth length], nonceSequence, (unsigned char*)[output bytes], (size_t)[output length]);
 }
 
 - (int)decryptAEAD:(int64_t)nonceSequence data:(nonnull NSData *)data authLength:(int)authLength output:(nonnull NSMutableData *)output {
 
-    return self.cryptoBox->decryptAEAD([data bytes], [data length], authLength, nonceSequence, [output bytes], [output length]);
+    return self.cryptoBox->decryptAEAD((const unsigned char *)[data bytes], (size_t)[data length], (size_t)authLength, nonceSequence, (unsigned char *)[output bytes], (size_t)[output length]);
 }
 
 - (void)dealloc {
