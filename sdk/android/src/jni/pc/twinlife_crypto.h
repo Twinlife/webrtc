@@ -74,7 +74,7 @@ public:
     // Encrypt and sign with AES256-GCM the data buffer and auth buffer with a new nonce.
     // Only the data buffer is encrypted.  The nonce buffer will be filled with a new nonce of 12 bytes.
     // Return the length of the output buffer or a negative error code.
-  jint EncryptAEAD(JNIEnv *env, jlong nonceSequence, const JavaParamRef<jbyteArray>& data,
+  jint EncryptAEAD(JNIEnv *env, jlong nonceSequence, const JavaParamRef<jbyteArray>& data, jint dataLength,
                    const JavaParamRef<jbyteArray>& auth, const JavaParamRef<jbyteArray>& buffer);
 
     // Decrypt and verify the data with AES256-GCM.  Only the encryptedData buffer is decrypted.

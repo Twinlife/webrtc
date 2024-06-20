@@ -860,17 +860,17 @@ void CryptoBox::unbind() {
   }
 }
 
- void CryptoBox::makeNonce(unsigned char *nonce, size_t nonceLength, uint64_t nonceSequence)
+void CryptoBox::makeNonce(unsigned char *nonce, size_t nonceLength, uint32_t nonceSequence, const unsigned char* nonceRandom)
 {
   CBB cbs;
 
   CBB_init_fixed(&cbs, nonce, nonceLength);
-  CBB_add_u64(&cbs, nonceSequence);
+  CBB_add_bytes(&cbs, nonceRandom, nonceLength - 4);
   CBB_add_u32(&cbs, nonceSequence);
 }
 
 int CryptoBox::encryptAEAD(const unsigned char* data, size_t len, const unsigned char* auth, size_t authLength,
-                           uint64_t nonceSequence, unsigned char* buffer, size_t maxLength)
+                           uint32_t nonceSequence, unsigned char* buffer, size_t maxLength)
 {
   if (!aead_) {
     return TWINLIFE_BAD_PARAM;
@@ -881,7 +881,7 @@ int CryptoBox::encryptAEAD(const unsigned char* data, size_t len, const unsigned
   }
 
   unsigned char nonce[TWINLIFE_NONCE_LENGTH];
-  makeNonce(nonce, sizeof(nonce), nonceSequence);
+  makeNonce(nonce, sizeof(nonce), nonceSequence, auth);
 
   // Copy auth buffer to target buffer.
   memcpy(buffer, auth, authLength);
@@ -895,7 +895,7 @@ int CryptoBox::encryptAEAD(const unsigned char* data, size_t len, const unsigned
 }
 
 int CryptoBox::decryptAEAD(const unsigned char* data, size_t len, size_t authLength,
-                           uint64_t nonceSequence, unsigned char* buffer, size_t maxLength)
+                           uint32_t nonceSequence, unsigned char* buffer, size_t maxLength)
 {
   if (!aead_) {
     return TWINLIFE_BAD_PARAM;
@@ -905,7 +905,7 @@ int CryptoBox::decryptAEAD(const unsigned char* data, size_t len, size_t authLen
   }
 
   unsigned char nonce[TWINLIFE_NONCE_LENGTH];
-  makeNonce(nonce, sizeof(nonce), nonceSequence);
+  makeNonce(nonce, sizeof(nonce), nonceSequence, data);
 
   size_t outLength;
   int result = EVP_AEAD_CTX_open(aead_, buffer, &outLength, maxLength, nonce, sizeof(nonce),

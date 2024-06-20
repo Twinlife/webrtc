@@ -160,17 +160,22 @@ namespace jni {
   // Only the data buffer is encrypted.  The nonce buffer will be filled with a new nonce of 12 bytes.
   // Return the length of the output buffer or a negative error code.
   jint CryptoBox::EncryptAEAD(JNIEnv *env, jlong nonceSequence, const JavaParamRef<jbyteArray>& data,
-                              const JavaParamRef<jbyteArray>& auth,
+                              jint dataLength, const JavaParamRef<jbyteArray>& auth,
                               const JavaParamRef<jbyteArray>& buffer) {
     jbyte* dataBuffer = env->GetByteArrayElements(data.obj(), nullptr);
-    size_t dataLength = env->GetArrayLength(data.obj());
+    size_t dataBufferLength = env->GetArrayLength(data.obj());
     jbyte* authBuffer = env->GetByteArrayElements(auth.obj(), nullptr);
     size_t authLength = env->GetArrayLength(auth.obj());
     jbyte* resultBuffer = env->GetByteArrayElements(buffer.obj(), nullptr);
     size_t resultLength = env->GetArrayLength(buffer.obj());
 
-    int result = encryptAEAD((const unsigned char*) dataBuffer, dataLength, (const unsigned char *)authBuffer, authLength,
-                             nonceSequence, (unsigned char*) resultBuffer, resultLength);
+    int result;
+    if ((size_t) dataLength > dataBufferLength) {
+      result = TWINLIFE_TOO_BIG;
+    } else {
+      result = encryptAEAD((const unsigned char*) dataBuffer, dataLength, (const unsigned char *)authBuffer, authLength,
+                           nonceSequence, (unsigned char*) resultBuffer, resultLength);
+    }
     env->ReleaseByteArrayElements(data.obj(), dataBuffer, JNI_ABORT);
     env->ReleaseByteArrayElements(auth.obj(), authBuffer, JNI_ABORT);
     env->ReleaseByteArrayElements(buffer.obj(), resultBuffer, 0);

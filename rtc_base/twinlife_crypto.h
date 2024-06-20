@@ -132,6 +132,11 @@ namespace twinlife {
     CryptoKey(const CryptoKey&) = delete;
     CryptoKey& operator=(const CryptoKey&) = delete;
 
+    // Convert the Base64URL `data` into Base64 alphabet and decode the Base64 result in `buffer`.
+    // Add necessary '=' that have been stripped.
+    // Return the length of the decoded data.
+    static int decodeBase64(const unsigned char* data, size_t length,
+                            unsigned char* buffer, size_t maxLength);
   protected:
     // Creation allowed only from create(), importPublicKey() or importPrivateKey().
     CryptoKey(enum Kind kind, EVP_PKEY *pkey) : kind_(kind) {
@@ -154,11 +159,6 @@ namespace twinlife {
 
     static int digest(const unsigned char* data, int len, unsigned char digest[EVP_MAX_MD_SIZE]);
 
-    // Convert the Base64URL `data` into Base64 alphabet and decode the Base64 result in `buffer`.
-    // Add necessary '=' that have been stripped.
-    // Return the length of the decoded data.
-    static int decodeBase64(const unsigned char* data, size_t length,
-                            unsigned char* buffer, size_t maxLength);
 
     // Encode the data in Base64 URL in the target buffer.  The trailing '=' are removed.
     // Return the length of the encoded data or a negative error code.
@@ -200,19 +200,23 @@ namespace twinlife {
     // Only the data buffer is encrypted.  The result buffer has the following format:
     // +-------------------------+----------------+
     // | auth data [auth_length] | encrypted data |
-    // +-------------------------+----------------+    
+    // +-------------------------+----------------+
+    // The first 8 bytes of the auth data are used for the nonce and the remaining 4 bytes
+    // of the nonce are filled with the nonce value.
     // Return the length of the output buffer or a negative error code.
     int encryptAEAD(const unsigned char* data, size_t len,
                     const unsigned char* auth, size_t auth_length,
-                    uint64_t nonce, unsigned char* buffer, size_t maxLength);
+                    uint32_t nonce, unsigned char* buffer, size_t maxLength);
 
     // Decrypt and verify the data with AES256-GCM.  Only the encryptedData buffer is decrypted.
     // The data buffer is assumed to use the following format:
     // +-------------------------+----------------+
     // | auth data [auth_length] | encrypted data |
     // +-------------------------+----------------+    
+    // The first 8 bytes of the auth data are used for the nonce and the remaining 4 bytes
+    // of the nonce are filled with the nonce value.
     int decryptAEAD(const unsigned char* data, size_t len, size_t auth_length,
-                    uint64_t nonce, unsigned char* buffer, size_t maxLength);
+                    uint32_t nonce, unsigned char* buffer, size_t maxLength);
 
     ~CryptoBox();
 
@@ -241,7 +245,7 @@ namespace twinlife {
                     const CryptoKey* firstKey, const CryptoKey* secondKey,
                     const unsigned char* salt, size_t saltLength,
                     unsigned char* key, size_t keyLength);
-    static void makeNonce(unsigned char *nonce, size_t nonceLength, uint64_t nonceSequence);
+    static void makeNonce(unsigned char *nonce, size_t nonceLength, uint32_t nonceSequence, const unsigned char* nonceRandom);
   };
 }
 

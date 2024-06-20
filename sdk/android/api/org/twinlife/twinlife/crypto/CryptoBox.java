@@ -98,9 +98,9 @@ public class CryptoBox {
      * @param output
      * @return the length of the output buffer or a negative error code.
      */
-    public int encryptAEAD(long nonceSequence, @NonNull byte[] data, @NonNull byte[] auth, @NonNull byte[] output) {
+    public int encryptAEAD(long nonceSequence, @NonNull byte[] data, int dataLength, @NonNull byte[] auth, @NonNull byte[] output) {
         checkCryptoExists();
-        return nativeEncryptAEAD(nativeCrypto, nonceSequence, data, auth, output);
+        return nativeEncryptAEAD(nativeCrypto, nonceSequence, data, dataLength, auth, output);
     }
 
     /**
@@ -139,7 +139,7 @@ public class CryptoBox {
     private static native int nativeBind(long nativeCryptoBox, boolean encrypt, long nativePrivateCryptoKey, long nativeBindCrypto, byte[] salt);
     private static native int nativeBindSecret(long nativeCryptoBox, byte[] key);
     private static native int nativeUnbind(long nativeCryptoBox);
-    private static native int nativeEncryptAEAD(long nativeCryptoBox, long nonceSequence, byte[] data, byte[] auth, byte[] output);
+    private static native int nativeEncryptAEAD(long nativeCryptoBox, long nonceSequence, byte[] data, int dataLength, byte[] auth, byte[] output);
     private static native int nativeDecryptAEAD(long nativeCryptoBox, long nonceSequence, byte[] data, int authLength, byte[] output);
     private static native void nativeDispose(long nativeCryptoBox);
 }
