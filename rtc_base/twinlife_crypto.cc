@@ -654,7 +654,7 @@ int CryptoKey::signAuth(const CryptoKey* peerPublicKey, const char* item, const 
   }
   pos += len;
   signature[pos] = 0;
-  return pos + 1;
+  return pos;
 }
 
 int CryptoKey::verifyAuth(const CryptoKey* peerPublicKey, const char* item, const char* peerItem,
