@@ -56,6 +56,11 @@ constexpr char kVP8IosMaxNumberOfThreadFieldTrial[] =
 constexpr char kVP8IosMaxNumberOfThreadFieldTrialParameter[] = "max_thread";
 #endif
 
+namespace variable_framerate_screenshare {
+static constexpr double kMinFps = 5.0;
+static constexpr int kUndershootPct = 30;
+}  // namespace variable_framerate_screenshare
+
 constexpr char kVp8ForcePartitionResilience[] =
     "WebRTC-VP8-ForcePartitionResilience";
 
@@ -63,6 +68,7 @@ constexpr char kVp8ForcePartitionResilience[] =
 // bitstream range of [0, 127] and not the user-level range of [0,63].
 constexpr int kLowVp8QpThreshold = 29;
 constexpr int kHighVp8QpThreshold = 95;
+constexpr int kScreenshareMinQp = 15;
 
 constexpr int kTokenPartitions = VP8_ONE_TOKENPARTITION;
 constexpr uint32_t kVp832ByteAlign = 32u;
@@ -111,8 +117,8 @@ static_assert(Vp8EncoderConfig::TemporalLayerConfig::kMaxLayers ==
 // Allow a newer value to override a current value only if the new value
 // is set.
 template <typename T>
-bool MaybeSetNewValue(const absl::optional<T>& new_value,
-                      absl::optional<T>* base_value) {
+bool MaybeSetNewValue(const std::optional<T>& new_value,
+                      std::optional<T>* base_value) {
   if (new_value.has_value() && new_value != *base_value) {
     *base_value = new_value;
     return true;
@@ -248,7 +254,7 @@ class FrameDropConfigOverride {
   const uint32_t original_frame_drop_threshold_;
 };
 
-absl::optional<TimeDelta> ParseFrameDropInterval(
+std::optional<TimeDelta> ParseFrameDropInterval(
     const FieldTrialsView& field_trials) {
   FieldTrialFlag disabled = FieldTrialFlag("Disabled");
   FieldTrialParameter<TimeDelta> interval("interval",
@@ -257,7 +263,7 @@ absl::optional<TimeDelta> ParseFrameDropInterval(
                   field_trials.Lookup("WebRTC-VP8-MaxFrameInterval"));
   if (disabled.Get()) {
     // Kill switch set, don't use any max frame interval.
-    return absl::nullopt;
+    return std::nullopt;
   }
   return interval.Get();
 }
@@ -304,16 +310,13 @@ LibvpxVp8Encoder::LibvpxVp8Encoder(const Environment& env,
                                    std::unique_ptr<LibvpxInterface> interface)
     : env_(env),
       libvpx_(std::move(interface)),
-      rate_control_settings_(
-          RateControlSettings::ParseFromKeyValueConfig(&env_.field_trials())),
+      rate_control_settings_(env_.field_trials()),
       resolution_bitrate_limits_(std::move(settings.resolution_bitrate_limits)),
       key_frame_request_(kMaxSimulcastStreams, false),
       last_encoder_output_time_(kMaxSimulcastStreams,
                                 Timestamp::MinusInfinity()),
-      variable_framerate_experiment_(ParseVariableFramerateConfig(
-          env_.field_trials(),
-          "WebRTC-VP8VariableFramerateScreenshare")),
-      framerate_controller_(variable_framerate_experiment_.framerate_limit),
+      framerate_controller_(variable_framerate_screenshare::kMinFps),
+      encoder_info_override_(env_.field_trials()),
       max_frame_drop_interval_(ParseFrameDropInterval(env_.field_trials())),
       android_specific_threading_settings_(env_.field_trials().IsEnabled(
           "WebRTC-LibvpxVp8Encoder-AndroidSpecificThreadingSettings")) {
@@ -491,7 +494,7 @@ int LibvpxVp8Encoder::InitEncode(const VideoCodec* inst,
     return WEBRTC_VIDEO_CODEC_ERR_PARAMETER;
   }
 
-  if (absl::optional<ScalabilityMode> scalability_mode =
+  if (std::optional<ScalabilityMode> scalability_mode =
           inst->GetScalabilityMode();
       scalability_mode.has_value() &&
       !VP8SupportsScalabilityMode(*scalability_mode)) {
@@ -676,7 +679,7 @@ int LibvpxVp8Encoder::InitEncode(const VideoCodec* inst,
   // Note the order we use is different from webm, we have lowest resolution
   // at position 0 and they have highest resolution at position 0.
   const size_t stream_idx_cfg_0 = encoders_.size() - 1;
-  SimulcastRateAllocator init_allocator(codec_);
+  SimulcastRateAllocator init_allocator(env_, codec_);
   VideoBitrateAllocation allocation =
       init_allocator.Allocate(VideoBitrateAllocationParameters(
           inst->startBitrate * 1000, inst->maxFramerate));
@@ -747,13 +750,6 @@ int LibvpxVp8Encoder::GetCpuSpeed(int width, int height) {
   // On mobile platform, use a lower speed setting for lower resolutions for
   // CPUs with 4 or more cores.
   RTC_DCHECK_GT(number_of_cores_, 0);
-  if (experimental_cpu_speed_config_arm_
-          .GetValue(width * height, number_of_cores_)
-          .has_value()) {
-    return experimental_cpu_speed_config_arm_
-        .GetValue(width * height, number_of_cores_)
-        .value();
-  }
 
   if (number_of_cores_ <= 3)
     return -12;
@@ -940,9 +936,7 @@ size_t LibvpxVp8Encoder::SteadyStateSize(int sid, int tid) {
     return 0;
   return static_cast<size_t>(
       bitrate_bps / (8 * fps) *
-          (100 -
-           variable_framerate_experiment_.steady_state_undershoot_percentage) /
-          100 +
+          (100 - variable_framerate_screenshare::kUndershootPct) / 100 +
       0.5);
 }
 
@@ -1020,8 +1014,7 @@ int LibvpxVp8Encoder::Encode(const VideoFrame& frame,
 
   if (frame.update_rect().IsEmpty() && num_steady_state_frames_ >= 3 &&
       !key_frame_requested) {
-    if (variable_framerate_experiment_.enabled &&
-        framerate_controller_.DropFrame(frame.rtp_timestamp() /
+    if (framerate_controller_.DropFrame(frame.rtp_timestamp() /
                                         kRtpTicksPerMs) &&
         frame_drop_overrides_.empty()) {
       return WEBRTC_VIDEO_CODEC_OK;
@@ -1162,7 +1155,7 @@ void LibvpxVp8Encoder::PopulateCodecSpecific(CodecSpecificInfo* codec_specific,
   frame_buffer_controller_->OnEncodeDone(stream_idx, timestamp,
                                          encoded_images_[encoder_idx].size(),
                                          is_keyframe, qp, codec_specific);
-  if (is_keyframe && codec_specific->template_structure != absl::nullopt) {
+  if (is_keyframe && codec_specific->template_structure != std::nullopt) {
     // Number of resolutions must match number of spatial layers, VP8 structures
     // expected to use single spatial layer. Templates must be ordered by
     // spatial_id, so assumption there is exactly one spatial layer is same as
@@ -1272,7 +1265,7 @@ int LibvpxVp8Encoder::GetEncodedPartitions(const VideoFrame& input_image,
                                                    &codec_specific);
         const size_t steady_state_size = SteadyStateSize(
             stream_idx, codec_specific.codecSpecific.VP8.temporalIdx);
-        if (qp_128 > variable_framerate_experiment_.steady_state_qp ||
+        if (qp_128 > kVp8SteadyStateQpThreshold ||
             encoded_images_[encoder_idx].size() > steady_state_size) {
           num_steady_state_frames_ = 0;
         } else {
@@ -1355,6 +1348,10 @@ VideoEncoder::EncoderInfo LibvpxVp8Encoder::GetEncoderInfo() const {
               0.5));
         }
       }
+    }
+
+    if (codec_.mode == VideoCodecMode::kScreensharing) {
+      info.min_qp = kScreenshareMinQp;
     }
   }
 
@@ -1493,26 +1490,6 @@ LibvpxVp8Encoder::PrepareBuffers(rtc::scoped_refptr<VideoFrameBuffer> buffer) {
     prepared_buffers.push_back(scaled_buffer);
   }
   return prepared_buffers;
-}
-
-// static
-LibvpxVp8Encoder::VariableFramerateExperiment
-LibvpxVp8Encoder::ParseVariableFramerateConfig(
-    const FieldTrialsView& field_trials,
-    absl::string_view group_name) {
-  FieldTrialFlag disabled = FieldTrialFlag("Disabled");
-  FieldTrialParameter<double> framerate_limit("min_fps", 5.0);
-  FieldTrialParameter<int> qp("min_qp", 15);
-  FieldTrialParameter<int> undershoot_percentage("undershoot", 30);
-  ParseFieldTrial({&disabled, &framerate_limit, &qp, &undershoot_percentage},
-                  field_trials.Lookup(group_name));
-  VariableFramerateExperiment config;
-  config.enabled = !disabled.Get();
-  config.framerate_limit = framerate_limit.Get();
-  config.steady_state_qp = qp.Get();
-  config.steady_state_undershoot_percentage = undershoot_percentage.Get();
-
-  return config;
 }
 
 }  // namespace webrtc

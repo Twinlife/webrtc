@@ -340,7 +340,7 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
       rtc::PacketTransportInternal* rtp_packet_transport,
       rtc::PacketTransportInternal* rtcp_packet_transport) {
     auto rtp_transport = std::make_unique<webrtc::RtpTransport>(
-        rtcp_packet_transport == nullptr);
+        rtcp_packet_transport == nullptr, field_trials_);
 
     SendTask(network_thread_,
              [&rtp_transport, rtp_packet_transport, rtcp_packet_transport] {
@@ -936,7 +936,7 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
       rtc::NetworkRoute network_route;
       // The transport channel becomes disconnected.
       fake_rtp_dtls_transport1_->ice_transport()->SignalNetworkRouteChanged(
-          absl::optional<rtc::NetworkRoute>(network_route));
+          std::optional<rtc::NetworkRoute>(network_route));
     });
     WaitForThreads();
     EXPECT_EQ(1, media_send_channel1_impl->num_network_route_changes());
@@ -955,7 +955,7 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
       // The transport channel becomes connected.
       fake_rtp_dtls_transport1_->ice_transport()->SignalNetworkRouteChanged(
 
-          absl::optional<rtc::NetworkRoute>(network_route));
+          std::optional<rtc::NetworkRoute>(network_route));
     });
     WaitForThreads();
     EXPECT_EQ(1, media_send_channel1_impl->num_network_route_changes());
@@ -1331,7 +1331,7 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
     return channel1_->SetRemoteContent(&content, SdpType::kOffer, NULL);
   }
 
-  webrtc::RtpParameters BitrateLimitedParameters(absl::optional<int> limit) {
+  webrtc::RtpParameters BitrateLimitedParameters(std::optional<int> limit) {
     webrtc::RtpParameters parameters;
     webrtc::RtpEncodingParameters encoding;
     encoding.max_bitrate_bps = limit;
@@ -1340,7 +1340,7 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
   }
 
   void VerifyMaxBitrate(const webrtc::RtpParameters& parameters,
-                        absl::optional<int> expected_bitrate) {
+                        std::optional<int> expected_bitrate) {
     EXPECT_EQ(1UL, parameters.encodings.size());
     EXPECT_EQ(expected_bitrate, parameters.encodings[0].max_bitrate_bps);
   }
@@ -1352,7 +1352,7 @@ class ChannelTest : public ::testing::Test, public sigslot::has_slots<> {
                                            SdpType::kOffer, err));
     EXPECT_EQ(media_send_channel1_impl()->max_bps(), -1);
     VerifyMaxBitrate(media_send_channel1()->GetRtpSendParameters(kSsrc1),
-                     absl::nullopt);
+                     std::nullopt);
   }
 
   // Test that when a channel gets new RtpTransport with a call to
@@ -2098,8 +2098,8 @@ TEST_F(VideoChannelSingleThreadTest, UpdateLocalStreamsWithSimulcast) {
 }
 
 TEST_F(VideoChannelSingleThreadTest, TestSetLocalOfferWithPacketization) {
-  const cricket::VideoCodec kVp8Codec = cricket::CreateVideoCodec(97, "VP8");
-  cricket::VideoCodec vp9_codec = cricket::CreateVideoCodec(98, "VP9");
+  const cricket::Codec kVp8Codec = cricket::CreateVideoCodec(97, "VP8");
+  cricket::Codec vp9_codec = cricket::CreateVideoCodec(98, "VP9");
   vp9_codec.packetization = cricket::kPacketizationParamRaw;
   cricket::VideoContentDescription video;
   video.set_codecs({kVp8Codec, vp9_codec});
@@ -2113,7 +2113,7 @@ TEST_F(VideoChannelSingleThreadTest, TestSetLocalOfferWithPacketization) {
   EXPECT_TRUE(
       media_receive_channel1_impl()->recv_codecs()[0].Matches(kVp8Codec));
   EXPECT_EQ(media_receive_channel1_impl()->recv_codecs()[0].packetization,
-            absl::nullopt);
+            std::nullopt);
   EXPECT_TRUE(
       media_receive_channel1_impl()->recv_codecs()[1].Matches(vp9_codec));
   EXPECT_EQ(media_receive_channel1_impl()->recv_codecs()[1].packetization,
@@ -2121,8 +2121,8 @@ TEST_F(VideoChannelSingleThreadTest, TestSetLocalOfferWithPacketization) {
 }
 
 TEST_F(VideoChannelSingleThreadTest, TestSetRemoteOfferWithPacketization) {
-  const cricket::VideoCodec kVp8Codec = cricket::CreateVideoCodec(97, "VP8");
-  cricket::VideoCodec vp9_codec = cricket::CreateVideoCodec(98, "VP9");
+  const cricket::Codec kVp8Codec = cricket::CreateVideoCodec(97, "VP8");
+  cricket::Codec vp9_codec = cricket::CreateVideoCodec(98, "VP9");
   vp9_codec.packetization = cricket::kPacketizationParamRaw;
   cricket::VideoContentDescription video;
   video.set_codecs({kVp8Codec, vp9_codec});
@@ -2136,15 +2136,15 @@ TEST_F(VideoChannelSingleThreadTest, TestSetRemoteOfferWithPacketization) {
   ASSERT_THAT(media_send_channel1_impl()->send_codecs(), testing::SizeIs(2));
   EXPECT_TRUE(media_send_channel1_impl()->send_codecs()[0].Matches(kVp8Codec));
   EXPECT_EQ(media_send_channel1_impl()->send_codecs()[0].packetization,
-            absl::nullopt);
+            std::nullopt);
   EXPECT_TRUE(media_send_channel1_impl()->send_codecs()[1].Matches(vp9_codec));
   EXPECT_EQ(media_send_channel1_impl()->send_codecs()[1].packetization,
             cricket::kPacketizationParamRaw);
 }
 
 TEST_F(VideoChannelSingleThreadTest, TestSetAnswerWithPacketization) {
-  const cricket::VideoCodec kVp8Codec = cricket::CreateVideoCodec(97, "VP8");
-  cricket::VideoCodec vp9_codec = cricket::CreateVideoCodec(98, "VP9");
+  const cricket::Codec kVp8Codec = cricket::CreateVideoCodec(97, "VP8");
+  cricket::Codec vp9_codec = cricket::CreateVideoCodec(98, "VP9");
   vp9_codec.packetization = cricket::kPacketizationParamRaw;
   cricket::VideoContentDescription video;
   video.set_codecs({kVp8Codec, vp9_codec});
@@ -2160,7 +2160,7 @@ TEST_F(VideoChannelSingleThreadTest, TestSetAnswerWithPacketization) {
   EXPECT_TRUE(
       media_receive_channel1_impl()->recv_codecs()[0].Matches(kVp8Codec));
   EXPECT_EQ(media_receive_channel1_impl()->recv_codecs()[0].packetization,
-            absl::nullopt);
+            std::nullopt);
   EXPECT_TRUE(
       media_receive_channel1_impl()->recv_codecs()[1].Matches(vp9_codec));
   EXPECT_EQ(media_receive_channel1_impl()->recv_codecs()[1].packetization,
@@ -2168,15 +2168,15 @@ TEST_F(VideoChannelSingleThreadTest, TestSetAnswerWithPacketization) {
   EXPECT_THAT(media_send_channel1_impl()->send_codecs(), testing::SizeIs(2));
   EXPECT_TRUE(media_send_channel1_impl()->send_codecs()[0].Matches(kVp8Codec));
   EXPECT_EQ(media_send_channel1_impl()->send_codecs()[0].packetization,
-            absl::nullopt);
+            std::nullopt);
   EXPECT_TRUE(media_send_channel1_impl()->send_codecs()[1].Matches(vp9_codec));
   EXPECT_EQ(media_send_channel1_impl()->send_codecs()[1].packetization,
             cricket::kPacketizationParamRaw);
 }
 
 TEST_F(VideoChannelSingleThreadTest, TestSetLocalAnswerWithoutPacketization) {
-  const cricket::VideoCodec kLocalCodec = cricket::CreateVideoCodec(98, "VP8");
-  cricket::VideoCodec remote_codec = cricket::CreateVideoCodec(99, "VP8");
+  const cricket::Codec kLocalCodec = cricket::CreateVideoCodec(98, "VP8");
+  cricket::Codec remote_codec = cricket::CreateVideoCodec(99, "VP8");
   remote_codec.packetization = cricket::kPacketizationParamRaw;
   cricket::VideoContentDescription local_video;
   local_video.set_codecs({kLocalCodec});
@@ -2190,16 +2190,16 @@ TEST_F(VideoChannelSingleThreadTest, TestSetLocalAnswerWithoutPacketization) {
   EXPECT_TRUE(channel1_->SetLocalContent(&local_video, SdpType::kAnswer, err));
   ASSERT_THAT(media_receive_channel1_impl()->recv_codecs(), testing::SizeIs(1));
   EXPECT_EQ(media_receive_channel1_impl()->recv_codecs()[0].packetization,
-            absl::nullopt);
+            std::nullopt);
   ASSERT_THAT(media_send_channel1_impl()->send_codecs(), testing::SizeIs(1));
   EXPECT_EQ(media_send_channel1_impl()->send_codecs()[0].packetization,
-            absl::nullopt);
+            std::nullopt);
 }
 
 TEST_F(VideoChannelSingleThreadTest, TestSetRemoteAnswerWithoutPacketization) {
-  cricket::VideoCodec local_codec = cricket::CreateVideoCodec(98, "VP8");
+  cricket::Codec local_codec = cricket::CreateVideoCodec(98, "VP8");
   local_codec.packetization = cricket::kPacketizationParamRaw;
-  const cricket::VideoCodec kRemoteCodec = cricket::CreateVideoCodec(99, "VP8");
+  const cricket::Codec kRemoteCodec = cricket::CreateVideoCodec(99, "VP8");
   cricket::VideoContentDescription local_video;
   local_video.set_codecs({local_codec});
   cricket::VideoContentDescription remote_video;
@@ -2213,17 +2213,17 @@ TEST_F(VideoChannelSingleThreadTest, TestSetRemoteAnswerWithoutPacketization) {
       channel1_->SetRemoteContent(&remote_video, SdpType::kAnswer, err));
   ASSERT_THAT(media_receive_channel1_impl()->recv_codecs(), testing::SizeIs(1));
   EXPECT_EQ(media_receive_channel1_impl()->recv_codecs()[0].packetization,
-            absl::nullopt);
+            std::nullopt);
   ASSERT_THAT(media_send_channel1_impl()->send_codecs(), testing::SizeIs(1));
   EXPECT_EQ(media_send_channel1_impl()->send_codecs()[0].packetization,
-            absl::nullopt);
+            std::nullopt);
 }
 
 TEST_F(VideoChannelSingleThreadTest,
        TestSetRemoteAnswerWithInvalidPacketization) {
-  cricket::VideoCodec local_codec = cricket::CreateVideoCodec(98, "VP8");
+  cricket::Codec local_codec = cricket::CreateVideoCodec(98, "VP8");
   local_codec.packetization = cricket::kPacketizationParamRaw;
-  cricket::VideoCodec remote_codec = cricket::CreateVideoCodec(99, "VP8");
+  cricket::Codec remote_codec = cricket::CreateVideoCodec(99, "VP8");
   remote_codec.packetization = "unknownpacketizationattributevalue";
   cricket::VideoContentDescription local_video;
   local_video.set_codecs({local_codec});
@@ -2246,9 +2246,9 @@ TEST_F(VideoChannelSingleThreadTest,
 
 TEST_F(VideoChannelSingleThreadTest,
        TestSetLocalAnswerWithInvalidPacketization) {
-  cricket::VideoCodec local_codec = cricket::CreateVideoCodec(98, "VP8");
+  cricket::Codec local_codec = cricket::CreateVideoCodec(98, "VP8");
   local_codec.packetization = cricket::kPacketizationParamRaw;
-  const cricket::VideoCodec kRemoteCodec = cricket::CreateVideoCodec(99, "VP8");
+  const cricket::Codec kRemoteCodec = cricket::CreateVideoCodec(99, "VP8");
   cricket::VideoContentDescription local_video;
   local_video.set_codecs({local_codec});
   cricket::VideoContentDescription remote_video;
@@ -2264,17 +2264,17 @@ TEST_F(VideoChannelSingleThreadTest,
   EXPECT_THAT(media_receive_channel1_impl()->recv_codecs(), testing::IsEmpty());
   ASSERT_THAT(media_send_channel1_impl()->send_codecs(), testing::SizeIs(1));
   EXPECT_EQ(media_send_channel1_impl()->send_codecs()[0].packetization,
-            absl::nullopt);
+            std::nullopt);
 }
 
 TEST_F(VideoChannelSingleThreadTest,
        StopsPacketizationVerificationWhenMatchIsFoundInRemoteAnswer) {
-  cricket::VideoCodec vp8_foo = cricket::CreateVideoCodec(96, "VP8");
+  cricket::Codec vp8_foo = cricket::CreateVideoCodec(96, "VP8");
   vp8_foo.packetization = "foo";
-  cricket::VideoCodec vp8_bar = cricket::CreateVideoCodec(97, "VP8");
+  cricket::Codec vp8_bar = cricket::CreateVideoCodec(97, "VP8");
   vp8_bar.packetization = "bar";
-  cricket::VideoCodec vp9 = cricket::CreateVideoCodec(98, "VP9");
-  cricket::VideoCodec vp9_foo = cricket::CreateVideoCodec(99, "VP9");
+  cricket::Codec vp9 = cricket::CreateVideoCodec(98, "VP9");
+  cricket::Codec vp9_foo = cricket::CreateVideoCodec(99, "VP9");
   vp9_foo.packetization = "bar";
   cricket::VideoContentDescription local;
   local.set_codecs({vp8_foo, vp8_bar, vp9_foo});
@@ -2294,23 +2294,23 @@ TEST_F(VideoChannelSingleThreadTest,
                   AllOf(Field(&cricket::Codec::id, 97),
                         Field(&cricket::Codec::packetization, "bar")),
                   AllOf(Field(&cricket::Codec::id, 99),
-                        Field(&cricket::Codec::packetization, absl::nullopt))));
+                        Field(&cricket::Codec::packetization, std::nullopt))));
   EXPECT_THAT(
       media_send_channel1_impl()->send_codecs(),
       ElementsAre(AllOf(Field(&cricket::Codec::id, 96),
                         Field(&cricket::Codec::packetization, "foo")),
                   AllOf(Field(&cricket::Codec::id, 98),
-                        Field(&cricket::Codec::packetization, absl::nullopt))));
+                        Field(&cricket::Codec::packetization, std::nullopt))));
 }
 
 TEST_F(VideoChannelSingleThreadTest,
        StopsPacketizationVerificationWhenMatchIsFoundInLocalAnswer) {
-  cricket::VideoCodec vp8_foo = cricket::CreateVideoCodec(96, "VP8");
+  cricket::Codec vp8_foo = cricket::CreateVideoCodec(96, "VP8");
   vp8_foo.packetization = "foo";
-  cricket::VideoCodec vp8_bar = cricket::CreateVideoCodec(97, "VP8");
+  cricket::Codec vp8_bar = cricket::CreateVideoCodec(97, "VP8");
   vp8_bar.packetization = "bar";
-  cricket::VideoCodec vp9 = cricket::CreateVideoCodec(98, "VP9");
-  cricket::VideoCodec vp9_foo = cricket::CreateVideoCodec(99, "VP9");
+  cricket::Codec vp9 = cricket::CreateVideoCodec(98, "VP9");
+  cricket::Codec vp9_foo = cricket::CreateVideoCodec(99, "VP9");
   vp9_foo.packetization = "bar";
   cricket::VideoContentDescription local;
   local.set_codecs({vp8_foo, vp9});
@@ -2328,7 +2328,7 @@ TEST_F(VideoChannelSingleThreadTest,
       ElementsAre(AllOf(Field(&cricket::Codec::id, 96),
                         Field(&cricket::Codec::packetization, "foo")),
                   AllOf(Field(&cricket::Codec::id, 98),
-                        Field(&cricket::Codec::packetization, absl::nullopt))));
+                        Field(&cricket::Codec::packetization, std::nullopt))));
   EXPECT_THAT(
       media_send_channel1_impl()->send_codecs(),
       ElementsAre(AllOf(Field(&cricket::Codec::id, 96),
@@ -2336,13 +2336,13 @@ TEST_F(VideoChannelSingleThreadTest,
                   AllOf(Field(&cricket::Codec::id, 97),
                         Field(&cricket::Codec::packetization, "bar")),
                   AllOf(Field(&cricket::Codec::id, 99),
-                        Field(&cricket::Codec::packetization, absl::nullopt))));
+                        Field(&cricket::Codec::packetization, std::nullopt))));
 }
 
 TEST_F(VideoChannelSingleThreadTest,
        ConsidersAllCodecsWithDiffrentPacketizationsInRemoteAnswer) {
-  cricket::VideoCodec vp8 = cricket::CreateVideoCodec(96, "VP8");
-  cricket::VideoCodec vp8_raw = cricket::CreateVideoCodec(97, "VP8");
+  cricket::Codec vp8 = cricket::CreateVideoCodec(96, "VP8");
+  cricket::Codec vp8_raw = cricket::CreateVideoCodec(97, "VP8");
   vp8_raw.packetization = cricket::kPacketizationParamRaw;
   cricket::VideoContentDescription local;
   local.set_codecs({vp8, vp8_raw});
@@ -2358,7 +2358,7 @@ TEST_F(VideoChannelSingleThreadTest,
   EXPECT_THAT(
       media_receive_channel1_impl()->recv_codecs(),
       ElementsAre(AllOf(Field(&cricket::Codec::id, 96),
-                        Field(&cricket::Codec::packetization, absl::nullopt)),
+                        Field(&cricket::Codec::packetization, std::nullopt)),
                   AllOf(Field(&cricket::Codec::id, 97),
                         Field(&cricket::Codec::packetization,
                               cricket::kPacketizationParamRaw))));
@@ -2368,13 +2368,13 @@ TEST_F(VideoChannelSingleThreadTest,
                         Field(&cricket::Codec::packetization,
                               cricket::kPacketizationParamRaw)),
                   AllOf(Field(&cricket::Codec::id, 96),
-                        Field(&cricket::Codec::packetization, absl::nullopt))));
+                        Field(&cricket::Codec::packetization, std::nullopt))));
 }
 
 TEST_F(VideoChannelSingleThreadTest,
        ConsidersAllCodecsWithDiffrentPacketizationsInLocalAnswer) {
-  cricket::VideoCodec vp8 = cricket::CreateVideoCodec(96, "VP8");
-  cricket::VideoCodec vp8_raw = cricket::CreateVideoCodec(97, "VP8");
+  cricket::Codec vp8 = cricket::CreateVideoCodec(96, "VP8");
+  cricket::Codec vp8_raw = cricket::CreateVideoCodec(97, "VP8");
   vp8_raw.packetization = cricket::kPacketizationParamRaw;
   cricket::VideoContentDescription local;
   local.set_codecs({vp8_raw, vp8});
@@ -2393,11 +2393,11 @@ TEST_F(VideoChannelSingleThreadTest,
                         Field(&cricket::Codec::packetization,
                               cricket::kPacketizationParamRaw)),
                   AllOf(Field(&cricket::Codec::id, 96),
-                        Field(&cricket::Codec::packetization, absl::nullopt))));
+                        Field(&cricket::Codec::packetization, std::nullopt))));
   EXPECT_THAT(
       media_send_channel1_impl()->send_codecs(),
       ElementsAre(AllOf(Field(&cricket::Codec::id, 96),
-                        Field(&cricket::Codec::packetization, absl::nullopt)),
+                        Field(&cricket::Codec::packetization, std::nullopt)),
                   AllOf(Field(&cricket::Codec::id, 97),
                         Field(&cricket::Codec::packetization,
                               cricket::kPacketizationParamRaw))));

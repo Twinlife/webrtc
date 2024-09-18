@@ -50,13 +50,7 @@ void WriteCounter(unsigned char* payload, uint32_t counter) {
 }  // namespace
 
 FakeEncoder::FakeEncoder(const Environment& env)
-    : FakeEncoder(env, &env.clock()) {}
-
-FakeEncoder::FakeEncoder(Clock* clock) : FakeEncoder(absl::nullopt, clock) {}
-
-FakeEncoder::FakeEncoder(absl::optional<Environment> env, Clock* clock)
     : env_(env),
-      clock_(clock),
       num_initializations_(0),
       callback_(nullptr),
       max_target_bitrate_kbps_(-1),
@@ -111,7 +105,7 @@ int32_t FakeEncoder::Encode(const VideoFrame& input_image,
   RateControlParameters rates;
   bool keyframe;
   uint32_t counter;
-  absl::optional<int> qp;
+  std::optional<int> qp;
   {
     MutexLock lock(&mutex_);
     max_framerate = config_.maxFramerate;
@@ -157,6 +151,7 @@ int32_t FakeEncoder::Encode(const VideoFrame& input_image,
     if (qp)
       encoded.qp_ = *qp;
     encoded.SetSimulcastIndex(i);
+    encoded.SetTemporalIndex(frame_info.layers[i].temporal_id);
     CodecSpecificInfo codec_specific = EncodeHook(encoded, buffer);
 
     if (callback->OnEncodedImage(encoded, &codec_specific).error !=
@@ -320,9 +315,6 @@ const VideoCodec& FakeEncoder::config() const {
 FakeH264Encoder::FakeH264Encoder(const Environment& env)
     : FakeEncoder(env), idr_counter_(0) {}
 
-FakeH264Encoder::FakeH264Encoder(Clock* clock)
-    : FakeEncoder(clock), idr_counter_(0) {}
-
 CodecSpecificInfo FakeH264Encoder::EncodeHook(
     EncodedImage& encoded_image,
     rtc::scoped_refptr<EncodedImageBuffer> buffer) {
@@ -408,9 +400,9 @@ int32_t MultithreadedFakeH264Encoder::InitEncode(const VideoCodec* config,
                                                  const Settings& settings) {
   RTC_DCHECK_RUN_ON(&sequence_checker_);
 
-  queue1_ = env_->task_queue_factory().CreateTaskQueue(
+  queue1_ = env_.task_queue_factory().CreateTaskQueue(
       "Queue 1", TaskQueueFactory::Priority::NORMAL);
-  queue2_ = env_->task_queue_factory().CreateTaskQueue(
+  queue2_ = env_.task_queue_factory().CreateTaskQueue(
       "Queue 2", TaskQueueFactory::Priority::NORMAL);
 
   return FakeH264Encoder::InitEncode(config, settings);
