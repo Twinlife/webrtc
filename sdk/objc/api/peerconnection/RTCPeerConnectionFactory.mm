@@ -31,6 +31,8 @@
 #include "sdk/objc/native/api/ssl_certificate_verifier.h"
 #include "system_wrappers/include/field_trial.h"
 
+#include "api/audio/audio_device.h"
+#include "api/audio/audio_processing.h"
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
 #include "api/enable_media.h"
@@ -40,8 +42,6 @@
 #import "components/video_codec/RTCVideoDecoderFactoryH264.h"
 #import "components/video_codec/RTCVideoEncoderFactoryH264.h"
 #include "media/base/media_constants.h"
-#include "modules/audio_device/include/audio_device.h"
-#include "modules/audio_processing/include/audio_processing.h"
 
 #include "sdk/objc/native/api/objc_audio_device_module.h"
 #include "sdk/objc/native/api/video_decoder_factory.h"
@@ -119,7 +119,8 @@
 }
 
 - (instancetype)initNative {
-  if (self = [super init]) {
+  self = [super init];
+  if (self) {
     _networkThread = rtc::Thread::CreateWithSocketServer();
     _networkThread->SetName("network_thread", _networkThread.get());
     BOOL result = _networkThread->Start();
@@ -139,7 +140,8 @@
 }
 
 - (instancetype)initWithNoMedia {
-  if (self = [self initNative]) {
+  self = [self initNative];
+  if (self) {
     webrtc::PeerConnectionFactoryDependencies dependencies;
     dependencies.network_thread = _networkThread.get();
     dependencies.worker_thread = _workerThread.get();
@@ -186,7 +188,8 @@
                          networkControllerFactory:
                              (std::unique_ptr<webrtc::NetworkControllerFactoryInterface>)
                                  networkControllerFactory {
-  if (self = [self initNative]) {
+  self = [self initNative];
+  if (self) {
     webrtc::PeerConnectionFactoryDependencies dependencies;
     dependencies.network_thread = _networkThread.get();
     dependencies.worker_thread = _workerThread.get();

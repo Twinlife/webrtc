@@ -113,7 +113,8 @@
                 nativeRtpSender:(rtc::scoped_refptr<webrtc::RtpSenderInterface>)nativeRtpSender {
   NSParameterAssert(factory);
   NSParameterAssert(nativeRtpSender);
-  if (self = [super init]) {
+  self = [super init];
+  if (self) {
     _factory = factory;
     _nativeRtpSender = nativeRtpSender;
     /* -- twinlife 2022-04-13: disable DTMF sender as per Threema improvement.

@@ -152,4 +152,4 @@ public class RtpSender {
   private static native void nativeSetFrameEncryptor(long rtpSender, long nativeFrameEncryptor);
 
   private static native String nativeGetMediaType(long rtpSender);
-};
+}

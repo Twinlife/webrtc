@@ -79,7 +79,7 @@ StreamInterfaceChannel::StreamInterfaceChannel(
 rtc::StreamResult StreamInterfaceChannel::Read(rtc::ArrayView<uint8_t> buffer,
                                                size_t& read,
                                                int& error) {
-  RTC_DCHECK_RUN_ON(&sequence_checker_);
+  RTC_DCHECK_RUN_ON(&callback_sequence_);
 
   if (state_ == rtc::SS_CLOSED)
     return rtc::SR_EOS;
@@ -97,7 +97,7 @@ rtc::StreamResult StreamInterfaceChannel::Write(
     rtc::ArrayView<const uint8_t> data,
     size_t& written,
     int& error) {
-  RTC_DCHECK_RUN_ON(&sequence_checker_);
+  RTC_DCHECK_RUN_ON(&callback_sequence_);
   // Always succeeds, since this is an unreliable transport anyway.
   // TODO(zhihuang): Should this block if ice_transport_'s temporarily
   // unwritable?
@@ -109,7 +109,7 @@ rtc::StreamResult StreamInterfaceChannel::Write(
 }
 
 bool StreamInterfaceChannel::OnPacketReceived(const char* data, size_t size) {
-  RTC_DCHECK_RUN_ON(&sequence_checker_);
+  RTC_DCHECK_RUN_ON(&callback_sequence_);
   if (packets_.size() > 0) {
     RTC_LOG(LS_WARNING) << "Packet already in queue.";
   }
@@ -121,17 +121,17 @@ bool StreamInterfaceChannel::OnPacketReceived(const char* data, size_t size) {
     // packet currently in packets_.
     RTC_LOG(LS_ERROR) << "Failed to write packet to queue.";
   }
-  SignalEvent(this, rtc::SE_READ, 0);
+  FireEvent(rtc::SE_READ, 0);
   return ret;
 }
 
 rtc::StreamState StreamInterfaceChannel::GetState() const {
-  RTC_DCHECK_RUN_ON(&sequence_checker_);
+  RTC_DCHECK_RUN_ON(&callback_sequence_);
   return state_;
 }
 
 void StreamInterfaceChannel::Close() {
-  RTC_DCHECK_RUN_ON(&sequence_checker_);
+  RTC_DCHECK_RUN_ON(&callback_sequence_);
   packets_.Clear();
   state_ = rtc::SS_CLOSED;
 }
@@ -237,7 +237,7 @@ webrtc::RTCError DtlsTransport::SetRemoteParameters(
     absl::string_view digest_alg,
     const uint8_t* digest,
     size_t digest_len,
-    absl::optional<rtc::SSLRole> role) {
+    std::optional<rtc::SSLRole> role) {
   rtc::Buffer remote_fingerprint_value(digest, digest_len);
   bool is_dtls_restart =
       dtls_active_ && remote_fingerprint_value_ != remote_fingerprint_value;
@@ -376,10 +376,10 @@ bool DtlsTransport::SetupDtls() {
   }
 
   dtls_->SetIdentity(local_certificate_->identity()->Clone());
-  dtls_->SetMode(rtc::SSL_MODE_DTLS);
   dtls_->SetMaxProtocolVersion(ssl_max_version_);
   dtls_->SetServerRole(*dtls_role_);
-  dtls_->SignalEvent.connect(this, &DtlsTransport::OnDtlsEvent);
+  dtls_->SetEventCallback(
+      [this](int events, int err) { OnDtlsEvent(events, err); });
   if (remote_fingerprint_value_.size() &&
       !dtls_->SetPeerCertificateDigest(
           remote_fingerprint_algorithm_,
@@ -506,7 +506,7 @@ int DtlsTransport::GetError() {
   return ice_transport_->GetError();
 }
 
-absl::optional<rtc::NetworkRoute> DtlsTransport::network_route() const {
+std::optional<rtc::NetworkRoute> DtlsTransport::network_route() const {
   return ice_transport_->network_route();
 }
 
@@ -698,9 +698,8 @@ void DtlsTransport::OnReadyToSend(rtc::PacketTransportInternal* transport) {
   }
 }
 
-void DtlsTransport::OnDtlsEvent(rtc::StreamInterface* dtls, int sig, int err) {
+void DtlsTransport::OnDtlsEvent(int sig, int err) {
   RTC_DCHECK_RUN_ON(&thread_checker_);
-  RTC_DCHECK(dtls == dtls_.get());
   if (sig & rtc::SE_OPEN) {
     // This is the first time.
     RTC_LOG(LS_INFO) << ToString() << ": DTLS handshake complete.";
@@ -760,7 +759,7 @@ void DtlsTransport::OnDtlsEvent(rtc::StreamInterface* dtls, int sig, int err) {
 }
 
 void DtlsTransport::OnNetworkRouteChanged(
-    absl::optional<rtc::NetworkRoute> network_route) {
+    std::optional<rtc::NetworkRoute> network_route) {
   RTC_DCHECK_RUN_ON(&thread_checker_);
   SignalNetworkRouteChanged(network_route);
 }
@@ -873,7 +872,7 @@ void DtlsTransport::OnDtlsHandshakeError(rtc::SSLHandshakeError error) {
 
 void DtlsTransport::ConfigureHandshakeTimeout() {
   RTC_DCHECK(dtls_);
-  absl::optional<int> rtt = ice_transport_->GetRttEstimate();
+  std::optional<int> rtt = ice_transport_->GetRttEstimate();
   if (rtt) {
     // Limit the timeout to a reasonable range in case the ICE RTT takes
     // extreme values.

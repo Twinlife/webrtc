@@ -12,14 +12,16 @@
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
+#include "api/audio/audio_device.h"
 #include "api/audio/audio_mixer.h"
+#include "api/audio/audio_processing.h"
 #include "api/candidate.h"
 #include "api/ice_transport_interface.h"
 #include "api/jsep.h"
@@ -27,8 +29,6 @@
 #include "api/peer_connection_interface.h"
 #include "api/rtc_error.h"
 #include "api/scoped_refptr.h"
-#include "modules/audio_device/include/audio_device.h"
-#include "modules/audio_processing/include/audio_processing.h"
 #include "p2p/base/fake_port_allocator.h"
 #include "p2p/base/ice_transport_internal.h"
 #include "p2p/base/p2p_constants.h"
@@ -1473,7 +1473,7 @@ TEST_F(PeerConnectionIceConfigTest, SetStunCandidateKeepaliveInterval) {
   config.ice_candidate_pool_size = 1;
   CreatePeerConnection(config);
   ASSERT_NE(port_allocator_, nullptr);
-  absl::optional<int> actual_stun_keepalive_interval =
+  std::optional<int> actual_stun_keepalive_interval =
       port_allocator_->stun_candidate_keepalive_interval();
   EXPECT_EQ(actual_stun_keepalive_interval.value_or(-1), 123);
   config.stun_candidate_keepalive_interval = 321;

@@ -249,9 +249,7 @@ void TaskQueueStdlib::ProcessTasks() {
       continue;
     }
 
-    // --twinlife-- 2022-10-24: don't warn after 3s but after the same timeout delay.
     flag_notify_.Wait(task.sleep_time, task.sleep_time);
-    // --twinlife-- 2022-10-24
   }
 
   // Ensure remaining deleted tasks are destroyed with Current() set up to this

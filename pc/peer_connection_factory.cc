@@ -135,14 +135,14 @@ RtpCapabilities PeerConnectionFactory::GetRtpSenderCapabilities(
   RTC_DCHECK_RUN_ON(signaling_thread());
   switch (kind) {
     case cricket::MEDIA_TYPE_AUDIO: {
-      cricket::AudioCodecs cricket_codecs;
+      cricket::Codecs cricket_codecs;
       cricket_codecs = media_engine()->voice().send_codecs();
       auto extensions =
           GetDefaultEnabledRtpHeaderExtensions(media_engine()->voice());
       return ToRtpCapabilities(cricket_codecs, extensions);
     }
     case cricket::MEDIA_TYPE_VIDEO: {
-      cricket::VideoCodecs cricket_codecs;
+      cricket::Codecs cricket_codecs;
       cricket_codecs = media_engine()->video().send_codecs(context_->use_rtx());
       auto extensions =
           GetDefaultEnabledRtpHeaderExtensions(media_engine()->video());
@@ -162,14 +162,14 @@ RtpCapabilities PeerConnectionFactory::GetRtpReceiverCapabilities(
   RTC_DCHECK_RUN_ON(signaling_thread());
   switch (kind) {
     case cricket::MEDIA_TYPE_AUDIO: {
-      cricket::AudioCodecs cricket_codecs;
+      cricket::Codecs cricket_codecs;
       cricket_codecs = media_engine()->voice().recv_codecs();
       auto extensions =
           GetDefaultEnabledRtpHeaderExtensions(media_engine()->voice());
       return ToRtpCapabilities(cricket_codecs, extensions);
     }
     case cricket::MEDIA_TYPE_VIDEO: {
-      cricket::VideoCodecs cricket_codecs =
+      cricket::Codecs cricket_codecs =
           media_engine()->video().recv_codecs(context_->use_rtx());
       auto extensions =
           GetDefaultEnabledRtpHeaderExtensions(media_engine()->video());
@@ -265,8 +265,13 @@ PeerConnectionFactory::CreatePeerConnectionOrError(
   // --twinlife-- 2024-05-28: small optimization for P2P without media
   std::unique_ptr<Call> call;
   if (media_engine()) {
-      call = worker_thread()->BlockingCall([this, &env, &configuration] {
-        return CreateCall_w(env, configuration);
+     std::unique_ptr<NetworkControllerFactoryInterface>
+      network_controller_factory =
+          std::move(dependencies.network_controller_factory);
+     call = worker_thread()->BlockingCall(
+      [this, &env, &configuration, &network_controller_factory] {
+        return CreateCall_w(env, std::move(configuration),
+                            std::move(network_controller_factory));
       });
   } else {
     call = nullptr;
@@ -317,7 +322,9 @@ rtc::scoped_refptr<AudioTrackInterface> PeerConnectionFactory::CreateAudioTrack(
 
 std::unique_ptr<Call> PeerConnectionFactory::CreateCall_w(
     const Environment& env,
-    const PeerConnectionInterface::RTCConfiguration& configuration) {
+    const PeerConnectionInterface::RTCConfiguration& configuration,
+    std::unique_ptr<NetworkControllerFactoryInterface>
+        per_call_network_controller_factory) {
   RTC_DCHECK_RUN_ON(worker_thread());
 
   CallConfig call_config(env, network_thread());
@@ -347,8 +354,12 @@ std::unique_ptr<Call> PeerConnectionFactory::CreateCall_w(
       network_state_predictor_factory_.get();
   call_config.neteq_factory = neteq_factory_.get();
 
-  if (IsTrialEnabled("WebRTC-Bwe-InjectedCongestionController")) {
-    RTC_LOG(LS_INFO) << "Using injected network controller factory";
+  if (per_call_network_controller_factory != nullptr) {
+    RTC_LOG(LS_INFO) << "Using pc injected network controller factory";
+    call_config.per_call_network_controller_factory =
+        std::move(per_call_network_controller_factory);
+  } else if (IsTrialEnabled("WebRTC-Bwe-InjectedCongestionController")) {
+    RTC_LOG(LS_INFO) << "Using pcf injected network controller factory";
     call_config.network_controller_factory =
         injected_network_controller_factory_.get();
   } else {
@@ -360,7 +371,7 @@ std::unique_ptr<Call> PeerConnectionFactory::CreateCall_w(
   call_config.decode_metronome = decode_metronome_.get();
   call_config.encode_metronome = encode_metronome_.get();
   call_config.pacer_burst_interval = configuration.pacer_burst_interval;
-  return context_->call_factory()->CreateCall(call_config);
+  return context_->call_factory()->CreateCall(std::move(call_config));
 }
 
 bool PeerConnectionFactory::IsTrialEnabled(absl::string_view key) const {

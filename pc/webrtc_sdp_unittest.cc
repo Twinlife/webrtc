@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -23,8 +24,9 @@
 #include "absl/memory/memory.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "api/array_view.h"
+#include "api/candidate.h"
+#include "api/jsep.h"
 #include "api/jsep_session_description.h"
 #include "api/media_types.h"
 #include "api/rtp_parameters.h"
@@ -1880,15 +1882,15 @@ class WebRtcSdpTest : public ::testing::Test {
         GetFirstVideoContentDescription(jdesc_output->description());
     ASSERT_TRUE(vcd);
     ASSERT_FALSE(vcd->codecs().empty());
-    cricket::VideoCodec vp8 = vcd->codecs()[0];
+    cricket::Codec vp8 = vcd->codecs()[0];
     EXPECT_EQ("VP8", vp8.name);
     EXPECT_EQ(99, vp8.id);
-    cricket::VideoCodec rtx = vcd->codecs()[1];
+    cricket::Codec rtx = vcd->codecs()[1];
     EXPECT_EQ("RTX", rtx.name);
     EXPECT_EQ(95, rtx.id);
     VerifyCodecParameter(rtx.params, "apt", vp8.id);
     // VP9 is listed last in the m= line so should come after VP8 and RTX.
-    cricket::VideoCodec vp9 = vcd->codecs()[2];
+    cricket::Codec vp9 = vcd->codecs()[2];
     EXPECT_EQ("VP9", vp9.name);
     EXPECT_EQ(96, vp9.id);
   }
@@ -1935,7 +1937,7 @@ class WebRtcSdpTest : public ::testing::Test {
         GetFirstVideoContentDescription(jdesc_output->description());
     ASSERT_TRUE(vcd);
     ASSERT_FALSE(vcd->codecs().empty());
-    cricket::VideoCodec vp8 = vcd->codecs()[0];
+    cricket::Codec vp8 = vcd->codecs()[0];
     EXPECT_EQ(vp8.name, "VP8");
     EXPECT_EQ(101, vp8.id);
     EXPECT_TRUE(vp8.HasFeedbackParam(cricket::FeedbackParam(
@@ -2280,7 +2282,9 @@ TEST_F(WebRtcSdpTest, ParseSslTcpCandidate) {
 }
 
 TEST_F(WebRtcSdpTest, SerializeSessionDescriptionWithH264) {
-  cricket::VideoCodec h264_codec = cricket::CreateVideoCodec("H264");
+  cricket::Codec h264_codec = cricket::CreateVideoCodec("H264");
+  // Id must be valid, but value doesn't matter.
+  h264_codec.id = 123;
   h264_codec.SetParam("profile-level-id", "42e01f");
   h264_codec.SetParam("level-asymmetry-allowed", "1");
   h264_codec.SetParam("packetization-mode", "1");
@@ -2368,7 +2372,7 @@ TEST_F(WebRtcSdpTest, DeserializeSessionDescriptionWithoutRtpmap) {
   EXPECT_TRUE(SdpDeserialize(kSdpNoRtpmapString, &jdesc));
   cricket::AudioContentDescription* audio =
       cricket::GetFirstAudioContentDescription(jdesc.description());
-  cricket::AudioCodecs ref_codecs;
+  cricket::Codecs ref_codecs;
   // The codecs in the AudioContentDescription should be in the same order as
   // the payload types (<fmt>s) on the m= line.
   ref_codecs.push_back(cricket::CreateAudioCodec(0, "PCMU", 8000, 1));
@@ -3232,7 +3236,7 @@ TEST_F(WebRtcSdpTest, DeserializeVideoFmtp) {
       GetFirstVideoContentDescription(jdesc_output.description());
   ASSERT_TRUE(vcd);
   ASSERT_FALSE(vcd->codecs().empty());
-  cricket::VideoCodec vp8 = vcd->codecs()[0];
+  cricket::Codec vp8 = vcd->codecs()[0];
   EXPECT_EQ("VP8", vp8.name);
   EXPECT_EQ(120, vp8.id);
   webrtc::CodecParameterMap::iterator found =
@@ -3266,7 +3270,7 @@ TEST_F(WebRtcSdpTest, DeserializeVideoFmtpWithSprops) {
       GetFirstVideoContentDescription(jdesc_output.description());
   ASSERT_TRUE(vcd);
   ASSERT_FALSE(vcd->codecs().empty());
-  cricket::VideoCodec h264 = vcd->codecs()[0];
+  cricket::Codec h264 = vcd->codecs()[0];
   EXPECT_EQ("H264", h264.name);
   EXPECT_EQ(98, h264.id);
   webrtc::CodecParameterMap::const_iterator found =
@@ -3299,7 +3303,7 @@ TEST_F(WebRtcSdpTest, DeserializeVideoFmtpWithSpace) {
       GetFirstVideoContentDescription(jdesc_output.description());
   ASSERT_TRUE(vcd);
   ASSERT_FALSE(vcd->codecs().empty());
-  cricket::VideoCodec vp8 = vcd->codecs()[0];
+  cricket::Codec vp8 = vcd->codecs()[0];
   EXPECT_EQ("VP8", vp8.name);
   EXPECT_EQ(120, vp8.id);
   webrtc::CodecParameterMap::iterator found =
@@ -3345,24 +3349,24 @@ TEST_F(WebRtcSdpTest, DeserializePacketizationAttributeWithIllegalValue) {
       GetFirstVideoContentDescription(jdesc_output.description());
   ASSERT_TRUE(vcd);
   ASSERT_THAT(vcd->codecs(), testing::SizeIs(3));
-  cricket::VideoCodec vp8 = vcd->codecs()[0];
+  cricket::Codec vp8 = vcd->codecs()[0];
   EXPECT_EQ(vp8.name, "VP8");
   EXPECT_EQ(vp8.id, 120);
   EXPECT_EQ(vp8.packetization, "raw");
-  cricket::VideoCodec vp9 = vcd->codecs()[1];
+  cricket::Codec vp9 = vcd->codecs()[1];
   EXPECT_EQ(vp9.name, "VP9");
   EXPECT_EQ(vp9.id, 121);
-  EXPECT_EQ(vp9.packetization, absl::nullopt);
-  cricket::VideoCodec h264 = vcd->codecs()[2];
+  EXPECT_EQ(vp9.packetization, std::nullopt);
+  cricket::Codec h264 = vcd->codecs()[2];
   EXPECT_EQ(h264.name, "H264");
   EXPECT_EQ(h264.id, 122);
-  EXPECT_EQ(h264.packetization, absl::nullopt);
+  EXPECT_EQ(h264.packetization, std::nullopt);
 }
 
 TEST_F(WebRtcSdpTest, SerializeAudioFmtpWithUnknownParameter) {
   AudioContentDescription* acd = GetFirstAudioContentDescription(&desc_);
 
-  cricket::AudioCodecs codecs = acd->codecs();
+  cricket::Codecs codecs = acd->codecs();
   codecs[0].params["unknown-future-parameter"] = "SomeFutureValue";
   acd->set_codecs(codecs);
 
@@ -3379,7 +3383,7 @@ TEST_F(WebRtcSdpTest, SerializeAudioFmtpWithUnknownParameter) {
 TEST_F(WebRtcSdpTest, SerializeAudioFmtpWithKnownFmtpParameter) {
   AudioContentDescription* acd = GetFirstAudioContentDescription(&desc_);
 
-  cricket::AudioCodecs codecs = acd->codecs();
+  cricket::Codecs codecs = acd->codecs();
   codecs[0].params["stereo"] = "1";
   acd->set_codecs(codecs);
 
@@ -3395,7 +3399,7 @@ TEST_F(WebRtcSdpTest, SerializeAudioFmtpWithKnownFmtpParameter) {
 TEST_F(WebRtcSdpTest, SerializeAudioFmtpWithPTimeAndMaxPTime) {
   AudioContentDescription* acd = GetFirstAudioContentDescription(&desc_);
 
-  cricket::AudioCodecs codecs = acd->codecs();
+  cricket::Codecs codecs = acd->codecs();
   codecs[0].params["ptime"] = "20";
   codecs[0].params["maxptime"] = "120";
   acd->set_codecs(codecs);
@@ -3414,7 +3418,7 @@ TEST_F(WebRtcSdpTest, SerializeAudioFmtpWithPTimeAndMaxPTime) {
 TEST_F(WebRtcSdpTest, SerializeAudioFmtpWithTelephoneEvent) {
   AudioContentDescription* acd = GetFirstAudioContentDescription(&desc_);
 
-  cricket::AudioCodecs codecs = acd->codecs();
+  cricket::Codecs codecs = acd->codecs();
   cricket::Codec dtmf =
       cricket::CreateAudioCodec(105, "telephone-event", 8000, 1);
   dtmf.params[""] = "0-15";
@@ -3437,7 +3441,7 @@ TEST_F(WebRtcSdpTest, SerializeAudioFmtpWithTelephoneEvent) {
 TEST_F(WebRtcSdpTest, SerializeVideoFmtp) {
   VideoContentDescription* vcd = GetFirstVideoContentDescription(&desc_);
 
-  cricket::VideoCodecs codecs = vcd->codecs();
+  cricket::Codecs codecs = vcd->codecs();
   codecs[0].params["x-google-min-bitrate"] = "10";
   vcd->set_codecs(codecs);
 
@@ -3453,7 +3457,7 @@ TEST_F(WebRtcSdpTest, SerializeVideoFmtp) {
 TEST_F(WebRtcSdpTest, SerializeVideoPacketizationAttribute) {
   VideoContentDescription* vcd = GetFirstVideoContentDescription(&desc_);
 
-  cricket::VideoCodecs codecs = vcd->codecs();
+  cricket::Codecs codecs = vcd->codecs();
   codecs[0].packetization = "raw";
   vcd->set_codecs(codecs);
 
@@ -5122,4 +5126,25 @@ TEST_F(WebRtcSdpTest, BackfillsDefaultFmtpValues) {
   EXPECT_EQ(value, "93");
   EXPECT_TRUE(codecs[3].GetParam("tx-mode", &value));
   EXPECT_EQ(value, "SRST");
+}
+
+TEST_F(WebRtcSdpTest, ParsesKeyValueFmtpParameterSet) {
+  std::string params = "key1=value1;key2=value2";
+  webrtc::CodecParameterMap codec_params;
+  SdpParseError error;
+
+  ASSERT_TRUE(webrtc::ParseFmtpParameterSet(params, codec_params, &error));
+  EXPECT_EQ(2U, codec_params.size());
+  EXPECT_EQ(codec_params["key1"], "value1");
+  EXPECT_EQ(codec_params["key2"], "value2");
+}
+
+TEST_F(WebRtcSdpTest, ParsesNonKeyValueFmtpParameterSet) {
+  std::string params = "not-in-key-value-format";
+  webrtc::CodecParameterMap codec_params;
+  SdpParseError error;
+
+  ASSERT_TRUE(webrtc::ParseFmtpParameterSet(params, codec_params, &error));
+  EXPECT_EQ(1U, codec_params.size());
+  EXPECT_EQ(codec_params[""], "not-in-key-value-format");
 }

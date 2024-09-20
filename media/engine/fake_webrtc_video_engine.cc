@@ -32,7 +32,7 @@ static constexpr webrtc::TimeDelta kEventTimeout =
 
 bool IsScalabilityModeSupported(
     const std::vector<webrtc::SdpVideoFormat>& formats,
-    absl::optional<std::string> scalability_mode) {
+    std::optional<std::string> scalability_mode) {
   if (!scalability_mode.has_value()) {
     return true;
   }
@@ -120,8 +120,8 @@ void FakeWebRtcVideoDecoderFactory::DecoderDestroyed(
 
 void FakeWebRtcVideoDecoderFactory::AddSupportedVideoCodecType(
     const std::string& name) {
-  // This is to match the default H264 params of cricket::VideoCodec.
-  cricket::VideoCodec video_codec = cricket::CreateVideoCodec(name);
+  // This is to match the default H264 params of cricket::Codec.
+  cricket::Codec video_codec = cricket::CreateVideoCodec(name);
   supported_codec_formats_.push_back(
       webrtc::SdpVideoFormat(video_codec.name, video_codec.params));
 }
@@ -222,7 +222,7 @@ FakeWebRtcVideoEncoderFactory::GetSupportedFormats() const {
 webrtc::VideoEncoderFactory::CodecSupport
 FakeWebRtcVideoEncoderFactory::QueryCodecSupport(
     const webrtc::SdpVideoFormat& format,
-    absl::optional<std::string> scalability_mode) const {
+    std::optional<std::string> scalability_mode) const {
   std::vector<webrtc::SdpVideoFormat> supported_formats;
   for (const auto& f : formats_) {
     if (format.IsSameCodec(f))
@@ -287,8 +287,8 @@ void FakeWebRtcVideoEncoderFactory::AddSupportedVideoCodec(
 void FakeWebRtcVideoEncoderFactory::AddSupportedVideoCodecType(
     const std::string& name,
     const std::vector<webrtc::ScalabilityMode>& scalability_modes) {
-  // This is to match the default H264 params of cricket::VideoCodec.
-  cricket::VideoCodec video_codec = cricket::CreateVideoCodec(name);
+  // This is to match the default H264 params of cricket::Codec.
+  cricket::Codec video_codec = cricket::CreateVideoCodec(name);
   formats_.push_back(webrtc::SdpVideoFormat(
       video_codec.name, video_codec.params,
       {scalability_modes.begin(), scalability_modes.end()}));
