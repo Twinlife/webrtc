@@ -494,9 +494,6 @@ bool PeerConnectionInterface::RTCConfiguration::operator==(
     bool active_reset_srtp_params;
     std::optional<CryptoOptions> crypto_options;
     bool offer_extmap_allow_mixed;
-    // --twinlife-- 180202
-    rtc::ProxyInfo proxy_info;
-    // --twinlife-- 180202
     // --twinlife 2023-07-11: provide hostname resolution
     std::vector<webrtc::StaticHostname> host_addresses;
     // --twinlife 2023-07-11: provide hostname resolution

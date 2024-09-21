@@ -815,6 +815,7 @@ if (current_os == "linux" || is_android) {
       "../../stats:rtc_stats",
       "../../system_wrappers:field_trial",
       "//third_party/abseil-cpp/absl/memory",
+      "//third_party/boringssl",
       "//third_party/jni_zero",
     ]
   }

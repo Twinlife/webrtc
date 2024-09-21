@@ -654,10 +654,6 @@ class RTC_EXPORT PeerConnectionInterface : public webrtc::RefCountInterface {
     // our offer on session level.
     bool offer_extmap_allow_mixed = true;
 
-    // --twinlife-- 180202
-    rtc::ProxyInfo proxy_info;
-    // --twinlife-- 180202
-
     // --twinlife 2023-07-11: provide hostname resolution
     std::vector<webrtc::StaticHostname> host_addresses;
     // --twinlife 2023-07-11: provide hostname resolution

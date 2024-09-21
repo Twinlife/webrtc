@@ -6,7 +6,9 @@
 # in the file PATENTS.  All contributing project authors may
 # be found in the AUTHORS file in the root of the source tree.
 
-import("//third_party/protobuf/proto_library.gni")
+# --twinlife-- 2024-09-21: we don't use protobuf
+# import("//third_party/protobuf/proto_library.gni")
+# --twinlife-- 2024-09-21: we don't use protobuf
 import("../../../webrtc.gni")
 
 if (rtc_enable_protobuf) {

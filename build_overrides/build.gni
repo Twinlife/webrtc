@@ -34,8 +34,10 @@ ubsan_vptr_ignorelist_path =
 # so we just ignore that assert. See https://crbug.com/648948 for more info.
 ignore_elf32_limitations = true
 
-perfetto_build_with_embedder = true
-enable_perfetto_trace_processor = true
+# --twinlife-- 2024-09-21: Disable perfetto
+perfetto_build_with_embedder = false
+enable_perfetto_trace_processor = false
+# --twinlife-- 2024-09-21: Disable perfetto
 
 # Use bundled hermetic Xcode installation maintainted by Chromium,
 # except for local iOS builds where it's unsupported.
@@ -69,5 +71,7 @@ declare_args() {
 
   # If true, it assumes that //third_party/abseil-cpp is an available
   # dependency for googletest.
-  gtest_enable_absl_printers = true
+  # --twinlife-- 2024-09-21: Disable perfetto
+  gtest_enable_absl_printers = false
+  # --twinlife-- 2024-09-21: Disable perfetto
 }

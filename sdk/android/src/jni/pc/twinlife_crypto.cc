@@ -205,22 +205,22 @@ namespace jni {
     delete this;
   }
   
-  static base::android::ScopedJavaLocalRef<jobject> JNI_CryptoKey_Create(JNIEnv* env, jint kind) {
+  static ScopedJavaLocalRef<jobject> JNI_CryptoKey_Create(JNIEnv* env, jint kind) {
 
     CryptoKey *crypto = CryptoKey::create<CryptoKey>((CryptoKey::Kind)kind);
     return Java_CryptoKey_Constructor(env, NativeToJavaPointer(crypto));
   }
 
-  static base::android::ScopedJavaLocalRef<jobject> JNI_CryptoBox_Create(JNIEnv* env, jint kind) {
+  static ScopedJavaLocalRef<jobject> JNI_CryptoBox_Create(JNIEnv* env, jint kind) {
 
     CryptoBox *crypto = CryptoBox::create<CryptoBox>((CryptoBox::Kind)kind);
     return Java_CryptoBox_Constructor(env, NativeToJavaPointer(crypto));
   }
 
-static base::android::ScopedJavaLocalRef<jobject> JNI_CryptoKey_ImportPrivateKey(JNIEnv* env,
-                                                                                 jint kind,
-                                                                                 const base::android::JavaParamRef<jbyteArray>& privateKey,
-                                                                                 jboolean isBase64) {
+static ScopedJavaLocalRef<jobject> JNI_CryptoKey_ImportPrivateKey(JNIEnv* env,
+								  jint kind,
+								  const JavaParamRef<jbyteArray>& privateKey,
+								  jboolean isBase64) {
   jbyte* buffer = env->GetByteArrayElements(privateKey.obj(), nullptr);
   size_t length = env->GetArrayLength(privateKey.obj());
 
@@ -231,10 +231,10 @@ static base::android::ScopedJavaLocalRef<jobject> JNI_CryptoKey_ImportPrivateKey
   return Java_CryptoKey_Constructor(env, NativeToJavaPointer(crypto));
 }
 
-static base::android::ScopedJavaLocalRef<jobject> JNI_CryptoKey_ImportPublicKey(JNIEnv* env,
-                                                                                jint kind,
-                                                                                const base::android::JavaParamRef<jbyteArray>& publicKey,
-                                                                                jboolean isBase64) {
+static ScopedJavaLocalRef<jobject> JNI_CryptoKey_ImportPublicKey(JNIEnv* env,
+								 jint kind,
+								 const JavaParamRef<jbyteArray>& publicKey,
+								 jboolean isBase64) {
   jbyte* buffer = env->GetByteArrayElements(publicKey.obj(), nullptr);
   size_t length = env->GetArrayLength(publicKey.obj());
 
@@ -246,7 +246,7 @@ static base::android::ScopedJavaLocalRef<jobject> JNI_CryptoKey_ImportPublicKey(
 }
 
 static ScopedJavaLocalRef<jbyteArray> JNI_CryptoKey_ExtractAuthPublicKey(JNIEnv* env,
-                                                                         const base::android::JavaParamRef<jstring>& signature) {
+                                                                         const JavaParamRef<jstring>& signature) {
   std::string sig = JavaToNativeString(env, signature);
   unsigned char pubKey[TWINLIFE_MAX_SIZE];
 
