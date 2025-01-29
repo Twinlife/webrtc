@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2023-2024 twinlife SA.
+ *  Copyright (c) 2023-2025 twinlife SA.
  *
  *  All Rights Reserved.
  *
@@ -241,7 +241,7 @@ namespace twinlife {
                            const unsigned char* salt, size_t saltLength,
                            unsigned char* key, size_t keyLength);
 
-    static int HKDF(unsigned char* buffer, size_t sharedKeyLength,
+    static int HMAC(unsigned char* buffer, size_t sharedKeyLength,
                     const CryptoKey* firstKey, const CryptoKey* secondKey,
                     const unsigned char* salt, size_t saltLength,
                     unsigned char* key, size_t keyLength);

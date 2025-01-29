@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2023-2024 twinlife SA.
+ *  Copyright (c) 2023-2025 twinlife SA.
  *
  *  All Rights Reserved.
  *
@@ -773,21 +773,21 @@ int CryptoBox::createSharedSecret(bool direction, const CryptoKey *privateKey, c
 
   int result;
   if (direction) {
-    result = HKDF(buffer, sharedKeyLength, privateKey, peerPublicKey, salt, saltLength, key, keyLength);
+    result = HMAC(buffer, sharedKeyLength, privateKey, peerPublicKey, salt, saltLength, key, keyLength);
   } else {
-    result = HKDF(buffer, sharedKeyLength, peerPublicKey, privateKey, salt, saltLength, key, keyLength);
+    result = HMAC(buffer, sharedKeyLength, peerPublicKey, privateKey, salt, saltLength, key, keyLength);
   }
   OPENSSL_free(buffer);
 
   return result;
 }
 
-int CryptoBox::HKDF(unsigned char* buffer, size_t sharedKeyLength,
+int CryptoBox::HMAC(unsigned char* buffer, size_t sharedKeyLength,
                     const CryptoKey* firstKey, const CryptoKey* secondKey,
                     const unsigned char* salt, size_t saltLength,
                     unsigned char* key, size_t keyLength)
 {
-  // Build key with HKDF(sharedKey, { salt || pubKeyA || pubKeyB })
+  // Build key with HMAC(sharedKey, { salt || pubKeyA || pubKeyB })
   HMAC_CTX ctx;
   HMAC_CTX_init(&ctx);
 
