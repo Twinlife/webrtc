@@ -19,7 +19,7 @@
 #include "pc/media_stream_observer.h"
 #include "sdk/android/src/jni/jni_helpers.h"
 #include "sdk/android/src/jni/pc/media_constraints.h"
-#include "sdk/android/src/jni/pc/media_stream.h"
+// twinlife #include "sdk/android/src/jni/pc/media_stream.h"
 #include "sdk/android/src/jni/pc/rtp_receiver.h"
 #include "sdk/android/src/jni/pc/rtp_transceiver.h"
 
@@ -74,29 +74,29 @@ class PeerConnectionObserverJni : public PeerConnectionObserver {
       PeerConnectionInterface::IceGatheringState new_state) override;
   void OnIceSelectedCandidatePairChanged(
       const cricket::CandidatePairChangeEvent& event) override;
-  void OnAddStream(rtc::scoped_refptr<MediaStreamInterface> stream) override;
-  void OnRemoveStream(rtc::scoped_refptr<MediaStreamInterface> stream) override;
+  // twinlife void OnAddStream(rtc::scoped_refptr<MediaStreamInterface> stream) override;
+  // twinlife void OnRemoveStream(rtc::scoped_refptr<MediaStreamInterface> stream) override;
   void OnDataChannel(rtc::scoped_refptr<DataChannelInterface> channel) override;
   void OnRenegotiationNeeded() override;
-  void OnAddTrack(rtc::scoped_refptr<RtpReceiverInterface> receiver,
-                  const std::vector<rtc::scoped_refptr<MediaStreamInterface>>&
-                      streams) override;
+  // twinlife void OnAddTrack(rtc::scoped_refptr<RtpReceiverInterface> receiver,
+  //                const std::vector<rtc::scoped_refptr<MediaStreamInterface>>&
+  //                    streams) override;
   void OnTrack(
       rtc::scoped_refptr<RtpTransceiverInterface> transceiver) override;
   void OnRemoveTrack(
       rtc::scoped_refptr<RtpReceiverInterface> receiver) override;
 
  private:
-  typedef std::map<MediaStreamInterface*, JavaMediaStream>
-      NativeToJavaStreamsMap;
+  // twinlife typedef std::map<MediaStreamInterface*, JavaMediaStream>
+  //    NativeToJavaStreamsMap;
   typedef std::map<MediaStreamTrackInterface*, RtpReceiverInterface*>
       NativeMediaStreamTrackToNativeRtpReceiver;
 
   // If the NativeToJavaStreamsMap contains the stream, return it.
   // Otherwise, create a new Java MediaStream. Returns a global jobject.
-  JavaMediaStream& GetOrCreateJavaStream(
-      JNIEnv* env,
-      const rtc::scoped_refptr<MediaStreamInterface>& stream);
+  // twinlife JavaMediaStream& GetOrCreateJavaStream(
+  //    JNIEnv* env,
+  //    const rtc::scoped_refptr<MediaStreamInterface>& stream);
 
   // Converts array of streams, creating or re-using Java streams as necessary.
   ScopedJavaLocalRef<jobjectArray> NativeToJavaMediaStreamArray(
@@ -106,7 +106,7 @@ class PeerConnectionObserverJni : public PeerConnectionObserver {
   const ScopedJavaGlobalRef<jobject> j_observer_global_;
 
   // C++ -> Java remote streams.
-  NativeToJavaStreamsMap remote_streams_;
+  // twinlife NativeToJavaStreamsMap remote_streams_;
   std::vector<JavaRtpReceiverGlobalOwner> rtp_receivers_;
   // Holds a reference to the Java transceivers given to the AddTrack
   // callback, so that the shared ownership by the Java object will be

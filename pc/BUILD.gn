@@ -973,7 +973,7 @@ rtc_source_set("sdp_offer_answer") {
     ":data_channel_controller",
     ":dtls_transport",
     ":jsep_transport_controller",
-    ":legacy_stats_collector",
+    # ":legacy_stats_collector",
     ":media_session",
     ":media_stream",
     ":media_stream_observer",
@@ -1080,7 +1080,7 @@ rtc_source_set("peer_connection") {
     ":dtls_transport",
     ":ice_server_parsing",
     ":jsep_transport_controller",
-    ":legacy_stats_collector",
+    # ":legacy_stats_collector",
     ":peer_connection_internal",
     ":peer_connection_message_handler",
     ":rtc_stats_collector",
@@ -1477,7 +1477,7 @@ rtc_library("peer_connection_message_handler") {
     "peer_connection_message_handler.h",
   ]
   deps = [
-    ":legacy_stats_collector_interface",
+    # ":legacy_stats_collector_interface",
     "../api:libjingle_peerconnection_api",
     "../api:media_stream_interface",
     "../api:rtc_error",
@@ -1564,7 +1564,7 @@ rtc_library("rtp_transmission_manager") {
     ":audio_rtp_receiver",
     ":channel",
     ":channel_interface",
-    ":legacy_stats_collector_interface",
+    # ":legacy_stats_collector_interface",
     ":rtp_receiver",
     ":rtp_receiver_proxy",
     ":rtp_sender",
@@ -1810,7 +1810,7 @@ rtc_library("rtp_sender") {
   ]
   deps = [
     ":dtmf_sender",
-    ":legacy_stats_collector_interface",
+    # ":legacy_stats_collector_interface",
     "../api:audio_options_api",
     "../api:dtls_transport_interface",
     "../api:dtmf_sender_interface",
@@ -2268,7 +2268,7 @@ if (rtc_include_tests && !build_with_chromium) {
       ":ice_server_parsing",
       ":integration_test_helpers",
       ":jitter_buffer_delay",
-      ":legacy_stats_collector",
+      # ":legacy_stats_collector",
       ":local_audio_source",
       ":media_protocol_names",
       ":media_session",

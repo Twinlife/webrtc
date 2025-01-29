@@ -49,8 +49,10 @@ PROXY_METHOD2(rtc::scoped_refptr<AudioTrackInterface>,
               CreateAudioTrack,
               const std::string&,
               AudioSourceInterface*)
+#ifdef WEBRTC_HAS_AECDUMP // --twinlife 2025-01-27: disable AEC dump
 PROXY_SECONDARY_METHOD2(bool, StartAecDump, FILE*, int64_t)
 PROXY_SECONDARY_METHOD0(void, StopAecDump)
+#endif // --twinlife 2025-01-27: disable AEC dump
 END_PROXY_MAP(PeerConnectionFactory)
 
 }  // namespace webrtc

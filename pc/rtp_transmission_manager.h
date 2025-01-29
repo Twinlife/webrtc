@@ -28,7 +28,9 @@
 #include "api/scoped_refptr.h"
 #include "api/sequence_checker.h"
 #include "media/base/media_channel.h"
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
 #include "pc/legacy_stats_collector_interface.h"
+#endif
 #include "pc/rtp_receiver.h"
 #include "pc/rtp_receiver_proxy.h"
 #include "pc/rtp_sender.h"
@@ -76,7 +78,9 @@ class RtpTransmissionManager : public RtpSenderBase::SetStreamsObserver {
                          ConnectionContext* context,
                          UsagePattern* usage_pattern,
                          PeerConnectionObserver* observer,
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
                          LegacyStatsCollectorInterface* legacy_stats,
+#endif
                          std::function<void()> on_negotiation_needed);
 
   // No move or copy permitted.
@@ -270,7 +274,9 @@ class RtpTransmissionManager : public RtpSenderBase::SetStreamsObserver {
   ConnectionContext* context_;
   UsagePattern* usage_pattern_;
   PeerConnectionObserver* observer_;
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
   LegacyStatsCollectorInterface* const legacy_stats_;
+#endif
   std::function<void()> on_negotiation_needed_;
   rtc::WeakPtrFactory<RtpTransmissionManager> weak_ptr_factory_
       RTC_GUARDED_BY(signaling_thread());

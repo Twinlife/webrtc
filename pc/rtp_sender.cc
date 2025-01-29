@@ -23,7 +23,9 @@
 #include "api/priority.h"
 #include "api/rtc_error.h"
 #include "media/base/media_engine.h"
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
 #include "pc/legacy_stats_collector_interface.h"
+#endif
 #include "rtc_base/checks.h"
 #include "rtc_base/crypto_random.h"
 #include "rtc_base/logging.h"
@@ -632,19 +634,25 @@ rtc::scoped_refptr<AudioRtpSender> AudioRtpSender::Create(
     const webrtc::Environment& env,
     rtc::Thread* worker_thread,
     const std::string& id,
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
     LegacyStatsCollectorInterface* stats,
+#endif
     SetStreamsObserver* set_streams_observer) {
-  return rtc::make_ref_counted<AudioRtpSender>(env, worker_thread, id, stats,
+  return rtc::make_ref_counted<AudioRtpSender>(env, worker_thread, id, // stats,
                                                set_streams_observer);
 }
 
 AudioRtpSender::AudioRtpSender(const webrtc::Environment& env,
                                rtc::Thread* worker_thread,
                                const std::string& id,
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
                                LegacyStatsCollectorInterface* legacy_stats,
+#endif
                                SetStreamsObserver* set_streams_observer)
     : RtpSenderBase(env, worker_thread, id, set_streams_observer),
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
       legacy_stats_(legacy_stats),
+#endif
       dtmf_sender_(DtmfSender::Create(rtc::Thread::Current(), this)),
       dtmf_sender_proxy_(
           DtmfSenderProxy::Create(rtc::Thread::Current(), dtmf_sender_)),
@@ -711,15 +719,19 @@ void AudioRtpSender::AttachTrack() {
 }
 
 void AudioRtpSender::AddTrackToStats() {
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
   if (can_send_track() && legacy_stats_) {
     legacy_stats_->AddLocalAudioTrack(audio_track().get(), ssrc_);
   }
+#endif
 }
 
 void AudioRtpSender::RemoveTrackFromStats() {
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
   if (can_send_track() && legacy_stats_) {
     legacy_stats_->RemoveLocalAudioTrack(audio_track().get(), ssrc_);
   }
+#endif
 }
 
 rtc::scoped_refptr<DtmfSenderInterface> AudioRtpSender::GetDtmfSender() const {

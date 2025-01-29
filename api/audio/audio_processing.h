@@ -623,6 +623,7 @@ class RTC_EXPORT AudioProcessing : public RefCountInterface {
   // with this chunk of audio.
   virtual void set_stream_key_pressed(bool key_pressed) = 0;
 
+#ifdef WEBRTC_HAS_AECDUMP // --twinlife 2025-01-27: disable AEC dump
   // Creates and attaches an webrtc::AecDump for recording debugging
   // information.
   // The `worker_queue` may not be null and must outlive the created
@@ -655,6 +656,7 @@ class RTC_EXPORT AudioProcessing : public RefCountInterface {
   // attached, it's destructor is called. The d-tor may block until
   // all pending logging tasks are completed.
   virtual void DetachAecDump() = 0;
+#endif // --twinlife 2025-01-27: disable AEC dump
 
   // Get audio processing statistics.
   virtual AudioProcessingStats GetStatistics() = 0;

@@ -919,6 +919,7 @@ class RTC_EXPORT PeerConnectionInterface : public webrtc::RefCountInterface {
   virtual std::vector<rtc::scoped_refptr<RtpTransceiverInterface>>
   GetTransceivers() const = 0;
 
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
   // The legacy non-compliant GetStats() API. This correspond to the
   // callback-based version of getStats() in JavaScript. The returned metrics
   // are UNDOCUMENTED and many of them rely on implementation-specific details.
@@ -938,6 +939,7 @@ class RTC_EXPORT PeerConnectionInterface : public webrtc::RefCountInterface {
   virtual bool GetStats(StatsObserver* observer,
                         MediaStreamTrackInterface* track,  // Optional
                         StatsOutputLevel level) = 0;
+#endif
   // The spec-compliant GetStats() API. This correspond to the promise-based
   // version of getStats() in JavaScript. Implementation status is described in
   // api/stats/rtcstats_objects.h. For more details on stats, see spec:
@@ -1594,6 +1596,7 @@ class RTC_EXPORT PeerConnectionFactoryInterface
       const std::string& label,
       AudioSourceInterface* source) = 0;
 
+#ifdef WEBRTC_HAS_AECDUMP // --twinlife 2025-01-27: disable AEC dump
   // Starts AEC dump using existing file. Takes ownership of `file` and passes
   // it on to VoiceEngine (via other objects) immediately, which will take
   // the ownerhip. If the operation fails, the file will be closed.
@@ -1609,6 +1612,7 @@ class RTC_EXPORT PeerConnectionFactoryInterface
 
   // Stops logging the AEC dump.
   virtual void StopAecDump() = 0;
+#endif // --twinlife 2025-01-27: disable AEC dump
 
  protected:
   // Dtor and ctor protected as objects shouldn't be created or deleted via

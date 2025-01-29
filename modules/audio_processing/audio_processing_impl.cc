@@ -1784,6 +1784,7 @@ void AudioProcessingImpl::UpdateRecommendedInputVolumeLocked() {
   capture_.recommended_input_volume = capture_.applied_input_volume;
 }
 
+#ifdef WEBRTC_HAS_AECDUMP // --twinlife 2025-01-27: disable AEC dump
 bool AudioProcessingImpl::CreateAndAttachAecDump(
     absl::string_view file_name,
     int64_t max_log_size_bytes,
@@ -1835,6 +1836,7 @@ void AudioProcessingImpl::DetachAecDump() {
     aec_dump = std::move(aec_dump_);
   }
 }
+#endif // --twinlife 2025-01-27: disable AEC dump
 
 AudioProcessing::Config AudioProcessingImpl::GetConfig() const {
   MutexLock lock_render(&mutex_render_);

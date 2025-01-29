@@ -133,6 +133,7 @@ class VoiceEngineInterface : public RtpHeaderExtensionQueryInterface {
   virtual const std::vector<Codec>& send_codecs() const = 0;
   virtual const std::vector<Codec>& recv_codecs() const = 0;
 
+#ifdef WEBRTC_HAS_AECDUMP // --twinlife 2025-01-27: disable AEC dump
   // Starts AEC dump using existing file, a maximum file size in bytes can be
   // specified. Logging is stopped just before the size limit is exceeded.
   // If max_size_bytes is set to a value <= 0, no limit will be used.
@@ -141,6 +142,7 @@ class VoiceEngineInterface : public RtpHeaderExtensionQueryInterface {
 
   // Stops recording AEC dump.
   virtual void StopAecDump() = 0;
+#endif // --twinlife 2025-01-27: disable AEC dump
 
   virtual std::optional<webrtc::AudioDeviceModule::Stats>
   GetAudioDeviceStats() = 0;

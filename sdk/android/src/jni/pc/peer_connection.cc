@@ -301,41 +301,6 @@ void JavaToNativeRTCConfiguration(
   rtc_config->crypto_options =
       JavaToNativeOptionalCryptoOptions(jni, j_crypto_options);
 
-#if 0
-  // --twinlife-- 180202
-  ScopedJavaLocalRef<jstring> j_proxy_address =
-      Java_RTCConfiguration_getProxyAddress(jni, j_rtc_config);
-  jint j_proxy_port = Java_RTCConfiguration_getProxyPort(jni, j_rtc_config);
-  ScopedJavaLocalRef<jstring> j_proxy_username =
-      Java_RTCConfiguration_getProxyUsername(jni, j_rtc_config);
-  ScopedJavaLocalRef<jstring> j_proxy_password =
-      Java_RTCConfiguration_getProxyPassword(jni, j_rtc_config);
-  ScopedJavaLocalRef<jobject> j_proxy_paths =
-      Java_RTCConfiguration_getProxyPaths(jni, j_rtc_config);
-  if (!IsNull(jni, j_proxy_address) && j_proxy_port != 0) {
-    std::string proxy_address = JavaToNativeString(jni, j_proxy_address);
-    CHECK_EXCEPTION(jni) << "error during JavaToNativeString";
-
-    rtc_config->proxy_info.type = rtc::PROXY_HTTPS;
-    rtc_config->proxy_info.address = rtc::SocketAddress(proxy_address, j_proxy_port);
-
-    if (!IsNull(jni, j_proxy_username) && !IsNull(jni, j_proxy_password)) {
-      std::string proxy_username = JavaToNativeString(jni, j_proxy_username);
-      CHECK_EXCEPTION(jni) << "error during JavaToNativeString";
-      std::string proxy_password = JavaToNativeString(jni, j_proxy_password);
-      CHECK_EXCEPTION(jni) << "error during GetStringUTFChars";
-      rtc_config->proxy_info.username = proxy_username;
-      rtc::InsecureCryptStringImpl insecureCryptStringImpl;
-      insecureCryptStringImpl.password() = proxy_password;
-      rtc_config->proxy_info.password = rtc::CryptString(insecureCryptStringImpl);
-    }
-    if (!IsNull(jni, j_proxy_paths)) {
-      rtc_config->proxy_info.paths = JavaToNativeStringMap(jni, j_proxy_paths);
-      CHECK_EXCEPTION(jni) << "error during JavaToNativeStringMap";
-    }
-  }
-#endif
-  // --twinlife-- 180202
   // --twinlife 2023-07-11: provide hostname resolution
   ScopedJavaLocalRef<jobject> j_hostAddresses =
       Java_RTCConfiguration_getHostAddresses(jni, j_rtc_config);
@@ -455,6 +420,7 @@ void PeerConnectionObserverJni::OnIceGatheringChange(
       Java_IceGatheringState_fromNativeIndex(env, new_state));
 }
 
+#if 0 // --twinlife 2025-01-22: removed deprecated onAddStream(), onRemoveStream()
 void PeerConnectionObserverJni::OnAddStream(
     rtc::scoped_refptr<MediaStreamInterface> stream) {
   JNIEnv* env = AttachCurrentThreadIfNeeded();
@@ -473,6 +439,7 @@ void PeerConnectionObserverJni::OnRemoveStream(
                                it->second.j_media_stream());
   remote_streams_.erase(it);
 }
+#endif // --twinlife 2025-01-22: removed deprecated onAddStream(), onRemoveStream()
 
 void PeerConnectionObserverJni::OnDataChannel(
     rtc::scoped_refptr<DataChannelInterface> channel) {
@@ -486,6 +453,7 @@ void PeerConnectionObserverJni::OnRenegotiationNeeded() {
   Java_Observer_onRenegotiationNeeded(env, j_observer_global_);
 }
 
+#if 0 // --twinlife 2025-01-22: remove deprecated onAddTrack()
 void PeerConnectionObserverJni::OnAddTrack(
     rtc::scoped_refptr<RtpReceiverInterface> receiver,
     const std::vector<rtc::scoped_refptr<MediaStreamInterface>>& streams) {
@@ -497,6 +465,7 @@ void PeerConnectionObserverJni::OnAddTrack(
   Java_Observer_onAddTrack(env, j_observer_global_, j_rtp_receiver,
                            NativeToJavaMediaStreamArray(env, streams));
 }
+#endif // --twinlife 2025-01-22: remove deprecated onAddTrack()
 
 void PeerConnectionObserverJni::OnRemoveTrack(
     rtc::scoped_refptr<RtpReceiverInterface> receiver) {
@@ -518,6 +487,7 @@ void PeerConnectionObserverJni::OnTrack(
   Java_Observer_onTrack(env, j_observer_global_, j_rtp_transceiver);
 }
 
+#if 0 // twinlife 2025-01-22: remove deprecated stream operation
 // If the NativeToJavaStreamsMap contains the stream, return it.
 // Otherwise, create a new Java MediaStream.
 JavaMediaStream& PeerConnectionObserverJni::GetOrCreateJavaStream(
@@ -545,6 +515,7 @@ PeerConnectionObserverJni::NativeToJavaMediaStreamArray(
         return GetOrCreateJavaStream(env, stream).j_media_stream();
       });
 }
+#endif // twinlife 2025-01-22: remove deprecated stream operation
 
 OwnedPeerConnection::OwnedPeerConnection(
     rtc::scoped_refptr<PeerConnectionInterface> peer_connection,
@@ -785,6 +756,7 @@ static jboolean JNI_PeerConnection_RemoveIceCandidates(
   return ExtractNativePC(jni, j_pc)->RemoveIceCandidates(candidates);
 }
 
+#if 0 // twinlife 2025-01-22: remove deprecated addLocalStream(), removeLocalStream()
 static jboolean JNI_PeerConnection_AddLocalStream(
     JNIEnv* jni,
     const jni_zero::JavaParamRef<jobject>& j_pc,
@@ -800,6 +772,7 @@ static void JNI_PeerConnection_RemoveLocalStream(
   ExtractNativePC(jni, j_pc)->RemoveStream(
       reinterpret_cast<MediaStreamInterface*>(native_stream));
 }
+#endif // twinlife 2025-01-22: remove deprecated addLocalStream(), removeLocalStream()
 
 static jni_zero::ScopedJavaLocalRef<jobject> JNI_PeerConnection_CreateSender(
     JNIEnv* jni,
@@ -902,6 +875,7 @@ JNI_PeerConnection_AddTransceiverOfType(
   }
 }
 
+#if 0 // twinlife 2025-01-21: remove deprecated getStats()
 static jboolean JNI_PeerConnection_OldGetStats(
     JNIEnv* jni,
     const jni_zero::JavaParamRef<jobject>& j_pc,
@@ -913,6 +887,7 @@ static jboolean JNI_PeerConnection_OldGetStats(
       reinterpret_cast<MediaStreamTrackInterface*>(native_track),
       PeerConnectionInterface::kStatsOutputLevelStandard);
 }
+#endif // twinlife 2025-01-21: remove deprecated getStats()
 
 static void JNI_PeerConnection_NewGetStats(
     JNIEnv* jni,

@@ -39,7 +39,9 @@
 #include "media/base/audio_source.h"
 #include "media/base/media_channel.h"
 #include "pc/dtmf_sender.h"
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
 #include "pc/legacy_stats_collector_interface.h"
+#endif
 #include "rtc_base/checks.h"
 #include "rtc_base/synchronization/mutex.h"
 #include "rtc_base/thread.h"
@@ -345,7 +347,9 @@ class AudioRtpSender : public DtmfProviderInterface, public RtpSenderBase {
       const Environment& env,
       rtc::Thread* worker_thread,
       const std::string& id,
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
       LegacyStatsCollectorInterface* stats,
+#endif
       SetStreamsObserver* set_streams_observer);
   virtual ~AudioRtpSender();
 
@@ -370,7 +374,9 @@ class AudioRtpSender : public DtmfProviderInterface, public RtpSenderBase {
   AudioRtpSender(const Environment& env,
                  rtc::Thread* worker_thread,
                  const std::string& id,
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
                  LegacyStatsCollectorInterface* legacy_stats,
+#endif
                  SetStreamsObserver* set_streams_observer);
 
   void SetSend() override;
@@ -391,7 +397,9 @@ class AudioRtpSender : public DtmfProviderInterface, public RtpSenderBase {
         static_cast<AudioTrackInterface*>(track_.get()));
   }
 
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
   LegacyStatsCollectorInterface* legacy_stats_ = nullptr;
+#endif
   rtc::scoped_refptr<DtmfSender> dtmf_sender_;
   rtc::scoped_refptr<DtmfSenderInterface> dtmf_sender_proxy_;
   bool cached_track_enabled_ = false;

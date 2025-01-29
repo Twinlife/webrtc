@@ -88,8 +88,10 @@ class PeerConnectionFactory : public PeerConnectionFactoryInterface {
       const std::string& id,
       AudioSourceInterface* audio_source) override;
 
+#ifdef WEBRTC_HAS_AECDUMP // --twinlife 2025-01-27: disable AEC dump
   bool StartAecDump(FILE* file, int64_t max_size_bytes) override;
   void StopAecDump() override;
+#endif // --twinlife 2025-01-27: disable AEC dump
 
   SctpTransportFactoryInterface* sctp_transport_factory() {
     return context_->sctp_transport_factory();

@@ -19,7 +19,9 @@
 #include "api/rtp_transceiver_direction.h"
 #include "pc/audio_rtp_receiver.h"
 #include "pc/channel_interface.h"
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
 #include "pc/legacy_stats_collector_interface.h"
+#endif
 #include "pc/video_rtp_receiver.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/crypto_random.h"
@@ -40,14 +42,18 @@ RtpTransmissionManager::RtpTransmissionManager(
     ConnectionContext* context,
     UsagePattern* usage_pattern,
     PeerConnectionObserver* observer,
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
     LegacyStatsCollectorInterface* legacy_stats,
+#endif
     std::function<void()> on_negotiation_needed)
     : env_(env),
       is_unified_plan_(is_unified_plan),
       context_(context),
       usage_pattern_(usage_pattern),
       observer_(observer),
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
       legacy_stats_(legacy_stats),
+#endif
       on_negotiation_needed_(on_negotiation_needed),
       weak_ptr_factory_(this) {}
 
@@ -248,7 +254,7 @@ RtpTransmissionManager::CreateSender(
                (track->kind() == MediaStreamTrackInterface::kAudioKind));
     sender = RtpSenderProxyWithInternal<RtpSenderInternal>::Create(
         signaling_thread(),
-        AudioRtpSender::Create(env_, worker_thread(), id, legacy_stats_, this));
+        AudioRtpSender::Create(env_, worker_thread(), id, /* legacy_stats_,*/ this));
     NoteUsageEvent(UsageEvent::AUDIO_ADDED);
   } else {
     RTC_DCHECK_EQ(media_type, cricket::MEDIA_TYPE_VIDEO);

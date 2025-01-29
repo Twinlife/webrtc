@@ -71,6 +71,7 @@ class AudioProcessingImpl : public AudioProcessing {
   int Initialize() override;
   int Initialize(const ProcessingConfig& processing_config) override;
   void ApplyConfig(const AudioProcessing::Config& config) override;
+#ifdef WEBRTC_HAS_AECDUMP // --twinlife 2025-01-27: disable AEC dump
   bool CreateAndAttachAecDump(
       absl::string_view file_name,
       int64_t max_log_size_bytes,
@@ -82,6 +83,7 @@ class AudioProcessingImpl : public AudioProcessing {
   // TODO(webrtc:5298) Deprecated variant.
   void AttachAecDump(std::unique_ptr<AecDump> aec_dump) override;
   void DetachAecDump() override;
+#endif // --twinlife 2025-01-27: disable AEC dump
   void SetRuntimeSetting(RuntimeSetting setting) override;
   bool PostRuntimeSetting(RuntimeSetting setting) override;
 

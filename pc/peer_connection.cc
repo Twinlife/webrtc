@@ -86,7 +86,9 @@
 #include "pc/dtls_transport.h"
 #include "pc/ice_server_parsing.h"
 #include "pc/jsep_transport_controller.h"
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
 #include "pc/legacy_stats_collector.h"
+#endif
 #include "pc/rtc_stats_collector.h"
 #include "pc/rtp_receiver.h"
 #include "pc/rtp_receiver_proxy.h"
@@ -688,7 +690,9 @@ PeerConnection::~PeerConnection() {
     }
   }
 
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
   legacy_stats_.reset(nullptr);
+#endif
   if (stats_collector_) {
     stats_collector_->WaitForPendingRequest();
     stats_collector_ = nullptr;
@@ -762,18 +766,29 @@ RTCError PeerConnection::Initialize(
 
   configuration_ = configuration;
 
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
   legacy_stats_ = std::make_unique<LegacyStatsCollector>(this);
+#endif
   stats_collector_ = RTCStatsCollector::Create(this);
 
   sdp_handler_ = SdpOfferAnswerHandler::Create(this, configuration,
                                                dependencies, context_.get());
 
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
   rtp_manager_ = std::make_unique<RtpTransmissionManager>(
       env_, IsUnifiedPlan(), context_.get(), &usage_pattern_, observer_,
-      legacy_stats_.get(), [this]() {
+        legacy_stats_.get(), [this]() {
         RTC_DCHECK_RUN_ON(signaling_thread());
         sdp_handler_->UpdateNegotiationNeeded();
       });
+#else
+  rtp_manager_ = std::make_unique<RtpTransmissionManager>(
+      env_, IsUnifiedPlan(), context_.get(), &usage_pattern_, observer_,
+      /* legacy_stats_.get(),*/ [this]() {
+        RTC_DCHECK_RUN_ON(signaling_thread());
+        sdp_handler_->UpdateNegotiationNeeded();
+      });
+#endif
 
   // Add default audio/video transceivers for Plan B SDP.
   if (!IsUnifiedPlan()) {
@@ -1003,7 +1018,9 @@ RTCErrorOr<rtc::scoped_refptr<RtpSenderInterface>> PeerConnection::AddTrack(
       rtp_manager()->AddTrack(track, stream_ids, init_send_encodings);
   if (sender_or_error.ok()) {
     sdp_handler_->UpdateNegotiationNeeded();
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
     legacy_stats_->AddTrack(track.get());
+#endif
   }
   return sender_or_error;
 }
@@ -1284,7 +1301,7 @@ rtc::scoped_refptr<RtpSenderInterface> PeerConnection::CreateSender(
   if (kind == MediaStreamTrackInterface::kAudioKind) {
     auto audio_sender =
         AudioRtpSender::Create(env_, worker_thread(), rtc::CreateRandomUuid(),
-                               legacy_stats_.get(), rtp_manager());
+                               /* legacy_stats_.get(),*/ rtp_manager());
     audio_sender->SetMediaChannel(rtp_manager()->voice_media_send_channel());
     new_sender = RtpSenderProxyWithInternal<RtpSenderInternal>::Create(
         signaling_thread(), audio_sender);
@@ -1343,6 +1360,7 @@ PeerConnection::GetTransceivers() const {
   return all_transceivers;
 }
 
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
 bool PeerConnection::GetStats(StatsObserver* observer,
                               MediaStreamTrackInterface* track,
                               StatsOutputLevel level) {
@@ -1370,6 +1388,7 @@ bool PeerConnection::GetStats(StatsObserver* observer,
 
   return true;
 }
+#endif // --twinlife 2025-01-27: disable legacy GetStats
 
 void PeerConnection::GetStats(RTCStatsCollectorCallback* callback) {
   TRACE_EVENT0("webrtc", "PeerConnection::GetStats");
@@ -1883,7 +1902,9 @@ void PeerConnection::Close() {
   }
   // Update stats here so that we have the most recent stats for tracks and
   // streams before the channels are closed.
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
   legacy_stats_->UpdateStats(kStatsOutputLevelStandard);
+#endif
 
   ice_connection_state_ = PeerConnectionInterface::kIceConnectionClosed;
   Observer()->OnIceConnectionChange(ice_connection_state_);
@@ -3008,9 +3029,11 @@ CryptoOptions PeerConnection::GetCryptoOptions() {
 
 void PeerConnection::ClearStatsCache() {
   RTC_DCHECK_RUN_ON(signaling_thread());
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
   if (legacy_stats_) {
     legacy_stats_->InvalidateCache();
   }
+#endif
   if (stats_collector_) {
     stats_collector_->ClearCachedStatsReport();
   }

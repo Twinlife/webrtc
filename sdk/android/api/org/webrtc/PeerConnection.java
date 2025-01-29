@@ -32,6 +32,15 @@ import org.webrtc.RtpTransceiver;
  * http://www.w3.org/TR/mediacapture-streams/
  */
 public class PeerConnection {
+  // --twinlife 2025-01-27: removed deprecated operations:
+  // addStream()
+  // removeStream()
+  // onAddStream()
+  // onRemoveStream()
+  // onAddTrack()
+  // getStats()+nativeGetOldStats()
+  // --twinlife 2025-01-27
+
   /** Tracks PeerConnectionInterface::IceGatheringState */
   public enum IceGatheringState {
     NEW,
@@ -131,24 +140,11 @@ public class PeerConnection {
     @CalledByNative("Observer")
     default void onSelectedCandidatePairChanged(CandidatePairChangeEvent event) {}
 
-    /** Triggered when media is received on a new stream from remote peer. */
-    @CalledByNative("Observer") void onAddStream(MediaStream stream);
-
-    /** Triggered when a remote peer close a stream. */
-    @CalledByNative("Observer") void onRemoveStream(MediaStream stream);
-
     /** Triggered when a remote peer opens a DataChannel. */
     @CalledByNative("Observer") void onDataChannel(DataChannel dataChannel);
 
     /** Triggered when renegotiation is necessary. */
     @CalledByNative("Observer") void onRenegotiationNeeded();
-
-    /**
-     * Triggered when a new track is signaled by the remote peer, as a result of
-     * setRemoteDescription.
-     */
-    @CalledByNative("Observer")
-    default void onAddTrack(RtpReceiver receiver, MediaStream[] mediaStreams){};
 
     /**
      * Triggered when a previously added remote track is removed by the remote
@@ -930,7 +926,6 @@ public class PeerConnection {
     }
   };
 
-  private final List<MediaStream> localStreams = new ArrayList<>();
   private final long nativePeerConnection;
   private List<RtpSender> senders = new ArrayList<>();
   private List<RtpReceiver> receivers = new ArrayList<>();
@@ -1029,30 +1024,6 @@ public class PeerConnection {
 
   public boolean removeIceCandidates(final IceCandidate[] candidates) {
     return nativeRemoveIceCandidates(candidates);
-  }
-
-  /**
-   * Adds a new MediaStream to be sent on this peer connection.
-   * Note: This method is not supported with SdpSemantics.UNIFIED_PLAN. Please
-   * use addTrack instead.
-   */
-  public boolean addStream(MediaStream stream) {
-    boolean ret = nativeAddLocalStream(stream.getNativeMediaStream());
-    if (!ret) {
-      return false;
-    }
-    localStreams.add(stream);
-    return true;
-  }
-
-  /**
-   * Removes the given media stream from this peer connection.
-   * This method is not supported with SdpSemantics.UNIFIED_PLAN. Please use
-   * removeTrack instead.
-   */
-  public void removeStream(MediaStream stream) {
-    nativeRemoveLocalStream(stream.getNativeMediaStream());
-    localStreams.remove(stream);
   }
 
   /**
@@ -1247,12 +1218,6 @@ public class PeerConnection {
     return newTransceiver;
   }
 
-  // Older, non-standard implementation of getStats.
-  @Deprecated
-  public boolean getStats(StatsObserver observer, @Nullable MediaStreamTrack track) {
-    return nativeOldGetStats(observer, (track == null) ? 0 : track.getNativeMediaStreamTrack());
-  }
-
   /**
    * Gets stats using the new stats collection API, see webrtc/api/stats/. These
    * will replace old stats collection API when the new API has matured enough.
@@ -1346,11 +1311,6 @@ public class PeerConnection {
    */
   public void dispose() {
     close();
-    for (MediaStream stream : localStreams) {
-      nativeRemoveLocalStream(stream.getNativeMediaStream());
-      stream.dispose();
-    }
-    localStreams.clear();
     for (RtpSender sender : senders) {
       sender.dispose();
     }
@@ -1407,9 +1367,6 @@ public class PeerConnection {
   private native void nativeAddIceCandidateWithObserver(
       String sdpMid, int sdpMLineIndex, String iceCandidateSdp, AddIceObserver observer);
   private native boolean nativeRemoveIceCandidates(final IceCandidate[] candidates);
-  private native boolean nativeAddLocalStream(long stream);
-  private native void nativeRemoveLocalStream(long stream);
-  private native boolean nativeOldGetStats(StatsObserver observer, long nativeTrack);
   private native void nativeNewGetStats(RTCStatsCollectorCallback callback);
   private native void nativeNewGetStatsSender(long sender, RTCStatsCollectorCallback callback);
   private native void nativeNewGetStatsReceiver(long receiver, RTCStatsCollectorCallback callback);

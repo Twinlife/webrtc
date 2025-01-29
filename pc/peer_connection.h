@@ -63,7 +63,9 @@
 #include "pc/data_channel_utils.h"
 #include "pc/dtls_transport.h"
 #include "pc/jsep_transport_controller.h"
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
 #include "pc/legacy_stats_collector.h"
+#endif
 #include "pc/peer_connection_internal.h"
 #include "pc/peer_connection_message_handler.h"
 #include "pc/rtc_stats_collector.h"
@@ -162,10 +164,12 @@ class PeerConnection : public PeerConnectionInternal,
   RTCErrorOr<rtc::scoped_refptr<DataChannelInterface>> CreateDataChannelOrError(
       const std::string& label,
       const DataChannelInit* config) override;
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
   // WARNING: LEGACY. See peerconnectioninterface.h
   bool GetStats(StatsObserver* observer,
                 MediaStreamTrackInterface* track,
                 StatsOutputLevel level) override;
+#endif // --twinlife 2025-01-27: disable legacy GetStats
   // Spec-complaint GetStats(). See peerconnectioninterface.h
   void GetStats(RTCStatsCollectorCallback* callback) override;
   void GetStats(
@@ -323,11 +327,13 @@ class PeerConnection : public PeerConnectionInternal,
 
   bool ShouldFireNegotiationNeededEvent(uint32_t event_id) override;
 
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
   // Functions needed by SdpOfferAnswerHandler
   LegacyStatsCollector* legacy_stats() override {
     RTC_DCHECK_RUN_ON(signaling_thread());
     return legacy_stats_.get();
   }
+#endif
   DataChannelController* data_channel_controller() override {
     RTC_DCHECK_RUN_ON(signaling_thread());
     return &data_channel_controller_;
@@ -657,8 +663,10 @@ class PeerConnection : public PeerConnectionInternal,
   // pointer).
   Call* const call_ptr_;
 
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
   std::unique_ptr<LegacyStatsCollector> legacy_stats_
       RTC_GUARDED_BY(signaling_thread());  // A pointer is passed to senders_
+#endif
   rtc::scoped_refptr<RTCStatsCollector> stats_collector_
       RTC_GUARDED_BY(signaling_thread());
 

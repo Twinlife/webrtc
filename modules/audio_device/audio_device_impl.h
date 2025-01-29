@@ -171,13 +171,6 @@ class AudioDeviceModuleImpl : public AudioDeviceModuleForTest {
   bool initialized_ = false;
   AudioDeviceBuffer audio_device_buffer_;
   std::unique_ptr<AudioDeviceGeneric> audio_device_;
-// --twinlife-- 170307
-#if defined(WEBRTC_ANDROID)
-  bool streaming_mode_enabled_ = false;
-  bool swapped_audio_device_ = false;  
-  std::unique_ptr<AudioDeviceGeneric> secondary_audio_device_;
-#endif
-// --twinlife-- 170307  
 };
 
 }  // namespace webrtc

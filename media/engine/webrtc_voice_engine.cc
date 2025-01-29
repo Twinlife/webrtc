@@ -486,7 +486,9 @@ WebRtcVoiceEngine::~WebRtcVoiceEngine() {
   RTC_DCHECK_RUN_ON(&worker_thread_checker_);
   RTC_LOG(LS_INFO) << "WebRtcVoiceEngine::~WebRtcVoiceEngine";
   if (initialized_) {
+#ifdef WEBRTC_HAS_AECDUMP // --twinlife 2025-01-27: disable AEC dump
     StopAecDump();
+#endif // --twinlife 2025-01-27: disable AEC dump
 
     // Stop AudioDevice.
     adm()->StopPlayout();
@@ -789,6 +791,7 @@ WebRtcVoiceEngine::GetRtpHeaderExtensions() const {
   return result;
 }
 
+#ifdef WEBRTC_HAS_AECDUMP // --twinlife 2025-01-27: disable AEC dump
 bool WebRtcVoiceEngine::StartAecDump(webrtc::FileWrapper file,
                                      int64_t max_size_bytes) {
   RTC_DCHECK_RUN_ON(&worker_thread_checker_);
@@ -800,11 +803,8 @@ bool WebRtcVoiceEngine::StartAecDump(webrtc::FileWrapper file,
            "present, hence no aecdump is started.";
     return false;
   }
-  // --twinlife-- 2022-10-24: do nothing if we try to start the AEC dump.
-  return false;
-  // return ap->CreateAndAttachAecDump(file.Release(), max_size_bytes,
-  //                                    low_priority_worker_queue_.get());
-  // --twinlife-- 2022-10-24
+  return ap->CreateAndAttachAecDump(file.Release(), max_size_bytes,
+                                    low_priority_worker_queue_.get());
 }
 
 void WebRtcVoiceEngine::StopAecDump() {
@@ -817,6 +817,7 @@ void WebRtcVoiceEngine::StopAecDump() {
                            "processing module is present";
   }
 }
+#endif // --twinlife 2025-01-27: disable AEC dump
 
 std::optional<webrtc::AudioDeviceModule::Stats>
 WebRtcVoiceEngine::GetAudioDeviceStats() {

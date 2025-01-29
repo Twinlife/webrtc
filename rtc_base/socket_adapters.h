@@ -12,9 +12,6 @@
 #define RTC_BASE_SOCKET_ADAPTERS_H_
 
 #include <string>
-// --twinlife-- 211109
-#include <map>
-// --twinlife-- 211109
 
 #include "absl/strings/string_view.h"
 #include "api/array_view.h"

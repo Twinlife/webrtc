@@ -14,7 +14,9 @@
 #include <functional>
 
 #include "api/jsep.h"
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
 #include "api/legacy_stats_types.h"
+#endif
 #include "api/media_stream_interface.h"
 #include "api/peer_connection_interface.h"
 #include "api/rtc_error.h"
@@ -38,7 +40,9 @@ class PeerConnectionMessageHandler {
       CreateSessionDescriptionObserver* observer,
       RTCError error);
   void PostGetStats(StatsObserver* observer,
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
                     LegacyStatsCollectorInterface* legacy_stats,
+#endif
                     MediaStreamTrackInterface* track);
   void RequestUsagePatternReport(std::function<void()>, int delay_ms);
 

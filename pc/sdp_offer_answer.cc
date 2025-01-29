@@ -65,7 +65,9 @@
 #include "pc/connection_context.h"
 #include "pc/dtls_transport.h"
 #include "pc/jsep_transport_controller.h"
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
 #include "pc/legacy_stats_collector.h"
+#endif
 #include "pc/media_session.h"
 #include "pc/media_stream.h"
 #include "pc/media_stream_observer.h"
@@ -2245,7 +2247,9 @@ void SdpOfferAnswerHandler::ApplyRemoteDescriptionUpdateTransceiverState(
   // Once all processing has finished, fire off callbacks.
   auto observer = pc_->Observer();
   for (const auto& transceiver : now_receiving_transceivers) {
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
     pc_->legacy_stats()->AddTrack(transceiver->receiver()->track().get());
+#endif
     observer->OnTrack(transceiver);
     observer->OnAddTrack(transceiver->receiver(),
                          transceiver->receiver()->streams());
@@ -2315,7 +2319,9 @@ void SdpOfferAnswerHandler::PlanBUpdateSendersAndReceivers(
   auto observer = pc_->Observer();
   for (size_t i = 0; i < new_streams->count(); ++i) {
     MediaStreamInterface* new_stream = new_streams->at(i);
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
     pc_->legacy_stats()->AddStream(new_stream);
+#endif
     observer->OnAddStream(rtc::scoped_refptr<MediaStreamInterface>(new_stream));
   }
 
@@ -3030,7 +3036,9 @@ bool SdpOfferAnswerHandler::AddStream(MediaStreamInterface* local_stream) {
     rtp_manager()->AddVideoTrack(track.get(), local_stream);
   }
 
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
   pc_->legacy_stats()->AddStream(local_stream);
+#endif
   UpdateNegotiationNeeded();
   return true;
 }

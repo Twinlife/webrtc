@@ -171,6 +171,7 @@ static void JNI_PeerConnectionFactory_InitializeAndroidGlobals(JNIEnv* jni) {
   }
 }
 
+#if 0 // twinlife 2025-01-21: remove deprecated initializeFieldTrials()
 static void JNI_PeerConnectionFactory_InitializeFieldTrials(
     JNIEnv* jni,
     const jni_zero::JavaParamRef<jstring>& j_trials_init_string) {
@@ -187,6 +188,7 @@ static void JNI_PeerConnectionFactory_InitializeFieldTrials(
   RTC_LOG(LS_INFO) << "initializeFieldTrials: " << *field_trials_init_string;
   field_trial::InitFieldTrialsFromString(field_trials_init_string->c_str());
 }
+#endif // twinlife 2025-01-21: remove deprecated initializeFieldTrials()
 
 static void JNI_PeerConnectionFactory_InitializeInternalTracer(JNIEnv* jni) {
   rtc::tracing::SetupInternalTracer();
@@ -377,6 +379,7 @@ static void JNI_PeerConnectionFactory_FreeFactory(JNIEnv*, jlong j_p) {
   GetStaticObjects().field_trials_init_string = nullptr;
 }
 
+#if 0 // twinlife 2025-01-21: remove deprecated createLocalMediaStream()
 static jlong JNI_PeerConnectionFactory_CreateLocalMediaStream(
     JNIEnv* jni,
     jlong native_factory,
@@ -386,6 +389,7 @@ static jlong JNI_PeerConnectionFactory_CreateLocalMediaStream(
           ->CreateLocalMediaStream(JavaToStdString(jni, label)));
   return jlongFromPointer(stream.release());
 }
+#endif // twinlife 2025-01-21: remove deprecated createLocalMediaStream()
 
 static jlong JNI_PeerConnectionFactory_CreateAudioSource(
     JNIEnv* jni,
@@ -435,6 +439,7 @@ JNI_PeerConnectionFactory_GetRtpReceiverCapabilities(
                JavaToNativeMediaType(jni, media_type)));
 }
 
+#if 0 // twinlife 2025-01-25: remove unused aec dump
 static jboolean JNI_PeerConnectionFactory_StartAecDump(
     JNIEnv* jni,
     jlong native_factory,
@@ -454,6 +459,7 @@ static void JNI_PeerConnectionFactory_StopAecDump(JNIEnv* jni,
                                                   jlong native_factory) {
   PeerConnectionFactoryFromJava(native_factory)->StopAecDump();
 }
+#endif // twinlife 2025-01-25: remove unused aec dump
 
 static jlong JNI_PeerConnectionFactory_CreatePeerConnection(
     JNIEnv* jni,

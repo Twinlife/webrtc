@@ -10,6 +10,7 @@ cp -p ${ROOT}/sdk/android/api/org/twinlife/twinlife/crypto/*.java out-java/org/t
 mkdir -p out-java/org/webrtc/audio
 cp -p ${ROOT}/sdk/android/api/org/webrtc/audio/*.java out-java/org/webrtc/audio
 cp -p ${ROOT}/sdk/android/src/java/org/webrtc/audio/*.java out-java/org/webrtc/audio
+cp -p ${ROOT}/rtc_base/java/src/org/webrtc/*.java out-java/org/webrtc/
 
 
 

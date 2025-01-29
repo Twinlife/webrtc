@@ -40,12 +40,6 @@ class AudioDeviceGeneric {
   virtual int32_t Terminate() = 0;
   virtual bool Initialized() const = 0;
 
-// --twinlife-- 170307
-#if defined(WEBRTC_ANDROID)
-  virtual bool IsAudioStreamingModeEnabled() {return false;}
-#endif
-// --twinlife-- 170307
-
   // Device enumeration
   virtual int16_t PlayoutDevices() = 0;
   virtual int16_t RecordingDevices() = 0;

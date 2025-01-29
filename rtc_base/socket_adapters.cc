@@ -24,10 +24,6 @@
 #include "rtc_base/logging.h"
 #include "rtc_base/strings/string_builder.h"
 #include "rtc_base/zero_memory.h"
-// --twinlife-- 180202
-#include "rtc_base/string_utils.h"
-#include "rtc_base/third_party/base64/base64.h"
-// --twinlife-- 180202
 
 namespace rtc {
 

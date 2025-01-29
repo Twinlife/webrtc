@@ -121,6 +121,7 @@ class WebRtcVoiceEngine final : public VoiceEngineInterface {
   std::vector<webrtc::RtpHeaderExtensionCapability> GetRtpHeaderExtensions()
       const override;
 
+#ifdef WEBRTC_HAS_AECDUMP // --twinlife 2025-01-27: disable AEC dump
   // Starts AEC dump using an existing file. A maximum file size in bytes can be
   // specified. When the maximum file size is reached, logging is stopped and
   // the file is closed. If max_size_bytes is set to <= 0, no limit will be
@@ -129,6 +130,7 @@ class WebRtcVoiceEngine final : public VoiceEngineInterface {
 
   // Stops AEC dump.
   void StopAecDump() override;
+#endif // --twinlife 2025-01-27: disable AEC dump
 
   std::optional<webrtc::AudioDeviceModule::Stats> GetAudioDeviceStats()
       override;

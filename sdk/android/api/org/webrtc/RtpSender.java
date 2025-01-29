@@ -20,22 +20,13 @@ public class RtpSender {
 
   @Nullable private MediaStreamTrack cachedTrack;
   private boolean ownsTrack = true;
-  private final @Nullable DtmfSender dtmfSender;
+  /* -- twinlife 2022-04-13: removed DTMF sender */
 
   @CalledByNative
   public RtpSender(long nativeRtpSender) {
     this.nativeRtpSender = nativeRtpSender;
     long nativeTrack = nativeGetTrack(nativeRtpSender);
     cachedTrack = MediaStreamTrack.createMediaStreamTrack(nativeTrack);
-    /* -- twinlife 2022-04-13: disable DTMF sender as per Threema improvement.
-    if (nativeGetMediaType(nativeRtpSender).equalsIgnoreCase(MediaStreamTrack.AUDIO_TRACK_KIND)) {
-      long nativeDtmfSender = nativeGetDtmfSender(nativeRtpSender);
-      dtmfSender = (nativeDtmfSender != 0) ? new DtmfSender(nativeDtmfSender) : null;
-    } else {
-      dtmfSender = null;
-    }
-    */
-    dtmfSender = null;
   }
 
   /**
@@ -95,11 +86,6 @@ public class RtpSender {
     return nativeGetId(nativeRtpSender);
   }
 
-  @Nullable
-  public DtmfSender dtmf() {
-    return dtmfSender;
-  }
-
   public void setFrameEncryptor(FrameEncryptor frameEncryptor) {
     checkRtpSenderExists();
     nativeSetFrameEncryptor(nativeRtpSender, frameEncryptor.getNativeFrameEncryptor());
@@ -107,9 +93,6 @@ public class RtpSender {
 
   public void dispose() {
     checkRtpSenderExists();
-    if (dtmfSender != null) {
-      dtmfSender.dispose();
-    }
     if (cachedTrack != null && ownsTrack) {
       cachedTrack.dispose();
     }
@@ -138,10 +121,6 @@ public class RtpSender {
   private static native void nativeSetStreams(long rtpSender, List<String> streamIds);
 
   private static native List<String> nativeGetStreams(long rtpSender);
-
-  // This should increment the reference count of the DTMF sender.
-  // Will be released in dispose().
-  private static native long nativeGetDtmfSender(long rtpSender);
 
   private static native boolean nativeSetParameters(long rtpSender, RtpParameters parameters);
 

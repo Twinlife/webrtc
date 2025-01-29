@@ -294,6 +294,7 @@ VideoCodec VideoCodecInitializer::SetupCodec(
 
       break;
     }
+#if 0
     case kVideoCodecAV1:
       if (SetAv1SvcConfig(video_codec,
                           /*num_temporal_layers=*/
@@ -315,6 +316,7 @@ VideoCodec VideoCodecInitializer::SetupCodec(
         RTC_LOG(LS_WARNING) << "Failed to configure svc bitrates for av1.";
       }
       break;
+#endif
     case kVideoCodecH264: {
       RTC_CHECK(!config.encoder_specific_settings);
 

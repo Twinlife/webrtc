@@ -68,11 +68,13 @@ PROXY_CONSTMETHOD0(std::vector<rtc::scoped_refptr<RtpReceiverInterface>>,
                    GetReceivers)
 PROXY_CONSTMETHOD0(std::vector<rtc::scoped_refptr<RtpTransceiverInterface>>,
                    GetTransceivers)
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
 PROXY_METHOD3(bool,
               GetStats,
               StatsObserver*,
               MediaStreamTrackInterface*,
               StatsOutputLevel)
+#endif // --twinlife 2025-01-27: disable legacy GetStats
 PROXY_METHOD1(void, GetStats, RTCStatsCollectorCallback*)
 PROXY_METHOD2(void,
               GetStats,

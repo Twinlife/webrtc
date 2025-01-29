@@ -27,7 +27,20 @@ import org.webrtc.audio.JavaAudioDeviceModule;
  */
 public class PeerConnectionFactory {
   public static final String TRIAL_ENABLED = "Enabled";
-  @Deprecated public static final String VIDEO_FRAME_EMIT_TRIAL = "VideoFrameEmit";
+  // --twinlife 2025-01-27: removed deprecated operations:
+  // VIDEO_FRAME_EMIT_TRIAL
+  // initializeFieldTrials()
+  // createPeerConnection()
+  // createLocalMediaStream()
+  // printStackTraces()
+  // nativeInitializeFieldTrials()
+  // nativeCreateLocalMediaStream()
+  //
+  // removed unused operations:
+  // startAecDump()
+  // stopAecDump()
+  // 
+  // --twinlife 2025-01-27
 
   private static final String TAG = "PeerConnectionFactory";
   private static final String VIDEO_CAPTURER_THREAD_NAME = "VideoCapturerThread";
@@ -50,9 +63,9 @@ public class PeerConnectionFactory {
   private static volatile boolean internalTracerInitialized;
 
   // Remove these once deprecated static printStackTrace() is gone.
-  @Nullable private static ThreadInfo staticNetworkThread;
-  @Nullable private static ThreadInfo staticWorkerThread;
-  @Nullable private static ThreadInfo staticSignalingThread;
+  // @Nullable private static ThreadInfo staticNetworkThread;
+  // @Nullable private static ThreadInfo staticWorkerThread;
+  // @Nullable private static ThreadInfo staticSignalingThread;
 
   private long nativeFactory;
   @Nullable private volatile ThreadInfo networkThread;
@@ -330,14 +343,6 @@ public class PeerConnectionFactory {
     nativeShutdownInternalTracer();
   }
 
-  // Field trial initialization. Must be called before PeerConnectionFactory
-  // is created.
-  // Deprecated, use PeerConnectionFactory.initialize instead.
-  @Deprecated
-  public static void initializeFieldTrials(String fieldTrialsInitString) {
-    nativeInitializeFieldTrials(fieldTrialsInitString);
-  }
-
   // Wrapper of webrtc::field_trial::FindFullName. Develop the feature with default behaviour off.
   // Example usage:
   // if (PeerConnectionFactory.fieldTrialsFindFullName("WebRTCExperiment").equals("Enabled")) {
@@ -386,31 +391,6 @@ public class PeerConnectionFactory {
     return new PeerConnection(nativePeerConnection);
   }
 
-  /**
-   * Deprecated. PeerConnection constraints are deprecated. Supply values in rtcConfig struct
-   * instead and use the method without constraints in the signature.
-   */
-  @Nullable
-  @Deprecated
-  public PeerConnection createPeerConnection(PeerConnection.RTCConfiguration rtcConfig,
-      MediaConstraints constraints, PeerConnection.Observer observer) {
-    return createPeerConnectionInternal(
-        rtcConfig, constraints, observer, /* sslCertificateVerifier= */ null);
-  }
-
-  /**
-   * Deprecated. PeerConnection constraints are deprecated. Supply values in rtcConfig struct
-   * instead and use the method without constraints in the signature.
-   */
-  @Nullable
-  @Deprecated
-  public PeerConnection createPeerConnection(List<PeerConnection.IceServer> iceServers,
-      MediaConstraints constraints, PeerConnection.Observer observer) {
-    PeerConnection.RTCConfiguration rtcConfig = new PeerConnection.RTCConfiguration(iceServers);
-    rtcConfig.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
-    return createPeerConnection(rtcConfig, constraints, observer);
-  }
-
   @Nullable
   public PeerConnection createPeerConnection(
       List<PeerConnection.IceServer> iceServers, PeerConnection.Observer observer) {
@@ -430,11 +410,6 @@ public class PeerConnectionFactory {
       PeerConnection.RTCConfiguration rtcConfig, PeerConnectionDependencies dependencies) {
     return createPeerConnectionInternal(rtcConfig, null /* constraints */,
         dependencies.getObserver(), dependencies.getSSLCertificateVerifier());
-  }
-
-  public MediaStream createLocalMediaStream(String label) {
-    checkPeerConnectionFactoryExists();
-    return new MediaStream(nativeCreateLocalMediaStream(nativeFactory, label));
   }
 
   /**
@@ -482,21 +457,6 @@ public class PeerConnectionFactory {
   public RtpCapabilities getRtpSenderCapabilities(MediaStreamTrack.MediaType mediaType) {
     checkPeerConnectionFactoryExists();
     return nativeGetRtpSenderCapabilities(nativeFactory, mediaType);
-  }
-
-  // Starts recording an AEC dump. Ownership of the file is transfered to the
-  // native code. If an AEC dump is already in progress, it will be stopped and
-  // a new one will start using the provided file.
-  public boolean startAecDump(int file_descriptor, int filesize_limit_bytes) {
-    checkPeerConnectionFactoryExists();
-    return nativeStartAecDump(nativeFactory, file_descriptor, filesize_limit_bytes);
-  }
-
-  // Stops recording an AEC dump. If no AEC dump is currently being recorded,
-  // this call will have no effect.
-  public void stopAecDump() {
-    checkPeerConnectionFactoryExists();
-    nativeStopAecDump(nativeFactory);
   }
 
   public void dispose() {
@@ -551,14 +511,6 @@ public class PeerConnectionFactory {
     }
   }
 
-  /** Deprecated, use non-static version instead. */
-  @Deprecated
-  public static void printStackTraces() {
-    printStackTrace(staticNetworkThread, /* printNativeStackTrace= */ false);
-    printStackTrace(staticWorkerThread, /* printNativeStackTrace= */ false);
-    printStackTrace(staticSignalingThread, /* printNativeStackTrace= */ false);
-  }
-
   /**
    * Print the Java stack traces for the critical threads used by PeerConnectionFactory, namely;
    * signaling thread, worker thread, and network thread. If printNativeStackTraces is true, also
@@ -573,28 +525,27 @@ public class PeerConnectionFactory {
   @CalledByNative
   private void onNetworkThreadReady() {
     networkThread = ThreadInfo.getCurrent();
-    staticNetworkThread = networkThread;
+    // --twinlife 2015-01-27: staticNetworkThread = networkThread;
     Logging.d(TAG, "onNetworkThreadReady");
   }
 
   @CalledByNative
   private void onWorkerThreadReady() {
     workerThread = ThreadInfo.getCurrent();
-    staticWorkerThread = workerThread;
+    // --twinlife 2015-01-27: staticWorkerThread = workerThread;
     Logging.d(TAG, "onWorkerThreadReady");
   }
 
   @CalledByNative
   private void onSignalingThreadReady() {
     signalingThread = ThreadInfo.getCurrent();
-    staticSignalingThread = signalingThread;
+    // --twinlife 2015-01-27: staticSignalingThread = signalingThread;
     Logging.d(TAG, "onSignalingThreadReady");
   }
 
   // Must be called at least once before creating a PeerConnectionFactory
   // (for example, at application startup time).
   private static native void nativeInitializeAndroidGlobals();
-  private static native void nativeInitializeFieldTrials(String fieldTrialsInitString);
   private static native String nativeFindFieldTrialsFullName(String name);
   private static native void nativeInitializeInternalTracer();
   // Internal tracing shutdown, called to prevent resource leaks. Must be called after
@@ -613,16 +564,12 @@ public class PeerConnectionFactory {
   private static native long nativeCreatePeerConnection(long factory,
       PeerConnection.RTCConfiguration rtcConfig, MediaConstraints constraints, long nativeObserver,
       SSLCertificateVerifier sslCertificateVerifier);
-  private static native long nativeCreateLocalMediaStream(long factory, String label);
   private static native long nativeCreateVideoSource(
       long factory, boolean is_screencast, boolean alignTimestamps);
   private static native long nativeCreateVideoTrack(
       long factory, String id, long nativeVideoSource);
   private static native long nativeCreateAudioSource(long factory, MediaConstraints constraints);
   private static native long nativeCreateAudioTrack(long factory, String id, long nativeSource);
-  private static native boolean nativeStartAecDump(
-      long factory, int file_descriptor, int filesize_limit_bytes);
-  private static native void nativeStopAecDump(long factory);
   private static native void nativeFreeFactory(long factory);
   private static native long nativeGetNativePeerConnectionFactory(long factory);
   private static native void nativeInjectLoggable(JNILogging jniLogging, int severity);

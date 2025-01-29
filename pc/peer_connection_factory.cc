@@ -192,6 +192,7 @@ PeerConnectionFactory::CreateAudioSource(const cricket::AudioOptions& options) {
   return source;
 }
 
+#ifdef WEBRTC_HAS_AECDUMP // --twinlife 2025-01-27: disable AEC dump
 bool PeerConnectionFactory::StartAecDump(FILE* file, int64_t max_size_bytes) {
   RTC_DCHECK_RUN_ON(worker_thread());
   return media_engine()->voice().StartAecDump(FileWrapper(file),
@@ -202,6 +203,7 @@ void PeerConnectionFactory::StopAecDump() {
   RTC_DCHECK_RUN_ON(worker_thread());
   media_engine()->voice().StopAecDump();
 }
+#endif // --twinlife 2025-01-27: disable AEC dump
 
 cricket::MediaEngineInterface* PeerConnectionFactory::media_engine() const {
   RTC_DCHECK(context_);
@@ -248,11 +250,6 @@ PeerConnectionFactory::CreatePeerConnectionOrError(
     dependencies.allocator->set_flags(
         configuration.port_allocator_config.flags);
   }
-  // --twinlife-- 180202
-  // if (configuration.proxy_info.type != rtc::PROXY_NONE) {
-  //  dependencies.allocator->set_proxy("webrtc", configuration.proxy_info);
-  // }
-  // --twinlife-- 180202
 
   if (!dependencies.ice_transport_factory) {
     dependencies.ice_transport_factory =

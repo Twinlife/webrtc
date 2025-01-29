@@ -273,12 +273,6 @@ int32_t AudioDeviceModuleImpl::AttachAudioBuffer() {
   RTC_LOG(LS_INFO) << __FUNCTION__;
   audio_device_->AttachAudioBuffer(&audio_device_buffer_);
 
-  // --twinlife-- 170307
-#if defined(WEBRTC_ANDROID)
-  secondary_audio_device_->AttachAudioBuffer(&audio_device_buffer_);
-#endif
-  // --twinlife-- 170307
-
   return 0;
 }
 
@@ -729,19 +723,6 @@ int32_t AudioDeviceModuleImpl::InitPlayout() {
 
 int32_t AudioDeviceModuleImpl::InitRecording() {
   RTC_LOG(LS_INFO) << __FUNCTION__;    
-// --twinlife-- 170307
-#if defined(WEBRTC_ANDROID)
-  if (swapped_audio_device_) {
-    audio_device_.swap(secondary_audio_device_);
-    swapped_audio_device_ = false;
-  }
-  streaming_mode_enabled_ = secondary_audio_device_->IsAudioStreamingModeEnabled();
-  if (streaming_mode_enabled_) {
-    audio_device_.swap(secondary_audio_device_);
-    swapped_audio_device_ = true;
-  }
-#endif
-// --twinlife-- 170307
   CHECKinitialized_();
   if (RecordingIsInitialized()) {
     return 0;

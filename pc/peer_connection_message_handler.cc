@@ -13,7 +13,9 @@
 #include <utility>
 
 #include "api/jsep.h"
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
 #include "api/legacy_stats_types.h"
+#endif
 #include "api/media_stream_interface.h"
 #include "api/peer_connection_interface.h"
 #include "api/scoped_refptr.h"
@@ -64,13 +66,17 @@ void PeerConnectionMessageHandler::PostCreateSessionDescriptionFailure(
 
 void PeerConnectionMessageHandler::PostGetStats(
     StatsObserver* observer,
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
     LegacyStatsCollectorInterface* legacy_stats,
+#endif
     MediaStreamTrackInterface* track) {
   signaling_thread_->PostTask(
-      SafeTask(safety_.flag(), [observer = WrapScoped(observer), legacy_stats,
+  SafeTask(safety_.flag(), [observer = WrapScoped(observer), /* legacy_stats,*/
                                 track = WrapScoped(track)] {
         StatsReports reports;
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
         legacy_stats->GetStats(track.get(), &reports);
+#endif
         observer->OnComplete(reports);
       }));
 }
