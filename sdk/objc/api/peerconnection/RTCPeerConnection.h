@@ -27,7 +27,9 @@
 @class RTC_OBJC_TYPE(RTCRtpTransceiverInit);
 @class RTC_OBJC_TYPE(RTCSessionDescription);
 @class RTC_OBJC_TYPE(RTCStatisticsReport);
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
 @class RTC_OBJC_TYPE(RTCLegacyStatsReport);
+#endif // --twinlife 2025-01-27: disable legacy GetStats
 
 typedef NS_ENUM(NSInteger, RTCRtpMediaType);
 
@@ -100,6 +102,7 @@ RTC_OBJC_EXPORT
     : (RTC_OBJC_TYPE(RTCPeerConnection) *)peerConnection didChangeSignalingState
     : (RTCSignalingState)stateChanged;
 
+#if 0 // --twinlife 2025-01-30: remove deprecated API
 /** Called when media is received on a new stream from remote peer. */
 - (void)peerConnection:(RTC_OBJC_TYPE(RTCPeerConnection) *)peerConnection
           didAddStream:(RTC_OBJC_TYPE(RTCMediaStream) *)stream;
@@ -109,6 +112,7 @@ RTC_OBJC_EXPORT
  */
 - (void)peerConnection:(RTC_OBJC_TYPE(RTCPeerConnection) *)peerConnection
        didRemoveStream:(RTC_OBJC_TYPE(RTCMediaStream) *)stream;
+#endif
 
 /** Called when negotiation is needed, for example ICE has restarted. */
 - (void)peerConnectionShouldNegotiate:
@@ -392,6 +396,7 @@ typedef void (^RTCStatisticsCompletionHandler)(
 @interface RTC_OBJC_TYPE (RTCPeerConnection)
 (Stats)
 
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
     /** Gather stats for the given RTCMediaStreamTrack. If `mediaStreamTrack` is
      * nil statistics are gathered for all tracks.
      */
@@ -400,6 +405,7 @@ typedef void (^RTCStatisticsCompletionHandler)(
     : (RTCStatsOutputLevel)statsOutputLevel completionHandler
     : (nullable void (^)(NSArray<RTC_OBJC_TYPE(RTCLegacyStatsReport) *> *stats))
           completionHandler;
+#endif // --twinlife 2025-01-27: disable legacy GetStats
 
 /** Gather statistic through the v2 statistics API. */
 - (void)statisticsWithCompletionHandler:

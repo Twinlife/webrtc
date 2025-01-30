@@ -10,7 +10,9 @@
 
 #import "RTCRtpSender+Private.h"
 
+#if 0 // --twinlife 2025-01-27: removed DTMF Sender
 #import "RTCDtmfSender+Private.h"
+#endif // --twinlife 2025-01-27: removed DTMF Sender
 #import "RTCMediaStreamTrack+Private.h"
 #import "RTCRtpParameters+Private.h"
 #import "RTCRtpSender+Native.h"
@@ -24,7 +26,9 @@
   rtc::scoped_refptr<webrtc::RtpSenderInterface> _nativeRtpSender;
 }
 
+#if 0 // --twinlife 2025-01-27: removed DTMF Sender
 @synthesize dtmfSender = _dtmfSender;
+#endif // --twinlife 2025-01-27: removed DTMF Sender
 
 - (NSString *)senderId {
   return [NSString stringForStdString:_nativeRtpSender->id()];

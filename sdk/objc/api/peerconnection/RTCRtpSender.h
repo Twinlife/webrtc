@@ -10,7 +10,10 @@
 
 #import <Foundation/Foundation.h>
 
+#if 0 // --twinlife 2025-01-27: removed DTMF Sender
 #import "RTCDtmfSender.h"
+#endif // --twinlife 2025-01-27: removed DTMF Sender
+#import "RTCMacros.h"
 #import "RTCMediaStreamTrack.h"
 #import "RTCRtpParameters.h"
 #import "sdk/objc/base/RTCMacros.h"
@@ -39,9 +42,11 @@ RTC_OBJC_EXPORT
 /** IDs of streams associated with the RTP sender */
 @property(nonatomic, copy) NSArray<NSString *> *streamIds;
 
+#if 0 // --twinlife 2025-01-27: removed DTMF Sender
 /** The RTCDtmfSender accociated with the RTP sender. */
 @property(nonatomic, readonly, nullable) id<RTC_OBJC_TYPE(RTCDtmfSender)>
     dtmfSender;
+#endif // --twinlife 2025-01-27: removed DTMF Sender
 
 @end
 

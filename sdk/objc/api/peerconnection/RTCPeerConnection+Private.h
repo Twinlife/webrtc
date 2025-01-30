@@ -29,9 +29,11 @@ class PeerConnectionDelegateAdapter : public PeerConnectionObserver {
   void OnSignalingChange(
       PeerConnectionInterface::SignalingState new_state) override;
 
+#if 0 // --twinlife 2025-01-30: remove legacy MediaStream
   void OnAddStream(rtc::scoped_refptr<MediaStreamInterface> stream) override;
 
   void OnRemoveStream(rtc::scoped_refptr<MediaStreamInterface> stream) override;
+#endif // --twinlife 2025-01-30: remove legacy MediaStream
 
   void OnTrack(
       rtc::scoped_refptr<RtpTransceiverInterface> transceiver) override;

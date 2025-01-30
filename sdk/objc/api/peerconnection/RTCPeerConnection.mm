@@ -149,6 +149,7 @@ void PeerConnectionDelegateAdapter::OnSignalingChange(
   [delegate peerConnection:peer_connection didChangeSignalingState:state];
 }
 
+#if 0 // --twinlife 2025-01-30: remove legacy MediaStream
 void PeerConnectionDelegateAdapter::OnAddStream(
     rtc::scoped_refptr<MediaStreamInterface> stream) {
   RTC_OBJC_TYPE(RTCPeerConnection) *peer_connection = peer_connection_;
@@ -183,6 +184,7 @@ void PeerConnectionDelegateAdapter::OnRemoveStream(
 
   [delegate peerConnection:peer_connection didRemoveStream:mediaStream];
 }
+#endif // --twinlife 2025-01-30: remove legacy MediaStream
 
 void PeerConnectionDelegateAdapter::OnTrack(
     rtc::scoped_refptr<RtpTransceiverInterface> nativeTransceiver) {

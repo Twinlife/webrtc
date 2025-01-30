@@ -97,6 +97,7 @@ class StatsObserverAdapter : public StatsObserver {
   self.nativePeerConnection->GetStats(collector.get());
 }
 
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
 - (void)statsForTrack:(RTC_OBJC_TYPE(RTCMediaStreamTrack) *)mediaStreamTrack
      statsOutputLevel:(RTCStatsOutputLevel)statsOutputLevel
     completionHandler:
@@ -109,5 +110,6 @@ class StatsObserverAdapter : public StatsObserver {
   self.nativePeerConnection->GetStats(
       observer.get(), mediaStreamTrack.nativeTrack.get(), nativeOutputLevel);
 }
+#endif // --twinlife 2025-01-27: disable legacy GetStats
 
 @end

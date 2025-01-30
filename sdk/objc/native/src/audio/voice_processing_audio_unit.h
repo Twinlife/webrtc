@@ -140,6 +140,7 @@ class VoiceProcessingAudioUnit {
   void DisposeAudioUnit();
 
   const bool bypass_voice_processing_;
+
   const bool detect_mute_speech_;
   VoiceProcessingAudioUnitObserver* observer_;
   AudioUnit vpio_unit_;
