@@ -10,7 +10,9 @@
 
 #import "RTCPeerConnection+Private.h"
 
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
 #import "RTCLegacyStatsReport+Private.h"
+#endif // --twinlife 2025-01-27: disable legacy GetStats
 #import "RTCMediaStreamTrack+Private.h"
 #import "RTCRtpReceiver+Private.h"
 #import "RTCRtpSender+Private.h"
@@ -40,6 +42,7 @@ class StatsCollectorCallbackAdapter : public RTCStatsCollectorCallback {
   RTCStatisticsCompletionHandler completion_handler_;
 };
 
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
 class StatsObserverAdapter : public StatsObserver {
  public:
   StatsObserverAdapter(void (^completionHandler)(
@@ -66,6 +69,8 @@ class StatsObserverAdapter : public StatsObserver {
   void (^completion_handler_)(
       NSArray<RTC_OBJC_TYPE(RTCLegacyStatsReport) *> *stats);
 };
+
+#endif // --twinlife 2025-01-27: disable legacy GetStats
 }  // namespace webrtc
 
 @implementation RTC_OBJC_TYPE (RTCPeerConnection)

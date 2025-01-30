@@ -14,7 +14,9 @@
 #import "RTCDataChannel+Private.h"
 #import "RTCIceCandidate+Private.h"
 #import "RTCIceCandidateErrorEvent+Private.h"
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
 #import "RTCLegacyStatsReport+Private.h"
+#endif // --twinlife 2025-01-27: disable legacy GetStats
 #import "RTCMediaConstraints+Private.h"
 #import "RTCMediaStream+Private.h"
 #import "RTCMediaStreamTrack+Private.h"
