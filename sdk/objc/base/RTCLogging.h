@@ -32,6 +32,11 @@ RTC_EXTERN void RTCSetMinDebugLogLevel(RTCLoggingSeverity severity);
 // Returns the filename with the path prefix removed.
 RTC_EXTERN NSString* RTCFileName(const char* filePath);
 
+// --twinlife-- 2025-01-11: Fix RTCLogFormat() to avoid formatting the log when it is disabled (avoids side effects).
+
+// Returns YES if the logs are enabled for the given severity.
+RTC_EXTERN BOOL RTCIsLogSeverityEnabled(RTCLoggingSeverity severity);
+
 // Some convenience macros.
 
 #define RTCLogString(format, ...)                    \
@@ -43,9 +48,12 @@ RTC_EXTERN NSString* RTCFileName(const char* filePath);
 
 #define RTCLogFormat(severity, format, ...)                     \
   do {                                                          \
-    NSString* log_string = RTCLogString(format, ##__VA_ARGS__); \
-    RTCLogEx(severity, log_string);                             \
+    if (RTCIsLogSeverityEnabled(severity)) {                    \
+      NSString* log_string = RTCLogString(format, ##__VA_ARGS__); \
+      RTCLogEx(severity, log_string);                             \
+    }                                                           \
   } while (false)
+// --twinlife-- 2025-01-11: Fix RTCLogFormat() to avoid formatting the log when it is disabled (avoids side effects).
 
 #define RTCLogVerbose(format, ...) \
   RTCLogFormat(RTCLoggingSeverityVerbose, format, ##__VA_ARGS__)

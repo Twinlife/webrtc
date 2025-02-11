@@ -27,6 +27,15 @@ rtc::LoggingSeverity RTCGetNativeLoggingSeverity(RTCLoggingSeverity severity) {
   }
 }
 
+// --twinlife-- 2025-01-11: Fix RTCLogFormat() to avoid formatting the log when it is disabled (avoids side effects).
+
+BOOL RTCIsLogSeverityEnabled(RTCLoggingSeverity sev) {
+
+   return !::rtc::LogMessage::IsNoop(RTCGetNativeLoggingSeverity(sev));
+}
+
+// --twinlife-- 2025-01-11: Fix RTCLogFormat() to avoid formatting the log when it is disabled (avoids side effects).
+
 void RTCLogEx(RTCLoggingSeverity severity, NSString* log_string) {
   if (log_string.length) {
     const char* utf8_string = log_string.UTF8String;
