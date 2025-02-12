@@ -59,6 +59,9 @@
 // --twinlife-- 2023-07-12
 @synthesize hostnames = _hostnames;
 // --twinlife-- 2023-07-12
+// --twinlife-- 2025-02-12: add support to configure the turn_port_prune_policy
+@synthesize turnPortPrunePolicy = _turnPortPrunePolicy;
+// --twinlife-- 2025-02-12: add support to configure the turn_port_prune_policy
 @synthesize activeResetSrtpParams = _activeResetSrtpParams;
 @synthesize cryptoOptions = _cryptoOptions;
 @synthesize turnLoggingId = _turnLoggingId;
@@ -175,6 +178,10 @@
     _iceInactiveTimeout = config.ice_inactive_timeout.has_value() ?
         [NSNumber numberWithInt:*config.ice_inactive_timeout] :
         nil;
+// --twinlife-- 2025-02-12: add support to configure the turn_port_prune_policy
+    _turnPortPrunePolicy =
+        [[self class] portPrunePolicyFromNative:config.turn_port_prune_policy];
+// --twinlife-- 2025-02-12: add support to configure the turn_port_prune_policy
   }
   return self;
 }
@@ -312,6 +319,9 @@
    }
   }
   // --twinlife-- 2023-07-12
+  // --twinlife-- 2025-02-12: add support to configure the turn_port_prune_policy
+  nativeConfig->turn_port_prune_policy = [[self class] nativePortPrunePolicy:_turnPortPrunePolicy];
+  // --twinlife-- 2025-02-12: add support to configure the turn_port_prune_policy
   nativeConfig->active_reset_srtp_params =
       _activeResetSrtpParams ? true : false;
   if (_cryptoOptions) {
@@ -382,6 +392,32 @@
       return RTCIceTransportPolicyAll;
   }
 }
+
+// --twinlife-- 2025-02-12: add support to configure the turn_port_prune_policy
++ (webrtc::PortPrunePolicy)
+    nativePortPrunePolicy:(RTCPortPrunePolicy)policy {
+  switch (policy) {
+    case RTCPortPrunePolicyNoPrune:
+      return webrtc::PortPrunePolicy::NO_PRUNE;
+    case RTCPortPrunePolicyPruneBasedOnPriority:
+      return webrtc::PortPrunePolicy::PRUNE_BASED_ON_PRIORITY;
+    case RTCPortPrunePolicyKeepFirstReady:
+      return webrtc::PortPrunePolicy::KEEP_FIRST_READY;
+  }
+}
+
++ (RTCPortPrunePolicy)portPrunePolicyFromNative:
+    (webrtc::PortPrunePolicy)nativeType {
+  switch (nativeType) {
+    case webrtc::PortPrunePolicy::NO_PRUNE:
+      return RTCPortPrunePolicyNoPrune;
+    case webrtc::PortPrunePolicy::PRUNE_BASED_ON_PRIORITY:
+      return RTCPortPrunePolicyPruneBasedOnPriority;
+    case webrtc::PortPrunePolicy::KEEP_FIRST_READY:
+      return RTCPortPrunePolicyKeepFirstReady;
+  }
+}
+// --twinlife-- 2025-02-12: add support to configure the turn_port_prune_policy
 
 + (NSString *)stringForTransportPolicy:(RTCIceTransportPolicy)policy {
   switch (policy) {

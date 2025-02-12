@@ -74,6 +74,17 @@ typedef NS_ENUM(NSInteger, RTCSdpSemantics) {
   RTCSdpSemanticsUnifiedPlan,
 };
 
+// --twinlife-- 2025-02-12: add support to configure the turn_port_prune_policy
+
+/** Represents the chosen relay port prune policy the RTCPeerConnection. */
+typedef NS_ENUM(NSInteger, RTCPortPrunePolicy) {
+  RTCPortPrunePolicyNoPrune,
+  RTCPortPrunePolicyPruneBasedOnPriority,
+  RTCPortPrunePolicyKeepFirstReady
+};
+
+// --twinlife-- 2025-02-12: add support to configure the turn_port_prune_policy
+
 NS_ASSUME_NONNULL_BEGIN
 
 RTC_OBJC_EXPORT
@@ -268,6 +279,11 @@ RTC_OBJC_EXPORT
 /** An array of Hostnames with IPv4/IPV6 for DNS static resolution. */
 @property(nonatomic, copy) NSArray<RTC_OBJC_TYPE(RTCHostname) *> *hostnames;
 // --twinlife-- 2023-07-12
+
+// --twinlife-- 2025-02-12: add support to configure the turn_port_prune_policy
+@property(nonatomic, assign) RTCPortPrunePolicy turnPortPrunePolicy;
+// --twinlife-- 2025-02-12: add support to configure the turn_port_prune_policy
+
 
 - (instancetype)init;
 
