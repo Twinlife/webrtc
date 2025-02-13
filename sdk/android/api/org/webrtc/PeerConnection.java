@@ -586,14 +586,6 @@ public class PeerConnection {
      */
     @Nullable public CryptoOptions cryptoOptions;
 
-    // --twinlife-- 180203
-    @Nullable public String proxyAddress;
-    public int proxyPort;
-    @Nullable public String proxyUsername;
-    @Nullable public String proxyPassword;
-    @Nullable public Map<String, String> proxyPaths;
-    // --twinlife-- 180203
-
     // --twinlife 2023-07-11: provide hostname resolution
     @Nullable public List<ServerAddr> hostAddresses;
     // --twinlife 2023-07-11: provide hostname resolution
@@ -660,11 +652,6 @@ public class PeerConnection {
       activeResetSrtpParams = false;
       cryptoOptions = null;
       // --twinlife-- 180203
-      proxyAddress = null;
-      proxyPort = 0;
-      proxyUsername = null;
-      proxyPassword = null;
-      proxyPaths = null;
       hostAddresses = null;
       // --twinlife-- 180203
       turnLoggingId = null;
@@ -869,37 +856,6 @@ public class PeerConnection {
     String getTurnLoggingId() {
       return turnLoggingId;
     }
-
-    // --twinlife-- 180203
-    /* @Nullable
-    @CalledByNative("RTCConfiguration")
-    String getProxyAddress() {
-      return proxyAddress;
-    }
-
-    @CalledByNative("RTCConfiguration")
-    int getProxyPort() {
-      return proxyPort;
-    }
-
-    @Nullable
-    @CalledByNative("RTCConfiguration")
-    String getProxyUsername() {
-      return proxyUsername;
-    }
-
-    @Nullable
-    @CalledByNative("RTCConfiguration")
-    String getProxyPassword() {
-      return proxyPassword;
-    }
-
-    @Nullable
-    @CalledByNative("RTCConfiguration")
-    Map getProxyPaths() {
-      return proxyPaths;
-    }*/
-    // --twinlife-- 180203
 
     // --twinlife 2023-07-11: provide hostname resolution
     @Nullable
