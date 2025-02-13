@@ -878,6 +878,9 @@ void TurnPort::ResolveTurnAddress(const rtc::SocketAddress& address) {
     // assuming socket layer will resolve the hostname through a HTTP proxy (if
     // any).
     auto& result = resolver_->result();
+    // --twinlife 2025-02-13: since we provide the static hostname resolution
+    // of our TURN servers, we don't want to try again for a possible HTTP proxy.
+#if 0
     if (result.GetError() != 0 && (server_address_.proto == PROTO_TCP ||
                                    server_address_.proto == PROTO_TLS)) {
       if (!CreateTurnClientSocket()) {
@@ -886,6 +889,7 @@ void TurnPort::ResolveTurnAddress(const rtc::SocketAddress& address) {
       }
       return;
     }
+#endif // --twinlife 2025-02-13: since we provide the static hostname resolution
 
     // Copy the original server address in `resolved_address`. For TLS based
     // sockets we need hostname along with resolved address.
