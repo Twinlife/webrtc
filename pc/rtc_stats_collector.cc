@@ -1729,15 +1729,12 @@ void RTCStatsCollector::ProduceAudioRTPStreamStats_n(
     if (audio_track) {
       inbound_audio->track_identifier = audio_track->id();
     }
-<< <<<<< HEAD
-=======
     if (audio_device_stats_ && stats.media_type == cricket::MEDIA_TYPE_AUDIO &&
         stats.current_direction &&
         (*stats.current_direction == RtpTransceiverDirection::kSendRecv ||
          *stats.current_direction == RtpTransceiverDirection::kRecvOnly)) {
       inbound_audio->playout_id = kAudioPlayoutSingletonId;
     }
->>>>>>> d75b9e9ff07ee42841b4e416629c9fbd4b058905
     auto* inbound_audio_ptr = report->TryAddStats(std::move(inbound_audio));
     if (!inbound_audio_ptr) {
       RTC_LOG(LS_ERROR)
