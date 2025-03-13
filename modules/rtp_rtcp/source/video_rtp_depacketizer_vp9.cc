@@ -12,6 +12,8 @@
 
 #include <string.h>
 
+#include <optional>
+
 #include "api/video/video_codec_constants.h"
 #include "modules/rtp_rtcp/source/rtp_packet_to_send.h"
 #include "modules/video_coding/codecs/interface/common_constants.h"
