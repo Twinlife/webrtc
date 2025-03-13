@@ -283,6 +283,7 @@ rtc_library("video_stream_buffer_controller") {
     "../api/units:time_delta",
     "../api/units:timestamp",
     "../api/video:encoded_frame",
+    "../api/video:frame_buffer",
     "../api/video:video_rtp_headers",
     "../modules/video_coding",
     "../modules/video_coding:frame_helpers",
