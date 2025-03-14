@@ -48,16 +48,20 @@ cd $ROOT/third_party/abseil-cpp
 echo -n "     abseil-cpp:                          "
 git rev-parse HEAD
 
+cd $ROOT/third_party/android_build_tools
+echo -n "     android_build_tools:                 "
+git rev-parse HEAD
+
 cd $ROOT/third_party/android_deps
 echo -n "     android_deps:                        "
 git rev-parse HEAD
 
-cd $ROOT/third_party/android_ndk
-echo -n "     android_ndk:                         "
-git rev-parse HEAD
-
 cd $ROOT/third_party/android_sdk
 echo -n "     android_sdk:                         "
+git rev-parse HEAD
+
+cd $ROOT/third_party/android_toolchain
+echo -n "     android_toolchain:                   "
 git rev-parse HEAD
 
 cd $ROOT/third_party/androidx
@@ -92,6 +96,10 @@ cd $ROOT/third_party/jdk
 echo -n "     jdk:                                 "
 git rev-parse HEAD
 
+cd $ROOT/third_party/jni_zero
+echo -n "     jni_zero:                            "
+git rev-parse HEAD
+
 cd $ROOT/third_party/jsoncpp
 echo -n "     jsoncpp:                             "
 git rev-parse HEAD
@@ -100,12 +108,24 @@ cd $ROOT/third_party/libaom
 echo -n "     libaom:                              "
 git rev-parse HEAD
 
+cd $ROOT/third_party/libc++
+echo -n "     libc++:                              "
+git rev-parse HEAD
+
+cd $ROOT/third_party/libc++abi
+echo -n "     libc++abi:                           "
+git rev-parse HEAD
+
 cd $ROOT/third_party/libjpeg_turbo
 echo -n "     libjpeg_turbo:                       "
 git rev-parse HEAD
 
 cd $ROOT/third_party/libsrtp
 echo -n "     libsrtp:                             "
+git rev-parse HEAD
+
+cd $ROOT/third_party/libunwind
+echo -n "     libunwind:                           "
 git rev-parse HEAD
 
 cd $ROOT/third_party/libvpx
@@ -122,6 +142,10 @@ git rev-parse HEAD
 
 cd $ROOT/third_party/llvm-build
 echo -n "     llvm-build:                          "
+git rev-parse HEAD
+
+cd $ROOT/third_party/llvm-libc
+echo -n "     llvm-libc:                           "
 git rev-parse HEAD
 
 cd $ROOT/third_party/nasm
