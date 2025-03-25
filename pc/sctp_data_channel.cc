@@ -571,6 +571,9 @@ uint64_t SctpDataChannel::bytes_received() const {
 bool SctpDataChannel::Send(const DataBuffer& buffer) {
   RTC_DCHECK_RUN_ON(network_thread_);
   RTCError err = SendImpl(buffer);
+  // --twinlife 2025-03-24: consider only NONE as successful
+  return err.type() == RTCErrorType::NONE;
+#if 0
   if (err.type() == RTCErrorType::INVALID_STATE ||
       err.type() == RTCErrorType::RESOURCE_EXHAUSTED) {
     return false;
@@ -578,6 +581,7 @@ bool SctpDataChannel::Send(const DataBuffer& buffer) {
 
   // Always return true for SCTP DataChannel per the spec.
   return true;
+#endif   // --twinlife 2025-03-24: consider only OK as successful
 }
 
 // RTC_RUN_ON(network_thread_);
