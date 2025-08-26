@@ -295,7 +295,18 @@ AdapterType GetAdapterTypeFromName(absl::string_view network_name) {
       MatchTypeNameWithIndexPattern(network_name, "ccmni")) {
     return ADAPTER_TYPE_CELLULAR;
   }
-#endif
+#elif defined(WEBRTC_LINUX)
+  // --twinlife-- 2025-08-26: add support to recognize the
+  // Linux Predictable Consistent Network Device Naming:
+  // - en[sop]XXX
+  // - wl[sop]XXX
+  if (absl::StartsWith(network_name, "en")) {
+    return ADAPTER_TYPE_ETHERNET;
+  }
+  if (absl::StartsWith(network_name, "wl")) {
+    return ADAPTER_TYPE_WIFI;
+  }
+#endif  // --twinlife-- 2025-08-26
 
   return ADAPTER_TYPE_UNKNOWN;
 }
