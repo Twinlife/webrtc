@@ -236,7 +236,7 @@ config("common_inherited_config") {
     if (build_with_mozilla) {
       defines += [ "WEBRTC_ANDROID_OPENSLES" ]
     }
-    // --twinlife-- 2025-08-29: for 32-bit version use 16K alignment (tested OK on a 32-bit device).
+    # --twinlife-- 2025-08-29: for 32-bit version use 16K alignment (tested OK on a 32-bit device).
     ldflags += ["-Wl,-z,max-page-size=16384"]
   }
   if (is_chromeos) {
