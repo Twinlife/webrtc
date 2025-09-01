@@ -123,6 +123,22 @@ namespace jni {
     return (jint)verifyAuth(pubKey, item1.data(), item2.data(), sig.data());
   }
 
+  jint CryptoKey::DeriveKeyPBKDF2HMACSHA256(JNIEnv *env, jstring password, const JavaParamRef<jbyteArray> &salt,
+                   const jint iterations,  const JavaParamRef<jbyteArray> &outKey) {
+    const char* p = env->GetStringUTFChars(password, nullptr);
+
+    jbyte* s = env->GetByteArrayElements(salt.obj(), nullptr);
+    jbyte* o = env->GetByteArrayElements(outKey.obj(), nullptr);
+    size_t keyLen = env->GetArrayLength(outKey.obj());
+
+    int result = deriveKeyPBKDF2HMACSHA256(p, (const unsigned char *)s, iterations, (int)keyLen, (unsigned char *)o);
+    env->ReleaseStringUTFChars(password, p);
+    env->ReleaseByteArrayElements(salt.obj(), s, JNI_ABORT);
+    env->ReleaseByteArrayElements(outKey.obj(), o, 0);
+
+    return result;
+  }
+
   // Prepare for use of AEAD with the peer's public key.  Derive a shared secret based on the private key
   // and peer's public key, compute the SHA256 digest of that secret, setup the AEAD internal context
   // to be ready to use `encryptAEAD` or `decryptAEAD`.  The `bind` is a costly operation compared

@@ -731,6 +731,14 @@ int CryptoKey::extractAuthPublicKey(const char* signature, unsigned char* pubKey
   return CryptoKey::decodeBase64(buf, len, pubKey, maxLength);
 }
 
+int CryptoKey::deriveKeyPBKDF2HMACSHA256(const char* password, const unsigned char* salt,
+    uint32_t iterations, int key_len, const unsigned char* out_key)
+{
+  int result = PKCS5_PBKDF2_HMAC(password, strlen(password), (uint8_t *)salt, sizeof(salt), iterations, EVP_sha256(), key_len, (uint8_t *)out_key);
+
+  return result == 0 ? TWINLIFE_BAD_PARAM : 1;
+}
+
 CryptoKey::~CryptoKey()
 {
    EVP_PKEY_free(pkey_);

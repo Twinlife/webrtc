@@ -121,6 +121,9 @@ namespace twinlife {
     int verifyAuth(const CryptoKey* peerPublicKey, const char* item, const char* peerItem,
                    const char* signature);
 
+    int deriveKeyPBKDF2HMACSHA256(const char* password, const unsigned char* salt,
+                    uint32_t iterations, int keyLen, const unsigned char *out_key);
+
     // Helper function to extract from the signature the public key used.
     // Note: extraction is necessary because we have to retrieve our private key as
     // well as item and peerItem before calling verifyAuth().
