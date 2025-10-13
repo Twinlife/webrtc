@@ -79,8 +79,18 @@ DataChannelInit JavaToNativeDataChannelInit(
     const jni_zero::JavaRef<jobject>& j_init) {
   DataChannelInit init;
   init.ordered = Java_Init_getOrdered(env, j_init);
-  init.maxRetransmitTime = Java_Init_getMaxRetransmitTimeMs(env, j_init);
-  init.maxRetransmits = Java_Init_getMaxRetransmits(env, j_init);
+  // --twinlife-- 2025-10-13: don't set maxRetransmitTime nor maxRetransmits
+  // when values are -1 because this indicates default behavior and passing -1
+  // will report an error.
+  int value = Java_Init_getMaxRetransmitTimeMs(env, j_init);
+  if (value >= 0) {
+    init.maxRetransmitTime = value;
+  }
+  value = Java_Init_getMaxRetransmits(env, j_init);
+  if (value >= 0) {
+    init.maxRetransmits = value;    
+  }
+  // --twinlife-- 2025-10-13
   init.protocol = JavaToStdString(env, Java_Init_getProtocol(env, j_init));
   init.negotiated = Java_Init_getNegotiated(env, j_init);
   init.id = Java_Init_getId(env, j_init);
