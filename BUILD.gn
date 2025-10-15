@@ -566,12 +566,10 @@ if (!build_with_chromium) {
       "pc:rtc_pc",
       "sdk",
       "video",
-# -twinlife- 190205
-      "third_party/libwebsockets",
-# -twinlife- 190205
-# -twinlife- 201102
-      "third_party/sqlcipher",
-# -twinlife- 201102
+# --twinlife-- 190205, 201102: build libwebsockets and sqlcipher
+      "twinlife/libwebsockets",
+      "twinlife/sqlcipher",
+# --twinlife-- 201102
     ]
 
     if (rtc_include_builtin_audio_codecs) {

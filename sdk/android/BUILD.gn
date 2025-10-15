@@ -323,8 +323,8 @@ if (is_android) {
       "src/java/org/webrtc/NativeLibrary.java",
 
       # -twinlife- 2023-10-04: add CryptoKey.java
-      "api/org/twinlife/twinlife/crypto/CryptoKey.java",
-      "api/org/twinlife/twinlife/crypto/CryptoBox.java"
+      "../../twinlife/java/org/twinlife/twinlife/crypto/CryptoKey.java",
+      "../../twinlife/java/org/twinlife/twinlife/crypto/CryptoBox.java"
     ]
 
     deps = [
@@ -784,8 +784,8 @@ if (current_os == "linux" || is_android) {
       "src/jni/pc/stats_observer.h",
       "src/jni/pc/turn_customizer.cc",
       "src/jni/pc/turn_customizer.h",
-      "src/jni/pc/twinlife_crypto.cc",
-      "src/jni/pc/twinlife_crypto.h",
+      "../../twinlife/jni/twinlife_crypto.cc",
+      "../../twinlife/jni/twinlife_crypto.h",
     ]
 
     deps = [
@@ -1463,8 +1463,8 @@ if (current_os == "linux" || is_android) {
       "api/org/webrtc/TurnCustomizer.java",
 
       # -twinlife- 2023-10-04: add CryptoKey.java
-      "api/org/twinlife/twinlife/crypto/CryptoKey.java",
-      "api/org/twinlife/twinlife/crypto/CryptoBox.java"
+      "../../twinlife/java/org/twinlife/twinlife/crypto/CryptoKey.java",
+      "../../twinlife/java/org/twinlife/twinlife/crypto/CryptoBox.java"
     ]
     namespace = "webrtc::jni"
     jni_generator_include = "//sdk/android/src/jni/jni_generator_helper.h"

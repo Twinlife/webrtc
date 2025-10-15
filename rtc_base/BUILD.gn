@@ -1523,8 +1523,8 @@ rtc_library("ssl") {
     "ssl_identity.cc",
     "ssl_identity.h",
     # -twinlife- 2023-09-20: add twinlife::Crypto class
-    "twinlife_crypto.cc",
-    "twinlife_crypto.h"
+    "../twinlife/twinlife_crypto.cc",
+    "../twinlife/twinlife_crypto.h"
   ]
 
   deps = [

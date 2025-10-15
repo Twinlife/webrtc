@@ -12,7 +12,7 @@
 
 #include <jni.h>
 
-#include "rtc_base/twinlife_crypto.h"
+#include "twinlife/twinlife_crypto.h"
 #include "sdk/android/native_api/jni/scoped_java_ref.h"
 
 using twinlife::CryptoKey;

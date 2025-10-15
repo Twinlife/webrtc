@@ -7,7 +7,7 @@
  *   Stephane Carrez (Stephane.Carrez@skyrock.com)
  */
 
-#include "sdk/android/src/jni/pc/twinlife_crypto.h"
+#include "twinlife/jni/twinlife_crypto.h"
 
 #include <memory>
 #include <utility>
