@@ -53,16 +53,10 @@ class MediaCodecVideoDecoderFactory implements VideoDecoderFactory {
       return null;
     }
 
-    // -twinlife- 190218
-    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN) {
-      CodecCapabilities capabilities = info.getCapabilitiesForType(type.mimeType());
-      return new AndroidVideoDecoder(new MediaCodecWrapperFactoryImpl(), info.getName(), type,
-          MediaCodecUtils.selectColorFormat(MediaCodecUtils.DECODER_COLOR_FORMATS, capabilities),
-          sharedContext);
-    }
-
-    return null;
-    // -twinlife- 190218
+    CodecCapabilities capabilities = info.getCapabilitiesForType(type.mimeType());
+    return new AndroidVideoDecoder(new MediaCodecWrapperFactoryImpl(), info.getName(), type,
+        MediaCodecUtils.selectColorFormat(MediaCodecUtils.DECODER_COLOR_FORMATS, capabilities),
+        sharedContext);
   }
 
   @Override
@@ -106,22 +100,21 @@ class MediaCodecVideoDecoderFactory implements VideoDecoderFactory {
 
   // Returns true if the given MediaCodecInfo indicates a supported encoder for the given type.
   private boolean isSupportedCodec(MediaCodecInfo info, VideoCodecMimeType type) {
-    // -twinlife- 190218
-    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN) {
-      if (!MediaCodecUtils.codecSupportsType(info, type)) {
-        return false;
-      }
-      try {
+    // -twinlife- 190218: handle IllegalArgumentException on some devices
+    if (!MediaCodecUtils.codecSupportsType(info, type)) {
+      return false;
+    }
+    try {
         // Check for a supported color format.
         if (MediaCodecUtils.selectColorFormat(
                 MediaCodecUtils.DECODER_COLOR_FORMATS, info.getCapabilitiesForType(type.mimeType()))
             == null) {
           return false;
 	  }
-      } catch (IllegalArgumentException exception) {
+    } catch (IllegalArgumentException exception) {
 	return false;
-      }
     }
+    // -twinlife- 190218
     return isCodecAllowed(info);
   }
 
@@ -133,20 +126,15 @@ class MediaCodecVideoDecoderFactory implements VideoDecoderFactory {
   }
 
   private boolean isH264HighProfileSupported(MediaCodecInfo info) {
-    // -twinlife- 190218
-    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN) {      
-      String name = info.getName();
-      // Support H.264 HP decoding on QCOM chips for Android L and above.
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && name.startsWith(QCOM_PREFIX)) {
-        return true;
-      }
-      // Support H.264 HP decoding on Exynos chips for Android M and above.
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && name.startsWith(EXYNOS_PREFIX)) {
-        return true;
-      }
+    String name = info.getName();
+    // Support H.264 HP decoding on QCOM chips.
+    if (name.startsWith(QCOM_PREFIX)) {
+      return true;
     }
-
-    // -twinlife- 190218
+    // Support H.264 HP decoding on Exynos chips for Android M and above.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && name.startsWith(EXYNOS_PREFIX)) {
+      return true;
+    }
     return false;
   }
 }
