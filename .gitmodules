@@ -1,0 +1,8 @@
+[submodule "twinlife/sqlcipher"]
+	path = twinlife/sqlcipher
+	url = https://github.com/Twinlife/sqlcipher.git
+	branch = twinlife-2.0/main
+[submodule "twinlife/libwebsockets"]
+	path = twinlife/libwebsockets
+	url = https://github.com/Twinlife/libwebsockets.git
+	branch = twinlife-2.0/main
