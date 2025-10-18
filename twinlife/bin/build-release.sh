@@ -7,7 +7,7 @@ if [ ! -f tools/ninja/ninja ]; then
 fi
 
 echo "Build WebRTC for Android armv7..."
-./build-release-32.sh
+./twinlife/bin/build-release-32.sh
 
 echo "Build WebRTC for Android arm64..."
-./build-release-64.sh
+./twinlife/bin/build-release-64.sh
