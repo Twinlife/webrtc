@@ -513,8 +513,8 @@ const int64_t kNanosecondsPerSecond = 1000000000;
 
   // --twinlife-- 2023-04-28: the kCVPixelBufferWidthKey and kCVPixelBufferHeightKey are only available on iOS >= 16
   if (@available(iOS 16, *)) {
-    // Update videoSettings with dimensions, as some virtual cameras, e.g. Snap Camera, may not work
-    // otherwise.
+    // Update videoSettings with dimensions, as some virtual cameras, e.g. Snap
+    // Camera, may not work otherwise.
     CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription);
     _videoDataOutput.videoSettings = @{
       (id)kCVPixelBufferWidthKey : @(dimensions.width),

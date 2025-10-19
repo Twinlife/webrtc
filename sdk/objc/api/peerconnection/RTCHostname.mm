@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2023 twinlife SA.
+ *  Copyright (c) 2023 - 2024 twinlife SA.
  *
  *  All Rights Reserved.
  *
@@ -20,7 +20,8 @@
 - (instancetype)initWithHostname:(NSString *)hostname
                             ipv4:(nullable NSString *)ipv4
                             ipv6:(nullable NSString *)ipv6 {
-  if (self = [super init]) {
+  self = [super init];
+  if (self) {
     _hostname = [hostname copy];
     _ipv4 = [ipv4 copy];
     _ipv6 = [ipv6 copy];
