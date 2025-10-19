@@ -13,7 +13,7 @@ amongst others.
 
 This repository contains a modified version of WebRTC available at https://webrtc.googlesource.com/src
 and used by [twinme](https://www.twin.me) and [Skred](https://www.skred.app) private messaging applications.
-Follow the [build instructions](Twinlife/BUILDING.md) if you want to compile this project.
+Follow the [build instructions](twinlife/BUILDING.md) if you want to compile this project.
 
 The changes that you will find here have a very long history, thanks to Christian Jacquemot how
 initiated the project in 2014.  Since the beginning, our changes have been made in several git
