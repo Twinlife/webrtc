@@ -42,6 +42,18 @@ We have made the following improvements and fixes for us:
 - 2020-01-29: fix multiple TCP port allocation with same configuration for a same peer connection (See https://issues.webrtc.org/issues/42221421)
 - 2016-11-18: added zoom support in the Camera API for Android and iOS
 
+### Debugging gn 
+
+Useful commands to try understand why the complex gn build environment fails:
+
+* List available configuration parameters:
+  ```
+  gn args --list out-64/Release
+  ```
+* Find references of a component:
+  ```
+  gn refs out-64/Release //third_party/libaom
+  ```
 
 ### Development
 
