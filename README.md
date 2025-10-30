@@ -25,6 +25,7 @@ for our applications.
 
 We have made the following improvements and fixes for us:
 
+- 2025-10-30: update and cleanup build for Android and iOS using the same branch
 - 2025-08-29: for 32-bit version use 16K alignment (tested OK on a 32-bit device).
 - 2025-08-29: add ISRG Root X1 and ISG Root X2 in the ssl_roots.h certificate list.
 - 2025-03-24: fixed data channel send method returns true when the message exceeds the limit (see https://issues.webrtc.org/issues/406012421)

@@ -1,4 +1,5 @@
-Building WebRTC can be difficult and over time we have used different approches.
+Building WebRTC can be difficult (it is a nightmare compared to some other OpenSource projects)
+and over time we have used different approches.
 To build this GitHub project we have made the choice to rely on an external manual
 and full extraction of WebRTC.
 
@@ -48,6 +49,8 @@ extraction and run our `webrtc-setup.sh` script.
 ## Generating Ninja project files
 
 Run the `build.sh` script at the top of our WebRTC source tree.
+On Linux, the script will configure to build WebRTC for Android and
+on MacOS, it will configure for iOS target.
 This generates the Ninja project files by using `gn` and our specific
 configuration:
 
@@ -57,7 +60,7 @@ configuration:
 
 ## Compiling
 
-Run the `build-release.sh` script to build the 32-bit and 64-bit Android libraries.
+Run the `build-release.sh` script to build the 32-bit and 64-bit Android or iOS 64-bit libraries.
 
 ```
 ./twinlife/bin/build-release.sh
