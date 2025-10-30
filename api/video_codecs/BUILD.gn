@@ -205,6 +205,7 @@ rtc_source_set("video_encoder_factory_template_open_h264_adapter") {
   ]
 }
 
+if (!is_ios) { # --twinlife-- 2025-10-30: try fix dependency issue for iOS
 rtc_source_set("video_encoder_factory_template_libaom_av1_adapter") {
   visibility = [ "*" ]
   allow_poison = [ "software_video_codecs" ]
@@ -220,7 +221,7 @@ rtc_source_set("video_encoder_factory_template_libaom_av1_adapter") {
     "//third_party/abseil-cpp/absl/container:inlined_vector",
   ]
 }
-
+} # --twinlife-- 2025-10-30: try fix dependency issue for iOS
 rtc_source_set("video_decoder_factory_template") {
   visibility = [ "*" ]
   allow_poison = [ "software_video_codecs" ]
@@ -268,6 +269,7 @@ rtc_source_set("video_decoder_factory_template_open_h264_adapter") {
   ]
 }
 
+if (!is_ios) { # --twinlife-- 2025-10-30: try fix dependency issue for iOS
 rtc_source_set("video_decoder_factory_template_dav1d_adapter") {
   visibility = [ "*" ]
   allow_poison = [ "software_video_codecs" ]
@@ -278,6 +280,7 @@ rtc_source_set("video_decoder_factory_template_dav1d_adapter") {
     "../../modules/video_coding/codecs/av1:dav1d_decoder",
   ]
 }
+} # --twinlife-- 2025-10-30: try fix dependency issue for iOS
 
 rtc_source_set("video_encoding_general") {
   public = [ "video_encoding_general.h" ]
@@ -349,7 +352,7 @@ rtc_library("simple_encoder_wrapper") {
     "//third_party/abseil-cpp/absl/types:variant",
   ]
 }
-
+if (!is_ios) {
 rtc_library("simple_encoder_wrapper_unittests") {
   testonly = true
 
@@ -396,7 +399,8 @@ rtc_library("libaom_av1_encoder_factory") {
     "//third_party/libaom",
   ]
 }
-
+}
+if (rtc_include_tests) { # --twinlife-- 2025-10-30: try fix dependency issue for iOS
 rtc_library("libaom_av1_encoder_factory_test") {
   testonly = true
   sources = [ "libaom_av1_encoder_factory_test.cc" ]
@@ -427,6 +431,7 @@ rtc_library("libaom_av1_encoder_factory_test") {
     "//third_party/abseil-cpp/absl/types:variant",
   ]
 }
+} # --twinlife-- 2025-10-30: try fix dependency issue for iOS
 
 rtc_library("vp8_temporal_layers_factory") {
   visibility = [ "*" ]

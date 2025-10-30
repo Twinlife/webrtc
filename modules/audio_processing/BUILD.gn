@@ -612,6 +612,7 @@ rtc_library("audioproc_test_utils") {
   ]
 }
 
+if (rtc_include_tests) {  # --twinlife-- 2025-10-30: try fix dependency issue for iOS
 rtc_library("aec3_config_json") {
   visibility = [ "*" ]
   testonly = true
@@ -629,3 +630,4 @@ rtc_library("aec3_config_json") {
     "//third_party/abseil-cpp/absl/strings:string_view",
   ]
 }
+}  # --twinlife-- 2025-10-30: try fix dependency issue for iOS

@@ -10,6 +10,8 @@ if (rtc_enable_protobuf) {
   import("//third_party/protobuf/proto_library.gni")
 }
 
+if (rtc_build_tools) {  # --twinlife-- 2025-10-30: try fix dependency issue for iOS
+
 group("rtc_tools") {
   # This target shall build all targets in tools/.
   testonly = true
@@ -668,3 +670,4 @@ if (rtc_include_tests) {
     }  # rtp_analyzer
   }
 }
+}  # --twinlife-- 2025-10-30: try fix dependency issue for iOS

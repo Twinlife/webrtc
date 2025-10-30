@@ -10,7 +10,7 @@
 #import "TLCryptoKey+Private.h"
 #import "helpers/NSString+StdString.h"
 
-#include "rtc_base/twinlife_crypto.h"
+#include "twinlife/twinlife_crypto.h"
 #include "rtc_base/logging.h"
 
 RTC_OBJC_EXPORT

@@ -240,7 +240,7 @@ rtc_library("default_video_quality_analyzer_internal") {
     "../../../../../rtc_base:stringutils",
     "../../../../../rtc_base:timeutils",
     "../../../../../rtc_base/synchronization:mutex",
-    "../../../../../rtc_tools:video_quality_analysis",
+    # "../../../../../rtc_tools:video_quality_analysis",
     "../../../../../system_wrappers",
     "dvqa:pausable_state",
     "//third_party/abseil-cpp/absl/strings:string_view",
@@ -496,7 +496,7 @@ if (rtc_include_tests) {
       "../../../../../api/video:video_frame",
       "../../../../../common_video",
       "../../../../../rtc_base:stringutils",
-      "../../../../../rtc_tools:video_quality_analysis",
+      # "../../../../../rtc_tools:video_quality_analysis",
       "../../../../../system_wrappers",
       "../../../../time_controller",
     ]
@@ -516,7 +516,7 @@ if (rtc_include_tests) {
       "../../../../../api/video:encoded_image",
       "../../../../../api/video:video_frame",
       "../../../../../common_video",
-      "../../../../../rtc_tools:video_quality_analysis",
+      # "../../../../../rtc_tools:video_quality_analysis",
       "../../../../../system_wrappers",
     ]
   }

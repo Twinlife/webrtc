@@ -37,6 +37,7 @@ if (!build_with_chromium) {
   }
 }
 
+if (rtc_include_tests) {  # --twinlife-- 2025-10-30: try fix dependency issue for iOS
 rtc_library("frame_generator_impl") {
   visibility = [
     ":*",
@@ -79,7 +80,7 @@ rtc_library("frame_generator_impl") {
     "//third_party/abseil-cpp/absl/strings:string_view",
   ]
 }
-
+}  # --twinlife-- 2025-10-30: try fix dependency issue for iOS
 rtc_library("y4m_frame_generator") {
   visibility = [ "*" ]
   testonly = true
@@ -1352,14 +1353,15 @@ rtc_library("call_config_utils") {
 
   # TODO(bugs.webrtc.org/10814): Remove rtc_json_suppressions as soon as it
   # gets removed upstream.
-  public_configs = [ "../rtc_base:rtc_json_suppressions" ]
+  # public_configs = [ "../rtc_base:rtc_json_suppressions" ]
   sources = [
     "call_config_utils.cc",
     "call_config_utils.h",
   ]
   deps = [
     "../call:video_receive_stream_api",
-    "../rtc_base:rtc_json",
+    # --twinlife-- 2025-10-30: try fix dependency issue for iOS
+    # "../rtc_base:rtc_json",
   ]
 }
 
@@ -1379,6 +1381,7 @@ rtc_library("fake_encoded_frame") {
   ]
 }
 
+if (rtc_include_tests) {
 rtc_library("video_codec_tester") {
   testonly = true
   sources = [
@@ -1389,8 +1392,9 @@ rtc_library("video_codec_tester") {
     ":video_frame_writer",
     ":video_test_support",
     "../api:array_view",
-    "../api:create_frame_generator",
-    "../api:frame_generator_api",
+    # --twinlife-- 2025-10-30: try fix dependency issue for iOS
+    # "../api:create_frame_generator",
+    # "../api:frame_generator_api",
     "../api/environment",
     "../api/environment:environment_factory",
     "../api/numerics:numerics",
@@ -1428,7 +1432,7 @@ rtc_library("video_codec_tester") {
     "//third_party/libyuv",
   ]
 }
-
+}
 rtc_library("wait_until") {
   testonly = true
   sources = [

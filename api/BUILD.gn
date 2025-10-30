@@ -755,7 +755,9 @@ rtc_library("create_frame_generator") {
     ":frame_generator_api",
     "../rtc_base:checks",
     "../system_wrappers",
-    "../test:frame_generator_impl",
+    # --twinlife-- 2025-10-30: disable reference because it will force the build of components that we don't want
+    # "../test:frame_generator_impl",
+    # --twinlife-- 2025-10-30
     "environment",
     "environment:environment_factory",
     "//third_party/abseil-cpp/absl/base:nullability",

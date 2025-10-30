@@ -69,9 +69,9 @@ if (!build_with_chromium) {
         "pc:rtc_pc_unittests",
         "pc:slow_peer_connection_unittests",
         "pc:svc_tests",
-        "rtc_tools:rtp_generator",
-        "rtc_tools:video_encoder",
-        "rtc_tools:video_replay",
+        # "rtc_tools:rtp_generator",
+        # "rtc_tools:video_encoder",
+        # "rtc_tools:video_replay",
         "stats:rtc_stats_unittests",
         "system_wrappers:system_wrappers_unittests",
         "test",
@@ -545,15 +545,16 @@ if (!build_with_chromium) {
       "api/task_queue:default_task_queue_factory",
       "api/test/metrics",
       "api/video_codecs:video_decoder_factory_template",
-      "api/video_codecs:video_decoder_factory_template_dav1d_adapter",
+      # --twinlife-- 2025-10-30: disable to avoid building the libaom and dav1d
+      # "api/video_codecs:video_decoder_factory_template_dav1d_adapter",
       "api/video_codecs:video_decoder_factory_template_libvpx_vp8_adapter",
       "api/video_codecs:video_decoder_factory_template_libvpx_vp9_adapter",
-      "api/video_codecs:video_decoder_factory_template_open_h264_adapter",
+      # "api/video_codecs:video_decoder_factory_template_open_h264_adapter",
       "api/video_codecs:video_encoder_factory_template",
-      "api/video_codecs:video_encoder_factory_template_libaom_av1_adapter",
+      # "api/video_codecs:video_encoder_factory_template_libaom_av1_adapter",
       "api/video_codecs:video_encoder_factory_template_libvpx_vp8_adapter",
       "api/video_codecs:video_encoder_factory_template_libvpx_vp9_adapter",
-      "api/video_codecs:video_encoder_factory_template_open_h264_adapter",
+      # "api/video_codecs:video_encoder_factory_template_open_h264_adapter",
       "audio",
       "call",
       "common_audio",
@@ -566,11 +567,21 @@ if (!build_with_chromium) {
       "pc:rtc_pc",
       "sdk",
       "video",
+# --twinlife-- 2025-10-30: build libwebsockets, sqlcipher and setup for iOS specific components (not clear why it was not taken into account by "sdk")
 # --twinlife-- 190205, 201102: build libwebsockets and sqlcipher
       "twinlife/libwebsockets",
       "twinlife/sqlcipher",
-# --twinlife-- 201102
     ]
+    if (is_ios) {
+      deps += [ 
+        "sdk:peerconnectionfactory_base_objc",
+        "sdk:default_codec_factory_objc",
+        "sdk:opengl_ui_objc",
+        "sdk:videotoolbox_objc",
+        "sdk:videocapture_objc",
+      ]
+    }
+# --twinlife-- 2025-10-30
 
     if (rtc_include_builtin_audio_codecs) {
       deps += [
@@ -862,3 +873,4 @@ group("poison_environment_construction") {
 
 group("poison_software_video_codecs") {
 }
+

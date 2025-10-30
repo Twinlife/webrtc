@@ -801,6 +801,7 @@ if (is_ios || is_mac) {
       ]
     }
 
+    if (rtc_include_dav1d_in_internal_decoder_factory) {  # --twinlife-- 2025-10-30: try fix dependency issue for iOS
     rtc_library("dav1d_decoder") {
       visibility = [ "*" ]
       allow_poison = [ "software_video_codecs" ]
@@ -816,7 +817,8 @@ if (is_ios || is_mac) {
         "../modules/video_coding/codecs/av1:dav1d_decoder",
       ]
     }
-
+    }  # --twinlife-- 2025-10-30: try fix dependency issue for iOS
+    if (enable_libaom) {  # --twinlife-- 2025-10-30: try fix dependency issue for iOS
     rtc_library("libaom_av1_encoder") {
       visibility = [ "*" ]
       allow_poison = [ "software_video_codecs" ]
@@ -834,6 +836,7 @@ if (is_ios || is_mac) {
         "../modules/video_coding/codecs/av1:libaom_av1_encoder",
       ]
     }
+    }  # --twinlife-- 2025-10-30: try fix dependency issue for iOS
 
     rtc_library("mediaconstraints_objc") {
       configs += [ "..:no_global_constructors" ]

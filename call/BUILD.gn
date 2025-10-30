@@ -309,7 +309,10 @@ rtc_library("call") {
   deps = [
     ":bitrate_allocator",
     ":call_interfaces",
-    ":fake_network",
+    
+    # --twinlife-- 2025-10-30: don't build fake_network or simulated_network
+    # ":fake_network",
+    # --twinlife-- 2025-10-30
     ":payload_type",
     ":payload_type",
     ":payload_type_picker",
@@ -317,7 +320,9 @@ rtc_library("call") {
     ":rtp_interfaces",
     ":rtp_receiver",
     ":rtp_sender",
-    ":simulated_network",
+    # --twinlife-- 2025-10-30: don't build fake_network or simulated_network
+    # ":simulated_network",
+    # --twinlife-- 2025-10-30
     ":version",
     ":video_receive_stream_api",
     ":video_send_stream_api",
@@ -329,7 +334,9 @@ rtc_library("call") {
     "../api:rtp_parameters",
     "../api:scoped_refptr",
     "../api:sequence_checker",
-    "../api:simulated_network_api",
+    # --twinlife-- 2025-10-30: don't build fake_network or simulated_network
+    # "../api:simulated_network_api",
+    # --twinlife-- 2025-10-30
     "../api:transport_api",
     "../api/adaptation:resource_adaptation_api",
     "../api/environment",
@@ -373,7 +380,9 @@ rtc_library("call") {
     "../system_wrappers",
     "../system_wrappers:field_trial",
     "../system_wrappers:metrics",
-    "../test/network:simulated_network",
+    # --twinlife-- 2025-10-30: don't build fake_network or simulated_network
+    # "../test/network:simulated_network",
+    # --twinlife-- 2025-10-30
     "../video",
     "../video:decode_synchronizer",
     "../video/config:encoder_config",
