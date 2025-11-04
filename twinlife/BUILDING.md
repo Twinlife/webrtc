@@ -7,30 +7,31 @@ https://webrtc.github.io/webrtc-org/native-code/development/
 
 ## Get WebRTC official sources
 
-1. Create webrtc_android dedicated repository
-   ```
-   $ mkdir .../webrtc_android
+1. Create webrtc_google dedicated repository
+   ```bash
+   $ mkdir .../webrtc_google
+   $ cd .../webrtc_google
    ```
 
 2. Install depo-tools repository
-   ```
+   ```bash
    $ git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
-   $ export PATH=.../webrtc_android/depot_tools:$PATH
+   $ export PATH=.../webrtc_google/depot_tools:$PATH
    ```
 
 3. Getting webrtc code
-   ```
-   $ fetch --nohooks webrtc (be patient...)
-   $ gclient sync  (be patient...)
+   ```bash
+   $ fetch --nohooks webrtc #(be patient...)
+   $ gclient sync  #(be patient...)
    $ du -sh .
 	19G	.
    ```
 
 4. Switch to the same WebRTC branch as our integration: WebRTC 134
-   ```
+   ```bash
    $ cd src
-   $ git pull origin
    $ git checkout -b 6998/master branch-heads/6998
+   $ git pull origin
    $ gclient sync
    ```
 
@@ -41,8 +42,8 @@ tools, third_party, buildtools, base, testing and build directories.
 Setup the `WEBRTC_SRC_DIR` environment variable to refer to the WebRTC
 extraction and run our `webrtc-setup.sh` script.
 
-   ```
-   $ export WEBRTC_SRC_DIR=.../webrtc_android/src
+   ```bash
+   $ export WEBRTC_SRC_DIR=.../webrtc_google/src
    $ bash ./twinlife/bin/webrtc-setup.sh
    ```
 
@@ -54,7 +55,7 @@ on MacOS, it will configure for iOS target.
 This generates the Ninja project files by using `gn` and our specific
 configuration:
 
-```
+```bash
 ./twinlife/bin/build.sh
 ```
 
@@ -62,7 +63,7 @@ configuration:
 
 Run the `build-release.sh` script to build the 32-bit and 64-bit Android or iOS 64-bit libraries.
 
-```
+```bash
 ./twinlife/bin/build-release.sh
 ```
 
