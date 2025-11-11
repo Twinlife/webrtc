@@ -20,9 +20,22 @@ https://webrtc.github.io/webrtc-org/native-code/development/
    ```
 
 3. Getting webrtc code
+   If you want to build for Android, use (be patient):
+
    ```bash
-   $ fetch --nohooks webrtc #(be patient...)
-   $ gclient sync  #(be patient...)
+   $ fetch --nohooks webrtc_android
+   ```
+
+   If you want to build for iOS, use (be patient:
+
+   ```bash
+   $ fetch --nohooks webrtc_ios
+   ```
+
+   Then, following the process to get webrtc code:
+
+   ```bash
+   $ gclient sync
    $ du -sh .
 	19G	.
    ```
@@ -33,7 +46,10 @@ https://webrtc.github.io/webrtc-org/native-code/development/
    $ git checkout -b 6998/master branch-heads/6998
    $ git pull origin
    $ gclient sync
+   $ gclient sync -D
    ```
+   The second call `gclient sync -D` is optional but it seems necessary.
+   It does not harm to run it.
 
 ## Prepare source tree
 
