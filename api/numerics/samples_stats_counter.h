@@ -45,7 +45,6 @@ class SamplesStatsCounter {
   SamplesStatsCounter& operator=(SamplesStatsCounter&&);
 
   // Adds sample to the stats in amortized O(1) time.
-  void AddSample(double value);
   void AddSample(StatsSample sample);
 
   // Adds samples from another counter.
@@ -103,7 +102,7 @@ class SamplesStatsCounter {
   // guarantees of order, so samples can be in different order comparing to in
   // which they were added into counter. Also return value will be invalidate
   // after call to any non const method.
-  rtc::ArrayView<const StatsSample> GetTimedSamples() const { return samples_; }
+  ArrayView<const StatsSample> GetTimedSamples() const { return samples_; }
   std::vector<double> GetSamples() const {
     std::vector<double> out;
     out.reserve(samples_.size());

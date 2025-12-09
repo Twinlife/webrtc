@@ -14,9 +14,10 @@
 #include <cstddef>
 #include <vector>
 
+#include "api/rtc_error.h"
 #include "media/base/codec.h"
 
-namespace cricket {
+namespace webrtc {
 
 class CodecList {
  public:
@@ -24,11 +25,29 @@ class CodecList {
   using const_iterator = std::vector<Codec>::const_iterator;
   using value_type = Codec;
 
-  CodecList() {}
-  explicit CodecList(const std::vector<Codec>& codecs) {
-    codecs_ = codecs;
-    CheckConsistency();
+  CodecList() = default;
+  // Copy and assign are available.
+  CodecList(const CodecList&) = default;
+  CodecList& operator=(const CodecList&) = default;
+  CodecList(CodecList&&) = default;
+  CodecList& operator=(CodecList&&) = default;
+  bool operator==(const CodecList& o) const { return codecs_ == o.codecs_; }
+
+  // Creates a codec list on untrusted data. If successful, the
+  // resulting CodecList satisfies all the CodecList invariants.
+  static RTCErrorOr<CodecList> Create(const std::vector<Codec>& codecs);
+  // Creates a codec list on trusted data. Only for use when
+  // the codec list is generated from internal code.
+  static CodecList CreateFromTrustedData(const std::vector<Codec>& codecs) {
+    return CodecList(codecs);
   }
+  // Inserts a codec into the list if it was not already present.
+  // Returns true if inserted, false if the exact same codec was in the list.
+  // Will DCHECK if the IDs were the same, but codecs were not (binary) equal.
+  // This is consistent with CheckConsistency() only being effective in debug.
+  // TODO: https://issues.webrtc.org/455503439 - consider CHECK.
+  bool PushIfNotPresent(const Codec& codec);
+
   // Vector-compatible API to access the codecs.
   iterator begin() { return codecs_.begin(); }
   iterator end() { return codecs_.end(); }
@@ -52,10 +71,26 @@ class CodecList {
   // The function will CHECK or DCHECK on inconsistencies.
   void CheckConsistency();
 
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const CodecList& list) {
+    absl::Format(&sink, "\n--- Codec list of size %d\n", list.size());
+    for (Codec codec : list) {
+      absl::Format(&sink, "%v\n", codec);
+    }
+    sink.Append("--- End\n");
+  }
+
  private:
+  // Creates a codec list on trusted data.
+  explicit CodecList(const std::vector<Codec>& codecs) {
+    codecs_ = codecs;
+    CheckConsistency();
+  }
+
   std::vector<Codec> codecs_;
 };
 
-}  // namespace cricket
+}  //  namespace webrtc
+
 
 #endif  // MEDIA_BASE_CODEC_LIST_H_
