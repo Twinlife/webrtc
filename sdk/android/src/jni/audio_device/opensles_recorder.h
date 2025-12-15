@@ -13,8 +13,8 @@
 
 #include <SLES/OpenSLES.h>
 #include <SLES/OpenSLES_Android.h>
-#include <SLES/OpenSLES_AndroidConfiguration.h>
 
+#include <cstdint>
 #include <memory>
 
 #include "api/audio/audio_device_defines.h"
@@ -22,7 +22,6 @@
 #include "api/sequence_checker.h"
 #include "modules/audio_device/audio_device_buffer.h"
 #include "modules/audio_device/fine_audio_buffer.h"
-#include "sdk/android/src/jni/audio_device/audio_common.h"
 #include "sdk/android/src/jni/audio_device/audio_device_module.h"
 #include "sdk/android/src/jni/audio_device/opensles_common.h"
 
@@ -64,7 +63,7 @@ class OpenSLESRecorder : public AudioInput {
   static const int kNumOfOpenSLESBuffers = 2;
 
   OpenSLESRecorder(const AudioParameters& audio_parameters,
-                   rtc::scoped_refptr<OpenSLEngineManager> engine_manager);
+                   webrtc::scoped_refptr<OpenSLEngineManager> engine_manager);
   ~OpenSLESRecorder() override;
 
   int Init() override;
@@ -149,7 +148,7 @@ class OpenSLESRecorder : public AudioInput {
   bool initialized_;
   bool recording_;
 
-  const rtc::scoped_refptr<OpenSLEngineManager> engine_manager_;
+  const webrtc::scoped_refptr<OpenSLEngineManager> engine_manager_;
   // This interface exposes creation methods for all the OpenSL ES object types.
   // It is the OpenSL ES API entry point.
   SLEngineItf engine_;

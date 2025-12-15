@@ -87,9 +87,10 @@ void PacketRouter::RegisterNotifyBweCallback(
   notify_bwe_callback_ = std::move(callback);
 }
 
-void PacketRouter::ConfigureForRfc8888Feedback(bool send_rtp_packets_as_ect1) {
+void PacketRouter::ConfigureForRtcpFeedback(bool set_transport_seq,
+                                            bool send_rtp_packets_as_ect1) {
   RTC_DCHECK_RUN_ON(&thread_checker_);
-  use_cc_feedback_according_to_rfc8888_ = true;
+  set_transport_seq_ = set_transport_seq;
   send_rtp_packets_as_ect1_ = send_rtp_packets_as_ect1;
 }
 
@@ -200,8 +201,7 @@ void PacketRouter::SendPacket(std::unique_ptr<RtpPacketToSend> packet,
   // if the TransportSequenceNumber header extension is negotiated for the
   // specific media type. Historically, webrtc only used TransportSequenceNumber
   // on video packets.
-  if (use_cc_feedback_according_to_rfc8888_ ||
-      packet->HasExtension<TransportSequenceNumber>()) {
+  if (set_transport_seq_ || packet->HasExtension<TransportSequenceNumber>()) {
     packet->set_transport_sequence_number(transport_seq_++);
   }
   if (send_rtp_packets_as_ect1_) {
@@ -222,8 +222,8 @@ void PacketRouter::SendPacket(std::unique_ptr<RtpPacketToSend> packet,
     last_send_module_ = rtp_module;
   }
 
-  for (auto& packet : rtp_module->FetchFecPackets()) {
-    pending_fec_packets_.push_back(std::move(packet));
+  for (auto& fec_packet : rtp_module->FetchFecPackets()) {
+    pending_fec_packets_.push_back(std::move(fec_packet));
   }
 }
 
@@ -291,7 +291,7 @@ std::vector<std::unique_ptr<RtpPacketToSend>> PacketRouter::GeneratePadding(
 
 void PacketRouter::OnAbortedRetransmissions(
     uint32_t ssrc,
-    rtc::ArrayView<const uint16_t> sequence_numbers) {
+    ArrayView<const uint16_t> sequence_numbers) {
   RTC_DCHECK_RUN_ON(&thread_checker_);
   auto it = send_modules_map_.find(ssrc);
   if (it != send_modules_map_.end()) {

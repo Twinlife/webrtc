@@ -118,6 +118,7 @@ struct NetEqOperationsAndState {
 };
 
 // This is the interface class for NetEq.
+// This class is thread-compatible.
 class NetEq {
  public:
   struct Config {
@@ -186,14 +187,14 @@ class NetEq {
   virtual ~NetEq() {}
 
   virtual int InsertPacket(const RTPHeader& rtp_header,
-                           rtc::ArrayView<const uint8_t> payload) {
+                           ArrayView<const uint8_t> payload) {
     return InsertPacket(rtp_header, payload,
                         /*receive_time=*/Timestamp::MinusInfinity());
   }
 
   // TODO: webrtc:343501093 - removed unused method.
   virtual int InsertPacket(const RTPHeader& rtp_header,
-                           rtc::ArrayView<const uint8_t> payload,
+                           ArrayView<const uint8_t> payload,
                            Timestamp receive_time) {
     return InsertPacket(rtp_header, payload,
                         RtpPacketInfo(rtp_header, receive_time));
@@ -203,16 +204,12 @@ class NetEq {
   // Returns 0 on success, -1 on failure.
   // TODO: webrtc:343501093 - Make this method pure virtual.
   virtual int InsertPacket(const RTPHeader& rtp_header,
-                           rtc::ArrayView<const uint8_t> payload,
+                           ArrayView<const uint8_t> payload,
                            const RtpPacketInfo& /* rtp_packet_info */) {
     return InsertPacket(rtp_header, payload);
   }
 
-  // Lets NetEq know that a packet arrived with an empty payload. This typically
-  // happens when empty packets are used for probing the network channel, and
-  // these packets use RTP sequence numbers from the same series as the actual
-  // audio packets.
-  virtual void InsertEmptyPacket(const RTPHeader& rtp_header) = 0;
+  [[deprecated]] virtual void InsertEmptyPacket(const RTPHeader& rtp_header) {}
 
   // Instructs NetEq to deliver 10 ms of audio data. The data is written to
   // `audio_frame`. All data in `audio_frame` is wiped; `data_`, `speech_type_`,
@@ -238,9 +235,14 @@ class NetEq {
   virtual void SetCodecs(const std::map<int, SdpAudioFormat>& codecs) = 0;
 
   // Associates `rtp_payload_type` with the given codec, which NetEq will
-  // instantiate when it needs it. Returns true iff successful.
+  // instantiate when it needs it. Returns true if successful.
   virtual bool RegisterPayloadType(int rtp_payload_type,
                                    const SdpAudioFormat& audio_format) = 0;
+
+  // Creates a decoder for `rtp_payload_type`. Can be used to instantiate a
+  // decoder ahead of time to avoid blocking when needed. Returns true if
+  // successful.
+  virtual bool CreateDecoder(int rtp_payload_type) { return false; }
 
   // Removes `rtp_payload_type` from the codec database. Returns 0 on success,
   // -1 on failure. Removing a payload type that is not registered is ok and
@@ -305,8 +307,6 @@ class NetEq {
   // (Config::sample_rate_hz) is returned.
   virtual int last_output_sample_rate_hz() const = 0;
 
-  // Returns the decoder info for the given payload type. Returns empty if no
-  // such payload type was registered.
   [[deprecated(
       "Use GetCurrentDecoderFormat")]] virtual std::optional<DecoderFormat>
   GetDecoderFormat(int /* payload_type */) const {
@@ -321,17 +321,17 @@ class NetEq {
   // Flushes both the packet buffer and the sync buffer.
   virtual void FlushBuffers() = 0;
 
-  // Enables NACK and sets the maximum size of the NACK list, which should be
-  // positive and no larger than Nack::kNackListSizeLimit. If NACK is already
-  // enabled then the maximum NACK list size is modified accordingly.
-  virtual void EnableNack(size_t max_nack_list_size) = 0;
+  [[deprecated("NACK support has been moved from NetEq.")]] virtual void
+  EnableNack(size_t max_nack_list_size) {}
 
-  virtual void DisableNack() = 0;
+  [[deprecated("NACK support has been moved from NetEq.")]] virtual void
+  DisableNack() {}
 
-  // Returns a list of RTP sequence numbers corresponding to packets to be
-  // retransmitted, given an estimate of the round-trip time in milliseconds.
-  virtual std::vector<uint16_t> GetNackList(
-      int64_t round_trip_time_ms) const = 0;
+  [[deprecated(
+      "NACK support has been moved from NetEq.")]] virtual std::vector<uint16_t>
+  GetNackList(int64_t round_trip_time_ms) const {
+    return {};
+  }
 
   // Returns the length of the audio yet to play in the sync buffer.
   // Mainly intended for testing.

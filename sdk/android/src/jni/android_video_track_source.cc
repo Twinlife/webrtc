@@ -10,10 +10,26 @@
 
 #include "sdk/android/src/jni/android_video_track_source.h"
 
+#include <jni.h>
+
+#include <cstdint>
+#include <optional>
 #include <utility>
 
+#include "api/media_stream_interface.h"
+#include "api/scoped_refptr.h"
+#include "api/task_queue/pending_task_safety_flag.h"
+#include "api/video/video_frame.h"
+#include "api/video/video_frame_buffer.h"
+#include "api/video/video_rotation.h"
+#include "media/base/adapted_video_track_source.h"
+#include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
+#include "rtc_base/thread.h"
+#include "rtc_base/time_utils.h"
 #include "sdk/android/generated_video_jni/NativeAndroidVideoTrackSource_jni.h"
+#include "sdk/android/native_api/jni/java_types.h"
+#include "sdk/android/native_api/jni/scoped_java_ref.h"
 #include "sdk/android/src/jni/video_frame.h"
 
 namespace webrtc {
@@ -38,14 +54,15 @@ std::optional<std::pair<int, int>> OptionalAspectRatio(jint j_width,
 
 }  // namespace
 
-AndroidVideoTrackSource::AndroidVideoTrackSource(rtc::Thread* signaling_thread,
+AndroidVideoTrackSource::AndroidVideoTrackSource(Thread* signaling_thread,
                                                  JNIEnv* jni,
                                                  bool is_screencast,
                                                  bool align_timestamps)
     : AdaptedVideoTrackSource(kRequiredResolutionAlignment),
       signaling_thread_(signaling_thread),
       is_screencast_(is_screencast),
-      align_timestamps_(align_timestamps) {
+      align_timestamps_(align_timestamps),
+      safety_(PendingTaskSafetyFlag::Create()) {
   RTC_LOG(LS_INFO) << "AndroidVideoTrackSource ctor";
 }
 AndroidVideoTrackSource::~AndroidVideoTrackSource() = default;
@@ -61,10 +78,11 @@ std::optional<bool> AndroidVideoTrackSource::needs_denoising() const {
 void AndroidVideoTrackSource::SetState(JNIEnv* env, jboolean j_is_live) {
   const SourceState state = j_is_live ? kLive : kEnded;
   if (state_.exchange(state) != state) {
-    if (rtc::Thread::Current() == signaling_thread_) {
+    if (Thread::Current() == signaling_thread_) {
       FireOnChanged();
     } else {
-      signaling_thread_->PostTask([this] { FireOnChanged(); });
+      signaling_thread_->PostTask(
+          SafeTask(safety_, [this] { FireOnChanged(); }));
     }
   }
 }
@@ -90,12 +108,12 @@ ScopedJavaLocalRef<jobject> AndroidVideoTrackSource::AdaptFrame(
     jlong j_timestamp_ns) {
   const VideoRotation rotation = jintToVideoRotation(j_rotation);
 
-  const int64_t camera_time_us = j_timestamp_ns / rtc::kNumNanosecsPerMicrosec;
+  const int64_t camera_time_us = j_timestamp_ns / kNumNanosecsPerMicrosec;
   const int64_t aligned_timestamp_ns =
-      align_timestamps_ ? rtc::kNumNanosecsPerMicrosec *
-                              timestamp_aligner_.TranslateTimestamp(
-                                  camera_time_us, rtc::TimeMicros())
-                        : j_timestamp_ns;
+      align_timestamps_
+          ? kNumNanosecsPerMicrosec * timestamp_aligner_.TranslateTimestamp(
+                                          camera_time_us, TimeMicros())
+          : j_timestamp_ns;
 
   int adapted_width = 0;
   int adapted_height = 0;
@@ -108,12 +126,12 @@ ScopedJavaLocalRef<jobject> AndroidVideoTrackSource::AdaptFrame(
   // TODO(magjed): Move this logic to users of NativeAndroidVideoTrackSource
   // instead, in order to keep this native wrapping layer as thin as possible.
   if (rotation % 180 == 0) {
-    drop = !rtc::AdaptedVideoTrackSource::AdaptFrame(
+    drop = !AdaptedVideoTrackSource::AdaptFrame(
         j_width, j_height, camera_time_us, &adapted_width, &adapted_height,
         &crop_width, &crop_height, &crop_x, &crop_y);
   } else {
     // Swap all width/height and x/y.
-    drop = !rtc::AdaptedVideoTrackSource::AdaptFrame(
+    drop = !AdaptedVideoTrackSource::AdaptFrame(
         j_height, j_width, camera_time_us, &adapted_height, &adapted_width,
         &crop_height, &crop_width, &crop_y, &crop_x);
   }
@@ -128,7 +146,7 @@ void AndroidVideoTrackSource::OnFrameCaptured(
     jint j_rotation,
     jlong j_timestamp_ns,
     const JavaRef<jobject>& j_video_frame_buffer) {
-  rtc::scoped_refptr<VideoFrameBuffer> buffer =
+  scoped_refptr<VideoFrameBuffer> buffer =
       JavaToNativeFrameBuffer(env, j_video_frame_buffer);
   const VideoRotation rotation = jintToVideoRotation(j_rotation);
 
@@ -139,7 +157,7 @@ void AndroidVideoTrackSource::OnFrameCaptured(
   OnFrame(VideoFrame::Builder()
               .set_video_frame_buffer(buffer)
               .set_rotation(rotation)
-              .set_timestamp_us(j_timestamp_ns / rtc::kNumNanosecsPerMicrosec)
+              .set_timestamp_us(j_timestamp_ns / kNumNanosecsPerMicrosec)
               .build());
 }
 

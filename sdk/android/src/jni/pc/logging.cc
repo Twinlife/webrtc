@@ -10,7 +10,9 @@
 
 #include "rtc_base/logging.h"
 
-#include <memory>
+#include <jni.h>
+
+#include <string>
 
 #include "sdk/android/native_api/jni/java_types.h"
 #include "sdk/android/src/jni/jni_helpers.h"
@@ -24,9 +26,8 @@ JNI_FUNCTION_DECLARATION(void,
                          JNIEnv* jni,
                          jclass,
                          jint nativeSeverity) {
-  if (nativeSeverity >= rtc::LS_VERBOSE && nativeSeverity <= rtc::LS_NONE) {
-    rtc::LogMessage::LogToDebug(
-        static_cast<rtc::LoggingSeverity>(nativeSeverity));
+  if (nativeSeverity >= LS_VERBOSE && nativeSeverity <= LS_NONE) {
+    LogMessage::LogToDebug(static_cast<LoggingSeverity>(nativeSeverity));
   }
 }
 
@@ -34,14 +35,14 @@ JNI_FUNCTION_DECLARATION(void,
                          Logging_nativeEnableLogThreads,
                          JNIEnv* jni,
                          jclass) {
-  rtc::LogMessage::LogThreads(true);
+  LogMessage::LogThreads(true);
 }
 
 JNI_FUNCTION_DECLARATION(void,
                          Logging_nativeEnableLogTimeStamps,
                          JNIEnv* jni,
                          jclass) {
-  rtc::LogMessage::LogTimestamps(true);
+  LogMessage::LogTimestamps(true);
 }
 
 JNI_FUNCTION_DECLARATION(void,
@@ -51,12 +52,11 @@ JNI_FUNCTION_DECLARATION(void,
                          jint j_severity,
                          jstring j_tag,
                          jstring j_message) {
-  std::string message =
-      JavaToStdString(jni, jni_zero::JavaParamRef<jstring>(jni, j_message));
-  std::string tag =
-      JavaToStdString(jni, jni_zero::JavaParamRef<jstring>(jni, j_tag));
-  RTC_LOG_TAG(static_cast<rtc::LoggingSeverity>(j_severity), tag.c_str())
-      << message;
+  std::string message = JavaToNativeString(
+      jni, jni_zero::JavaRef<jstring>::CreateLeaky(jni, j_message));
+  std::string tag = JavaToNativeString(
+      jni, jni_zero::JavaRef<jstring>::CreateLeaky(jni, j_tag));
+  RTC_LOG_TAG(static_cast<LoggingSeverity>(j_severity), tag.c_str()) << message;
 }
 
 }  // namespace jni

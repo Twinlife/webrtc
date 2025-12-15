@@ -23,12 +23,13 @@
 #include "api/task_queue/pending_task_safety_flag.h"
 #include "api/task_queue/task_queue_base.h"
 #include "pc/legacy_stats_collector_interface.h"
+#include "rtc_base/thread.h"
 
 namespace webrtc {
 
 class PeerConnectionMessageHandler {
  public:
-  explicit PeerConnectionMessageHandler(rtc::Thread* signaling_thread)
+  explicit PeerConnectionMessageHandler(Thread* signaling_thread)
       : signaling_thread_(signaling_thread) {}
   ~PeerConnectionMessageHandler() = default;
 

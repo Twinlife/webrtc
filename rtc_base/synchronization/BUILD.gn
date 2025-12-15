@@ -91,10 +91,11 @@ if (rtc_include_tests && rtc_enable_google_benchmarks) {
       "..:platform_thread",
       "..:rtc_event",
       "..:threading",
-    # --twinlife-- 2024-01-24: don't build with googletest
-    #  "../../test:test_support",
-    #  "//third_party/google_benchmark",
-    # --twinlife-- 2024-01-24: don't build with googletest
+      "../../api/units:time_delta",
+      # --twinlife-- 2024-01-24: don't build with googletest
+      # "../../test:test_support",
+      # "//third_party/google_benchmark",
+      # --twinlife-- 2024-01-24: don't build with googletest
     ]
   }
 

@@ -1,5 +1,5 @@
 <!-- go/cmark -->
-<!--* freshness: {owner: 'danilchap' reviewed: '2024-10-22'} *-->
+<!--* freshness: {owner: 'danilchap' reviewed: '2025-10-28'} *-->
 
 # WebRTC coding style guide
 
@@ -23,12 +23,12 @@ both. In addition to style guides it is recommended to follow
 
 ### C++ version
 
-WebRTC is written in C++17, but with some restrictions:
+WebRTC is written in C++20, but with some restrictions:
 
-* We only allow the subset of C++17 (language and library) that is not banned by
+* We only allow the subset of C++20 (language and library) that is not banned by
   Chromium; see the [list of banned C++ features in Chromium][chr-style-cpp].
-* We only allow the subset of C++17 that is also valid C++20; otherwise, users
-  would not be able to compile WebRTC in C++20 mode.
+* We only allow the subset of C++20 that is also valid C++23; otherwise, users
+  would not be able to compile WebRTC in C++23 mode.
 
 [chr-style-cpp]: https://chromium.googlesource.com/chromium/src/+/main/styleguide/c++/c++-features.md
 
@@ -123,18 +123,12 @@ In other words, rename the existing function, and provide an inline wrapper
 using the original name that calls it. That way, callers who are willing to
 call it using the `DEPRECATED_`-prefixed name don't get the warning.
 
-NOTE 3: Occasionally, with long descriptions, `git cl format` will do the wrong
-thing with the attribute. In that case, you can use the
-[`ABSL_DEPRECATED` macro][ABSL_DEPRECATED], which is formatted in a more
-readable way.
-
 [DEPRECATED]: https://en.cppreference.com/w/cpp/language/attributes/deprecated
-[ABSL_DEPRECATED]: https://source.chromium.org/chromium/chromium/src/+/main:third_party/abseil-cpp/absl/base/attributes.h?q=ABSL_DEPRECATED
 [ABSL_DEPRECATE_AND_INLINE]: https://source.chromium.org/chromium/chromium/src/+/main:third_party/abseil-cpp/absl/base/macros.h?q=ABSL_DEPRECATE_AND_INLINE
 
 ### ArrayView
 
-When passing an array of values to a function, use `rtc::ArrayView`
+When passing an array of values to a function, use `ArrayView`
 whenever possible—that is, whenever you're not passing ownership of
 the array, and don't allow the callee to change the array size.
 
@@ -146,22 +140,34 @@ For example,
 | `const T* ptr, size_t num_elements` | `ArrayView<const T>` |
 | `T* ptr, size_t num_elements`       | `ArrayView<T>`       |
 
-See the [source code for `rtc::ArrayView`](api/array_view.h) for more detailed
+See the [source code for `ArrayView`][ArrayView] for more detailed
 docs.
+
+[ArrayView]: https://webrtc.googlesource.com/src/+/refs/heads/main/api/array_view.h
 
 ### Strings
 
 WebRTC uses std::string, with content assumed to be UTF-8. Note that this
 has to be verified whenever accepting external input.
 
-For concatenation of strings, use webrtc::StrJoin or rtc::SimpleStringBuilder
-directly.
+For concatenation of strings, use `webrtc::StrJoin` or
+`webrtc::SimpleStringBuilder` directly.
+
+For string views, use `absl::string_view`, not `std::string_view`. The former
+is heavily used in webrtc, and there are platforms we export to where the
+two are different. Eventual conversion will be easiest if usage is consistent.
+See [issue 42225436](https://issues.webrtc.org/42225436) for details and
+current status.
 
 The following string building tools are NOT recommended:
-* The + operator. See https://abseil.io/tips/3 for why not.
-* absl::StrCat, absl::StrAppend, absl::StrJoin. These are optimized for
+
+* The + operator. See [String Concatenation and operator+][totw-3] for why not.
+* `absl::StrCat`, `absl::StrAppend`, `absl::StrJoin`. These are optimized for
   speed, not code size, and have significant code size overhead.
-* strcat. It is too easy to create buffer overflows.
+* [`std::strcat`][std-strcat]. It is too easy to create buffer overflows.
+
+[totw-3]: https://abseil.io/tips/3
+[std-strcat]: https://en.cppreference.com/w/cpp/string/byte/strcat.html
 
 ### sigslot
 
@@ -199,7 +205,7 @@ already familiar to modern C++ programmers. See [Avoid std::bind][totw-108] for 
 
 `std::function` is allowed, but remember that it's not the right tool for every
 occasion. Prefer to use interfaces when that makes sense, and consider
-`rtc::FunctionView` for cases where the callee will not save the function
+`webrtc::FunctionView` for cases where the callee will not save the function
 object. Prefer `absl::AnyInvocable` over `std::function` when you can accomplish
  the task by moving the callable instead of copying it.
 
@@ -252,7 +258,7 @@ For this reason running presubmit on old WebRTC python script might trigger fail
 The failures can either be fixed are ignored by adding the script to the [PYLINT_OLD_STYLE][old-style-lint] list.
 
 [chr-py-style]: https://chromium.googlesource.com/chromium/src/+/main/styleguide/python/python.md
-[old-style-lint]: https://source.chromium.org/chromium/_/webrtc/src/+/9b81d2c954128831c62d8a0657c7f955b3c02d32:PRESUBMIT.py;l=50
+[old-style-lint]: https://webrtc.googlesource.com/src/+/f70dc714a073397356f6ed866481da73f90f0b96/PRESUBMIT.py#48
 
 ## Build files
 
@@ -284,8 +290,8 @@ configuration, only use the following [GN templates][gn-templ].
 |------------------|-----------------------------------------------------------------------------------------|
 | `executable`     | `rtc_executable`                                                                        |
 | `shared_library` | `rtc_shared_library`                                                                    |
-| `source_set`     | `rtc_source_set` (only for header only libraries, for everything else use `rtc_library` |
-| `static_library` | `rtc_static_library` (use `rtc_library` unless you really need `rtc_static_library`     |
+| `source_set`     | `rtc_source_set` (only for header only libraries, for everything else use `rtc_library`)|
+| `static_library` | `rtc_static_library` (use `rtc_library` unless you really need `rtc_static_library`)    |
 | `test`           | `rtc_test`                                                                              |
 
 
@@ -307,7 +313,7 @@ Prefer to restrict the `visibility` if possible:
 
 Setting `visibility = [ "*" ]` means that targets outside the WebRTC tree can
 depend on this target; use this only for build targets whose headers are part of
-the [native WebRTC API](native-api.md).
+the [native WebRTC API](../native-api.md).
 
 ### Conditional compilation with the C preprocessor
 

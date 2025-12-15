@@ -10,6 +10,7 @@
 
 #include "pc/peer_connection_message_handler.h"
 
+#include <functional>
 #include <utility>
 
 #include "api/jsep.h"
@@ -18,9 +19,10 @@
 #endif
 #include "api/media_stream_interface.h"
 #include "api/peer_connection_interface.h"
+#include "api/rtc_error.h"
 #include "api/scoped_refptr.h"
-#include "api/sequence_checker.h"
 #include "api/task_queue/pending_task_safety_flag.h"
+#include "api/units/time_delta.h"
 #include "pc/legacy_stats_collector_interface.h"
 #include "rtc_base/checks.h"
 
@@ -28,8 +30,8 @@ namespace webrtc {
 namespace {
 
 template <typename T>
-rtc::scoped_refptr<T> WrapScoped(T* ptr) {
-  return rtc::scoped_refptr<T>(ptr);
+scoped_refptr<T> WrapScoped(T* ptr) {
+  return scoped_refptr<T>(ptr);
 }
 
 }  // namespace

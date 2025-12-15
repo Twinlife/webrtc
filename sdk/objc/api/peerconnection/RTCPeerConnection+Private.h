@@ -30,16 +30,17 @@ class PeerConnectionDelegateAdapter : public PeerConnectionObserver {
       PeerConnectionInterface::SignalingState new_state) override;
 
 #if 0 // --twinlife 2025-01-30: remove legacy MediaStream
-  void OnAddStream(rtc::scoped_refptr<MediaStreamInterface> stream) override;
+  void OnAddStream(webrtc::scoped_refptr<MediaStreamInterface> stream) override;
 
-  void OnRemoveStream(rtc::scoped_refptr<MediaStreamInterface> stream) override;
+  void OnRemoveStream(
+      webrtc::scoped_refptr<MediaStreamInterface> stream) override;
 #endif // --twinlife 2025-01-30: remove legacy MediaStream
 
   void OnTrack(
-      rtc::scoped_refptr<RtpTransceiverInterface> transceiver) override;
+      webrtc::scoped_refptr<RtpTransceiverInterface> transceiver) override;
 
   void OnDataChannel(
-      rtc::scoped_refptr<DataChannelInterface> data_channel) override;
+      webrtc::scoped_refptr<DataChannelInterface> data_channel) override;
 
   void OnRenegotiationNeeded() override;
 
@@ -55,7 +56,7 @@ class PeerConnectionDelegateAdapter : public PeerConnectionObserver {
   void OnIceGatheringChange(
       PeerConnectionInterface::IceGatheringState new_state) override;
 
-  void OnIceCandidate(const IceCandidateInterface *candidate) override;
+  void OnIceCandidate(const IceCandidate *candidate) override;
 
   void OnIceCandidateError(const std::string &address,
                            int port,
@@ -63,18 +64,17 @@ class PeerConnectionDelegateAdapter : public PeerConnectionObserver {
                            int error_code,
                            const std::string &error_text) override;
 
-  void OnIceCandidatesRemoved(
-      const std::vector<cricket::Candidate> &candidates) override;
+  void OnIceCandidateRemoved(const webrtc::IceCandidate *candidate) override;
 
   void OnIceSelectedCandidatePairChanged(
-      const cricket::CandidatePairChangeEvent &event) override;
+      const webrtc::CandidatePairChangeEvent &event) override;
 
-  void OnAddTrack(rtc::scoped_refptr<RtpReceiverInterface> receiver,
-                  const std::vector<rtc::scoped_refptr<MediaStreamInterface>>
+  void OnAddTrack(webrtc::scoped_refptr<RtpReceiverInterface> receiver,
+                  const std::vector<webrtc::scoped_refptr<MediaStreamInterface>>
                       &streams) override;
 
   void OnRemoveTrack(
-      rtc::scoped_refptr<RtpReceiverInterface> receiver) override;
+      webrtc::scoped_refptr<RtpReceiverInterface> receiver) override;
 
  private:
   __weak RTC_OBJC_TYPE(RTCPeerConnection) * peer_connection_;
@@ -93,7 +93,7 @@ class PeerConnectionDelegateAdapter : public PeerConnectionObserver {
 
 /** The native PeerConnectionInterface created during construction. */
 @property(nonatomic, readonly)
-    rtc::scoped_refptr<webrtc::PeerConnectionInterface>
+    webrtc::scoped_refptr<webrtc::PeerConnectionInterface>
         nativePeerConnection;
 
 /** Initialize an RTCPeerConnection with a configuration, constraints, and

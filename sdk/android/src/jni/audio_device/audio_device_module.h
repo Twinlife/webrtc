@@ -11,10 +11,16 @@
 #ifndef SDK_ANDROID_SRC_JNI_AUDIO_DEVICE_AUDIO_DEVICE_MODULE_H_
 #define SDK_ANDROID_SRC_JNI_AUDIO_DEVICE_AUDIO_DEVICE_MODULE_H_
 
+#include <jni.h>
+
+#include <cstdint>
 #include <memory>
 #include <optional>
 
 #include "api/audio/audio_device.h"
+#include "api/audio/audio_device_defines.h"
+#include "api/environment/environment.h"
+#include "api/scoped_refptr.h"
 #include "sdk/android/native_api/jni/scoped_java_ref.h"
 
 namespace webrtc {
@@ -95,7 +101,8 @@ bool IsLowLatencyOutputSupported(JNIEnv* env,
                                  const JavaRef<jobject>& j_context);
 
 // Glue together an audio input and audio output to get an AudioDeviceModule.
-rtc::scoped_refptr<AudioDeviceModule> CreateAudioDeviceModuleFromInputAndOutput(
+scoped_refptr<AudioDeviceModule> CreateAudioDeviceModuleFromInputAndOutput(
+    const Environment& env,
     AudioDeviceModule::AudioLayer audio_layer,
     bool is_stereo_playout_supported,
     bool is_stereo_record_supported,

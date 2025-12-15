@@ -66,7 +66,6 @@ static RTC_OBJC_TYPE(RTCAudioSessionConfiguration) *gWebRTCConfiguration = nil;
     // Use the deprecated option on older SDKs.
     _categoryOptions = AVAudioSessionCategoryOptionAllowBluetooth;
 #endif
-  
 
     // Specify mode for two-way voice communication (e.g. VoIP).
     _mode = AVAudioSessionModeVoiceChat;

@@ -11,17 +11,28 @@
 #ifndef SDK_ANDROID_SRC_JNI_PC_PEER_CONNECTION_H_
 #define SDK_ANDROID_SRC_JNI_PC_PEER_CONNECTION_H_
 
+#include <jni.h>
+
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
+#include "api/candidate.h"
+#include "api/data_channel_interface.h"
+#include "api/jsep.h"
+#include "api/media_stream_interface.h"
 #include "api/peer_connection_interface.h"
-#include "pc/media_stream_observer.h"
-#include "sdk/android/src/jni/jni_helpers.h"
-#include "sdk/android/src/jni/pc/media_constraints.h"
+#include "api/rtp_receiver_interface.h"
+#include "api/rtp_transceiver_interface.h"
+#include "api/scoped_refptr.h"
+#include "p2p/base/port.h"
+#include "rtc_base/ssl_identity.h"
+#include "sdk/android/native_api/jni/scoped_java_ref.h"
 // twinlife #include "sdk/android/src/jni/pc/media_stream.h"
 #include "sdk/android/src/jni/pc/rtp_receiver.h"
 #include "sdk/android/src/jni/pc/rtp_transceiver.h"
+#include "sdk/media_constraints.h"
 
 namespace webrtc {
 namespace jni {
@@ -31,8 +42,7 @@ void JavaToNativeRTCConfiguration(
     const JavaRef<jobject>& j_rtc_config,
     PeerConnectionInterface::RTCConfiguration* rtc_config);
 
-rtc::KeyType GetRtcConfigKeyType(JNIEnv* env,
-                                 const JavaRef<jobject>& j_rtc_config);
+KeyType GetRtcConfigKeyType(JNIEnv* env, const JavaRef<jobject>& j_rtc_config);
 
 // --twinlife 2023-07-11: provide hostname resolution
 void JavaToNativeStaticHostnames(JNIEnv *jni, const JavaRef<jobject>& j_host_addresses,
@@ -52,15 +62,14 @@ class PeerConnectionObserverJni : public PeerConnectionObserver {
 
   // Implementation of PeerConnectionObserver interface, which propagates
   // the callbacks to the Java observer.
-  void OnIceCandidate(const IceCandidateInterface* candidate) override;
+  void OnIceCandidate(const IceCandidate* candidate) override;
   void OnIceCandidateError(const std::string& address,
                            int port,
                            const std::string& url,
                            int error_code,
                            const std::string& error_text) override;
 
-  void OnIceCandidatesRemoved(
-      const std::vector<cricket::Candidate>& candidates) override;
+  void OnIceCandidateRemoved(const IceCandidate* candidate) override;
   void OnSignalingChange(
       PeerConnectionInterface::SignalingState new_state) override;
   void OnIceConnectionChange(
@@ -73,18 +82,16 @@ class PeerConnectionObserverJni : public PeerConnectionObserver {
   void OnIceGatheringChange(
       PeerConnectionInterface::IceGatheringState new_state) override;
   void OnIceSelectedCandidatePairChanged(
-      const cricket::CandidatePairChangeEvent& event) override;
-  // twinlife void OnAddStream(rtc::scoped_refptr<MediaStreamInterface> stream) override;
-  // twinlife void OnRemoveStream(rtc::scoped_refptr<MediaStreamInterface> stream) override;
-  void OnDataChannel(rtc::scoped_refptr<DataChannelInterface> channel) override;
+      const CandidatePairChangeEvent& event) override;
+  // twinlife void OnAddStream(scoped_refptr<MediaStreamInterface> stream) override;
+  // twinlife void OnRemoveStream(scoped_refptr<MediaStreamInterface> stream) override;
+  void OnDataChannel(scoped_refptr<DataChannelInterface> channel) override;
   void OnRenegotiationNeeded() override;
-  // twinlife void OnAddTrack(rtc::scoped_refptr<RtpReceiverInterface> receiver,
-  //                const std::vector<rtc::scoped_refptr<MediaStreamInterface>>&
-  //                    streams) override;
-  void OnTrack(
-      rtc::scoped_refptr<RtpTransceiverInterface> transceiver) override;
-  void OnRemoveTrack(
-      rtc::scoped_refptr<RtpReceiverInterface> receiver) override;
+  // twinlife void OnAddTrack(
+  //    scoped_refptr<RtpReceiverInterface> receiver,
+  //    const std::vector<scoped_refptr<MediaStreamInterface>>& streams) override;
+  void OnTrack(scoped_refptr<RtpTransceiverInterface> transceiver) override;
+  void OnRemoveTrack(scoped_refptr<RtpReceiverInterface> receiver) override;
 
  private:
   // twinlife typedef std::map<MediaStreamInterface*, JavaMediaStream>
@@ -94,14 +101,14 @@ class PeerConnectionObserverJni : public PeerConnectionObserver {
 
   // If the NativeToJavaStreamsMap contains the stream, return it.
   // Otherwise, create a new Java MediaStream. Returns a global jobject.
-  // twinlife JavaMediaStream& GetOrCreateJavaStream(
+  // twinlinfe JavaMediaStream& GetOrCreateJavaStream(
   //    JNIEnv* env,
-  //    const rtc::scoped_refptr<MediaStreamInterface>& stream);
+  //    const scoped_refptr<MediaStreamInterface>& stream);
 
   // Converts array of streams, creating or re-using Java streams as necessary.
   ScopedJavaLocalRef<jobjectArray> NativeToJavaMediaStreamArray(
       JNIEnv* jni,
-      const std::vector<rtc::scoped_refptr<MediaStreamInterface>>& streams);
+      const std::vector<scoped_refptr<MediaStreamInterface>>& streams);
 
   const ScopedJavaGlobalRef<jobject> j_observer_global_;
 
@@ -121,21 +128,19 @@ class PeerConnectionObserverJni : public PeerConnectionObserver {
 // Also stores reference to the deprecated PeerConnection constraints for now.
 class OwnedPeerConnection {
  public:
-  OwnedPeerConnection(
-      rtc::scoped_refptr<PeerConnectionInterface> peer_connection,
-      std::unique_ptr<PeerConnectionObserver> observer);
+  OwnedPeerConnection(scoped_refptr<PeerConnectionInterface> peer_connection,
+                      std::unique_ptr<PeerConnectionObserver> observer);
   // Deprecated. PC constraints are deprecated.
-  OwnedPeerConnection(
-      rtc::scoped_refptr<PeerConnectionInterface> peer_connection,
-      std::unique_ptr<PeerConnectionObserver> observer,
-      std::unique_ptr<MediaConstraints> constraints);
+  OwnedPeerConnection(scoped_refptr<PeerConnectionInterface> peer_connection,
+                      std::unique_ptr<PeerConnectionObserver> observer,
+                      std::unique_ptr<MediaConstraints> constraints);
   ~OwnedPeerConnection();
 
   PeerConnectionInterface* pc() const { return peer_connection_.get(); }
   const MediaConstraints* constraints() const { return constraints_.get(); }
 
  private:
-  rtc::scoped_refptr<PeerConnectionInterface> peer_connection_;
+  scoped_refptr<PeerConnectionInterface> peer_connection_;
   std::unique_ptr<PeerConnectionObserver> observer_;
   std::unique_ptr<MediaConstraints> constraints_;
 };
