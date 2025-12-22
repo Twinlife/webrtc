@@ -277,7 +277,11 @@ RtpTransmissionManager::CreateSender(
                (track->kind() == MediaStreamTrackInterface::kAudioKind));
     sender = RtpSenderProxyWithInternal<RtpSenderInternal>::Create(
         signaling_thread(),
+#ifndef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
         AudioRtpSender::Create(env_, worker_thread(), id, /* legacy_stats_,*/ this));
+#else
+        AudioRtpSender::Create(env_, worker_thread(), id, legacy_stats_, this));
+#endif
     NoteUsageEvent(UsageEvent::AUDIO_ADDED);
   } else {
     RTC_DCHECK_EQ(media_type, MediaType::VIDEO);

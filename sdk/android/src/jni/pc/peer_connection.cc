@@ -964,6 +964,7 @@ static jboolean JNI_PeerConnection_SetBitrate(
   return ExtractNativePC(jni, j_pc)->SetBitrate(params).ok();
 }
 
+#if 0 // --twinlife 2025-12-21: remove rtc event log
 static jboolean JNI_PeerConnection_StartRtcEventLog(
     JNIEnv* jni,
     const jni_zero::JavaParamRef<jobject>& j_pc,
@@ -987,6 +988,7 @@ static void JNI_PeerConnection_StopRtcEventLog(
     const jni_zero::JavaParamRef<jobject>& j_pc) {
   ExtractNativePC(jni, j_pc)->StopRtcEventLog();
 }
+#endif // --twinlife 2025-12-21: remove rtc event log
 
 static jni_zero::ScopedJavaLocalRef<jobject> JNI_PeerConnection_SignalingState(
     JNIEnv* env,

@@ -157,7 +157,8 @@ if (rtc_include_tests) {
       "../../../rtc_base:checks",
       "../../../test:create_test_field_trials",
       "../../../test:test_support",
-      "../codecs/av1:av1_svc_config",
+      # -twinlife- 2025-12-21: don't build libaom, av1, dav1d
+      # "../codecs/av1:av1_svc_config",
       "//third_party/abseil-cpp/absl/container:inlined_vector",
     ]
   }

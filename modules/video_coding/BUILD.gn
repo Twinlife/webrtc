@@ -1006,12 +1006,14 @@ if (rtc_include_tests) {
       "../../api/video:video_frame_type",
       "../../api/video_codecs:video_codecs_api",
       "../../api/video_codecs:video_decoder_factory_template",
-      "../../api/video_codecs:video_decoder_factory_template_dav1d_adapter",
+      # -twinlife- 2025-12-21: don't build libaom, av1, dav1d
+      # "../../api/video_codecs:video_decoder_factory_template_dav1d_adapter",
       "../../api/video_codecs:video_decoder_factory_template_libvpx_vp8_adapter",
       "../../api/video_codecs:video_decoder_factory_template_libvpx_vp9_adapter",
       "../../api/video_codecs:video_decoder_factory_template_open_h264_adapter",
       "../../api/video_codecs:video_encoder_factory_template",
-      "../../api/video_codecs:video_encoder_factory_template_libaom_av1_adapter",
+      # -twinlife- 2025-12-21: don't build libaom, av1, dav1d
+      # "../../api/video_codecs:video_encoder_factory_template_libaom_av1_adapter",
       "../../api/video_codecs:video_encoder_factory_template_libvpx_vp8_adapter",
       "../../api/video_codecs:video_encoder_factory_template_libvpx_vp9_adapter",
       "../../api/video_codecs:video_encoder_factory_template_open_h264_adapter",
@@ -1182,6 +1184,7 @@ if (rtc_include_tests) {
       "../../test:test_support",
       "../../test:video_test_common",
       "../rtp_rtcp:rtp_rtcp_format",
+      # -twinlife- 2025-12-21: don't build libaom, av1, dav1d
       # "codecs/av1:dav1d_decoder",
       "svc:scalability_mode_util",
       "//third_party/abseil-cpp/absl/container:inlined_vector",

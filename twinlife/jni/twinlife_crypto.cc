@@ -39,9 +39,14 @@ namespace jni {
       return nullptr;
     }
 
-    ScopedJavaLocalRef<jbyteArray> jarray(env, env->NewByteArray(length));
+    ScopedJavaLocalRef<jbyteArray> jarray =
+      ScopedJavaLocalRef<jbyteArray>::Adopt(
+          env, env->NewByteArray(length));
+    env->SetByteArrayRegion(
+      jarray.obj(), 0, length,
+      reinterpret_cast<const jbyte*>(buffer));
     int8_t* array_ptr = env->GetByteArrayElements(jarray.obj(), /*isCopy=*/nullptr);
-    memcpy(array_ptr, buffer, length);
+    //memcpy(array_ptr, buffer, length);
     env->ReleaseByteArrayElements(jarray.obj(), array_ptr, /*mode=*/0);
     return jarray;
   }
@@ -57,9 +62,14 @@ namespace jni {
       return nullptr;
     }
 
-    ScopedJavaLocalRef<jbyteArray> jarray(env, env->NewByteArray(length));
+    ScopedJavaLocalRef<jbyteArray> jarray =
+      ScopedJavaLocalRef<jbyteArray>::Adopt(
+          env, env->NewByteArray(length));
+    env->SetByteArrayRegion(
+      jarray.obj(), 0, length,
+      reinterpret_cast<const jbyte*>(buffer));
     int8_t* array_ptr = env->GetByteArrayElements(jarray.obj(), /*isCopy=*/nullptr);
-    memcpy(array_ptr, buffer, length);
+    // memcpy(array_ptr, buffer, length);
     env->ReleaseByteArrayElements(jarray.obj(), array_ptr, /*mode=*/0);
     return jarray;
   }
@@ -122,16 +132,16 @@ namespace jni {
     return (jint)verifyAuth(pubKey, item1.data(), item2.data(), sig.data());
   }
 
-  jint CryptoKey::DeriveKeyPBKDF2HMACSHA256(JNIEnv *env, jstring password, const JavaParamRef<jbyteArray> &salt,
+  jint CryptoKey::DeriveKeyPBKDF2HMACSHA256(JNIEnv *env, JavaRef<jstring> password, const JavaParamRef<jbyteArray> &salt,
                    const jint iterations,  const JavaParamRef<jbyteArray> &outKey) {
-    const char* p = env->GetStringUTFChars(password, nullptr);
+    const char* p = env->GetStringUTFChars(password.obj(), nullptr);
 
     jbyte* s = env->GetByteArrayElements(salt.obj(), nullptr);
     jbyte* o = env->GetByteArrayElements(outKey.obj(), nullptr);
     size_t keyLen = env->GetArrayLength(outKey.obj());
 
     int result = deriveKeyPBKDF2HMACSHA256(p, (const unsigned char *)s, iterations, (int)keyLen, (unsigned char *)o);
-    env->ReleaseStringUTFChars(password, p);
+    env->ReleaseStringUTFChars(password.obj(), p);
     env->ReleaseByteArrayElements(salt.obj(), s, JNI_ABORT);
     env->ReleaseByteArrayElements(outKey.obj(), o, 0);
 
@@ -268,7 +278,7 @@ static ScopedJavaLocalRef<jbyteArray> JNI_CryptoKey_ExtractAuthPublicKey(JNIEnv*
   int len = twinlife::CryptoKey::extractAuthPublicKey(sig.data(), pubKey, sizeof(pubKey));
 
   ScopedJavaLocalRef<jbyteArray> result =
-      ScopedJavaLocalRef<jbyteArray>(env, env->NewByteArray(len));
+      ScopedJavaLocalRef<jbyteArray>::Adopt(env, env->NewByteArray(len));
   env->SetByteArrayRegion(result.obj(), 0, len, (const jbyte *)pubKey);
 
   return result;

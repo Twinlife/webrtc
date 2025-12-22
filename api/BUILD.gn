@@ -381,23 +381,25 @@ rtc_library("data_channel_interface") {
   ]
 }
 
-rtc_library("legacy_stats_types") {
-  sources = [
-    "legacy_stats_types.cc",
-    "legacy_stats_types.h",
-  ]
-  deps = [
-    ":make_ref_counted",
-    ":ref_count",
-    ":scoped_refptr",
-    ":sequence_checker",
-    "../rtc_base:checks",
-    "../rtc_base:macromagic",
-    "../rtc_base/system:rtc_export",
-    "//third_party/abseil-cpp/absl/algorithm:container",
-    "//third_party/abseil-cpp/absl/strings",
-  ]
-}
+# --twinlife-- 2025-12-21: don't build legacy stats
+# rtc_library("legacy_stats_types") {
+#  sources = [
+#    "legacy_stats_types.cc",
+#    "legacy_stats_types.h",
+#  ]
+#  deps = [
+#    ":make_ref_counted",
+#    ":ref_count",
+#    ":scoped_refptr",
+#    ":sequence_checker",
+#    "../rtc_base:checks",
+#    "../rtc_base:macromagic",
+#    "../rtc_base/system:rtc_export",
+#    "//third_party/abseil-cpp/absl/algorithm:container",
+#    "//third_party/abseil-cpp/absl/strings",
+#  ]
+# }
+# --twinlife-- 2025-12-21: don't build legacy stats
 
 rtc_library("peer_connection_interface") {
   sources = [
@@ -415,7 +417,8 @@ rtc_library("peer_connection_interface") {
     ":field_trials_view",
     ":ice_transport_interface",
     ":jsep",
-    ":legacy_stats_types",
+    # --twinlife-- 2025-12-21: don't build legacy stats
+    # ":legacy_stats_types",
     ":libjingle_logging_api",
     ":local_network_access_permission",
     ":media_stream_interface",
@@ -554,7 +557,8 @@ rtc_library("libjingle_peerconnection_api") {
     "data_channel_interface.h",  # Used in Chrome
     "dtmf_sender_interface.h",  # Used in Chrome
     "jsep.h",  #  Used in Chrome
-    "legacy_stats_types.h",  # Used downstream
+    # --twinlife-- 2025-12-21: don't build legacy stats
+    # "legacy_stats_types.h",  # Used downstream
     "peer_connection_interface.h",  # Used in Chrome
     "rtp_receiver_interface.h",  # Used in Chrome
     "rtp_sender_interface.h",  # Used in Chrome
@@ -579,7 +583,8 @@ rtc_library("libjingle_peerconnection_api") {
     ":frame_transformer_interface",
     ":ice_transport_interface",
     ":jsep",
-    ":legacy_stats_types",
+    # --twinlife-- 2025-12-21: don't build legacy stats
+    # ":legacy_stats_types",
     ":libjingle_logging_api",
     ":local_network_access_permission",
     ":make_ref_counted",

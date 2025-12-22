@@ -132,7 +132,7 @@ class AsyncDnsResolver::State : public RefCountedBase {
 AsyncDnsResolver::AsyncDnsResolver() = default;
 
 // --twinlife-- 2024
-AsyncDnsResolver::AsyncDnsResolver(const std::vector<webrtc::StaticHostname> *hostnames) : state_(State::Create()), hostnames_(hostnames) {}
+AsyncDnsResolver::AsyncDnsResolver(const std::vector<webrtc::StaticHostname> *hostnames) : hostnames_(hostnames) {}
 // --twinlife-- 2024
   
 AsyncDnsResolver::~AsyncDnsResolver() {
@@ -158,7 +158,6 @@ void AsyncDnsResolver::Start(const SocketAddress& addr,
 
   // --twinlife 2023-07-11: provide hostname resolution
   if (hostnames_) {
-#if 0
     for (const webrtc::StaticHostname& hostname : *hostnames_) {
       if (hostname.hostname == addr.hostname()) {
         std::vector<IPAddress> addresses;
@@ -170,45 +169,20 @@ void AsyncDnsResolver::Start(const SocketAddress& addr,
         }
         int error = 0;
 
-        // We assume that the caller task queue is still around if the
-        // AsyncDnsResolver has not been destroyed.
-        state_->Finish([this, error, flag = safety_.flag(), caller_task_queue = webrtc::TaskQueueBase::Current(),
-                        addresses = std::move(addresses)]() {
-          caller_task_queue->PostTask(
-          SafeTask(flag, [this, error, addresses = std::move(addresses)] {
-            RTC_DCHECK_RUN_ON(&result_.sequence_checker_);
-            result_.addresses_ = addresses;
-            result_.error_ = error;
-            callback_();
-          }));
-        });
+        state_->PostToCallbackTaskQueue(
+            SafeTask(safety_.flag(), [this, error, addresses = std::move(addresses)]() {
+              RTC_DCHECK_RUN_ON(&result_.sequence_checker_);
+              state_ = nullptr;
+              result_.addresses_ = addresses;
+              result_.error_ = error;
+              std::move(callback_)();
+            }));
         return;
       }
     }
-#endif
     RTC_LOG(LS_INFO) << "Static hostname not found " << addr.ToString();
   }
-#if 0
   // --twinlife 2023-07-11: provide hostname resolution
-  auto thread_function = [this, addr, family, flag = safety_.flag(),
-                          caller_task_queue = webrtc::TaskQueueBase::Current(),
-                          state = state_] {
-    std::vector<IPAddress> addresses;
-    int error = ResolveHostname(addr.hostname(), family, addresses);
-    // We assume that the caller task queue is still around if the
-    // AsyncDnsResolver has not been destroyed.
-    state->Finish([this, error, flag, caller_task_queue,
-                   addresses = std::move(addresses)]() mutable {
-      caller_task_queue->PostTask(
-          SafeTask(flag, [this, error, addresses = std::move(addresses)]() {
-            RTC_DCHECK_RUN_ON(&result_.sequence_checker_);
-            result_.addresses_ = addresses;
-            result_.error_ = error;
-            callback_();
-          }));
-    });
-  };
-#endif
   absl::AnyInvocable<void() &&> thread_function =
       [this, addr, family, flag = safety_.flag(), state = state_]() {
         std::vector<IPAddress> addresses;

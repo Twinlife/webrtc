@@ -23,8 +23,8 @@ namespace webrtc {
   class StaticHostname {
   public:
     std::string hostname;
-    rtc::IPAddress ipv4;
-    rtc::IPAddress ipv6;
+    IPAddress ipv4;
+    IPAddress ipv6;
     StaticHostname() {}
     StaticHostname(const StaticHostname& host) : hostname(host.hostname), ipv4(host.ipv4), ipv6(host.ipv6) {}
     bool operator==(const StaticHostname& host) const {

@@ -569,14 +569,18 @@ void WebRtcVoiceEngine::Terminate() {
   if (!initialized_)
     return;
 
+#ifdef WEBRTC_HAS_AECDUMP // --twinlife 2025-01-27: disable AEC dump
   StopAecDump();
+#endif
 
   // Stop AudioDevice.
   adm()->StopPlayout();
   adm()->StopRecording();
   adm()->RegisterAudioCallback(nullptr);
   adm()->Terminate();
+#ifdef WEBRTC_HAS_AECDUMP // --twinlife 2025-01-27: disable AEC dump
   low_priority_worker_queue_ = nullptr;
+#endif
 
   initialized_ = false;
 }

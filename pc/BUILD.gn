@@ -1162,6 +1162,7 @@ rtc_library("sdp_offer_answer") {
     ":data_channel_controller",
     ":dtls_transport",
     ":jsep_transport_controller",
+    # --twinlife-- 2025-12-21: don't build legacy stats
     # ":legacy_stats_collector",
     ":media_options",
     ":media_session",
@@ -1277,6 +1278,7 @@ rtc_library("peer_connection") {
     ":dtls_transport",
     ":ice_server_parsing",
     ":jsep_transport_controller",
+    # --twinlife-- 2025-12-21: don't build legacy stats
     # ":legacy_stats_collector",
     ":media_session",
     ":peer_connection_internal",
@@ -1425,60 +1427,64 @@ rtc_library("sdp_utils") {
     "//third_party/abseil-cpp/absl/base:core_headers",
   ]
 }
-rtc_library("legacy_stats_collector") {
-  visibility = [ ":*" ]
-  sources = [
-    "legacy_stats_collector.cc",
-    "legacy_stats_collector.h",
-  ]
-  deps = [
-    ":channel",
-    ":channel_interface",
-    ":data_channel_utils",
-    ":legacy_stats_collector_interface",
-    ":peer_connection_internal",
-    ":rtp_receiver",
-    ":rtp_receiver_proxy",
-    ":rtp_sender_proxy",
-    ":rtp_transceiver",
-    ":transport_stats",
-    "../api:candidate",
-    "../api:data_channel_interface",
-    "../api:field_trials_view",
-    "../api:legacy_stats_types",
-    "../api:libjingle_peerconnection_api",
-    "../api:media_stream_interface",
-    "../api:peer_connection_interface",
-    "../api:rtp_parameters",
-    "../api:rtp_sender_interface",
-    "../api:scoped_refptr",
-    "../api:sequence_checker",
-    "../api/audio:audio_processing_statistics",
-    "../api/audio_codecs:audio_codecs_api",
-    "../api/video:video_rtp_headers",
-    "../call:call_interfaces",
-    "../media:media_channel",
-    "../p2p:connection_info",
-    "../p2p:ice_transport_internal",
-    "../p2p:p2p_constants",
-    "../p2p:port",
-    "../rtc_base:checks",
-    "../rtc_base:event_tracer",
-    "../rtc_base:ip_address",
-    "../rtc_base:logging",
-    "../rtc_base:macromagic",
-    "../rtc_base:network_constants",
-    "../rtc_base:socket_address",
-    "../rtc_base:ssl",
-    "../rtc_base:ssl_adapter",
-    "../rtc_base:stringutils",
-    "../rtc_base:threading",
-    "../rtc_base:timeutils",
-    "../system_wrappers",
-    "//third_party/abseil-cpp/absl/strings",
-    "//third_party/abseil-cpp/absl/strings:string_view",
-  ]
-}
+
+# --twinlife-- 2025-12-21: don't build legacy stats
+# rtc_library("legacy_stats_collector") {
+#   visibility = [ ":*" ]
+#   sources = [
+#     "legacy_stats_collector.cc",
+#     "legacy_stats_collector.h",
+#   ]
+#   deps = [
+#     ":channel",
+#     ":channel_interface",
+#     ":data_channel_utils",
+#     ":legacy_stats_collector_interface",
+#     ":peer_connection_internal",
+#     ":rtp_receiver",
+#     ":rtp_receiver_proxy",
+#     ":rtp_sender_proxy",
+#     ":rtp_transceiver",
+#     ":transport_stats",
+#     "../api:candidate",
+#     "../api:data_channel_interface",
+#     "../api:field_trials_view",
+#     "../api:legacy_stats_types",
+#     "../api:libjingle_peerconnection_api",
+#     "../api:media_stream_interface",
+#     "../api:peer_connection_interface",
+#     "../api:rtp_parameters",
+#     "../api:rtp_sender_interface",
+#     "../api:scoped_refptr",
+#     "../api:sequence_checker",
+#     "../api/audio:audio_processing_statistics",
+#     "../api/audio_codecs:audio_codecs_api",
+#     "../api/video:video_rtp_headers",
+#     "../call:call_interfaces",
+#     "../media:media_channel",
+#     "../p2p:connection_info",
+#     "../p2p:ice_transport_internal",
+#     "../p2p:p2p_constants",
+#     "../p2p:port",
+#     "../rtc_base:checks",
+#     "../rtc_base:event_tracer",
+#     "../rtc_base:ip_address",
+#     "../rtc_base:logging",
+#     "../rtc_base:macromagic",
+#     "../rtc_base:network_constants",
+#     "../rtc_base:socket_address",
+#     "../rtc_base:ssl",
+#     "../rtc_base:ssl_adapter",
+#     "../rtc_base:stringutils",
+#     "../rtc_base:threading",
+#     "../rtc_base:timeutils",
+#     "../system_wrappers",
+#     "//third_party/abseil-cpp/absl/strings",
+#     "//third_party/abseil-cpp/absl/strings:string_view",
+#   ]
+# }
+# --twinlife-- 2025-12-21: don't build legacy stats
+
 rtc_source_set("stream_collection") {
   visibility = [ ":*" ]
   sources = [ "stream_collection.h" ]
@@ -1670,9 +1676,11 @@ rtc_library("peer_connection_message_handler") {
     "peer_connection_message_handler.h",
   ]
   deps = [
+    # --twinlife-- 2025-12-21: don't build legacy stats
     # ":legacy_stats_collector_interface",
     "../api:jsep",
-    "../api:legacy_stats_types",
+    # --twinlife-- 2025-12-21: don't build legacy stats
+    # "../api:legacy_stats_types",
     "../api:libjingle_peerconnection_api",
     "../api:media_stream_interface",
     "../api:peer_connection_interface",
@@ -1764,6 +1772,7 @@ rtc_library("rtp_transmission_manager") {
     ":channel_interface",
     ":codec_vendor",
     ":connection_context",
+    # --twinlife-- 2025-12-21: don't build legacy stats
     # ":legacy_stats_collector_interface",
     ":rtp_receiver",
     ":rtp_receiver_proxy",
@@ -2019,6 +2028,7 @@ rtc_library("rtp_sender") {
   ]
   deps = [
     ":dtmf_sender",
+    # --twinlife-- 2025-12-21: don't build legacy stats
     # ":legacy_stats_collector_interface",
     "../api:audio_options_api",
     "../api:dtls_transport_interface",
@@ -2125,15 +2135,17 @@ rtc_library("video_track_source") {
   ]
 }
 
-rtc_source_set("legacy_stats_collector_interface") {
-  visibility = [ ":*" ]
-  sources = [ "legacy_stats_collector_interface.h" ]
-  deps = [
-    "../api:legacy_stats_types",
-    "../api:libjingle_peerconnection_api",
-    "../api:media_stream_interface",
-  ]
-}
+# --twinlife-- 2025-12-21: don't build legacy stats
+# rtc_source_set("legacy_stats_collector_interface") {
+#  visibility = [ ":*" ]
+#  sources = [ "legacy_stats_collector_interface.h" ]
+#  deps = [
+#    "../api:legacy_stats_types",
+#    "../api:libjingle_peerconnection_api",
+#    "../api:media_stream_interface",
+#  ]
+# }
+# --twinlife-- 2025-12-21: don't build legacy stats
 
 # This target contains the libraries that are required in order to get an
 # usable peerconnection-using binary.
@@ -2600,6 +2612,7 @@ if (rtc_include_tests && !build_with_chromium) {
       ":ice_server_parsing",
       ":integration_test_helpers",
       ":jitter_buffer_delay",
+      # --twinlife-- 2025-12-21: don't build legacy stats
       # ":legacy_stats_collector",
       ":local_audio_source",
       ":media_protocol_names",
@@ -2655,7 +2668,8 @@ if (rtc_include_tests && !build_with_chromium) {
       "../api:field_trials_view",
       "../api:ice_transport_interface",
       "../api:jsep",
-      "../api:legacy_stats_types",
+      # --twinlife-- 2025-12-21: don't build legacy stats
+      # "../api:legacy_stats_types",
       "../api:libjingle_logging_api",
       "../api:libjingle_peerconnection_api",
       "../api:make_ref_counted",
@@ -3053,7 +3067,8 @@ if (rtc_include_tests && !build_with_chromium) {
       "../api:field_trials_view",
       "../api:frame_transformer_interface",
       "../api:jsep",
-      "../api:legacy_stats_types",
+      # --twinlife-- 2025-12-21: don't build legacy stats
+      # "../api:legacy_stats_types",
       "../api:libjingle_logging_api",
       "../api:libjingle_peerconnection_api",
       "../api:make_ref_counted",

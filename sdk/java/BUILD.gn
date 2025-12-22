@@ -1,0 +1,792 @@
+# Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
+#
+# Use of this source code is governed by a BSD-style license
+# that can be found in the LICENSE file in the root of the source
+# tree. An additional intellectual property rights grant can be found
+# in the file PATENTS.  All contributing project authors may
+# be found in the AUTHORS file in the root of the source tree.
+
+declare_args() {
+  java_home=""
+  android_sdk_jar=""
+}
+
+android_sdk_jar = ""
+# --twinlife-- 2020-03-17: compilation for Linux Java
+  import("//build/config/android/config.gni")
+  # import("//build/config/android/rules.gni")
+  import("//third_party/jni_zero/jni_zero.gni")
+  import("../../webrtc.gni")
+
+  group("java") {
+    if (!build_with_chromium) {
+      public_deps = [
+        ":libjingle_peerconnection_jni",
+        ":libjingle_peerconnection_so",
+        ":libwebrtc",
+        ":native_api",
+      ]
+    }
+  }
+
+  #####################
+  # Aggregate targets #
+  #####################
+
+  # The native API is currently experimental and may change without notice.
+  group("native_api") {
+    deps = [
+      ":native_api_audio_device_module",
+      ":native_api_base",
+      ":native_api_codecs",
+      ":native_api_jni",
+      ":native_api_peerconnection",
+      ":native_api_stacktrace",
+      ":native_api_video",
+    ]
+  }
+
+  # Old target that pulls in everything. This will be going away in the future,
+  # clients should depend on individual video_java etc. targets instead.
+  #rtc_android_library("libjingle_peerconnection_java") {
+  #  deps = [
+  #    ":peerconnection_java",
+  #  ]
+  #}
+
+  rtc_library("libjingle_peerconnection_jni") {
+    visibility = [ "*" ]
+    allow_poison = [
+      "audio_codecs",  # TODO(bugs.webrtc.org/8396): Remove.
+      "environment_construction",
+      "software_video_codecs",  # TODO(bugs.webrtc.org/7925): Remove.
+    ]
+    public_deps = [  # no-presubmit-check TODO(webrtc:8603)
+      ":base_jni",
+      ":peerconnection_jni",
+      ":video_jni",
+      "../../api:create_peerconnection_factory",
+    ]
+  }
+
+  rtc_shared_library("libjingle_peerconnection_so") {
+    sources = [ "src/jni/jni_onload.cc" ]
+
+    deps = [
+      ":libjingle_peerconnection_jni",
+      ":libjingle_peerconnection_metrics_default_jni",
+      ":native_api_jni",
+      "../../pc:libjingle_peerconnection",
+      "../../rtc_base:logging",
+      "../../rtc_base:ssl_adapter",
+      "//third_party/jni_zero",
+    ]
+    output_extension = "so"
+  }
+
+  #######################
+  # Public Java modules #
+  #######################
+  # Modules, in alphabetical order.
+
+if (current_os == "linux" || is_android) {
+  ################################
+  # JNI targets for Java modules #
+  ################################
+
+  # Mirrors the order of targets in the section above.
+
+  rtc_library("base_jni") {
+    visibility = [ "*" ]
+    include_dirs = [ "$java_home/include", "$java_home/include/linux" ]
+    sources = [
+      "src/jni/jni_common.cc",
+      "src/jni/jni_helpers.cc",
+      "src/jni/jni_helpers.h",
+      "src/jni/pc/logging.cc",
+      "src/jni/pc/video.h",
+      "src/jni/scoped_java_ref_counted.cc",
+      "src/jni/scoped_java_ref_counted.h",
+    ]
+
+    deps = [
+      ":generated_base_jni",
+      ":internal_jni",
+      ":native_api_jni",
+      "../../api:field_trials_view",
+      "../../api:scoped_refptr",
+      "../../api:sequence_checker",
+      "../../api/audio:audio_processing",
+      "../../api/task_queue:pending_task_safety_flag",
+      "../../rtc_base:checks",
+      "../../rtc_base:ip_address",
+      "../../rtc_base:logging",
+      "../../rtc_base:macromagic",
+      "../../rtc_base:refcount",
+      "../../rtc_base:stringutils",
+      "../../rtc_base:threading",
+      "../../system_wrappers:field_trial",
+      "../../system_wrappers:metrics",
+      "//third_party/abseil-cpp/absl/strings:string_view",
+      "//third_party/jni_zero",
+    ]
+  }
+
+  # TODO: bugs.webrtc.org/369904700 - Delete when downstream dependencies stop
+  # depending on this now empty target.
+  rtc_source_set("audio_jni") {
+    visibility = [ "*" ]
+    sources = []
+    deps = []
+  }
+
+  rtc_library("builtin_audio_codecs_jni") {
+    visibility = [ "*" ]
+    allow_poison = [ "audio_codecs" ]
+    sources = [
+      "src/jni/builtin_audio_decoder_factory_factory.cc",
+      "src/jni/builtin_audio_encoder_factory_factory.cc",
+    ]
+
+    deps = [
+      ":base_jni",
+      ":generated_builtin_audio_codecs_jni",
+      ":native_api_jni",
+      "../../api/audio_codecs:builtin_audio_decoder_factory",
+      "../../api/audio_codecs:builtin_audio_encoder_factory",
+    ]
+  }
+
+  rtc_library("video_jni") {
+    visibility = [ "*" ]
+    sources = [
+      "src/jni/android_video_track_source.cc",
+      "src/jni/android_video_track_source.h",
+      "src/jni/encoded_image.cc",
+      "src/jni/encoded_image.h",
+      "src/jni/h264_utils.cc",
+      "src/jni/java_i420_buffer.cc",
+      "src/jni/native_capturer_observer.cc",
+      "src/jni/native_capturer_observer.h",
+      "src/jni/nv12_buffer.cc",
+      "src/jni/nv21_buffer.cc",
+      "src/jni/pc/video.cc",
+      "src/jni/timestamp_aligner.cc",
+      "src/jni/video_codec_info.cc",
+      "src/jni/video_codec_info.h",
+      "src/jni/video_codec_status.cc",
+      "src/jni/video_codec_status.h",
+      "src/jni/video_decoder_factory_wrapper.cc",
+      "src/jni/video_decoder_factory_wrapper.h",
+      "src/jni/video_decoder_fallback.cc",
+      "src/jni/video_decoder_wrapper.cc",
+      "src/jni/video_decoder_wrapper.h",
+      "src/jni/video_encoder_factory_wrapper.cc",
+      "src/jni/video_encoder_factory_wrapper.h",
+      "src/jni/video_encoder_fallback.cc",
+      "src/jni/video_encoder_wrapper.cc",
+      "src/jni/video_encoder_wrapper.h",
+      "src/jni/video_sink.cc",
+      "src/jni/video_sink.h",
+      "src/jni/video_track.cc",
+      "src/jni/yuv_helper.cc",
+    ]
+
+    deps = [
+      ":base_jni",
+      ":generated_video_jni",
+      ":native_api_jni",
+      ":videoframe_jni",
+      "../../api:libjingle_peerconnection_api",
+      "../../api:media_stream_interface",
+      "../../api:sequence_checker",
+      "../../api/environment",
+      "../../api/task_queue",
+      "../../api/video:encoded_image",
+      "../../api/video:render_resolution",
+      "../../api/video:video_frame",
+      "../../api/video:video_frame_type",
+      "../../api/video:video_rtp_headers",
+      "../../api/video_codecs:rtc_software_fallback_wrappers",
+      "../../api/video_codecs:video_codecs_api",
+      "../../common_video",
+      "../../media:rtc_media_base",
+      "../../modules/video_coding:codec_globals_headers",
+      "../../modules/video_coding:video_codec_interface",
+      "../../modules/video_coding:video_coding_utility",
+      "../../modules/video_coding/svc:scalable_video_controller",
+      "../../rtc_base:checks",
+      "../../rtc_base:logging",
+      "../../rtc_base:race_checker",
+      "../../rtc_base:refcount",
+      "../../rtc_base:safe_conversions",
+      "../../rtc_base:threading",
+      "../../rtc_base:timestamp_aligner",
+      "../../rtc_base:timeutils",
+      "../../rtc_base/synchronization:mutex",
+      "//third_party/abseil-cpp/absl/memory",
+      "//third_party/jni_zero",
+      "//third_party/libyuv",
+    ]
+  }
+
+  # Sources here require -lEGL linker flag. It is separated from video_jni
+  # target for backwards compatibility.
+  rtc_library("video_egl_jni") {
+    visibility = [ "*" ]
+    sources = [ "src/jni/egl_base_10_impl.cc" ]
+    deps = [
+      ":generated_video_egl_jni",
+      ":native_api_jni",
+    ]
+  }
+
+  rtc_library("peerconnection_jni") {
+    # Do not depend on this target externally unless you absolute have to. It is
+    # made public because we don't have a proper NDK yet. Header APIs here are not
+    # considered public and are subject to change.
+    visibility = [ "*" ]
+    allow_poison = [ "environment_construction" ]
+
+    sources = [
+      "src/jni/pc/add_ice_candidate_observer.cc",
+      "src/jni/pc/add_ice_candidate_observer.h",
+      "src/jni/pc/android_network_monitor.h",
+      "src/jni/pc/audio_track.cc",
+      "src/jni/pc/call_session_file_rotating_log_sink.cc",
+      "src/jni/pc/crypto_options.cc",
+      "src/jni/pc/crypto_options.h",
+      "src/jni/pc/data_channel.cc",
+      "src/jni/pc/data_channel.h",
+      # "src/jni/pc/dtmf_sender.cc",
+      "src/jni/pc/ice_candidate.cc",
+      "src/jni/pc/ice_candidate.h",
+      "src/jni/pc/media_constraints.cc",
+      "src/jni/pc/media_constraints.h",
+      "src/jni/pc/media_source.cc",
+      # "src/jni/pc/media_stream.cc",
+      # "src/jni/pc/media_stream.h",
+      "src/jni/pc/media_stream_track.cc",
+      "src/jni/pc/media_stream_track.h",
+      "src/jni/pc/owned_factory_and_threads.cc",
+      "src/jni/pc/owned_factory_and_threads.h",
+      "src/jni/pc/peer_connection.cc",
+      "src/jni/pc/peer_connection.h",
+      "src/jni/pc/peer_connection_factory.cc",
+      "src/jni/pc/peer_connection_factory.h",
+      "src/jni/pc/rtc_certificate.cc",
+      "src/jni/pc/rtc_certificate.h",
+      "src/jni/pc/rtc_stats_collector_callback_wrapper.cc",
+      "src/jni/pc/rtc_stats_collector_callback_wrapper.h",
+      "src/jni/pc/rtp_capabilities.cc",
+      "src/jni/pc/rtp_capabilities.h",
+      "src/jni/pc/rtp_parameters.cc",
+      "src/jni/pc/rtp_parameters.h",
+      "src/jni/pc/rtp_receiver.cc",
+      "src/jni/pc/rtp_receiver.h",
+      "src/jni/pc/rtp_sender.cc",
+      "src/jni/pc/rtp_sender.h",
+      "src/jni/pc/rtp_transceiver.cc",
+      "src/jni/pc/rtp_transceiver.h",
+      "src/jni/pc/sdp_observer.cc",
+      "src/jni/pc/sdp_observer.h",
+      "src/jni/pc/session_description.cc",
+      "src/jni/pc/session_description.h",
+      "src/jni/pc/ssl_certificate_verifier_wrapper.cc",
+      "src/jni/pc/ssl_certificate_verifier_wrapper.h",
+      "src/jni/pc/stats_observer.cc",
+      "src/jni/pc/stats_observer.h",
+      "src/jni/pc/turn_customizer.cc",
+      "src/jni/pc/turn_customizer.h",
+      "../../twinlife/jni/twinlife_crypto.cc",
+      "../../twinlife/jni/twinlife_crypto.h",
+    ]
+
+    deps = [
+      ":base_jni",
+      ":generated_external_classes_jni",
+      ":generated_external_classes_jni",
+      ":generated_peerconnection_jni",
+      ":generated_rtcerror_jni",
+      ":logging_jni",
+      ":native_api_jni",
+      ":native_api_stacktrace",
+      "..:media_constraints",
+      "../../api:dtmf_sender_interface",
+      "../../api:enable_media",
+      "../../api:libjingle_peerconnection_api",
+      "../../api:media_stream_interface",
+      "../../api:rtc_event_log_output_file",
+      "../../api:rtc_stats_api",
+      "../../api:rtp_parameters",
+      "../../api:rtp_sender_interface",
+      "../../api:turn_customizer",
+      "../../api/audio:audio_device",
+      "../../api/audio:audio_processing",
+      "../../api/audio:builtin_audio_processing_builder",
+      "../../api/crypto:options",
+      "../../api/rtc_event_log:rtc_event_log_factory",
+      "../../api/task_queue:default_task_queue_factory",
+      "../../api/video_codecs:video_codecs_api",
+      "../../call:call_interfaces",
+      "../../media:rtc_media_base",
+      "../../modules/audio_device",
+      "../../modules/utility",
+      "../../pc:media_stream_observer",
+      "../../pc:peer_connection_factory",
+      "../../pc:webrtc_sdp",
+      "../../rtc_base:checks",
+      "../../rtc_base:event_tracer",
+      "../../rtc_base:log_sinks",
+      "../../rtc_base:logging",
+      "../../rtc_base:refcount",
+      "../../rtc_base:rtc_certificate_generator",
+      "../../rtc_base:safe_conversions",
+      "../../rtc_base:ssl",
+      "../../rtc_base:stringutils",
+      "../../rtc_base:threading",
+      "../../stats:rtc_stats",
+      "../../system_wrappers:field_trial",
+      "//third_party/abseil-cpp/absl/memory",
+      "//third_party/boringssl",
+      "//third_party/jni_zero",
+    ]
+  }
+
+  rtc_library("libjingle_peerconnection_metrics_default_jni") {
+    visibility = [ "*" ]
+    sources = [ "src/jni/android_metrics.cc" ]
+    allow_poison = [ "environment_construction" ]
+    deps = [
+      ":base_jni",
+      ":generated_metrics_jni",
+      ":native_api_jni",
+      ":peerconnection_jni",
+      "../../rtc_base:stringutils",
+      "../../system_wrappers:metrics",
+    ]
+  }
+
+  rtc_library("default_video_codec_factory_jni") {
+    visibility = [ "*" ]
+    allow_poison = [ "software_video_codecs" ]
+    deps = [
+      ":swcodecs_jni",
+      ":video_jni",
+    ]
+  }
+
+  rtc_library("libvpx_vp8_jni") {
+    visibility = [ "*" ]
+    allow_poison = [ "software_video_codecs" ]
+    sources = [ "src/jni/vp8_codec.cc" ]
+    deps = [
+      ":base_jni",
+      ":generated_libvpx_vp8_jni",
+      ":video_jni",
+      "../../api/environment",
+      "../../modules/video_coding:webrtc_vp8",
+    ]
+  }
+
+  rtc_library("libvpx_vp9_jni") {
+    visibility = [ "*" ]
+    allow_poison = [ "software_video_codecs" ]
+    sources = [ "src/jni/vp9_codec.cc" ]
+    deps = [
+      ":base_jni",
+      ":generated_libvpx_vp9_jni",
+      ":video_jni",
+      "../../api/environment",
+      "../../modules/video_coding:webrtc_vp9",
+    ]
+  }
+
+  rtc_library("libaom_av1_encoder_jni") {
+    visibility = [ "*" ]
+    allow_poison = [ "software_video_codecs" ]
+    sources = [ "src/jni/libaom_av1_encoder.cc" ]
+    deps = [
+      ":base_jni",
+      ":generated_libaom_av1_encoder_jni",
+      ":video_jni",
+      "../../api/environment",
+      "../../modules/video_coding/codecs/av1:libaom_av1_encoder",
+    ]
+  }
+
+  rtc_library("dav1d_av1_jni") {
+    visibility = [ "*" ]
+    allow_poison = [ "software_video_codecs" ]
+    sources = [ "src/jni/dav1d_codec.cc" ]
+    deps = [
+      ":base_jni",
+      ":generated_dav1d_jni",
+      ":video_jni",
+      "../../modules/video_coding/codecs/av1:dav1d_decoder",
+    ]
+  }
+
+  rtc_library("swcodecs_jni") {
+    visibility = [ "*" ]
+    allow_poison = [ "software_video_codecs" ]
+    sources = [
+      "src/jni/software_video_decoder_factory.cc",
+      "src/jni/software_video_encoder_factory.cc",
+    ]
+    deps = [
+      ":base_jni",
+      ":generated_swcodecs_jni",
+      ":libvpx_vp8_jni",
+      ":libvpx_vp9_jni",
+      ":native_api_jni",
+      ":video_jni",
+      "../../api/environment",
+      "../../api/video_codecs:builtin_video_decoder_factory",
+      "../../api/video_codecs:builtin_video_encoder_factory",
+      "../../api/video_codecs:video_codecs_api",
+      "//third_party/jni_zero",
+    ]
+  }
+
+  ######################
+  # Native API targets #
+  ######################
+
+  # Core targets.
+
+  # JNI helpers that are also needed from internal JNI code. Cannot depend on any
+  # other JNI targets than internal_jni.
+  rtc_library("native_api_jni") {
+    visibility = [ "*" ]
+    sources = [
+      "native_api/jni/application_context_provider.cc",
+      "native_api/jni/class_loader.cc",
+      "native_api/jni/java_types.cc",
+      "native_api/jni/jvm.cc",
+      "src/jni/jni_generator_helper.h",
+    ]
+
+    public = [
+      "native_api/jni/application_context_provider.h",
+      "native_api/jni/class_loader.h",
+      "native_api/jni/java_types.h",
+      "native_api/jni/jni_int_wrapper.h",
+      "native_api/jni/jvm.h",
+      "native_api/jni/scoped_java_ref.h",
+    ]
+
+    deps = [
+      ":generated_external_classes_jni",
+      ":generated_native_api_jni",
+      ":internal_jni",
+      "../../api:array_view",
+      "../../api:sequence_checker",
+      "../../rtc_base:checks",
+      "//third_party/jni_zero",
+    ]
+  }
+
+  rtc_library("native_api_base") {
+    visibility = [ "*" ]
+    sources = [
+      "native_api/base/init.cc",
+      "native_api/base/init.h",
+    ]
+
+    deps = [
+      ":base_jni",
+      ":native_api_jni",
+      "../../rtc_base:checks",
+    ]
+  }
+
+  # Modules, in alphabetical order.
+
+  # API for wrapping Java VideoDecoderFactory/VideoEncoderFactory classes to C++
+  # objects.
+  rtc_library("native_api_codecs") {
+    visibility = [ "*" ]
+    allow_poison = [ "audio_codecs" ]  # TODO(bugs.webrtc.org/8396): Remove.
+    sources = [
+      "native_api/codecs/wrapper.cc",
+      "native_api/codecs/wrapper.h",
+    ]
+
+    deps = [
+      ":base_jni",
+      ":native_api_jni",
+      ":video_jni",
+      "../../api/video_codecs:video_codecs_api",
+      "../../rtc_base:checks",
+      "//third_party/jni_zero",
+    ]
+  }
+
+  rtc_library("native_api_network_monitor") {
+    visibility = [ "*" ]
+    sources = [
+      "native_api/network_monitor/network_monitor.cc",
+      "native_api/network_monitor/network_monitor.h",
+    ]
+
+    deps = [
+      ":base_jni",
+      "../../rtc_base:threading",
+      "//third_party/jni_zero",
+    ]
+  }
+
+  # API for creating Java PeerConnectionFactory from C++ equivalents.
+  rtc_library("native_api_peerconnection") {
+    visibility = [ "*" ]
+    allow_poison = [ "environment_construction" ]
+
+    sources = [
+      "native_api/peerconnection/peer_connection_factory.cc",
+      "native_api/peerconnection/peer_connection_factory.h",
+    ]
+    deps = [
+      ":base_jni",
+      ":peerconnection_jni",
+      "../../api:libjingle_peerconnection_api",
+      "../../api/video_codecs:video_codecs_api",
+      "../../rtc_base:threading",
+    ]
+  }
+
+  # API for capturing and printing native stacktraces.
+  rtc_library("native_api_stacktrace") {
+    visibility = [ "*" ]
+    sources = [
+      "native_api/stacktrace/stacktrace.cc",
+      "native_api/stacktrace/stacktrace.h",
+    ]
+
+    deps = [
+      "../../rtc_base:criticalsection",
+      "../../rtc_base:logging",
+      "../../rtc_base:stringutils",
+      "../../rtc_base/synchronization:mutex",
+      "//third_party/abseil-cpp/absl/base:core_headers",
+    ]
+  }
+
+  # API for creating C++ wrapper implementations of api/mediastreaminterface.h
+  # video interfaces from their Java equivalents.
+  rtc_library("native_api_video") {
+    visibility = [ "*" ]
+    allow_poison = [ "audio_codecs" ]  # TODO(bugs.webrtc.org/8396): Remove.
+    sources = [
+      "native_api/video/video_source.cc",
+      "native_api/video/video_source.h",
+      "native_api/video/wrapper.cc",
+      "native_api/video/wrapper.h",
+    ]
+    deps = [
+      ":native_api_jni",
+      ":video_jni",
+      ":videoframe_jni",
+      "../../api:libjingle_peerconnection_api",
+      "../../api:media_stream_interface",
+      "../../api/video:video_frame",
+      "../../api/video:video_rtp_headers",
+      "../../rtc_base:refcount",
+      "../../rtc_base:threading",
+      "//third_party/jni_zero",
+    ]
+  }
+
+  ####################
+  # Internal targets #
+  ####################
+
+  # Internal code that is needed by native_api_jni. The code cannot be placed in
+  # base_jni because native_api_jni depends on the code (and base_jni depends on
+  # native_api_jni).
+  rtc_library("internal_jni") {
+    sources = [
+      "src/jni/jvm.cc",
+      "src/jni/jvm.h",
+    ]
+
+    deps = [
+      "../../rtc_base:checks",
+      "//third_party/jni_zero",
+    ]
+  }
+
+  rtc_library("videoframe_jni") {
+    sources = [
+      "src/jni/video_frame.cc",
+      "src/jni/video_frame.h",
+      "src/jni/wrapped_native_i420_buffer.cc",
+      "src/jni/wrapped_native_i420_buffer.h",
+    ]
+
+    deps = [
+      ":base_jni",
+      ":generated_video_jni",
+      ":native_api_jni",
+      "../../api:scoped_refptr",
+      "../../api/video:video_frame",
+      "../../api/video:video_rtp_headers",
+      "../../common_video",
+      "../../rtc_base:checks",
+      "../../rtc_base:refcount",
+      "../../rtc_base:timeutils",
+    ]
+  }
+
+  rtc_library("logging_jni") {
+    visibility = [ "*" ]
+    sources = [
+      "src/jni/logging/log_sink.cc",
+      "src/jni/logging/log_sink.h",
+    ]
+
+    deps = [
+      ":base_jni",
+      ":generated_logging_jni",
+      ":native_api_jni",
+      "../../rtc_base:logging",
+      "//third_party/abseil-cpp/absl/strings:string_view",
+    ]
+  }
+
+  #########################
+  # Generated JNI targets #
+  #########################
+  generate_jni("generated_metrics_jni") {
+    sources = [ "api/org/webrtc/Metrics.java" ]
+    namespace = "webrtc::jni"
+    jni_generator_include = "//sdk/android/src/jni/jni_generator_helper.h"
+  }
+
+  # Generated JNI for public JNI targets, matching order of targets
+
+  generate_jni("generated_base_jni") {
+    sources = [
+      "api/org/webrtc/NetworkChangeDetector.java",
+      "api/org/webrtc/NetworkMonitor.java",
+      "api/org/webrtc/RefCounted.java",
+      "src/java/org/webrtc/Histogram.java",
+      "src/java/org/webrtc/JniCommon.java",
+    ]
+    namespace = "webrtc::jni"
+    jni_generator_include = "//sdk/android/src/jni/jni_generator_helper.h"
+  }
+
+  generate_jni("generated_video_jni") {
+    sources = [
+      "api/org/webrtc/EncodedImage.java",
+      "api/org/webrtc/JavaI420Buffer.java",
+      "api/org/webrtc/TimestampAligner.java",
+      "api/org/webrtc/VideoCodecInfo.java",
+      "api/org/webrtc/VideoCodecStatus.java",
+      "api/org/webrtc/VideoDecoder.java",
+      "api/org/webrtc/VideoDecoderFactory.java",
+      "api/org/webrtc/VideoDecoderFallback.java",
+      "api/org/webrtc/VideoEncoder.java",
+      "api/org/webrtc/VideoEncoderFactory.java",
+      "api/org/webrtc/VideoEncoderFallback.java",
+      "api/org/webrtc/VideoFrame.java",
+      "api/org/webrtc/VideoSink.java",
+      "api/org/webrtc/VideoTrack.java",
+      "api/org/webrtc/YuvHelper.java",
+      "src/java/org/webrtc/H264Utils.java",
+      "src/java/org/webrtc/NV12Buffer.java",
+      "src/java/org/webrtc/NV21Buffer.java",
+      "src/java/org/webrtc/NativeAndroidVideoTrackSource.java",
+      "src/java/org/webrtc/NativeCapturerObserver.java",
+      "src/java/org/webrtc/VideoDecoderWrapper.java",
+      "src/java/org/webrtc/VideoEncoderWrapper.java",
+      "src/java/org/webrtc/WrappedNativeI420Buffer.java",
+    ]
+    namespace = "webrtc::jni"
+    jni_generator_include = "//sdk/android/src/jni/jni_generator_helper.h"
+  }
+
+  generate_jni("generated_rtcerror_jni") {
+    sources = [ "src/java/org/webrtc/RtcError.java" ]
+    namespace = "webrtc::jni"
+    jni_generator_include = "//sdk/android/src/jni/jni_generator_helper.h"
+  }
+
+  generate_jni("generated_peerconnection_jni") {
+    sources = [
+      "api/org/webrtc/AddIceObserver.java",
+      "api/org/webrtc/AudioTrack.java",
+      "api/org/webrtc/CallSessionFileRotatingLogSink.java",
+      "api/org/webrtc/CandidatePairChangeEvent.java",
+      "api/org/webrtc/CryptoOptions.java",
+      "api/org/webrtc/DataChannel.java",
+      # "api/org/webrtc/DtmfSender.java",
+      "api/org/webrtc/IceCandidate.java",
+      "api/org/webrtc/IceCandidateErrorEvent.java",
+      "api/org/webrtc/MediaConstraints.java",
+      "api/org/webrtc/MediaSource.java",
+      # "api/org/webrtc/MediaStream.java",
+      "api/org/webrtc/MediaStreamTrack.java",
+      "api/org/webrtc/PeerConnection.java",
+      "api/org/webrtc/PeerConnectionFactory.java",
+      "api/org/webrtc/RTCStats.java",
+      "api/org/webrtc/RTCStatsCollectorCallback.java",
+      "api/org/webrtc/RTCStatsReport.java",
+      "api/org/webrtc/RtcCertificatePem.java",
+      "api/org/webrtc/RtpCapabilities.java",
+      "api/org/webrtc/RtpParameters.java",
+      "api/org/webrtc/RtpReceiver.java",
+      "api/org/webrtc/RtpSender.java",
+      "api/org/webrtc/RtpTransceiver.java",
+      "api/org/webrtc/SSLCertificateVerifier.java",
+      "api/org/webrtc/SdpObserver.java",
+      "api/org/webrtc/SessionDescription.java",
+      "api/org/webrtc/StatsObserver.java",
+      "api/org/webrtc/StatsReport.java",
+      "api/org/webrtc/TurnCustomizer.java",
+
+      # -twinlife- 2023-10-04: add CryptoKey.java
+      "../../twinlife/java/org/twinlife/twinlife/crypto/CryptoKey.java",
+      "../../twinlife/java/org/twinlife/twinlife/crypto/CryptoBox.java"
+    ]
+    namespace = "webrtc::jni"
+    jni_generator_include = "//sdk/android/src/jni/jni_generator_helper.h"
+  }
+
+  generate_jni("generated_java_audio_jni") {
+    sources = [ "api/org/webrtc/audio/JavaAudioDeviceModule.java" ]
+    namespace = "webrtc::jni"
+    jni_generator_include = "//sdk/android/src/jni/jni_generator_helper.h"
+  }
+
+  generate_jni("generated_builtin_audio_codecs_jni") {
+    sources = [
+      "api/org/webrtc/BuiltinAudioDecoderFactoryFactory.java",
+      "api/org/webrtc/BuiltinAudioEncoderFactoryFactory.java",
+    ]
+    namespace = "webrtc::jni"
+    jni_generator_include = "//sdk/android/src/jni/jni_generator_helper.h"
+  }
+
+  # Generated JNI for native API targets
+
+  generate_jni("generated_native_api_jni") {
+    sources = [
+      "src/java/org/webrtc/ApplicationContextProvider.java",
+      "src/java/org/webrtc/JniHelper.java",
+      "src/java/org/webrtc/WebRtcClassLoader.java",
+    ]
+    namespace = "webrtc::jni"
+    jni_generator_include = "//sdk/android/src/jni/jni_generator_helper.h"
+  }
+
+  # Generated JNI for internal targets.
+
+  generate_jni("generated_logging_jni") {
+    sources = [ "src/java/org/webrtc/JNILogging.java" ]
+    jni_generator_include = "//sdk/android/src/jni/jni_generator_helper.h"
+  }
+
+}
+

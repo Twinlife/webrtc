@@ -1221,17 +1221,19 @@ public class PeerConnection {
    * function is called. The max_size_bytes argument is ignored, it is added
    * for future use.
    */
-  public boolean startRtcEventLog(int file_descriptor, int max_size_bytes) {
-    return nativeStartRtcEventLog(file_descriptor, max_size_bytes);
-  }
+  // --twinlife 2025-12-21: remove rtc event log
+  // public boolean startRtcEventLog(int file_descriptor, int max_size_bytes) {
+  //  return nativeStartRtcEventLog(file_descriptor, max_size_bytes);
+  // }
 
   /**
    * Stops recording an RTC event log. If no RTC event log is currently being
    * recorded, this call will have no effect.
    */
-  public void stopRtcEventLog() {
-    nativeStopRtcEventLog();
-  }
+  // public void stopRtcEventLog() {
+  //  nativeStopRtcEventLog();
+  // }
+  // --twinlife 2025-12-21: remove rtc event log
 
   // TODO(fischman): add support for DTMF-related methods once that API
   // stabilizes.
@@ -1342,6 +1344,7 @@ public class PeerConnection {
       long track, RtpTransceiver.RtpTransceiverInit init);
   private native RtpTransceiver nativeAddTransceiverOfType(
       MediaStreamTrack.MediaType mediaType, RtpTransceiver.RtpTransceiverInit init);
-  private native boolean nativeStartRtcEventLog(int file_descriptor, int max_size_bytes);
-  private native void nativeStopRtcEventLog();
+  // --twinlife 2025-12-21: remove rtc event log
+  // private native boolean nativeStartRtcEventLog(int file_descriptor, int max_size_bytes);
+  // private native void nativeStopRtcEventLog();
 }

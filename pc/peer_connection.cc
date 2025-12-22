@@ -612,7 +612,9 @@ PeerConnection::PeerConnection(
           /*alive=*/call_ != nullptr,
           worker_thread())),
       call_ptr_(call_.get()),
+#ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
       legacy_stats_(std::make_unique<LegacyStatsCollector>(this, env_.clock())),
+#endif
       stats_collector_(RTCStatsCollector::Create(this, env_)),
       // RFC 3264: The numeric value of the session id and version in the
       // o line MUST be representable with a "64 bit signed integer".
@@ -647,7 +649,11 @@ PeerConnection::PeerConnection(
       codec_lookup_helper_.get());
   rtp_manager_ = std::make_unique<RtpTransmissionManager>(
       env_, IsUnifiedPlan(), context_.get(), codec_lookup_helper_.get(),
+#ifndef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
+      &usage_pattern_, observer_, /*legacy_stats_.get(),*/ [this]() {
+#else
       &usage_pattern_, observer_, legacy_stats_.get(), [this]() {
+#endif
         RTC_DCHECK_RUN_ON(signaling_thread());
         sdp_handler_->UpdateNegotiationNeeded();
       });
@@ -1255,7 +1261,11 @@ scoped_refptr<RtpSenderInterface> PeerConnection::CreateSender(
   if (kind == MediaStreamTrackInterface::kAudioKind) {
     auto audio_sender =
         AudioRtpSender::Create(env_, worker_thread(), CreateRandomUuid(),
+#ifndef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
                                /* legacy_stats_.get(),*/ rtp_manager());
+#else
+                               legacy_stats_.get(), rtp_manager());
+#endif
     audio_sender->SetMediaChannel(rtp_manager()->voice_media_send_channel());
     new_sender = RtpSenderProxyWithInternal<RtpSenderInternal>::Create(
         signaling_thread(), audio_sender);

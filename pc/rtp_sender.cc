@@ -41,10 +41,10 @@
 #include "media/base/codec.h"
 #include "media/base/media_channel.h"
 #include "media/base/media_engine.h"
+#include "pc/dtmf_sender.h"
 #ifdef WEBRTC_LEGACY_GETSTATS // --twinlife 2025-01-27: disable legacy GetStats
 #include "pc/legacy_stats_collector_interface.h"
 #endif
-#include "pc/dtmf_sender.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/crypto_random.h"
 #include "rtc_base/event.h"

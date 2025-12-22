@@ -95,7 +95,8 @@ rtc_library("libaom_av1_encoder") {
     "//third_party/abseil-cpp/absl/base:nullability",
     "//third_party/abseil-cpp/absl/container:inlined_vector",
     "//third_party/abseil-cpp/absl/strings",
-    "//third_party/libaom",
+    # -twinlife- 2025-12-21: don't build libaom, av1, dav1d
+    # "//third_party/libaom",
   ]
 }
 

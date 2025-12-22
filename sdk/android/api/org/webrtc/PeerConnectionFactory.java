@@ -367,28 +367,6 @@ public class PeerConnectionFactory {
     nativeShutdownInternalTracer();
   }
 
-<<<<<<< HEAD
-  // Wrapper of webrtc::field_trial::FindFullName. Develop the feature with default behaviour off.
-  // Example usage:
-  // if (PeerConnectionFactory.fieldTrialsFindFullName("WebRTCExperiment").equals("Enabled")) {
-  //   method1();
-  // } else {
-  //   method2();
-  // }
-  public static String fieldTrialsFindFullName(String name) {
-    return NativeLibrary.isLoaded() ? nativeFindFieldTrialsFullName(name) : "";
-  }
-=======
-  // Field trial initialization. Must be called before PeerConnectionFactory
-  // is created.
-  // Deprecated, use PeerConnectionFactory.Builder.setFieldTrials instead.
-  // TODO: bugs.webrtc.org/42220378 - Delete after January 1, 2026.
-  @Deprecated
-  public static void initializeFieldTrials(String fieldTrialsInitString) {
-    nativeInitializeFieldTrials(fieldTrialsInitString);
-  }
-
->>>>>>> google/main
   // Start/stop internal capturing of internal tracing.
   public static boolean startInternalTracingCapture(String tracingFilename) {
     return nativeStartInternalTracingCapture(tracingFilename);

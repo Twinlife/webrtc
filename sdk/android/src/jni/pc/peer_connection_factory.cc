@@ -307,33 +307,6 @@ ScopedJavaLocalRef<jobject> CreatePeerConnectionFactoryForJava(
     JavaToNativeStaticHostnames(jni, jhost_addresses, dependencies.hostnames);
   }
   // --twinlife 2023-07-11: provide hostname resolution
-/* <<<<<<< HEAD
-  dependencies.task_queue_factory = CreateDefaultTaskQueueFactory();
-
-  // --twinlife-- 2022-10-24: If there is no audio module, create the
-  if (!(options && options->disable_network_monitor)) {
-    dependencies.network_monitor_factory =
-        std::make_unique<AndroidNetworkMonitorFactory>();
-  }
-  // factory without any media support (see objc, initWithNoMedia).
-  if (!audio_device_module) {
-    rtc::scoped_refptr<PeerConnectionFactoryInterface> factory =
-      CreateModularPeerConnectionFactory(std::move(dependencies));
-
-    RTC_CHECK(factory) << "Failed to create the peer connection factory; "
-      "WebRTC/libjingle init likely failed on this device";
-    // TODO(honghaiz): Maybe put the options as the argument of
-    // CreatePeerConnectionFactory.
-    if (options)
-      factory->SetOptions(*options);
-
-    return NativeToScopedJavaPeerConnectionFactory(jni, factory, std::move(socket_server), std::move(network_thread),
-                                                   std::move(worker_thread), std::move(signaling_thread));
-  }
-  // --twinlife-- 2022-10-24
-
-=======
->>>>>>> google/main*/
   dependencies.event_log_factory = std::make_unique<RtcEventLogFactory>();
   dependencies.fec_controller_factory = std::move(fec_controller_factory);
   dependencies.network_controller_factory =
@@ -341,6 +314,23 @@ ScopedJavaLocalRef<jobject> CreatePeerConnectionFactoryForJava(
   dependencies.network_state_predictor_factory =
       std::move(network_state_predictor_factory);
   dependencies.neteq_factory = std::move(neteq_factory);
+  // --twinlife-- 2022-10-24: If there is no audio module, create the
+  if (!audio_device_module) {
+    scoped_refptr<PeerConnectionFactoryInterface> factory =
+      CreateModularPeerConnectionFactory(std::move(dependencies));
+
+    RTC_CHECK(factory) << "Failed to create the peer connection factory; "
+                          "WebRTC/libjingle init likely failed on this device";
+    // TODO(honghaiz): Maybe put the options as the argument of
+    // CreatePeerConnectionFactory.
+    if (options)
+      factory->SetOptions(*options);
+
+    return NativeToScopedJavaPeerConnectionFactory(
+      jni, factory, std::move(socket_server), std::move(network_thread),
+      std::move(worker_thread), std::move(signaling_thread));
+  }
+  // --twinlife-- 2022-10-24
 
   dependencies.adm = std::move(audio_device_module);
   dependencies.audio_encoder_factory = std::move(audio_encoder_factory);

@@ -4102,7 +4102,12 @@ SdpOfferAnswerHandler::AssociateTransceiver(
     RTC_DCHECK(!old_transceiver);
   }
 #endif
-
+  // --twinlife 2025-12-21: if there is no media engine, reject stream to avoid a crash later.
+  if (!media_engine()) {
+      LOG_AND_RETURN_ERROR(
+          RTCErrorType::INVALID_PARAMETER,
+          "No media engine to handle media stream");    
+  }
   const MediaContentDescription* media_desc = content.media_description();
   auto transceiver = transceivers()->FindByMid(content.mid());
   if (source == CS_LOCAL) {
