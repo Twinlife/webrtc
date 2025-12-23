@@ -40,10 +40,10 @@ https://webrtc.github.io/webrtc-org/native-code/development/
 	19G	.
    ```
 
-4. Switch to the same WebRTC branch as our integration: WebRTC 134
+4. Switch to the same WebRTC branch as our integration: WebRTC 144
    ```bash
    $ cd src
-   $ git checkout -b 6998/master branch-heads/6998
+   $ git checkout -b 7559/master branch-heads/7559
    $ git pull origin
    $ gclient sync
    $ gclient sync -D
@@ -53,7 +53,7 @@ https://webrtc.github.io/webrtc-org/native-code/development/
 
 ## Prepare source tree
 
-Our preparation script will setup various symbolic link to WebRTC 134
+Our preparation script will setup various symbolic link to WebRTC 144
 tools, third_party, buildtools, base, testing and build directories.
 Setup the `WEBRTC_SRC_DIR` environment variable to refer to the WebRTC
 extraction and run our `webrtc-setup.sh` script.

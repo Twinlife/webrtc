@@ -18,7 +18,7 @@ fi
 rm -rf third_party tools base buildtools testing build
 ln -s ${WEBRTC_SRC_DIR}/third_party
 ln -s ${WEBRTC_SRC_DIR}/tools
-ln -s ${WEBRTC_SRC_DIR}/base
+# ln -s ${WEBRTC_SRC_DIR}/base
 ln -s ${WEBRTC_SRC_DIR}/buildtools
 ln -s ${WEBRTC_SRC_DIR}/testing
 ln -s ${WEBRTC_SRC_DIR}/build
