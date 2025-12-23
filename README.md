@@ -25,6 +25,7 @@ for our applications.
 
 We have made the following improvements and fixes for us:
 
+- 2025-12-23: avoid a call to getsocketname() before each sendto() when sending UDP packets
 - 2025-10-30: update and cleanup build for Android and iOS using the same branch
 - 2025-08-29: for 32-bit version use 16K alignment (tested OK on a 32-bit device).
 - 2025-08-29: add ISRG Root X1 and ISG Root X2 in the ssl_roots.h certificate list.

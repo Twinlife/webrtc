@@ -50,6 +50,8 @@ class RTC_EXPORT CallbackListReceivers {
 
   void Foreach(FunctionView<void(UntypedFunction&)> fv);
 
+  // --twinlife 2025-12-23: avoid getsockname() system call if there is no sent notification callback.
+  bool IsEmpty() { return receivers_.empty(); }
  private:
   // Special protected pointer value that's used as a removal_tag for
   // receivers that want to unsubscribe from within a callback.
@@ -213,6 +215,8 @@ class CallbackList {
     });
   }
 
+  // --twinlife 2025-12-23: avoid getsockname() system call if there is no sent notification callback.
+  bool IsEmpty() { return receivers_.IsEmpty(); }
  private:
   callback_list_impl::CallbackListReceivers receivers_;
 };

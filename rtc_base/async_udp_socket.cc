@@ -70,6 +70,11 @@ SocketAddress AsyncUDPSocket::GetRemoteAddress() const {
 int AsyncUDPSocket::Send(const void* pv,
                          size_t cb,
                          const AsyncSocketPacketOptions& options) {
+  // --twinlife 2025-12-23: avoid getsockname() system call if there is no sent notification callback.
+  if (!HasSentNotify()) {
+    return socket_->Send(pv, cb);
+  }
+  // --twinlife 2025-12-23: avoid getsockname() system call if there is no sent notification callback.
   SentPacketInfo sent_packet(options.packet_id,
                              env_.clock().TimeInMilliseconds(),
                              options.info_signaled_after_sent);
@@ -83,6 +88,20 @@ int AsyncUDPSocket::SendTo(const void* pv,
                            size_t cb,
                            const SocketAddress& addr,
                            const AsyncSocketPacketOptions& options) {
+  // --twinlife 2025-12-23: avoid getsockname() system call if there is no sent notification callback.
+  if (!HasSentNotify()) {
+    if (has_set_ect1_options_ != options.ect_1) {
+      // It is unclear what is most efficient, setting options on every sent
+      // packet or when changed. Potentially, can separate send sockets be used?
+      // This is the easier implementation.
+      if (socket_->SetOption(Socket::Option::OPT_SEND_ECN,
+                             options.ect_1 ? 1 : 0) == 0) {
+        has_set_ect1_options_ = options.ect_1;
+      }
+    }
+    return socket_->SendTo(pv, cb, addr);
+  }
+  // --twinlife 2025-12-23: avoid getsockname() system call if there is no sent notification callback.
   SentPacketInfo sent_packet(options.packet_id,
                              env_.clock().TimeInMilliseconds(),
                              options.info_signaled_after_sent);

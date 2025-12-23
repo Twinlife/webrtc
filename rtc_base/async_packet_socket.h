@@ -145,6 +145,8 @@ class RTC_EXPORT AsyncPacketSocket {
   void NotifySentPacket(AsyncPacketSocket* socket, const SentPacketInfo& info) {
     sent_packet_callbacks_.Send(socket, info);
   }
+  // --twinlife 2025-12-23: avoid getsockname() system call if there is no sent notification callback.
+  bool HasSentNotify() { return sent_packet_callbacks_.IsEmpty(); }
 
   // Emitted when the socket is currently able to send.
   void SubscribeReadyToSend(
