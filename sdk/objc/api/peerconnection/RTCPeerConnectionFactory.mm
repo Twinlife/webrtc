@@ -203,13 +203,16 @@
 }
 
 - (instancetype)initWithHostnames:(nullable NSArray<RTC_OBJC_TYPE(RTCHostname)*> *)hostnames {
+  webrtc::PeerConnectionFactoryDependencies dependencies;
+  dependencies.env = webrtc::CreateEnvironment();
   return [self
-      initWithNativeDependencies:webrtc::PeerConnectionFactoryDependencies() hostnames:hostnames];
+      initWithNativeDependencies:dependencies hostnames:hostnames];
 }
 
 - (instancetype)initWithNoMedia {
-  webrtc::PeerConnectionFactoryDependencies default_deps;
-  return [self initWithNativeDependencies:default_deps hostnames:nil];
+  webrtc::PeerConnectionFactoryDependencies dependencies;
+  dependencies.env = webrtc::CreateEnvironment();
+  return [self initWithNativeDependencies:dependencies hostnames:nil];
 }
 
 - (instancetype)

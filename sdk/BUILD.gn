@@ -1128,7 +1128,8 @@ if (is_ios || is_mac) {
         "../api:enable_media",
         "../api:field_trials_view",
         "../api:jsep",
-        "../api:legacy_stats_types",
+        # --twinlife-- 2025-12-21: don't build legacy stats
+        # "../api:legacy_stats_types",
         "../api:media_stream_interface",
         "../api:peer_connection_interface",
         "../api:rtc_event_log_output_file",

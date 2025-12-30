@@ -32,7 +32,7 @@ webrtc::LoggingSeverity RTCGetNativeLoggingSeverity(
 
 BOOL RTCIsLogSeverityEnabled(RTCLoggingSeverity sev) {
 
-   return !::rtc::LogMessage::IsNoop(RTCGetNativeLoggingSeverity(sev));
+   return !::webrtc::LogMessage::IsNoop(RTCGetNativeLoggingSeverity(sev));
 }
 
 // --twinlife-- 2025-01-11: Fix RTCLogFormat() to avoid formatting the log when it is disabled (avoids side effects).
