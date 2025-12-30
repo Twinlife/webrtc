@@ -1,10 +1,23 @@
 #!/bin/bash
 
-if test -f buildtools/mac/gn; then
-    TARGET=ios
-else
-    TARGET=android
-fi
+case $# in
+    0)
+        if test -f buildtools/mac/gn; then
+            TARGET=ios
+            gn=buildtools/mac/gn
+        else
+            TARGET=android
+            gn=buildtools/linux64/gn
+        fi
+        ;;
+    1)
+        TARGET=$1
+        ;;
+    *)
+	echo "Usage: build-release-64.sh [ios|android|linux]" 1>&2
+	exit 1
+	;;
+esac
 
 case ${TARGET} in
     ios)
@@ -28,6 +41,10 @@ case ${TARGET} in
 	cp out-64/Release/libjingle_peerconnection_so.so libs/arm64-v8a
 
 	;;
+
+    linux)
+        ninja -k 50 -C out-64/Release libjingle_peerconnection_so
+        ;;
 
 esac
 

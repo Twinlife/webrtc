@@ -16,7 +16,6 @@ import androidx.annotation.Nullable;
 import java.util.List;
 import org.webrtc.Logging.Severity;
 import org.webrtc.audio.AudioDeviceModule;
-import org.webrtc.audio.JavaAudioDeviceModule;
 
 /**
  * Java wrapper for a C++ PeerConnectionFactoryInterface.  Main entry point to
@@ -59,15 +58,32 @@ public class PeerConnectionFactory {
 
   private static volatile boolean internalTracerInitialized;
 
+  // --twinlife-- 2022-10-25: remove the static ThreadInfo because we can have two factories and they are not used.
   // Remove these once deprecated static printStackTrace() is gone.
   // @Nullable private static ThreadInfo staticNetworkThread;
   // @Nullable private static ThreadInfo staticWorkerThread;
   // @Nullable private static ThreadInfo staticSignalingThread;
+  // --twinlife-- 2022-10-25
 
   private long nativeFactory;
   @Nullable private volatile ThreadInfo networkThread;
   @Nullable private volatile ThreadInfo workerThread;
   @Nullable private volatile ThreadInfo signalingThread;
+
+  // --twinlife-- 2022-10-25: add counter to track peer connection factory usage
+  // we assume these operations are called from the same thread.
+  private int useCounter;
+
+  public void incrementUseCounter() {
+    useCounter++;
+  }
+  public void decrementUseCounter() {
+    useCounter--;
+  }
+  public boolean isUsed() {
+    return useCounter > 0;
+  }
+  // --twinlife-- 2022-10-25
 
   public static class InitializationOptions {
     final Context applicationContext;
@@ -192,12 +208,18 @@ public class PeerConnectionFactory {
     @Nullable private NetworkControllerFactoryFactory networkControllerFactoryFactory;
     @Nullable private NetworkStatePredictorFactoryFactory networkStatePredictorFactoryFactory;
     @Nullable private NetEqFactoryFactory neteqFactoryFactory;
+    @Nullable private List<PeerConnection.ServerAddr> hostnames;
     @Nullable private AudioFrameProcessor audioFrameProcessor;
 
     private Builder() {}
 
     public Builder setOptions(Options options) {
       this.options = options;
+      return this;
+    }
+
+    public Builder setHostnames(List<PeerConnection.ServerAddr> hostnames) {
+      this.hostnames = hostnames;
       return this;
     }
 
@@ -293,8 +315,30 @@ public class PeerConnectionFactory {
       checkInitializeHasBeenCalled();
       try (Environment env = envBuilder.build()) {
         if (audioDeviceModule == null) {
-          audioDeviceModule = JavaAudioDeviceModule.builder(ContextUtils.getApplicationContext())
-                                  .createAudioDeviceModule();
+           // --twinlife-- 2022-10-25: if there is no audio device module, create the peer connection
+           // factory without audio and media engine.
+           return nativeCreatePeerConnectionFactory(
+            ContextUtils.getApplicationContext(),
+            options,
+            env.ref(),
+            0,
+            0,
+            0,
+            null,
+            null,
+            0,
+            fecControllerFactoryFactory == null ? 0 : fecControllerFactoryFactory.createNative(),
+            networkControllerFactoryFactory == null
+                ? 0
+                : networkControllerFactoryFactory.createNativeNetworkControllerFactory(),
+            networkStatePredictorFactoryFactory == null
+                ? 0
+                : networkStatePredictorFactoryFactory.createNativeNetworkStatePredictorFactory(),
+            neteqFactoryFactory == null ? 0 : neteqFactoryFactory.createNativeNetEqFactory(),
+            0, hostnames);
+          // audioDeviceModule = JavaAudioDeviceModule.builder(ContextUtils.getApplicationContext())
+          //                        .createAudioDeviceModule();
+          // --twinlife-- 2022-10-25
         }
         return nativeCreatePeerConnectionFactory(
             ContextUtils.getApplicationContext(),
@@ -314,7 +358,8 @@ public class PeerConnectionFactory {
                 ? 0
                 : networkStatePredictorFactoryFactory.createNativeNetworkStatePredictorFactory(),
             neteqFactoryFactory == null ? 0 : neteqFactoryFactory.createNativeNetEqFactory(),
-            audioFrameProcessor == null ? 0 : audioFrameProcessor.getNativeAudioFrameProcessor());
+            audioFrameProcessor == null ? 0 : audioFrameProcessor.getNativeAudioFrameProcessor(),
+                hostnames);
       }
     }
   }
@@ -333,7 +378,7 @@ public class PeerConnectionFactory {
     ContextUtils.initialize(options.applicationContext);
     NativeLibrary.initialize(options.nativeLibraryLoader, options.nativeLibraryName);
     nativeInitializeAndroidGlobals();
-    nativeInitializeFieldTrials(options.fieldTrials);
+    // nativeInitializeFieldTrials(options.fieldTrials);
     if (options.enableInternalTracer && !internalTracerInitialized) {
       initializeInternalTracer();
     }
@@ -410,21 +455,21 @@ public class PeerConnectionFactory {
       List<PeerConnection.IceServer> iceServers, PeerConnection.Observer observer) {
     PeerConnection.RTCConfiguration rtcConfig = new PeerConnection.RTCConfiguration(iceServers);
     rtcConfig.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
-    return createPeerConnection(rtcConfig, observer);
+    return createPeerConnectionInternal(rtcConfig, null /* constraints*/, observer, null);
   }
 
   @Nullable
   public PeerConnection createPeerConnection(
       PeerConnection.RTCConfiguration rtcConfig, PeerConnection.Observer observer) {
-    return createPeerConnection(rtcConfig, null /* constraints */, observer);
+    return createPeerConnectionInternal(rtcConfig, null /* constraints */, observer, null);
   }
 
-  @Nullable
-  public PeerConnection createPeerConnection(
-      PeerConnection.RTCConfiguration rtcConfig, PeerConnectionDependencies dependencies) {
-    return createPeerConnectionInternal(rtcConfig, null /* constraints */,
-        dependencies.getObserver(), dependencies.getSSLCertificateVerifier());
-  }
+  //@Nullable
+  //public PeerConnection createPeerConnection(
+  //    PeerConnection.RTCConfiguration rtcConfig, PeerConnectionDependencies dependencies) {
+  //  return createPeerConnectionInternal(rtcConfig, null /* constraints */,
+  //      dependencies.getObserver(), dependencies.getSSLCertificateVerifier());
+  //}
 
   /**
    * Create video source with given parameters. If alignTimestamps is false, the caller is
@@ -500,6 +545,8 @@ public class PeerConnectionFactory {
     }
   }
 
+  // --twinlife-- 2022-10-25: remove the printStackTrace because not used and it keeps static ThreadInfo
+  /*
   private static void printStackTrace(
       @Nullable ThreadInfo threadInfo, boolean printNativeStackTrace) {
     if (threadInfo == null) {
@@ -523,18 +570,19 @@ public class PeerConnectionFactory {
               + "  >>> WebRTC <<<");
       nativePrintStackTrace(threadInfo.tid);
     }
-  }
+  }*/
 
   /**
    * Print the Java stack traces for the critical threads used by PeerConnectionFactory, namely;
    * signaling thread, worker thread, and network thread. If printNativeStackTraces is true, also
    * attempt to print the C++ stack traces for these threads.
    */
-  public void printInternalStackTraces(boolean printNativeStackTraces) {
-    printStackTrace(signalingThread, printNativeStackTraces);
-    printStackTrace(workerThread, printNativeStackTraces);
-    printStackTrace(networkThread, printNativeStackTraces);
-  }
+  //public void printInternalStackTraces(boolean printNativeStackTraces) {
+  //  printStackTrace(signalingThread, printNativeStackTraces);
+  //  printStackTrace(workerThread, printNativeStackTraces);
+  //  printStackTrace(networkThread, printNativeStackTraces);
+  //}
+  // --twinlife-- 2022-10-25
 
   @CalledByNative
   private void onNetworkThreadReady() {

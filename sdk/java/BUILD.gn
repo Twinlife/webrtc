@@ -70,6 +70,7 @@ android_sdk_jar = ""
   }
 
   rtc_shared_library("libjingle_peerconnection_so") {
+    visibility = [ "*" ]
     sources = [ "src/jni/jni_onload.cc" ]
 
     deps = [
