@@ -134,14 +134,18 @@ namespace jni {
 
   jint CryptoKey::DeriveKeyPBKDF2HMACSHA256(JNIEnv *env, JavaRef<jstring> password, const JavaParamRef<jbyteArray> &salt,
                    const jint iterations,  const JavaParamRef<jbyteArray> &outKey) {
-    const char* p = env->GetStringUTFChars(password.obj(), nullptr);
+    const char* p = env->GetStringUTFChars(password, nullptr);
+    int password_len = env->GetStringUTFLength(password);
 
     jbyte* s = env->GetByteArrayElements(salt.obj(), nullptr);
+    int salt_len = env->GetArrayLength(salt.obj());
+
     jbyte* o = env->GetByteArrayElements(outKey.obj(), nullptr);
     size_t keyLen = env->GetArrayLength(outKey.obj());
 
-    int result = deriveKeyPBKDF2HMACSHA256(p, (const unsigned char *)s, iterations, (int)keyLen, (unsigned char *)o);
-    env->ReleaseStringUTFChars(password.obj(), p);
+    int result = deriveKeyPBKDF2HMACSHA256(p, password_len, (const unsigned char *)s, salt_len, (uint32_t)iterations, (int)keyLen, (unsigned char *)o);
+
+    env->ReleaseStringUTFChars(password, p);
     env->ReleaseByteArrayElements(salt.obj(), s, JNI_ABORT);
     env->ReleaseByteArrayElements(outKey.obj(), o, 0);
 

@@ -56,4 +56,6 @@ RTC_OBJC_EXPORT
 /// Verify the authenticate signature signed by the peer private key.
 - (int)verifyAuthWithKey:(nonnull TLCryptoKey *)peerPublicKey item:(nullable NSString *)item peerItem:(nullable NSString *)peerItem signature:(nonnull NSString *)signature;
 
+- (nullable NSData *)deriveKeyPBKDF2HMACSHA256WithPassword:(nonnull NSData *)password salt:(nonnull NSData *)salt iterations:(int)iterations keyLength:(int)keyLength;
+
 @end

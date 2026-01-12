@@ -729,12 +729,10 @@ int CryptoKey::extractAuthPublicKey(const char* signature, unsigned char* pubKey
   memcpy(buf, pubKeyStart, len);
   return CryptoKey::decodeBase64(buf, len, pubKey, maxLength);
 }
-
-int CryptoKey::deriveKeyPBKDF2HMACSHA256(const char* password, const unsigned char* salt,
-    uint32_t iterations, int key_len, const unsigned char* out_key)
+int CryptoKey::deriveKeyPBKDF2HMACSHA256(const char* password, int password_len,  const unsigned char* salt, int salt_len,
+    uint32_t iterations, int key_len, unsigned char* out_key)
 {
-  int result = PKCS5_PBKDF2_HMAC(password, strlen(password), (uint8_t *)salt, sizeof(salt), iterations, EVP_sha256(), key_len, (uint8_t *)out_key);
-
+  int result = PKCS5_PBKDF2_HMAC(password, password_len, (uint8_t *)salt, salt_len, iterations, EVP_sha256(), key_len, (uint8_t *)out_key);
   return result == 0 ? TWINLIFE_BAD_PARAM : 1;
 }
 

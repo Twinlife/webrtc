@@ -119,9 +119,8 @@ namespace twinlife {
     // Return 1 if the signature is verified, 0 if there is a wrong signature or a negative error code.
     int verifyAuth(const CryptoKey* peerPublicKey, const char* item, const char* peerItem,
                    const char* signature);
-
-    int deriveKeyPBKDF2HMACSHA256(const char* password, const unsigned char* salt,
-                    uint32_t iterations, int keyLen, const unsigned char *out_key);
+    int deriveKeyPBKDF2HMACSHA256(const char* password, int password_len,  const unsigned char* salt, int salt_len,
+                    uint32_t iterations, int keyLen, unsigned char *out_key);
 
     // Helper function to extract from the signature the public key used.
     // Note: extraction is necessary because we have to retrieve our private key as

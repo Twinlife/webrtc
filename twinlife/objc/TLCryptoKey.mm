@@ -161,6 +161,27 @@ RTC_OBJC_EXPORT
     return self.cryptoKey->verifyAuth(peerPublicKey.cryptoKey, itemPtr, peerItemPtr, signatureStr.data());
 }
 
+- (nullable NSData *)deriveKeyPBKDF2HMACSHA256WithPassword:(nonnull NSData *)password salt:(nonnull NSData *)salt iterations:(int)iterations keyLength:(int)keyLength {
+
+    const char *passwordBytes = (const char *)password.bytes;
+    int passwordLength = (int)password.length;
+
+    const unsigned char *saltBytes = (const unsigned char *)salt.bytes;
+    int saltLength = (int)salt.length;
+
+    unsigned char outKey[TWINLIFE_MAX_SIZE];
+
+    int res = self.cryptoKey->deriveKeyPBKDF2HMACSHA256(passwordBytes, passwordLength, saltBytes, saltLength,
+        iterations, keyLength, outKey);
+
+    if (res <= 0) {
+        RTC_LOG(LS_ERROR) << "cannot derive key error " << res;
+        return nil;
+    }
+
+    return [NSData dataWithBytes:outKey length:keyLength];
+}
+
 - (void)dealloc {
 
     delete self.cryptoKey;
