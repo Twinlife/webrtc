@@ -173,8 +173,9 @@
       dependencies.env = webrtc::CreateEnvironment();
     }
     _env = dependencies.env;
-    if (dependencies.network_monitor_factory == nullptr &&
-        _env->field_trials().IsEnabled("WebRTC-Network-UseNWPathMonitor")) {
+    // --twinlife-- 2026-01-13: force using the NWPathMonitor until we have API to set field trials.
+    if (dependencies.network_monitor_factory == nullptr) { // &&
+        // _env->field_trials().IsEnabled("WebRTC-Network-UseNWPathMonitor")) {
       dependencies.network_monitor_factory =
           webrtc::CreateNetworkMonitorFactory();
     }
