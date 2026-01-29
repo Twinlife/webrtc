@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2023-2024 twinlife SA.
+ *  Copyright (c) 2023-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributor:
@@ -132,10 +132,10 @@ namespace jni {
     return (jint)verifyAuth(pubKey, item1.data(), item2.data(), sig.data());
   }
 
-  jint CryptoKey::DeriveKeyPBKDF2HMACSHA256(JNIEnv *env, JavaRef<jstring> password, const JavaParamRef<jbyteArray> &salt,
-                   const jint iterations,  const JavaParamRef<jbyteArray> &outKey) {
-    const char* p = env->GetStringUTFChars(password, nullptr);
-    int password_len = env->GetStringUTFLength(password);
+  jint CryptoKey::DeriveKeyPBKDF2HMACSHA256(JNIEnv *env, const JavaParamRef<jstring>& password, const JavaParamRef<jbyteArray> &salt,
+                                            const jint iterations,  const JavaParamRef<jbyteArray> &outKey) {
+    const char* p = env->GetStringUTFChars(password.obj(), nullptr);
+    int password_len = env->GetStringUTFLength(password.obj());
 
     jbyte* s = env->GetByteArrayElements(salt.obj(), nullptr);
     int salt_len = env->GetArrayLength(salt.obj());
@@ -145,7 +145,7 @@ namespace jni {
 
     int result = deriveKeyPBKDF2HMACSHA256(p, password_len, (const unsigned char *)s, salt_len, (uint32_t)iterations, (int)keyLen, (unsigned char *)o);
 
-    env->ReleaseStringUTFChars(password, p);
+    env->ReleaseStringUTFChars(password.obj(), p);
     env->ReleaseByteArrayElements(salt.obj(), s, JNI_ABORT);
     env->ReleaseByteArrayElements(outKey.obj(), o, 0);
 

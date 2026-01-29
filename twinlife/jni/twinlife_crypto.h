@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2023-2024 twinlife SA.
+ *  Copyright (c) 2023-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributor:
@@ -49,8 +49,8 @@ public:
                   const JavaParamRef<jstring>& peerItem,
                   const JavaParamRef<jstring>& signature);
 
-  jint DeriveKeyPBKDF2HMACSHA256(JNIEnv *env, JavaRef<jstring> password, const JavaParamRef<jbyteArray> &salt,
-                   const jint iterations, const JavaParamRef<jbyteArray> &outKey);
+  jint DeriveKeyPBKDF2HMACSHA256(JNIEnv *env, const JavaParamRef<jstring>& password, const JavaParamRef<jbyteArray> &salt,
+                                 const jint iterations, const JavaParamRef<jbyteArray> &outKey);
 
   void Dispose(JNIEnv *env);
 };
