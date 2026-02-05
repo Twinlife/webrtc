@@ -5,10 +5,6 @@ ROOT=`pwd`
 echo -n "   webrtc-library:                        "
 git rev-parse HEAD
 
-cd $ROOT/base
-echo -n "    base:                                 "
-git rev-parse HEAD
-
 cd $ROOT/build
 echo -n "    build:                                "
 git rev-parse HEAD
