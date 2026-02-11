@@ -179,7 +179,7 @@ public class CryptoKey {
         return nativeVerifyAuth(nativeCrypto, peerPublicKey.nativeCrypto, item, peerItem, signature);
     }
 
-    public int deriveKeyPBKDF2HMACSHA256(String password, byte[] salt, int iterations, byte[] outKey) {
+    public int deriveKeyPBKDF2HMACSHA256(byte[] password, byte[] salt, int iterations, byte[] outKey) {
         checkCryptoExists();
         return nativeDeriveKeyPBKDF2HMACSHA256(nativeCrypto, password, salt, iterations, outKey);
     }
@@ -216,6 +216,6 @@ public class CryptoKey {
     private static native byte[] nativeExtractAuthPublicKey(String signature);
     private static native String nativeSignAuth(long nativeCryptoKey, long peerPublicKey, String item, String peerItem);
     private static native int nativeVerifyAuth(long nativeCryptoKey, long peerPublicKey, String item, String peerItem, String signature);
-    private static native int nativeDeriveKeyPBKDF2HMACSHA256(long nativeCryptoKey, String password, byte[] salt, int iterations, byte[] outKey);
+    private static native int nativeDeriveKeyPBKDF2HMACSHA256(long nativeCryptoKey, byte[] password, byte[] salt, int iterations, byte[] outKey);
 
 }

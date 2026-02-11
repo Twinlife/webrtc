@@ -49,7 +49,7 @@ public:
                   const JavaParamRef<jstring>& peerItem,
                   const JavaParamRef<jstring>& signature);
 
-  jint DeriveKeyPBKDF2HMACSHA256(JNIEnv *env, const JavaParamRef<jstring>& password, const JavaParamRef<jbyteArray> &salt,
+  jint DeriveKeyPBKDF2HMACSHA256(JNIEnv *env, const JavaParamRef<jbyteArray> &password, const JavaParamRef<jbyteArray> &salt,
                                  const jint iterations, const JavaParamRef<jbyteArray> &outKey);
 
   void Dispose(JNIEnv *env);

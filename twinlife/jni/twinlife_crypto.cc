@@ -132,10 +132,10 @@ namespace jni {
     return (jint)verifyAuth(pubKey, item1.data(), item2.data(), sig.data());
   }
 
-  jint CryptoKey::DeriveKeyPBKDF2HMACSHA256(JNIEnv *env, const JavaParamRef<jstring>& password, const JavaParamRef<jbyteArray> &salt,
+  jint CryptoKey::DeriveKeyPBKDF2HMACSHA256(JNIEnv *env, const JavaParamRef<jbyteArray> &password, const JavaParamRef<jbyteArray> &salt,
                                             const jint iterations,  const JavaParamRef<jbyteArray> &outKey) {
-    const char* p = env->GetStringUTFChars(password.obj(), nullptr);
-    int password_len = env->GetStringUTFLength(password.obj());
+    jbyte* p = env->GetByteArrayElements(password.obj(), nullptr);
+    int password_len = env->GetArrayLength(password.obj());
 
     jbyte* s = env->GetByteArrayElements(salt.obj(), nullptr);
     int salt_len = env->GetArrayLength(salt.obj());
@@ -143,9 +143,9 @@ namespace jni {
     jbyte* o = env->GetByteArrayElements(outKey.obj(), nullptr);
     size_t keyLen = env->GetArrayLength(outKey.obj());
 
-    int result = deriveKeyPBKDF2HMACSHA256(p, password_len, (const unsigned char *)s, salt_len, (uint32_t)iterations, (int)keyLen, (unsigned char *)o);
+    int result = deriveKeyPBKDF2HMACSHA256((const char*)p, password_len, (const unsigned char *)s, salt_len, (uint32_t)iterations, (int)keyLen, (unsigned char *)o);
 
-    env->ReleaseStringUTFChars(password.obj(), p);
+    env->ReleaseByteArrayElements(password.obj(), p, JNI_ABORT);
     env->ReleaseByteArrayElements(salt.obj(), s, JNI_ABORT);
     env->ReleaseByteArrayElements(outKey.obj(), o, 0);
 
