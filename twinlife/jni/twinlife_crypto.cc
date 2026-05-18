@@ -255,7 +255,10 @@ static ScopedJavaLocalRef<jobject> JNI_CryptoKey_ImportPrivateKey(JNIEnv* env,
 
   CryptoKey::Format format = isBase64 ? CryptoKey::Format::BASE64 : CryptoKey::Format::BINARY;
   CryptoKey *crypto = twinlife::CryptoKey::importPrivateKey<CryptoKey>(format, (CryptoKey::Kind)kind, (unsigned char*) buffer, length);
-  env->ReleaseByteArrayElements(privateKey.obj(), buffer, JNI_ABORT);  
+  env->ReleaseByteArrayElements(privateKey.obj(), buffer, JNI_ABORT);
+  if (crypto == nullptr) {
+    return nullptr;
+  }
 
   return Java_CryptoKey_Constructor(env, NativeToJavaPointer(crypto));
 }
@@ -270,6 +273,9 @@ static ScopedJavaLocalRef<jobject> JNI_CryptoKey_ImportPublicKey(JNIEnv* env,
   CryptoKey::Format format = isBase64 ? CryptoKey::Format::BASE64 : CryptoKey::Format::BINARY;
   CryptoKey *crypto = twinlife::CryptoKey::importPublicKey<CryptoKey>(format, (CryptoKey::Kind)kind, (unsigned char*) buffer, length);
   env->ReleaseByteArrayElements(publicKey.obj(), buffer, JNI_ABORT);
+  if (crypto == nullptr) {
+    return nullptr;
+  }
 
   return Java_CryptoKey_Constructor(env, NativeToJavaPointer(crypto));
 }
@@ -280,6 +286,9 @@ static ScopedJavaLocalRef<jbyteArray> JNI_CryptoKey_ExtractAuthPublicKey(JNIEnv*
   unsigned char pubKey[TWINLIFE_MAX_SIZE];
 
   int len = twinlife::CryptoKey::extractAuthPublicKey(sig.data(), pubKey, sizeof(pubKey));
+  if (len < 0) {
+    return nullptr;
+  }
 
   ScopedJavaLocalRef<jbyteArray> result =
       ScopedJavaLocalRef<jbyteArray>::Adopt(env, env->NewByteArray(len));
