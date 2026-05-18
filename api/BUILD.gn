@@ -849,7 +849,7 @@ rtc_library("rtp_parameters") {
   ]
 }
 
-if (is_android) {
+if (is_android || rtc_has_java) {
   java_cpp_enum("priority_enums") {
     sources = [ "priority.h" ]
   }

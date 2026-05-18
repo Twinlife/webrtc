@@ -2396,7 +2396,7 @@ if (rtc_include_tests) {
   }
 }
 
-if (is_android) {
+if (is_android || rtc_has_java) {
   rtc_android_library("base_java") {
     visibility = [ "*" ]
     sources = [

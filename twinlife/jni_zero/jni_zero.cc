@@ -75,9 +75,12 @@ LeakedJavaGlobalRef<jobject> g_empty_list = nullptr;
 LeakedJavaGlobalRef<jobject> g_empty_map = nullptr;
 
 JNIEnv* AttachCurrentThread() {
+  // JNI_ZERO_FLOG("jni_zero AttachCurrentThread");
   JNI_ZERO_DCHECK(g_jvm);
   JNIEnv* env = nullptr;
+  // JNI_ZERO_FLOG("jni_zero GetEnv");
   jint ret = g_jvm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_2);
+  // JNI_ZERO_FLOG("jni_zero GetEnv returned");
   if (ret == JNI_EDETACHED || !env) {
     JavaVMAttachArgs args;
     args.version = JNI_VERSION_1_2;
@@ -93,7 +96,8 @@ JNIEnv* AttachCurrentThread() {
       args.name = thread_name;
     }
 
-#if defined(JNI_ZERO_IS_ROBOLECTRIC)
+    // JNI_ZERO_FLOG("jni_zero AttachCurrentThread");
+#if defined(JNI_ZERO_IS_ROBOLECTRIC) || defined(JNI_ZERO_IS_JAVA)
     ret = g_jvm->AttachCurrentThread(reinterpret_cast<void**>(&env), &args);
 #else
     ret = g_jvm->AttachCurrentThread(&env, &args);
@@ -110,7 +114,7 @@ JNIEnv* AttachCurrentThreadWithName(const std::string& thread_name) {
   args.name = const_cast<char*>(thread_name.c_str());
   args.group = nullptr;
   JNIEnv* env = nullptr;
-#if defined(JNI_ZERO_IS_ROBOLECTRIC)
+#if defined(JNI_ZERO_IS_ROBOLECTRIC) || defined(JNI_ZERO_IS_JAVA)
   jint ret = g_jvm->AttachCurrentThread(reinterpret_cast<void**>(&env), &args);
 #else
   jint ret = g_jvm->AttachCurrentThread(&env, &args);
@@ -128,6 +132,9 @@ void DetachFromVM() {
 }
 
 void InitVM(JavaVM* vm) {
+  // fprintf(stderr, "InitVM vm=%p\n", vm);
+  // JNI_ZERO_FLOG("jni_zero InitVM");
+
   if (g_jvm) {
     JNI_ZERO_CHECK(vm == g_jvm);
     return;

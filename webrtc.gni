@@ -12,6 +12,9 @@ import("//build/config/ozone.gni")
 import("//build/config/sanitizers/sanitizers.gni")
 import("//build/config/sysroot.gni")
 import("//build_overrides/build.gni")
+import("//build/config/android/config.gni")
+import("//build/config/android/rules.gni")
+import("//third_party/jni_zero/jni_zero.gni")
 
 if (!build_with_chromium && is_component_build) {
   print("The Gn argument `is_component_build` is currently " +
@@ -50,7 +53,7 @@ declare_args() {
   # Setting this to true will make RTC_EXPORT (see rtc_base/system/rtc_export.h)
   # expand to code that will manage symbols visibility.
   rtc_enable_symbol_export = false
-  java_home = ""
+  rtc_java_home = ""
   rtc_has_java = false
 }
 
@@ -1233,7 +1236,7 @@ if (is_mac || is_ios) {
   }
 }
 
-if (is_android) {
+if (is_android || is_linux) {
   template("rtc_android_library") {
     android_library(target_name) {
       forward_variables_from(invoker,

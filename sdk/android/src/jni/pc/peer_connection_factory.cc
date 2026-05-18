@@ -194,8 +194,11 @@ jobject NativeToJavaPeerConnectionFactory(
 }
 
 static void JNI_PeerConnectionFactory_InitializeAndroidGlobals(JNIEnv* jni) {
+  fprintf(stderr, "Entering InitializeAndroidGlobals %p\n", jni);
   if (!factory_static_initialized) {
+#ifndef WEBRTC_LINUX
     JVM::Initialize(GetJVM());
+#endif
     factory_static_initialized = true;
   }
 }
@@ -608,9 +611,11 @@ static void JNI_PeerConnectionFactory_DeleteLoggable(JNIEnv* jni) {
   }
 }
 
+#if 0 // twinlife 2026-05-18: remove unused PrintStackTrace
 static void JNI_PeerConnectionFactory_PrintStackTrace(JNIEnv* env, jint tid) {
   RTC_LOG(LS_WARNING) << StackTraceToString(GetStackTrace(tid));
 }
+#endif
 
 }  // namespace jni
 }  // namespace webrtc

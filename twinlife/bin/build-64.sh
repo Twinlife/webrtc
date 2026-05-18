@@ -33,7 +33,7 @@ case ${TARGET} in
 	;;
 
     linux)
-        $gn gen out-64/Release --args="target_os=\"linux\" target_cpu=\"x64\" ${ARGS} rtc_has_java=true is_official_build=true rtc_include_builtin_audio_codecs=false rtc_use_pipewire=false java_home=\"$JAVA_HOME\""
+        $gn gen out-64/Release --args="target_os=\"linux\" target_cpu=\"x64\" ${ARGS} rtc_has_java=true is_official_build=true rtc_include_builtin_audio_codecs=false rtc_use_pipewire=false optimize_for_size=true java_home=\"$JAVA_HOME\""
         ;;
 
 esac

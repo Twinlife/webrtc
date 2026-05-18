@@ -546,31 +546,6 @@ public class PeerConnectionFactory {
   }
 
   // --twinlife-- 2022-10-25: remove the printStackTrace because not used and it keeps static ThreadInfo
-  /*
-  private static void printStackTrace(
-      @Nullable ThreadInfo threadInfo, boolean printNativeStackTrace) {
-    if (threadInfo == null) {
-      // Thread callbacks have not been completed yet, ignore call.
-      return;
-    }
-    final String threadName = threadInfo.thread.getName();
-    StackTraceElement[] stackTraces = threadInfo.thread.getStackTrace();
-    if (stackTraces.length > 0) {
-      Logging.w(TAG, threadName + " stacktrace:");
-      for (StackTraceElement stackTrace : stackTraces) {
-        Logging.w(TAG, stackTrace.toString());
-      }
-    }
-    if (printNativeStackTrace) {
-      // Imitate output from debuggerd/tombstone so that stack trace can easily be symbolized with
-      // ndk-stack.
-      Logging.w(TAG, "*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***");
-      Logging.w(TAG,
-          "pid: " + Process.myPid() + ", tid: " + threadInfo.tid + ", name: " + threadName
-              + "  >>> WebRTC <<<");
-      nativePrintStackTrace(threadInfo.tid);
-    }
-  }*/
 
   /**
    * Print the Java stack traces for the critical threads used by PeerConnectionFactory, namely;
@@ -637,7 +612,7 @@ public class PeerConnectionFactory {
   private static native long nativeGetNativePeerConnectionFactory(long factory);
   private static native void nativeInjectLoggable(JNILogging jniLogging, int severity);
   private static native void nativeDeleteLoggable();
-  private static native void nativePrintStackTrace(int tid);
+  // private static native void nativePrintStackTrace(int tid);
   private static native RtpCapabilities nativeGetRtpSenderCapabilities(
       long factory, MediaStreamTrack.MediaType mediaType);
   private static native RtpCapabilities nativeGetRtpReceiverCapabilities(

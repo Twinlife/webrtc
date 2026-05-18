@@ -6,14 +6,19 @@
 # in the file PATENTS.  All contributing project authors may
 # be found in the AUTHORS file in the root of the source tree.
 
-if (is_android) {
+import("../../webrtc.gni")
+if (is_android || !is_android) {
   import("//build/config/android/config.gni")
   import("//build/config/android/rules.gni")
   import("//third_party/jni_zero/jni_zero.gni")
-  import("../../webrtc.gni")
+
+  config("java_include_config") {
+    cflags = [ "-I" + java_home + "/include" ]
+    cflags += [ "-I" + java_home + "/include/linux" ]
+  }
 
   group("android") {
-    if (!build_with_chromium && is_android) {
+    if (!build_with_chromium && (is_android || rtc_has_java)) {
       public_deps = [
         ":libjingle_peerconnection_jni",
         ":libjingle_peerconnection_so",
@@ -130,12 +135,19 @@ if (is_android) {
   rtc_shared_library("libjingle_peerconnection_so") {
     sources = [ "src/jni/jni_onload.cc" ]
 
-    suppressed_configs += [ "//build/config/android:hide_all_but_jni_onload" ]
+    # suppressed_configs += [ "//build/config/android:hide_all_but_jni_onload" ]
     configs += [ "//build/config/android:hide_all_but_jni" ]
     ldflags = [
       "-lEGL",
       "-Wl,--build-id",
     ]
+    # --twinlife-- 200317
+    if (rtc_has_java) {
+      include_dirs = [ "$java_home/include", "$java_home/include/linux" ]
+      cflags = [ "-I" + java_home + "/include" ]
+      cflags += [ "-I" + java_home + "/include/linux" ]
+    }
+    # --twinlife-- 200317
 
     deps = [
       ":internal_jni",
@@ -594,7 +606,7 @@ if (is_android) {
   }
 }
 
-if (current_os == "linux" || is_android) {
+if (current_os == "linux" || is_android || rtc_has_java) {
   ################################
   # JNI targets for Java modules #
   ################################
@@ -1168,10 +1180,13 @@ if (current_os == "linux" || is_android) {
   # API for capturing and printing native stacktraces.
   rtc_library("native_api_stacktrace") {
     visibility = [ "*" ]
+    # --twinlife 2026-05-18: Compilation for Linux/Java
+    if (!is_linux) {
     sources = [
       "native_api/stacktrace/stacktrace.cc",
       "native_api/stacktrace/stacktrace.h",
     ]
+    }
 
     deps = [
       "../../rtc_base:criticalsection",

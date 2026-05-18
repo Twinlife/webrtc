@@ -35,7 +35,7 @@ case ${TARGET} in
     android)
 	rm -f libs/arm64-v8a/libjingle_peerconnection_so.so
 
-	ninja -C out-64/Release libjingle_peerconnection_so
+	ninja -k50 -C out-64/Release libjingle_peerconnection_so
 
 	mkdir -p libs/arm64-v8a
 	cp out-64/Release/libjingle_peerconnection_so.so libs/arm64-v8a
@@ -43,7 +43,9 @@ case ${TARGET} in
 	;;
 
     linux)
-        ninja -k 50 -C out-64/Release libjingle_peerconnection_so
+	rm -f libs/arm64-v8a/libjingle_peerconnection_so.so
+        export JAVA_HOME=`pwd`/third_party/jdk/current
+        ninja -k50 -C out-64/Release libjingle_peerconnection_so
         ;;
 
 esac

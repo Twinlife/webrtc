@@ -79,7 +79,7 @@ rtc_library("video_frame") {
   ]
 }
 
-if (is_android) {
+if (is_android || rtc_has_java) {
   java_cpp_enum("video_frame_enums") {
     sources = [ "video_frame_buffer.h" ]
   }

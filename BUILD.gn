@@ -220,6 +220,7 @@ config("common_inherited_config") {
   }
   if (is_linux || is_chromeos) {
     defines += [ "WEBRTC_LINUX" ]
+    cflags += [ "-m64" ]
   }
   if (is_mac) {
     defines += [ "WEBRTC_MAC" ]

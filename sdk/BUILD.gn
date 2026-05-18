@@ -20,7 +20,7 @@ if (is_mac) {
 group("sdk") {
   public_deps = []
   if (!build_with_chromium) {
-    if (is_android) {
+    if (is_android || rtc_has_java) {
       public_deps += [ "android" ]
     }
     if (is_ios) {
