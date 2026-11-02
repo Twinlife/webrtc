@@ -23,11 +23,11 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "api/array_view.h"
 #include "api/sequence_checker.h"
 #include "rtc_base/checks.h"
 #include "sdk/android/native_api/jni/scoped_java_ref.h"
@@ -245,10 +245,10 @@ ScopedJavaLocalRef<jobjectArray> NativeToJavaObjectArray(
 
 ScopedJavaLocalRef<jbyteArray> NativeToJavaByteArray(
     JNIEnv* env,
-    ArrayView<int8_t> container);
+    std::span<int8_t> container);
 ScopedJavaLocalRef<jintArray> NativeToJavaIntArray(
     JNIEnv* env,
-    ArrayView<int32_t> container);
+    std::span<int32_t> container);
 
 std::vector<int8_t> JavaToNativeByteArray(
     JNIEnv* env,
@@ -357,7 +357,7 @@ inline std::string JavaToStdString(JNIEnv* jni,
 // Deprecated. Use scoped jobjects instead.
 inline std::string JavaToStdString(JNIEnv* jni, jstring j_string) {
   return JavaToStdString(
-      jni, jni_zero::JavaParamRef<jstring>::CreateLeaky(jni, j_string));
+      jni, jni_zero::JavaRef<jstring>::CreateLeaky(jni, j_string));
 }
 
 // Deprecated. Use JavaListToNativeVector<std::string, jstring> instead.
@@ -379,7 +379,7 @@ inline std::map<std::string, std::string> JavaToStdMapStrings(
 inline std::map<std::string, std::string> JavaToStdMapStrings(JNIEnv* jni,
                                                               jobject j_map) {
   return JavaToStdMapStrings(
-      jni, jni_zero::JavaParamRef<jobject>::CreateLeaky(jni, j_map));
+      jni, jni_zero::JavaRef<jobject>::CreateLeaky(jni, j_map));
 }
 
 }  // namespace webrtc

@@ -15,17 +15,18 @@
 #include <cstring>
 #include <memory>
 #include <optional>
+#include <span>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
-#include "api/array_view.h"
 #include "api/crypto/frame_encryptor_interface.h"
 #include "api/field_trials_view.h"
 #include "api/make_ref_counted.h"
 #include "api/media_types.h"
+#include "api/task_queue/task_queue_factory.h"
 #include "api/transport/rtp/corruption_detection_message.h"
 #include "api/transport/rtp/dependency_descriptor.h"
 #include "api/units/data_rate.h"
@@ -210,7 +211,11 @@ RTPSenderVideo::RTPSenderVideo(const Config& config)
                     config.frame_transformer,
                     rtp_sender_->SSRC(),
                     rtp_sender_->Rid(),
-                    config.task_queue_factory)
+                    config.task_queue_factory,
+                    config.field_trials->IsEnabled(
+                        "WebRTC-MediaTaskQueuePriorities")
+                        ? TaskQueueFactory::Priority::kVideo
+                        : TaskQueueFactory::Priority::kNormal)
               : nullptr) {
   if (frame_transformer_delegate_)
     frame_transformer_delegate_->Init();
@@ -517,7 +522,7 @@ bool RTPSenderVideo::SendVideo(int payload_type,
                                VideoCodecType codec_type,
                                uint32_t rtp_timestamp,
                                Timestamp capture_time,
-                               ArrayView<const uint8_t> payload,
+                               std::span<const uint8_t> payload,
                                size_t encoder_output_size,
                                RTPVideoHeader video_header,
                                TimeDelta expected_retransmission_time,
@@ -650,15 +655,21 @@ bool RTPSenderVideo::SendVideo(int payload_type,
 
   RTC_DCHECK_GE(single_packet->headers_size(), middle_packet->headers_size());
   limits.single_packet_reduction_len =
-      single_packet->headers_size() - middle_packet->headers_size();
+      single_packet->headers_size() > middle_packet->headers_size()
+          ? single_packet->headers_size() - middle_packet->headers_size()
+          : 0;
 
   RTC_DCHECK_GE(first_packet->headers_size(), middle_packet->headers_size());
   limits.first_packet_reduction_len =
-      first_packet->headers_size() - middle_packet->headers_size();
+      first_packet->headers_size() > middle_packet->headers_size()
+          ? first_packet->headers_size() - middle_packet->headers_size()
+          : 0;
 
   RTC_DCHECK_GE(last_packet->headers_size(), middle_packet->headers_size());
   limits.last_packet_reduction_len =
-      last_packet->headers_size() - middle_packet->headers_size();
+      last_packet->headers_size() > middle_packet->headers_size()
+          ? last_packet->headers_size() - middle_packet->headers_size()
+          : 0;
 
   bool has_generic_descriptor =
       first_packet->HasExtension<RtpGenericFrameDescriptorExtension00>() ||

@@ -157,7 +157,8 @@ if (is_android) {
 
   # Core targets.
 
-  # TODO(sakal): Extract files from this target to releveant subtargets, video, audio etc.
+  # TODO(sakal): Extract files from this target to relevant subtargets, video,
+  # audio etc.
   rtc_android_library("base_java") {
     visibility = [ "*" ]
     sources = [
@@ -183,6 +184,7 @@ if (is_android) {
       ":generated_rtcerror_jni_java",
       "../../rtc_base:base_java",
       "//third_party/androidx:androidx_annotation_annotation_java",
+      "//third_party/jni_zero:jni_zero_java",
     ]
   }
 
@@ -272,6 +274,7 @@ if (is_android) {
 
     deps = [
       ":base_java",
+      ":environment_java",
       ":generated_video_egl_jni_java",
       ":generated_video_jni_java",
       ":video_api_java",
@@ -617,6 +620,7 @@ if (current_os == "linux" || is_android) {
       "../../api:scoped_refptr",
       "../../api:sequence_checker",
       "../../api/audio:audio_processing",
+      "../../api/environment",
       "../../api/task_queue:pending_task_safety_flag",
       "../../rtc_base:checks",
       "../../rtc_base:ip_address",
@@ -700,13 +704,14 @@ if (current_os == "linux" || is_android) {
       "src/jni/yuv_helper.cc",
     ]
 
+    allow_poison = [ "environment_construction" ]
     deps = [
       ":base_jni",
+      ":environment_jni",
       ":generated_video_jni",
       ":internal_jni",
       ":native_api_jni",
       ":videoframe_jni",
-      "../../api:array_view",
       "../../api:libjingle_peerconnection_api",
       "../../api:make_ref_counted",
       "../../api:media_stream_interface",
@@ -741,6 +746,7 @@ if (current_os == "linux" || is_android) {
       "../../rtc_base:timestamp_aligner",
       "../../rtc_base:timeutils",
       "../../rtc_base/synchronization:mutex",
+      "../../system_wrappers",
       "//third_party/abseil-cpp/absl/memory",
       "//third_party/jni_zero",
       "//third_party/libyuv",
@@ -760,8 +766,8 @@ if (current_os == "linux" || is_android) {
 
   rtc_library("peerconnection_jni") {
     # Do not depend on this target externally unless you absolute have to. It is
-    # made public because we don't have a proper NDK yet. Header APIs here are not
-    # considered public and are subject to change.
+    # made public because we don't have a proper NDK yet. Header APIs here are
+    # not considered public and are subject to change.
     visibility = [ "*" ]
     allow_poison = [ "environment_construction" ]
 
@@ -844,6 +850,7 @@ if (current_os == "linux" || is_android) {
       "../../api:rtc_error",
       "../../api:rtc_event_log_output_file",
       "../../api:rtc_stats_api",
+      "../../api:rtp_header_extension_id",
       "../../api:rtp_parameters",
       "../../api:rtp_sender_interface",
       "../../api:rtp_transceiver_direction",
@@ -858,6 +865,8 @@ if (current_os == "linux" || is_android) {
       "../../api/crypto:frame_encryptor_interface",
       "../../api/crypto:options",
       "../../api/environment",
+      "../../api/environment:deprecated_global_field_trials",
+      "../../api/environment:environment_factory",
       "../../api/neteq:neteq_api",
       "../../api/rtc_event_log",
       "../../api/rtc_event_log:rtc_event_log_factory",
@@ -889,8 +898,8 @@ if (current_os == "linux" || is_android) {
       "../../rtc_base:ssl",
       "../../rtc_base:stringutils",
       "../../rtc_base:threading",
+      "../../rtc_base/system:plan_b_only",
       "../../stats:rtc_stats",
-      "../../system_wrappers:field_trial",
       "//third_party/abseil-cpp/absl/memory",
       "//third_party/abseil-cpp/absl/strings",
       "//third_party/jni_zero",
@@ -929,7 +938,10 @@ if (current_os == "linux" || is_android) {
 
   rtc_library("default_video_codec_factory_jni") {
     visibility = [ "*" ]
-    allow_poison = [ "software_video_codecs" ]
+    allow_poison = [
+      "software_video_codecs",
+      "environment_construction",
+    ]
     deps = [
       ":swcodecs_jni",
       ":video_jni",
@@ -938,7 +950,10 @@ if (current_os == "linux" || is_android) {
 
   rtc_library("libvpx_vp8_jni") {
     visibility = [ "*" ]
-    allow_poison = [ "software_video_codecs" ]
+    allow_poison = [
+      "software_video_codecs",
+      "environment_construction",
+    ]
     sources = [ "src/jni/vp8_codec.cc" ]
     deps = [
       ":base_jni",
@@ -952,7 +967,10 @@ if (current_os == "linux" || is_android) {
 
   rtc_library("libvpx_vp9_jni") {
     visibility = [ "*" ]
-    allow_poison = [ "software_video_codecs" ]
+    allow_poison = [
+      "software_video_codecs",
+      "environment_construction",
+    ]
     sources = [ "src/jni/vp9_codec.cc" ]
     deps = [
       ":base_jni",
@@ -966,7 +984,10 @@ if (current_os == "linux" || is_android) {
 
   rtc_library("libaom_av1_encoder_jni") {
     visibility = [ "*" ]
-    allow_poison = [ "software_video_codecs" ]
+    allow_poison = [
+      "software_video_codecs",
+      "environment_construction",
+    ]
     sources = [ "src/jni/libaom_av1_encoder.cc" ]
     deps = [
       ":base_jni",
@@ -980,7 +1001,10 @@ if (current_os == "linux" || is_android) {
 
   rtc_library("dav1d_av1_jni") {
     visibility = [ "*" ]
-    allow_poison = [ "software_video_codecs" ]
+    allow_poison = [
+      "software_video_codecs",
+      "environment_construction",
+    ]
     sources = [ "src/jni/dav1d_codec.cc" ]
     deps = [
       ":base_jni",
@@ -992,7 +1016,10 @@ if (current_os == "linux" || is_android) {
 
   rtc_library("swcodecs_jni") {
     visibility = [ "*" ]
-    allow_poison = [ "software_video_codecs" ]
+    allow_poison = [
+      "software_video_codecs",
+      "environment_construction",
+    ]
     sources = [
       "src/jni/software_video_decoder_factory.cc",
       "src/jni/software_video_encoder_factory.cc",
@@ -1018,8 +1045,8 @@ if (current_os == "linux" || is_android) {
 
   # Core targets.
 
-  # JNI helpers that are also needed from internal JNI code. Cannot depend on any
-  # other JNI targets than internal_jni.
+  # JNI helpers that are also needed from internal JNI code. Cannot depend on
+  # any other JNI targets than internal_jni.
   rtc_library("native_api_jni") {
     visibility = [ "*" ]
     sources = [
@@ -1041,7 +1068,6 @@ if (current_os == "linux" || is_android) {
       ":generated_external_classes_jni",
       ":generated_native_api_jni",
       ":internal_jni",
-      "../../api:array_view",
       "../../api:sequence_checker",
       "../../rtc_base:checks",
       "//third_party/abseil-cpp/absl/strings:string_view",
@@ -1100,7 +1126,10 @@ if (current_os == "linux" || is_android) {
   # objects.
   rtc_library("native_api_codecs") {
     visibility = [ "*" ]
-    allow_poison = [ "audio_codecs" ]  # TODO(bugs.webrtc.org/8396): Remove.
+    allow_poison = [
+      "audio_codecs",  # TODO(bugs.webrtc.org/8396): Remove.
+      "environment_construction",
+    ]
     sources = [
       "native_api/codecs/wrapper.cc",
       "native_api/codecs/wrapper.h",
@@ -1145,6 +1174,7 @@ if (current_os == "linux" || is_android) {
       "../../api:jsep",
       "../../api:libjingle_peerconnection_api",
       "../../api:scoped_refptr",
+      "../../api/environment",
       "../../api/video_codecs:video_codecs_api",
       "../../rtc_base:socket_factory",
       "../../rtc_base:threading",
@@ -1172,7 +1202,10 @@ if (current_os == "linux" || is_android) {
   # video interfaces from their Java equivalents.
   rtc_library("native_api_video") {
     visibility = [ "*" ]
-    allow_poison = [ "audio_codecs" ]  # TODO(bugs.webrtc.org/8396): Remove.
+    allow_poison = [
+      "audio_codecs",  # TODO(bugs.webrtc.org/8396): Remove.
+      "environment_construction",
+    ]
     sources = [
       "native_api/video/video_source.cc",
       "native_api/video/video_source.h",
@@ -1187,11 +1220,13 @@ if (current_os == "linux" || is_android) {
       "../../api:make_ref_counted",
       "../../api:media_stream_interface",
       "../../api:scoped_refptr",
+      "../../api/environment",
       "../../api/video:recordable_encoded_frame",
       "../../api/video:video_frame",
       "../../api/video:video_rtp_headers",
       "../../rtc_base:refcount",
       "../../rtc_base:threading",
+      "//third_party/abseil-cpp/absl/base:core_headers",
       "//third_party/jni_zero",
     ]
   }
@@ -1339,7 +1374,6 @@ if (current_os == "linux" || is_android) {
       deps = [
         ":audio_device_module_base",
         ":base_jni",
-        "../../api:array_view",
         "../../api:sequence_checker",
         "../../api/task_queue",
         "../../modules/audio_device",
@@ -1368,17 +1402,18 @@ if (current_os == "linux" || is_android) {
     deps = [
       ":audio_device_module_base",
       ":base_jni",
-      "../../api:array_view",
       "../../api:refcountedbase",
       "../../api:scoped_refptr",
       "../../api:sequence_checker",
       "../../api/audio:audio_device",
+      "../../api/environment",
+      "../../api/units:time_delta",
+      "../../api/units:timestamp",
       "../../modules/audio_device:audio_device_buffer",
       "../../rtc_base:checks",
       "../../rtc_base:logging",
       "../../rtc_base:platform_thread",
       "../../rtc_base:platform_thread_types",
-      "../../rtc_base:timeutils",
     ]
   }
 
@@ -1758,6 +1793,7 @@ if (is_android) {
       "../../api:field_trials",
       "../../api:field_trials_view",
       "../../api:libjingle_peerconnection_api",
+      "../../api:make_ref_counted",
       "../../api:media_stream_interface",
       "../../api:scoped_refptr",
       "../../api/audio:audio_device",
@@ -1776,6 +1812,7 @@ if (is_android) {
       "../../modules/audio_device",
       "../../modules/audio_device:mock_audio_device",
       "../../modules/utility",
+      "../../modules/video_coding:video_codec_interface",
       "../../pc:libjingle_peerconnection",
       "../../rtc_base:checks",
       "../../rtc_base:ip_address",
@@ -1788,8 +1825,10 @@ if (is_android) {
       "../../rtc_base:timeutils",
       "../../rtc_base/synchronization:mutex",
       "../../rtc_base/system:inline",
+      "../../test:create_test_environment",
       "../../test:create_test_field_trials",
       "../../test:fileutils",
+      "../../test:run_loop",
       "../../test:test_support",
       "../../testing/gtest",
       "//third_party/abseil-cpp/absl/memory",
