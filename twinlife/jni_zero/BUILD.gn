@@ -10,8 +10,8 @@ config("jni_include_dir") {
 
 generate_jni("generate_jni") {
   sources = [
-    "java/src/org/jni_zero/JniInit.java",
-    "java/src/org/jni_zero/JniUtil.java",
+    "java/src/org/jni_zero/CommonApis.java",
+    "java/src/org/jni_zero/JniZero.java",
   ]
   visibility = [
     ":*",
@@ -19,15 +19,25 @@ generate_jni("generate_jni") {
   ]
 }
 
+# Common classes to save projects from having to generate them.
+# Do not remove from this list without checking that no clients
+# use what you are removing.
 generate_jar_jni("system_jni") {
   classes = [
+    "android/os/Process.class",
+    "java/lang/Boolean.class",
+    "java/lang/Integer.class",
+    "java/lang/Float.class",
+    "java/lang/Double.class",
+    "java/lang/Long.class",
+    "java/lang/Object.class",
+    "java/lang/Runnable.class",
+    "java/lang/Runtime.class",
+    "java/lang/Throwable.class",
     "java/util/Arrays.class",
     "java/util/Collection.class",
     "java/util/List.class",
     "java/util/Map.class",
-    "java/lang/Integer.class",
-    "java/lang/Long.class",
-    "java/lang/Boolean.class",
   ]
   visibility = [ ":*" ]
 }
@@ -37,21 +47,25 @@ generate_jar_jni("system_jni") {
 #  cflags += [ "-I" + java_home + "/include/linux" ]
 # }
 
+generate_jar_jni("system_jni_unchecked_exceptions") {
+  classes = [
+    "java/lang/ClassLoader.class",
+    "java/nio/ByteBuffer.class",
+  ]
+  visibility = [ ":*" ]
+  unchecked_exceptions = true
+}
+
 # This is the public target that we intend others to use.
 component("jni_zero") {
   public = [
+    "common_apis.h",
     "default_conversions.h",
     "jni_zero.h",
-
-    # TODO(bugs.webrtc.org/42225138): Move back to sources as
-    # soon as WebRTC removes the jni_generator_helper.h which at
-    # the moment needs to read jni_zero::internal::kJniStackMarkerValue.
-    "jni_zero_internal.h",
   ]
 
   sources = [
     "common_apis.cc",
-    "common_apis.h",
     "default_conversions.cc",
     "java_refs.cc",
     "java_refs.h",
@@ -59,6 +73,7 @@ component("jni_zero") {
     "jni_methods.h",
     "jni_wrappers.h",
     "jni_zero.cc",
+    "jni_zero_internal.h",
     "logging.cc",
     "logging.h",
     "type_conversions.h",
@@ -70,6 +85,9 @@ component("jni_zero") {
   configs += [ "//build/config/compiler:no_exit_time_destructors" ]
 
   defines = []
+  if (build_with_chromium) {
+    defines += [ "JNI_ZERO_BUILD_WITH_CHROMIUM" ]
+  }
   if (enable_jni_multiplexing) {
     defines += [ "JNI_ZERO_MULTIPLEXING_ENABLED" ]
   }
@@ -86,29 +104,38 @@ component("jni_zero") {
     defines += [ "JNI_ZERO_IS_JAVA" ]
   }
 
-  deps = [
-    ":generate_jni($default_toolchain)",
+  deps = [ ":generate_jni($default_toolchain)" ]
+  if (build_with_chromium) {
+    deps += [ "//base:base_static" ]
+  }
+  public_deps = [
     ":system_jni($default_toolchain)",
+    ":system_jni_unchecked_exceptions($default_toolchain)",
   ]
 }
 
 if (enable_java_templates && (is_android || has_java)) {
   import("//build/config/android/rules.gni")
 
-  android_library("jni_zero_java") {
+  java_library("jni_zero_java") {
     deps = [ ":generate_jni_java" ]
     public_deps = [ ":gendeps_java" ]
     preferred_dep = true
+    supports_android = true
     sources = [
       "java/src/org/jni_zero/AccessedByNative.java",
       "java/src/org/jni_zero/CalledByNative.java",
       "java/src/org/jni_zero/CalledByNativeForTesting.java",
       "java/src/org/jni_zero/CalledByNativeUnchecked.java",
+      "java/src/org/jni_zero/CommonApis.java",
       "java/src/org/jni_zero/JNINamespace.java",
-      "java/src/org/jni_zero/JniInit.java",
+      "java/src/org/jni_zero/JniPtr.java",
+      "java/src/org/jni_zero/JniPtrImpl.java",
+      "java/src/org/jni_zero/JniPtrInner.java",
       "java/src/org/jni_zero/JniTestInstancesSnapshot.java",
       "java/src/org/jni_zero/JniType.java",
-      "java/src/org/jni_zero/JniUtil.java",
+      "java/src/org/jni_zero/JniTypeToken.java",
+      "java/src/org/jni_zero/JniZero.java",
       "java/src/org/jni_zero/NativeClassQualifiedName.java",
       "java/src/org/jni_zero/NativeMethods.java",
       "java/src/org/jni_zero/UsedReflectively.java",
@@ -117,7 +144,8 @@ if (enable_java_templates && (is_android || has_java)) {
   }
 
   # Classes referenced by generated code.
-  android_library("gendeps_java") {
+  java_library("gendeps_java") {
+    supports_android = true
     sources = [
       "java/src/org/jni_zero/CheckDiscard.java",
       "java/src/org/jni_zero/JniStaticTestMocker.java",
