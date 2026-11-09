@@ -11,7 +11,13 @@
 #ifndef RTC_BASE_SSL_ROOTS_H_
 #define RTC_BASE_SSL_ROOTS_H_
 
+// --twinlife-- 2026-11-09: also included from C (twinlife/libwebsockets)
+#ifdef __cplusplus
 #include <cstddef>
+#else
+#include <stddef.h>
+#endif
+// --twinlife-- 2026-11-09
 
 // This file is the root certificates in C form.
 

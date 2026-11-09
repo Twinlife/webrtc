@@ -1728,7 +1728,8 @@ rtc_library("rtp_transceiver") {
     ":codec_vendor",
     ":connection_context",
     ":dtls_transport",
-    ":legacy_stats_collector_interface",
+    # --twinlife-- 2025-12-21: don't build legacy stats
+    # ":legacy_stats_collector_interface",
     ":proxy",
     ":rtp_media_utils",
     ":rtp_receiver",

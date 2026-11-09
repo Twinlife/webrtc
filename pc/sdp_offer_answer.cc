@@ -4450,9 +4450,8 @@ SdpOfferAnswerHandler::AssociateTransceiver(
 #endif
   // --twinlife 2025-12-21: if there is no media engine, reject stream to avoid a crash later.
   if (!media_engine()) {
-      LOG_AND_RETURN_ERROR(
-          RTCErrorType::INVALID_PARAMETER,
-          "No media engine to handle media stream");    
+    return RTC_LOG_ERROR(RTCError(RTCErrorType::INVALID_PARAMETER)
+                         << "No media engine to handle media stream");
   }
 
   bool newly_created = false;

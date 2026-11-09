@@ -7,6 +7,8 @@
 # * Chromium's version of this file is under `//build/config/`.
 
 # Directory-level exceptions, permanent
+# --twinlife-- 2026-11-09: our own code and the libwebsockets/sqlcipher trees
+-twinlife/
 -common_audio/third_party/
 -modules/third_party/
 -third_party/

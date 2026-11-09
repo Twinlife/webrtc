@@ -328,7 +328,7 @@ ScopedJavaLocalRef<jobject> CreatePeerConnectionFactoryForJava(
 
     return NativeToScopedJavaPeerConnectionFactory(
       jni, factory, std::move(socket_server), std::move(network_thread),
-      std::move(worker_thread), std::move(signaling_thread));
+      std::move(worker_thread), std::move(signaling_thread), env);
   }
   // --twinlife-- 2022-10-24
 

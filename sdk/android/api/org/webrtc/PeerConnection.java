@@ -856,7 +856,7 @@ public class PeerConnection {
     // --twinlife 2023-07-11: provide hostname resolution
     @Nullable
     @CalledByNative
-    List getHostAddresses() {
+    List<ServerAddr> getHostAddresses() {
       return hostAddresses;
     }
     // --twinlife 2023-07-11: provide hostname resolution

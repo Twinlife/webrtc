@@ -12,10 +12,14 @@ if (is_android || !is_android) {
   import("//build/config/android/rules.gni")
   import("//third_party/jni_zero/jni_zero.gni")
 
-  config("java_include_config") {
-    cflags = [ "-I" + java_home + "/include" ]
-    cflags += [ "-I" + java_home + "/include/linux" ]
+  # --twinlife-- 2026-11-09: java_home is only defined for the Linux/Java build
+  if (rtc_has_java) {
+    config("java_include_config") {
+      cflags = [ "-I" + java_home + "/include" ]
+      cflags += [ "-I" + java_home + "/include/linux" ]
+    }
   }
+  # --twinlife-- 2026-11-09
 
   group("android") {
     if (!build_with_chromium && (is_android || rtc_has_java)) {

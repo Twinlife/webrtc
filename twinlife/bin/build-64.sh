@@ -20,7 +20,7 @@ case $# in
 esac
 rm -rf out-64/Release
 
-ARGS='target_environment="device" enable_libaom=false rtc_enable_protobuf=false rtc_include_tests=false rtc_build_examples=false rtc_include_internal_audio_device=false rtc_include_dav1d_in_internal_decoder_factory=false rtc_enable_google_benchmarks=false enable_rust=false'
+ARGS='target_environment="device" enable_libaom=false rtc_enable_protobuf=false rtc_include_tests=false rtc_build_examples=false rtc_include_internal_audio_device=false rtc_include_dav1d_in_internal_decoder_factory=false rtc_enable_google_benchmarks=false enable_rust=false rtc_rust=false'
 ARGS="${ARGS} rtc_build_tools=false "
 case ${TARGET} in
     ios)
