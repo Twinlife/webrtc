@@ -195,6 +195,10 @@ scoped_refptr<AudioSourceInterface> PeerConnectionFactory::CreateAudioSource(
 #ifdef WEBRTC_HAS_AECDUMP // --twinlife 2025-01-27: disable AEC dump
 bool PeerConnectionFactory::StartAecDump(FILE* file, int64_t max_size_bytes) {
   RTC_DCHECK_RUN_ON(worker_thread());
+  if (!file) {
+    RTC_LOG(LS_ERROR) << "Cannot start AEC dump with null file pointer.";
+    return false;
+  }
   if (media_engine_ref_) {
     RTC_LOG(LS_WARNING) << "Replacing ongoing AEC dump.";
   } else {
@@ -239,6 +243,12 @@ PeerConnectionFactory::CreatePeerConnectionOrError(
   if (!err.ok()) {
     RTC_LOG(LS_ERROR) << "Invalid ICE configuration: " << err.message();
     return err;
+  }
+
+  if (configuration.certificates.size() >
+      PeerConnectionInterface::RTCConfiguration::kMaxCertificates) {
+    return RTCError(RTCErrorType::INVALID_PARAMETER,
+                    "Too many certificates in RTCConfiguration.");
   }
 
   ServerAddresses stun_servers;

@@ -21,12 +21,10 @@
 // IWYU pragma: begin_exports
 #if defined(RTC_USE_PERFETTO)
 #include "rtc_base/trace_categories.h"
+#include "third_party/perfetto/include/perfetto/tracing/event_context.h"  // nogncheck
+#include "third_party/perfetto/include/perfetto/tracing/track.h"  // nogncheck
+#include "third_party/perfetto/include/perfetto/tracing/track_event_args.h"  // nogncheck
 #endif
-#if 0 // --twinlife 2024-09-21: we don't use perfetto
-#include "third_party/perfetto/include/perfetto/tracing/event_context.h"
-#include "third_party/perfetto/include/perfetto/tracing/track.h"
-#include "third_party/perfetto/include/perfetto/tracing/track_event_args.h"
-#endif // --twinlife 2024-09-21: we don't use perfetto
 // IWYU pragma: end_exports
 
 #if !defined(RTC_USE_PERFETTO)
