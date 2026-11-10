@@ -201,8 +201,8 @@ void InitVM(JavaVM* vm) {
 #else
   // --twinlife-- 2026-11-02: the org.jni_zero Java classes are not shipped with
   // the library, so JniZeroJni::init() cannot be called.  Set up the globals the
-  // generated code relies on from JNI system classes and keep class resolution
-  // on env->FindClass() (g_class_resolver stays null).
+  // generated code relies on from JNI system classes.  g_class_resolver is left
+  // null here: WebRTC installs its own in InitClassLoader() (jni_onload.cc).
   g_empty_string.Reset(env, CreateLeaky(env, env->NewString(nullptr, 0)));
   g_string_class = GetClassGlobalRef(env, g_empty_string.obj());
   g_object_class = static_cast<jclass>(

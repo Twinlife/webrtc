@@ -606,7 +606,8 @@ if (!build_with_chromium) {
       deps += [ "api/audio:create_audio_device_module" ]
     }
     if (!build_with_chromium) {
-      if (is_android) {
+      # --twinlife-- 2026-11-10: also for the Linux/Java build (was in sdk:sdk before M150)
+      if (is_android || rtc_has_java) {
         deps += [ "sdk/android" ]
       }
       if (is_ios) {
