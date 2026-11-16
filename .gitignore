@@ -77,5 +77,8 @@
 /libs
 /out-32
 /out-64
+/out-java
+/out-objc
+/out-test
 /third_party
 rust-project.json

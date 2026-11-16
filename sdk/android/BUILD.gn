@@ -7,7 +7,8 @@
 # be found in the AUTHORS file in the root of the source tree.
 
 import("../../webrtc.gni")
-if (is_android || !is_android) {
+# --twinlife-- 2026-11-16: build on Android, or on Linux with Java support
+if (is_android || rtc_has_java) {
   import("//build/config/android/config.gni")
   import("//build/config/android/rules.gni")
   import("//third_party/jni_zero/jni_zero.gni")
