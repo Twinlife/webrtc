@@ -57,7 +57,9 @@ namespace webrtc {
 namespace {
 
 // By default, release builds don't log, debug builds at info level
-#if !defined(NDEBUG)
+// --twinlife-- 2026-11-17: backport of upstream 8c02832bd5 (webrtc:42234107), LogToDebug() must control the debug output
+#if RTC_DLOG_IS_ON
+// --twinlife-- 2026-11-17
 constexpr LoggingSeverity kDefaultLoggingSeverity = LS_INFO;
 #else
 constexpr LoggingSeverity kDefaultLoggingSeverity = LS_NONE;
@@ -102,7 +104,10 @@ LoggingConfig& GetOrInitConfig(LoggingConfig* init_config,
 
 }  // namespace
 
-LoggingConfig::LoggingConfig() = default;
+// --twinlife-- 2026-11-17: backport of upstream 8c02832bd5 (webrtc:42234107), LogToDebug() must control the debug output
+// The implicit initialization reports the debug severity that is actually used.
+LoggingConfig::LoggingConfig() : debug_severity_(kDefaultLoggingSeverity) {}
+// --twinlife-- 2026-11-17
 LoggingConfig::LoggingConfig(LoggingConfig&&) = default;
 LoggingConfig& LoggingConfig::operator=(LoggingConfig&&) = default;
 LoggingConfig::~LoggingConfig() = default;
@@ -269,7 +274,11 @@ LogMessage::~LogMessage() {
 
   const LoggingConfig& config = GetLoggingConfig();
 
-  if (log_line_.severity() >= config.debug_severity()) {
+  // --twinlife-- 2026-11-17: backport of upstream 8c02832bd5 (webrtc:42234107), LogToDebug() must control the debug output
+  // Not `config.debug_severity()`, since LogToDebug() can change the debug
+  // severity after initialization.
+  if (log_line_.severity() >= g_dbg_sev) {
+  // --twinlife-- 2026-11-17
     OutputToDebug(log_line_);
   }
 
@@ -425,7 +434,13 @@ void LogMessage::UpdateMinLogSeverity()
     RTC_EXCLUSIVE_LOCKS_REQUIRED(GetLoggingLock()) {
   LoggingSeverity min_sev = g_dbg_sev;
   const LoggingConfig& config = GetLoggingConfig();
-  min_sev = std::min(min_sev, config.min_severity());
+  // --twinlife-- 2026-11-17: backport of upstream 8c02832bd5 (webrtc:42234107), LogToDebug() must control the debug output
+  // The default minimum severity of the configuration is LS_INFO: it only
+  // applies to its sinks.
+  if (!config.sinks().empty()) {
+    min_sev = std::min(min_sev, config.min_severity());
+  }
+  // --twinlife-- 2026-11-17
   for (const auto& sink : config.sinks()) {
     min_sev = std::min(min_sev, sink->min_severity_);
   }
