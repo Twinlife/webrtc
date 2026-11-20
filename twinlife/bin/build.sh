@@ -14,7 +14,7 @@ case $# in
         TARGET=$1
         ;;
     *)
-	echo "Usage: build.sh [ios|android|linux]" 1>&2
+	echo "Usage: build.sh [ios|ios-sim|android|linux]" 1>&2
 	exit 1
 	;;
 esac
@@ -35,6 +35,11 @@ case ${TARGET} in
 	#mv libc++abi_static-64.ninja out-64/Release/obj/buildtools/third_party/libc++abi/libc++abi_static.ninja
 	;;
 
+    ios-sim)
+	echo "Init WebRTC build for the iOS Simulator arm64..."
+	./twinlife/bin/build-ios-sim.sh
+	;;
+
     android)
 	. build/android/envsetup.sh
 
@@ -43,9 +48,12 @@ case ${TARGET} in
 
 	echo "Init WebRTC build for Android arm64..."
 	./twinlife/bin/build-64.sh ${TARGET}
+
+	echo "Init WebRTC build for Android x86_64 (emulator, ChromeOS)..."
+	./twinlife/bin/build-x64.sh
 	;;
 
-    linux) 
+    linux)
 	. build/android/envsetup.sh
 
 	echo "Init WebRTC build for Linux x86_64..."

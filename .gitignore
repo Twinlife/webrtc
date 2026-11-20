@@ -77,6 +77,9 @@
 /libs
 /out-32
 /out-64
+/out-x64
+/out-ios-sim
+/out-xcframework
 /out-java
 /out-objc
 /out-test

@@ -35,10 +35,10 @@ case ${TARGET} in
     android)
 	rm -f libs/arm64-v8a/libjingle_peerconnection_so.so
 
-	ninja -k50 -C out-64/Release libjingle_peerconnection_so
+	ninja -k50 -C out-64/Release libjingle_peerconnection_so || exit 1
 
 	mkdir -p libs/arm64-v8a
-	cp out-64/Release/libjingle_peerconnection_so.so libs/arm64-v8a
+	cp out-64/Release/libjingle_peerconnection_so.so libs/arm64-v8a || exit 1
 
 	;;
 
